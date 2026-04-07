@@ -54,7 +54,7 @@ SYNC_SEND_TIMEOUT_SEC="${SYNC_SEND_TIMEOUT_SEC:-3}"
 SYNC_PING_TIMEOUT_SEC="${SYNC_PING_TIMEOUT_SEC:-2}"
 SYNC_PING_ATTEMPTS="${SYNC_PING_ATTEMPTS:-3}"
 SYNC_PING_INTERVAL_SEC="${SYNC_PING_INTERVAL_SEC:-0.2}"
-SYNC_QUICK_CHECK_TIMEOUT_SEC="${SYNC_QUICK_CHECK_TIMEOUT_SEC:-1}"
+SYNC_QUICK_CHECK_TIMEOUT_SEC="${SYNC_QUICK_CHECK_TIMEOUT_SEC:-0.2}"
 
 DEVICE_SIDE="$(get_env_value "DEVICE_SIDE" || true)"
 CURRENT_SIDE="${DEVICE_SIDE:-Right}"
@@ -1003,7 +1003,9 @@ is_sync_peer_ready_for_start() {
 
     log_sync_neighbor_state "before_start"
 
-    if ping -I "$NETWORK_INTERFACE" -c 1 -W "$SYNC_QUICK_CHECK_TIMEOUT_SEC" "$SYNC_TARGET_IP" >/dev/null 2>&1; then
+    # 这里用 timeout 包住 ping，避免“网线已插但对端不可达”时仍被 ping 的 1s 默认等待拖慢开录。
+    if timeout "${SYNC_QUICK_CHECK_TIMEOUT_SEC}s" \
+        ping -I "$NETWORK_INTERFACE" -c 1 -W 1 "$SYNC_TARGET_IP" >/dev/null 2>&1; then
         echo "[INFO]:Sync quick ping succeeded before START."
         log_sync_neighbor_state "after_quick_ping_ok"
         return 0

@@ -4,6 +4,12 @@
 - 修复 Right 侧网线插拔副作用：`auto_calibration/monitor_network.sh` 不再因 `end0` 插线补触发 `block add` udev 规则，避免误触发 `usb-auto-update`、U 盘卸载/导入等与网口无关的流程。
 - 修复 Right 侧拔网线时的异常重启：network monitor 不再因 Right 侧网线拔插直接重启 `ugripper.service`，避免把主服务带进磁盘未就绪、录制中断等异常状态。
 - 修复 Right 侧“有网线但没有 slave”时的开录卡顿：`run_record.sh` 仅在对端快速可达时走同步 `START` 发送；对端不可达时本地立即开录，并在后台重试一次同步发送，不再阻塞主流程。
+- 新增客户侧 `MCAP` 解析工具 `py_script/mcap_sdk.py`，统一支持 `fays_data.mcap` 与 `sensor_data.mcap` 的文件概要查看、按 topic/时间范围读取、JSON 输出与按 topic 导出 `CSV`；脚本对外使用更直观的名称，如 `fays_imu`、`fays_frame_index`，同时保留原始 topic 名称供对照。
+- `mcap_sdk.py` 新增可供外部脚本直接调用的类接口：`McapParser`、`FaysMcapReader`、`SensorMcapReader`。
+- 新增 `docs/mcap_sdk_usage.md`，集中说明对外数据格式、`fays_data.mcap` 中 `i/c` topic 的含义、`log_time/publish_time` 时间戳语义以及推荐解析方式。
+- `docs/agent/overview.md` 补充 `MCAP` 对外解析工具入口，便于交付时快速定位客户文档与脚本。
+- 修复安装阶段 PTP 配置文件与 systemd 单元偶发被截断为空文件的问题：`pack_script/postinst` 改为先写临时文件再原子替换 `ptp4l.conf`、`ptp4l.service` 与 `phc2sys.service`。
+- 修复 Right master 在“网线已插但 slave 不可达”时的开录卡顿：开录前同步探测改为由 `timeout` 包裹的 0.2 秒快速 ping，超时后立即本地开录，并继续沿用后台补发 `START` 的策略。
 
 ## v1.1.14 - 2026-03-16
 - Left 夹爪新增自动主从切换：`end0` 已插线且 `192.168.1.100` 可达时自动作为 `slave` 运行并受右臂 master 控制；拔线或对端不可达时自动回到 `master`。

@@ -11,6 +11,8 @@ IP_LEFT="192.168.1.101"
 # PTP 配置目录和文件
 PTP_CONF_DIR="/etc/linuxptp"
 PTP_CONF_FILE="${PTP_CONF_DIR}/ptp4l.conf"
+PTP_SERVICE_FILE="/etc/systemd/system/ptp4l.service"
+PHC2SYS_SERVICE_FILE="/etc/systemd/system/phc2sys.service"
 
 # PTP 监控脚本路径
 MONITOR_SCRIPT="${APP_DIR}/time_sync/ptp_monitor.sh"
@@ -50,6 +52,26 @@ force_cleanup_recording_processes() {
     fi
 
     rm -f /tmp/umi_audio_pipe /tmp/umi_led_pipe /tmp/umi_recording.lock || true
+}
+
+write_text_file_atomically() {
+    local target_file="$1"
+    local file_mode="${2:-644}"
+    local tmp_file=""
+
+    mkdir -p "$(dirname "$target_file")"
+    tmp_file=$(mktemp "${target_file}.tmp.XXXXXX")
+
+    cat > "$tmp_file"
+
+    if [ ! -s "$tmp_file" ]; then
+        echo "Error: generated file is empty: $target_file" >&2
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    chmod "$file_mode" "$tmp_file"
+    mv -f "$tmp_file" "$target_file"
 }
 
 restart_ptp_stack_with_retry() {
@@ -160,7 +182,7 @@ if [ -n "$DEVICE_SIDE" ]; then
 
             # 2. 生成 ptp4l 配置文件 (Slave Mode)
             # slaveOnly 1: 强制作为从钟
-            cat <<EOPTPSLAVE > "$PTP_CONF_FILE"
+            write_text_file_atomically "$PTP_CONF_FILE" 644 <<EOPTPSLAVE
 [global]
 tx_timestamp_timeout   50
 slaveOnly              1
@@ -181,7 +203,7 @@ EOPTPSLAVE
             # -c CLOCK_REALTIME: 目标是系统时钟
             # -w: 等待 ptp4l 同步
             # 加入 -S 0.2 (Step threshold)
-            cat <<EOPHCSLEFT > /etc/systemd/system/phc2sys.service
+            write_text_file_atomically "$PHC2SYS_SERVICE_FILE" 644 <<EOPHCSLEFT
 [Unit]
 Description=Synchronize system clock or PTP hardware clock (PHC)
 After=ptp4l.service
@@ -205,7 +227,7 @@ EOPHCSLEFT
 
             # 2. 生成 ptp4l 配置文件 (Master Mode)
             # priority1 10: 优先级高，确保成为 Master (默认是 128)
-            cat <<EOPTMASTER > "$PTP_CONF_FILE"
+            write_text_file_atomically "$PTP_CONF_FILE" 644 <<EOPTMASTER
 [global]
 tx_timestamp_timeout   50
 priority1              10
@@ -219,7 +241,7 @@ EOPTMASTER
             # -s CLOCK_REALTIME: 源是系统时钟 (由 NTP 维护)
             # -c $INTERFACE_NAME: 目标是网卡 PHC
             # -w: 等待 ptp4l
-            cat <<EOPHCSRIGHT > /etc/systemd/system/phc2sys.service
+            write_text_file_atomically "$PHC2SYS_SERVICE_FILE" 644 <<EOPHCSRIGHT
 [Unit]
 Description=Synchronize system clock or PTP hardware clock (PHC)
 After=ptp4l.service
@@ -239,7 +261,7 @@ EOPHCSRIGHT
     # --------------------------------------------------
     # 通用 PTP 服务配置 (ptp4l)
     # --------------------------------------------------
-    cat <<EOPTPUNIT > /etc/systemd/system/ptp4l.service
+    write_text_file_atomically "$PTP_SERVICE_FILE" 644 <<EOPTPUNIT
 [Unit]
 Description=Precision Time Protocol (PTP) service
 After=network-online.target
