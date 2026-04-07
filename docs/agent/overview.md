@@ -103,6 +103,7 @@
 - 录制锁：`/tmp/umi_recording.lock`
 - PTP 状态：`/dev/shm/umi_ptp_status`
 - 开机自恢复日志：`/var/log/ugripper/boot_install.log`（先比较/升级 backup 中的 `ugripper-usb-updater`，再比较/升级 `ugripper`；若 `ugripper` 未安装或状态异常则执行恢复安装）
+- 对外数据解析工具：`py_script/mcap_sdk.py`（客户侧 `MCAP` 读取 / 高效筛选 / `CSV` 导出），使用说明见 `docs/mcap_sdk_usage.md`
 
 ## 10. USB 升级配置（语言/编码器/主从角色）
 - `auto_update/usb_auto_update.sh` 挂载升级 U 盘后会检查根目录 `config.txt`。
