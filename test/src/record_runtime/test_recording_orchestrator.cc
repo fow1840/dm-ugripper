@@ -492,6 +492,29 @@ TEST(RecordingOrchestratorTest, StartRecordingStereoStartFailureStopsWorkersAndS
     EXPECT_EQ(harness.recovery_commands.back(), "error");
 }
 
+TEST(RecordingOrchestratorTest, StartRecordingFaysFifoFailureMapsToError4)
+{
+    RecordingHarness harness;
+    harness.stereo_start_ok = false;
+    harness.stereo_start_error =
+        "right Fays FIFO command failed: open FIFO failed for /tmp/umi_right_fays_cmd: No such file or directory";
+    auto orchestrator = harness.Make();
+
+    ASSERT_FALSE(orchestrator.StartRecording(false));
+    EXPECT_FALSE(orchestrator.state().is_recording);
+    EXPECT_EQ(orchestrator.state().current_episode_dir, "/tmp/episode_0001");
+    ASSERT_FALSE(harness.led_states.empty());
+    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error4);
+    ASSERT_FALSE(harness.hardware_fault_led_states.empty());
+    EXPECT_EQ(harness.hardware_fault_led_states.back().led_state, RuntimeLedState::Error4);
+    EXPECT_EQ(harness.hardware_fault_led_states.back().side, HardwareFaultSide::Right);
+    EXPECT_EQ(harness.hardware_fault_led_states.back().key, "stereo_control_failed");
+    ASSERT_FALSE(harness.audio_commands.empty());
+    EXPECT_EQ(harness.audio_commands.back(), "error");
+    ASSERT_FALSE(harness.recovery_commands.empty());
+    EXPECT_EQ(harness.recovery_commands.back(), "error");
+}
+
 TEST(RecordingOrchestratorTest, StopRecordingDueToErrorMapsToErrorOutput)
 {
     RecordingHarness harness;
