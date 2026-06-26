@@ -59,6 +59,8 @@ constexpr uint64_t kPostUmountAudioDelayMs = 2000;
 constexpr uint64_t kAudioPlayerRestartIntervalMs = 2000;
 constexpr uint64_t kAudioPlayerReadyGraceMs = 3000;
 constexpr uint64_t kStereoDaemonRestartIntervalMs = 2000;
+constexpr uint64_t kStereoDaemonBootDelayMs = 60000;
+constexpr uint64_t kStereoDaemonStartupGraceMs = kStereoDaemonBootDelayMs + 5000;
 constexpr uint64_t kStereoFinalizeWaitPollMs = 100;
 constexpr uint64_t kRecordControlDebounceMs = 300;
 constexpr uint64_t kRestoreUsbSymlinkPollIntervalMs = 1000;
@@ -3991,7 +3993,7 @@ bool RecordRuntime::initialize()
                 std::vector<std::string>(criticalDevicePaths.begin(), criticalDevicePaths.end()),
             .poll_interval_ms = kHealthCheckIntervalMs,
             .hmi_active_timeout_ms = kHmiActiveTimeoutMs,
-            .stereo_startup_grace_ms = 12000,
+            .stereo_startup_grace_ms = kStereoDaemonStartupGraceMs,
         },
         ugripper::runtime::HealthMonitor::Dependencies{
             .get_disk_fault =
@@ -4246,12 +4248,16 @@ bool RecordRuntime::initialize()
     panelManager_.consumeConnectionEvents();
 
     startAudioPlayer();
-    startStereoDaemon();
+    stereoDaemonDelayedStartUntilMs_ = currentSteadyMs() + kStereoDaemonBootDelayMs;
+    DM_LOG_INFO("{}", (::DA::utils::LogString()
+        << "delay stereo daemon startup after boot"
+        << " delay_ms=" << kStereoDaemonBootDelayMs
+        << std::endl).str());
     initializeRecordControlPipe();
 
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
     applyIdleState();
-    if (!tactileWarningActive_)
+    if (!tactileWarningActive_ && !isStereoDaemonDelayedStartActive())
     {
         setAudioRecoveryCommand("ready");
         sendAudioCommand("ready");
@@ -4371,6 +4377,7 @@ void RecordRuntime::maintainAudioPlayer()
 
 bool RecordRuntime::startStereoDaemon()
 {
+    stereoDaemonDelayedStartUntilMs_ = 0;
     std::string errorMessage;
     const bool started = stereoSessionClient_ != nullptr && stereoSessionClient_->StartDaemon(&errorMessage);
     if (!started)
@@ -4378,6 +4385,15 @@ bool RecordRuntime::startStereoDaemon()
         DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to start stereo daemon"
                              << (errorMessage.empty() ? "" : (": " + errorMessage))
                              << std::endl).str());
+    }
+    else if (!isRecordingActive())
+    {
+        applyIdleState();
+        if (!tactileWarningActive_)
+        {
+            setAudioRecoveryCommand("ready");
+            sendAudioCommand("ready");
+        }
     }
     return started;
 }
@@ -4396,10 +4412,21 @@ void RecordRuntime::maintainStereoDaemon()
     {
         return;
     }
+    if (isStereoDaemonDelayedStartActive())
+    {
+        setLedState(LedState::Init);
+        return;
+    }
     if (stereoSessionClient_ != nullptr)
     {
         stereoSessionClient_->MaintainDaemon();
     }
+}
+
+bool RecordRuntime::isStereoDaemonDelayedStartActive() const
+{
+    return stereoDaemonDelayedStartUntilMs_ != 0 &&
+           currentSteadyMs() < stereoDaemonDelayedStartUntilMs_;
 }
 
 void RecordRuntime::suspendStereoDaemonForRestoreUsb(const std::string &reason)
@@ -5765,6 +5792,11 @@ void RecordRuntime::cancelBackgroundTactileValidation()
 void RecordRuntime::applyIdleState()
 {
     resetRestoreUsbErrorWindow();
+    if (isStereoDaemonDelayedStartActive())
+    {
+        setLedState(LedState::Init);
+        return;
+    }
     if (tactileWarningActive_)
     {
         setTactileWarningLedState();

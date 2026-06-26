@@ -236,7 +236,10 @@ GripperLedColor GripperLedEffectRenderer::render(const GripperLedEffect &effect,
     switch (effect.state)
     {
     case GripperLedEffectState::Init:
-        return GripperLedColor{0, 122, 255};
+    {
+        const bool on = (steadyMs % kCalibBlinkPeriodMs) < (kCalibBlinkPeriodMs / 2);
+        return on ? GripperLedColor{0, 122, 255} : GripperLedColor{0, 0, 0};
+    }
     case GripperLedEffectState::Ready:
     {
         const double phase = static_cast<double>(steadyMs % kReadyBreathPeriodMs) /

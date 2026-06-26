@@ -380,6 +380,7 @@ private:
     bool cleanupEgoRemote(const std::string &episodeDir, std::string *errorMessage);
     bool mergeEpisodeInfo(const std::string &episodeDir, std::string *errorMessage) const;
     bool syncRuntimeLogToDisk(const char *reason) const;
+    bool isStereoDaemonDelayedStartActive() const;
     void markTactileReferencePendingForSide(const std::string &side,
                                             const std::string &reason);
     void scheduleBackgroundTactileValidation(const std::string &episodeDir);
@@ -471,6 +472,7 @@ private:
     uint64_t restoreUsbFailureAlarmStartMs_ = 0;
     uint64_t restoreUsbPreflightFailureUntilMs_ = 0;
     bool restoreUsbStereoDaemonStopped_ = false;
+    uint64_t stereoDaemonDelayedStartUntilMs_ = 0;
     std::array<bool, 2> restoreUsbSidePresent_{};
     std::array<uint64_t, 2> restoreUsbInsertGraceUntilMs_{};
     std::string restoreUsbPendingTriggerKey_;
