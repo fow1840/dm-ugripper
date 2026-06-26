@@ -118,6 +118,7 @@ validate_packaged_binaries() {
     validate_binary_arch "$PACKAGED_BUILD_DIR/standalone/SensorRecorder/zeroing" "SensorRecorder zeroing"
     validate_binary_arch "$PACKAGED_BUILD_DIR/standalone/GripperHmiTool/GripperHmiTool" "GripperHmiTool"
     validate_binary_arch "$PACKAGED_BUILD_DIR/standalone/UgripperRuntime/UgripperRuntime" "UgripperRuntime"
+    validate_binary_arch "$PACKAGED_BUILD_DIR/standalone/EpisodeMcap/EpisodeMcapRecorder" "EpisodeMcapRecorder"
     validate_binary_arch "$PACKAGED_BUILD_DIR/standalone/FaysStereoRecorder/fays_record_example" "Fays stereo recorder"
 }
 
@@ -394,7 +395,7 @@ else
         -DBUILD_TESTING=OFF \
         -DUGRIPPER_ENABLE_MCAP_BUILDER=OFF
     cmake --build "$PACKAGED_BUILD_DIR" \
-        --target CameraRecorder main_camera_xu_tool SensorRecorder zeroing GripperHmiTool UgripperRuntime fays_record_example \
+        --target CameraRecorder main_camera_xu_tool SensorRecorder zeroing GripperHmiTool UgripperRuntime EpisodeMcapRecorder fays_record_example \
         --parallel "$(nproc)"
     validate_packaged_binaries
 fi
@@ -425,6 +426,8 @@ copy_first_existing "$TARGET_INSTALL_ROOT/bin/GripperHmiTool/GripperHmiTool" \
     "$PACKAGED_BUILD_DIR/standalone/GripperHmiTool/GripperHmiTool"
 copy_first_existing "$TARGET_INSTALL_ROOT/bin/UgripperRuntime/UgripperRuntime" \
     "$PACKAGED_BUILD_DIR/standalone/UgripperRuntime/UgripperRuntime"
+copy_first_existing "$TARGET_INSTALL_ROOT/bin/EpisodeMcap/EpisodeMcapRecorder" \
+    "$PACKAGED_BUILD_DIR/standalone/EpisodeMcap/EpisodeMcapRecorder"
 copy_first_existing "$TARGET_INSTALL_ROOT/bin/FaysStereoRecorder/fays_record_example" \
     "$PACKAGED_BUILD_DIR/standalone/FaysStereoRecorder/fays_record_example"
 copy_if_exists "scripts/hws" "$BUILD_ROOT/usr/local/bin/hws"

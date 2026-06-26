@@ -14,6 +14,7 @@ struct RecordingOrchestratorOptions
 {
     std::string camera_recorder_bin;
     std::string sensor_recorder_bin;
+    std::string episode_mcap_recorder_bin;
     std::string camera_codec;
     std::string session_camera_streams_csv;
     int worker_stop_timeout_ms = 5000;

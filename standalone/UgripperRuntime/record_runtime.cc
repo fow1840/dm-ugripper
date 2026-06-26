@@ -452,6 +452,14 @@ struct TailCheckTaskResult
     std::string errorMessage;
 };
 
+struct EpisodeMcapTopicStats
+{
+    uint64_t count = 0;
+    uint64_t firstLogTimeNs = 0;
+    uint64_t lastLogTimeNs = 0;
+    uint64_t timestampRegressions = 0;
+};
+
 struct CommandCaptureResult
 {
     bool success = false;
@@ -2028,8 +2036,7 @@ bool shouldFlushPathForPhase(const fs::path &episodeDir,
 
     if (phase == "pre_stereo_finalize")
     {
-        return fileName == "sensor_left.mcap" ||
-               fileName == "sensor_right.mcap" ||
+        return fileName == "episode.mcap" ||
                fileName == "calibration.json" ||
                fileName == "audio_pre.wav" ||
                fileName == "audio_post.wav";
@@ -2048,8 +2055,7 @@ bool shouldFlushPathForPhase(const fs::path &episodeDir,
         {
             return true;
         }
-        return fileName == "fays_data_left.mcap" ||
-               fileName == "fays_data_right.mcap";
+        return fileName == "episode.mcap";
     }
     if (phase == "metadata_final")
     {
@@ -2081,10 +2087,7 @@ void flushEpisodeArtifactsToDisk(const fs::path &episodeDir, bool chestCameraEna
         }
     }
 
-    paths.push_back(episodeDir / "sensor_left.mcap");
-    paths.push_back(episodeDir / "sensor_right.mcap");
-    paths.push_back(episodeDir / "fays_data_left.mcap");
-    paths.push_back(episodeDir / "fays_data_right.mcap");
+    paths.push_back(episodeDir / "episode.mcap");
     paths.push_back(episodeDir / "metadata.json");
     paths.push_back(episodeDir / "calibration.json");
     paths.push_back(episodeDir / "validation_error.log");
@@ -3845,13 +3848,14 @@ bool RecordRuntime::initialize()
     }
 
     options_.cameraCodec = toLower(readEnvValue(options_.envFile, "CAMERA_CODEC"));
-    if (options_.cameraCodec.empty())
+    if (!options_.cameraCodec.empty() && options_.cameraCodec != "h264")
     {
-        options_.cameraCodec = "h264";
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+                           << "CAMERA_CODEC is forced to h264 for episode MCAP output; ignoring configured value: "
+                           << options_.cameraCodec << std::endl).str());
     }
-    if (options_.cameraCodec != "h264" && options_.cameraCodec != "h265")
+    if (options_.cameraCodec.empty() || options_.cameraCodec != "h264")
     {
-        DM_LOG_WARN("{}", (::DA::utils::LogString() << "invalid CAMERA_CODEC, fallback to h264: " << options_.cameraCodec << std::endl).str());
         options_.cameraCodec = "h264";
     }
 
@@ -4023,6 +4027,7 @@ bool RecordRuntime::initialize()
         ugripper::runtime::RecordingOrchestratorOptions{
             .camera_recorder_bin = options_.cameraRecorderBin,
             .sensor_recorder_bin = options_.sensorRecorderBin,
+            .episode_mcap_recorder_bin = options_.episodeMcapRecorderBin,
             .camera_codec = options_.cameraCodec,
             .session_camera_streams_csv = joinCsv(sessionCameraStreams(chestCameraEnabled_)),
             .worker_stop_timeout_ms = 5000,
@@ -8476,6 +8481,13 @@ bool setEpisodeValidationFailure(std::string *errorMessage,
     }
     return false;
 }
+
+std::vector<std::string> episodeImageTopics(bool chestCameraEnabled);
+std::vector<std::string> episodeRequiredTopics(bool chestCameraEnabled);
+bool loadEpisodeMcapTopicStats(const fs::path &mcapPath,
+                               const std::vector<std::string> &topics,
+                               std::map<std::string, EpisodeMcapTopicStats> *stats,
+                               std::string *errorMessage);
 }
 
 bool RecordRuntime::EpisodeManager::validateEpisode(const std::string &episodeDir,
@@ -8485,38 +8497,14 @@ bool RecordRuntime::EpisodeManager::validateEpisode(const std::string &episodeDi
 {
     const int64_t validateStartMs = steadyNowMs();
     logPerf((::DA::utils::LogString() << "[PERF] validateEpisode begin: episode_dir=" << episodeDir).str());
-    const auto artifacts = activeEpisodeVideoArtifacts(chestCameraEnabled_);
-    const std::vector<std::string> requiredFiles = {
-        "sensor_left.mcap",
-        "sensor_right.mcap",
-        "calibration.json",
-        "metadata.json",
-    };
-
-    for (const auto &artifact : artifacts)
+    const fs::path episodeMcapPath = fs::path(episodeDir) / "episode.mcap";
+    if (!RecordRuntime::fileExistsAndNotEmpty(episodeMcapPath.string()))
     {
-        const std::string path = episodeDir + "/" + artifact.fileName;
-        if (!RecordRuntime::fileExistsAndNotEmpty(path))
-        {
-            return setEpisodeValidationFailure(
-                errorMessage,
-                errorTypes,
-                ugripper::runtime::kErrorTypeMissingFile,
-                "missing or empty video file: " + path);
-        }
-    }
-
-    for (const auto &file : requiredFiles)
-    {
-        const std::string path = episodeDir + "/" + file;
-        if (!RecordRuntime::fileExistsAndNotEmpty(path))
-        {
-            return setEpisodeValidationFailure(
-                errorMessage,
-                errorTypes,
-                ugripper::runtime::kErrorTypeMissingFile,
-                "missing or empty file: " + path);
-        }
+        return setEpisodeValidationFailure(
+            errorMessage,
+            errorTypes,
+            ugripper::runtime::kErrorTypeMissingFile,
+            "missing or empty file: " + episodeMcapPath.string());
     }
 
     for (const auto &state : mainCameraRuntimeStates_)
@@ -8560,230 +8548,90 @@ bool RecordRuntime::EpisodeManager::validateEpisode(const std::string &episodeDi
         }
     }
 
-    if (!commandExists("ffprobe"))
-    {
-        return setEpisodeValidationFailure(
-            errorMessage,
-            errorTypes,
-            ugripper::runtime::kErrorTypeRuntimeError,
-            "ffprobe is required for episode validation but was not found in PATH");
-    }
-
-    std::string metadataError;
-    if (!validateMetadataVideoDetails(fs::path(episodeDir) / "metadata.json",
-                                      artifacts,
-                                      &metadataError))
-    {
-        return setEpisodeValidationFailure(
-            errorMessage,
-            errorTypes,
-            ugripper::runtime::kErrorTypeMissingFile,
-            "metadata validation failed: " + metadataError);
-    }
-
     logPerf((::DA::utils::LogString() << "[PERF] validation setup done: episode_dir=" << episodeDir
              << " elapsed_ms=" << (steadyNowMs() - validateStartMs)).str());
 
-    double referenceSpanSec = 0.0;
-    const int64_t videoProbeStartMs = steadyNowMs();
-    const auto probeTasks = probeVideoFilesParallel(episodeDir, artifacts);
-    std::vector<VideoProbeResult> probes;
-    std::map<std::string, double> effectiveSpanByFile;
-    std::map<std::string, std::string> effectiveSpanSourceByFile;
-    probes.reserve(probeTasks.size());
-    for (const auto &task : probeTasks)
+    std::map<std::string, EpisodeMcapTopicStats> topicStats;
+    std::string topicStatsError;
+    const std::vector<std::string> requiredTopics = episodeRequiredTopics(chestCameraEnabled_);
+    if (!loadEpisodeMcapTopicStats(episodeMcapPath, requiredTopics, &topicStats, &topicStatsError))
     {
-        if (!task.ok)
+        return setEpisodeValidationFailure(
+            errorMessage,
+            errorTypes,
+            ugripper::runtime::kErrorTypeFrameLoss,
+            topicStatsError);
+    }
+
+    uint64_t referenceSpanNs = 0;
+    std::vector<std::string> topicDetails;
+    for (const auto &topic : requiredTopics)
+    {
+        const auto it = topicStats.find(topic);
+        const EpisodeMcapTopicStats stats = it != topicStats.end() ? it->second : EpisodeMcapTopicStats{};
+        if (stats.count == 0)
         {
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
                 ugripper::runtime::kErrorTypeMissingFile,
-                "video unreadable or missing timing metadata: " + task.probe.fileName +
-                    " (" + task.errorMessage + ")");
+                "missing or empty episode MCAP topic: " + topic);
         }
-
-        const EpisodeVideoArtifact artifact{task.probe.cameraName.c_str(), task.probe.fileName.c_str()};
-        double effectiveSpanSec = task.probe.spanSec;
-        std::string effectiveSpanSource;
-        std::string effectiveSpanError;
-        if (!loadEffectiveVideoDurationSec(
-                episodeDir,
-                artifact,
-                task.probe,
-                task.probe.spanSec,
-                &effectiveSpanSec,
-                &effectiveSpanSource,
-                &effectiveSpanError))
+        if (stats.timestampRegressions > 0)
         {
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
                 ugripper::runtime::kErrorTypeFrameLoss,
-                effectiveSpanError);
+                "episode MCAP topic timestamp regression: " + topic +
+                    " regressions=" + std::to_string(stats.timestampRegressions));
         }
-
-        if (effectiveSpanSec < kMinReasonableVideoSpanSec)
+        const uint64_t spanNs = stats.lastLogTimeNs > stats.firstLogTimeNs
+                                    ? stats.lastLogTimeNs - stats.firstLogTimeNs
+                                    : 0;
+        if (topic.find("/image_compressed") != std::string::npos)
         {
-            return setEpisodeValidationFailure(
-                errorMessage,
-                errorTypes,
-                ugripper::runtime::kErrorTypeCollectionDurationTooShort,
-                "video effective span too short: " + task.probe.fileName +
-                    " span=" + formatSeconds(effectiveSpanSec) +
-                    "s, source=" + effectiveSpanSource +
-                    ", expected >=" + formatSeconds(kMinReasonableVideoSpanSec) + "s");
+            if (spanNs < static_cast<uint64_t>(kMinReasonableVideoSpanSec * 1000000000.0))
+            {
+                return setEpisodeValidationFailure(
+                    errorMessage,
+                    errorTypes,
+                    ugripper::runtime::kErrorTypeCollectionDurationTooShort,
+                    "episode MCAP image topic span too short: " + topic +
+                        " span_ns=" + std::to_string(spanNs));
+            }
+            referenceSpanNs = std::max(referenceSpanNs, spanNs);
         }
-
-        referenceSpanSec = std::max(referenceSpanSec, effectiveSpanSec);
-        effectiveSpanByFile[task.probe.fileName] = effectiveSpanSec;
-        effectiveSpanSourceByFile[task.probe.fileName] = effectiveSpanSource;
-        probes.push_back(task.probe);
-    }
-    logPerf((::DA::utils::LogString() << "[PERF] parallel video probe done: episode_dir=" << episodeDir
-                  << " count=" << probes.size()
-                  << " elapsed_ms=" << (steadyNowMs() - videoProbeStartMs)).str());
-
-    std::string probeCacheError;
-    if (!writeVideoProbeCacheToTimingFile(episodeDir, probes, &probeCacheError))
-    {
-        DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to cache video probe results in shm timing file: "
-                         << probeCacheError << std::endl).str());
+        topicDetails.push_back((::DA::utils::LogString()
+                                << topic << "{count=" << stats.count
+                                << ", span_ms=" << (spanNs / 1000000.0)
+                                << "}").str());
     }
 
-    for (const auto &probe : probes)
+    for (const auto &topic : episodeImageTopics(chestCameraEnabled_))
     {
-        const auto effectiveIt = effectiveSpanByFile.find(probe.fileName);
-        const double effectiveSpanSec =
-            effectiveIt != effectiveSpanByFile.end() ? effectiveIt->second : probe.spanSec;
-        const auto sourceIt = effectiveSpanSourceByFile.find(probe.fileName);
-        const std::string effectiveSpanSource =
-            sourceIt != effectiveSpanSourceByFile.end() ? sourceIt->second : "mkv_probe";
-        const double gapSec = referenceSpanSec - effectiveSpanSec;
-        if (gapSec > kMaxVideoSpanGapSec)
+        const auto stats = topicStats[topic];
+        const uint64_t spanNs = stats.lastLogTimeNs > stats.firstLogTimeNs
+                                    ? stats.lastLogTimeNs - stats.firstLogTimeNs
+                                    : 0;
+        const uint64_t gapNs = referenceSpanNs > spanNs ? referenceSpanNs - spanNs : 0;
+        if (gapNs > static_cast<uint64_t>(kMaxVideoSpanGapSec * 1000000000.0))
         {
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
                 ugripper::runtime::kErrorTypeFrameLoss,
-                "video span gap too large: " + probe.fileName +
-                    " span=" + formatSeconds(effectiveSpanSec) +
-                    "s, source=" + effectiveSpanSource +
-                    ", reference=" + formatSeconds(referenceSpanSec) +
-                    "s, gap=" + formatSeconds(gapSec) + "s");
+                "episode MCAP image topic span gap too large: " + topic +
+                    " gap_ns=" + std::to_string(gapNs));
         }
     }
 
-    const int64_t tailCheckStartMs = steadyNowMs();
-    std::vector<std::future<TailCheckTaskResult>> tailCheckFutures;
-    tailCheckFutures.reserve(kEncoderTailCheckTargets.size() + kFaysTailCheckTargets.size());
-
-    for (const auto &target : kEncoderTailCheckTargets)
-    {
-        tailCheckFutures.push_back(std::async(
-            std::launch::async,
-            [episodeDir, target]() {
-                TailCheckTaskResult result;
-                uint64_t lastEncoderLogTimeNs = 0;
-                uint64_t encoderMessageCount = 0;
-                std::string encoderTailError;
-                if (!loadLastTopicLogTimeFromTailChunks(
-                        episodeDir + "/" + target.mcapFileName,
-                        target.encoderTopic,
-                        &lastEncoderLogTimeNs,
-                        &encoderMessageCount,
-                        &encoderTailError))
-                {
-                    result.errorMessage = std::string("encoder tail check failed for side=") + target.side +
-                                          ": " + encoderTailError;
-                    return result;
-                }
-
-                result.ok = true;
-                result.detail = (::DA::utils::LogString()
-                                 << "encoder_" << target.side
-                                 << "{count=" << encoderMessageCount
-                                 << ", last_ns=" << lastEncoderLogTimeNs
-                                 << "}").str();
-                return result;
-            }));
-    }
-
-    for (const auto &target : kFaysTailCheckTargets)
-    {
-        tailCheckFutures.push_back(std::async(
-            std::launch::async,
-            [episodeDir, target]() {
-                TailCheckTaskResult result;
-                FaysMcapSummary faysSummary;
-                std::string faysTailError;
-                if (!loadFaysMcapSummary(
-                        episodeDir + "/" + target.mcapFileName,
-                        target.imuTopic,
-                        target.cameraTopic,
-                        &faysSummary,
-                        &faysTailError))
-                {
-                    result.errorMessage = std::string("Fays MCAP tail check failed for side=") + target.side +
-                                          ": " + faysTailError;
-                    return result;
-                }
-
-                int64_t lagNs = static_cast<int64_t>(faysSummary.lastCameraLogTimeNs) -
-                                static_cast<int64_t>(faysSummary.lastImuLogTimeNs);
-                if (lagNs < 0)
-                {
-                    lagNs = 0;
-                }
-                if (lagNs > kFaysImuTailMaxLagNs)
-                {
-                    result.errorMessage = std::string("Fays IMU tail lag too large for side=") + target.side +
-                                          " (lag_ns=" + std::to_string(lagNs) +
-                                          ", threshold_ns=" + std::to_string(kFaysImuTailMaxLagNs) +
-                                          ", last_camera_ns=" + std::to_string(faysSummary.lastCameraLogTimeNs) +
-                                          ", last_imu_ns=" + std::to_string(faysSummary.lastImuLogTimeNs) + ")";
-                    return result;
-                }
-
-                result.ok = true;
-                result.detail = (::DA::utils::LogString()
-                                 << "fays_" << target.side
-                                 << "{imu_count=" << faysSummary.imuMessageCount
-                                 << ", camera_count=" << faysSummary.cameraMessageCount
-                                 << ", span_ms=" << (faysSummary.spanNs / 1000000.0)
-                                 << ", camera_span_ms=" << (faysSummary.cameraSpanNs / 1000000.0)
-                                 << ", first_camera_ns=" << faysSummary.firstCameraLogTimeNs
-                                 << ", last_camera_ns=" << faysSummary.lastCameraLogTimeNs
-                                 << ", last_imu_ns=" << faysSummary.lastImuLogTimeNs
-                                 << ", lag_ms=" << (lagNs / 1000000.0)
-                                 << "}").str();
-                return result;
-            }));
-    }
-
-    std::vector<std::string> tailDetails;
-    tailDetails.reserve(tailCheckFutures.size());
-    for (auto &future : tailCheckFutures)
-    {
-        TailCheckTaskResult result = future.get();
-        if (!result.ok)
-        {
-            return setEpisodeValidationFailure(
-                errorMessage,
-                errorTypes,
-                ugripper::runtime::kErrorTypeFrameLoss,
-                result.errorMessage.empty() ? "tail check failed" : result.errorMessage);
-        }
-        tailDetails.push_back(result.detail);
-    }
-    logPerf((::DA::utils::LogString() << "[PERF] tail checks done: episode_dir=" << episodeDir
-             << " count=" << tailDetails.size()
-             << " elapsed_ms=" << (steadyNowMs() - tailCheckStartMs)
-             << " details=" << joinStrings(tailDetails, "; ")).str());
-
+    logPerf((::DA::utils::LogString() << "[PERF] episode MCAP channel checks done: episode_dir=" << episodeDir
+             << " count=" << topicDetails.size()
+             << " details=" << joinStrings(topicDetails, "; ")).str());
     logPerf((::DA::utils::LogString() << "[PERF] validateEpisode end: episode_dir=" << episodeDir
               << " elapsed_ms=" << (steadyNowMs() - validateStartMs)
-              << " reference_span_sec=" << formatSeconds(referenceSpanSec)).str());
+              << " reference_span_sec=" << formatSeconds(referenceSpanNs / 1000000000.0)).str());
     return true;
 }
 
@@ -9136,6 +8984,156 @@ const std::string &RecordRuntime::EpisodeManager::dataRoot() const
 
 namespace
 {
+std::vector<std::string> episodeImageTopics(bool chestCameraEnabled)
+{
+    std::vector<std::string> topics = {
+        "/cam_left/image_compressed",
+        "/cam_right/image_compressed",
+        "/tcam_left_l/image_compressed",
+        "/tcam_left_r/image_compressed",
+        "/tcam_right_l/image_compressed",
+        "/tcam_right_r/image_compressed",
+        "/stereo_left/image_compressed",
+        "/stereo_right/image_compressed",
+    };
+    if (chestCameraEnabled)
+    {
+        topics.push_back("/cam_chest/image_compressed");
+    }
+    return topics;
+}
+
+std::vector<std::string> episodeRequiredTopics(bool chestCameraEnabled)
+{
+    std::vector<std::string> topics = episodeImageTopics(chestCameraEnabled);
+    const std::vector<std::string> cameraInfoTopics = {
+        "/cam_left/camera_info",
+        "/cam_right/camera_info",
+        "/tcam_left_l/camera_info",
+        "/tcam_left_r/camera_info",
+        "/tcam_right_l/camera_info",
+        "/tcam_right_r/camera_info",
+        "/stereo_left/camera_info",
+        "/stereo_right/camera_info",
+    };
+    topics.insert(topics.end(), cameraInfoTopics.begin(), cameraInfoTopics.end());
+    if (chestCameraEnabled)
+    {
+        topics.push_back("/cam_chest/camera_info");
+    }
+    const std::vector<std::string> extrinsicsTopics = {
+        "/cam_left/calibration/extrinsics",
+        "/cam_right/calibration/extrinsics",
+        "/tcam_left_l/calibration/extrinsics",
+        "/tcam_left_r/calibration/extrinsics",
+        "/tcam_right_l/calibration/extrinsics",
+        "/tcam_right_r/calibration/extrinsics",
+        "/stereo_left/calibration/extrinsics",
+        "/stereo_right/calibration/extrinsics",
+    };
+    topics.insert(topics.end(), extrinsicsTopics.begin(), extrinsicsTopics.end());
+    if (chestCameraEnabled)
+    {
+        topics.push_back("/cam_chest/calibration/extrinsics");
+    }
+    topics.push_back("/encoder_left");
+    topics.push_back("/encoder_right");
+    topics.push_back("/fays_left/imu");
+    topics.push_back("/fays_right/imu");
+    return topics;
+}
+
+bool loadEpisodeMcapTopicStats(const fs::path &mcapPath,
+                               const std::vector<std::string> &topics,
+                               std::map<std::string, EpisodeMcapTopicStats> *stats,
+                               std::string *errorMessage)
+{
+    if (stats == nullptr)
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "internal error: missing episode topic stats output";
+        }
+        return false;
+    }
+    stats->clear();
+    for (const auto &topic : topics)
+    {
+        (*stats)[topic] = EpisodeMcapTopicStats{};
+    }
+
+    mcap::McapReader reader;
+    const auto openStatus = reader.open(mcapPath.string());
+    if (!openStatus.ok())
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to open episode.mcap: " + openStatus.message;
+        }
+        return false;
+    }
+
+    std::string summaryProblem;
+    const auto summaryStatus = reader.readSummary(
+        mcap::ReadSummaryMethod::NoFallbackScan,
+        [&summaryProblem](const mcap::Status &status) {
+            if (summaryProblem.empty())
+            {
+                summaryProblem = status.message;
+            }
+        });
+    if (!summaryStatus.ok())
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to read episode.mcap summary: " + summaryStatus.message;
+            if (!summaryProblem.empty())
+            {
+                *errorMessage += " (" + summaryProblem + ")";
+            }
+        }
+        return false;
+    }
+
+    std::set<std::string> topicSet(topics.begin(), topics.end());
+    std::string readProblem;
+    mcap::ReadMessageOptions options;
+    options.topicFilter = [&topicSet](std::string_view candidateTopic) {
+        return topicSet.find(std::string(candidateTopic)) != topicSet.end();
+    };
+    for (const auto &messageView : reader.readMessages(
+             [&readProblem](const mcap::Status &status) {
+                 if (readProblem.empty())
+                 {
+                     readProblem = status.message;
+                 }
+             },
+             options))
+    {
+        const std::string topic = messageView.channel->topic;
+        auto &entry = (*stats)[topic];
+        if (entry.count == 0)
+        {
+            entry.firstLogTimeNs = messageView.message.logTime;
+        }
+        else if (messageView.message.logTime < entry.lastLogTimeNs)
+        {
+            ++entry.timestampRegressions;
+        }
+        entry.lastLogTimeNs = messageView.message.logTime;
+        ++entry.count;
+    }
+    if (!readProblem.empty())
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to read episode.mcap messages: " + readProblem;
+        }
+        return false;
+    }
+    return true;
+}
+
 std::string toUpperAscii(std::string value)
 {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
@@ -9288,102 +9286,59 @@ bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episod
         minOffsetUs = 0;
     }
 
-    if (qualityOk)
-    {
-        const auto metadataArtifacts = metadataVideoArtifacts(chestCameraEnabled_);
-        if (!infoRoot.is_object())
-        {
-            if (errorMessage != nullptr)
-            {
-                *errorMessage = "internal shm timing file top-level value must be an object";
-            }
-            return false;
-        }
-        if (offsetByCamera.size() != metadataArtifacts.size())
-        {
-            if (errorMessage != nullptr)
-            {
-                *errorMessage = "internal shm timing file missing video offset cache";
-            }
-            return false;
-        }
-    }
-
     ordered_json videoDetails = ordered_json::array();
     double collectionDurationS = 0.0;
-    for (const auto &artifact : metadataVideoArtifacts(chestCameraEnabled_))
+    std::map<std::string, EpisodeMcapTopicStats> imageTopicStats;
+    std::string imageTopicError;
+    const std::vector<std::string> imageTopics = episodeImageTopics(chestCameraEnabled_);
+    const bool loadedImageTopics =
+        loadEpisodeMcapTopicStats(episodePath / "episode.mcap", imageTopics, &imageTopicStats, &imageTopicError);
+    uint64_t firstImageNs = std::numeric_limits<uint64_t>::max();
+    if (loadedImageTopics)
     {
-        const fs::path videoPath = episodePath / artifact.fileName;
-        if (!RecordRuntime::fileExistsAndNotEmpty(videoPath.string()))
+        for (const auto &topic : imageTopics)
         {
-            continue;
+            const auto stats = imageTopicStats[topic];
+            if (stats.count > 0)
+            {
+                firstImageNs = std::min(firstImageNs, stats.firstLogTimeNs);
+            }
         }
+    }
+    if (firstImageNs == std::numeric_limits<uint64_t>::max())
+    {
+        firstImageNs = 0;
+    }
 
-        VideoProbeResult probe;
-        if (!loadCachedVideoProbe(infoRoot, artifact, &probe))
+    if (loadedImageTopics)
+    {
+        for (const auto &topic : imageTopics)
         {
-            probe.cameraName = artifact.cameraName;
-            probe.fileName = artifact.fileName;
-            std::string probeError;
-            if (!probeVideoFile(videoPath.string(), &probe, &probeError))
+            const auto stats = imageTopicStats[topic];
+            if (stats.count == 0)
             {
                 continue;
             }
+            const uint64_t spanNs = stats.lastLogTimeNs > stats.firstLogTimeNs
+                                        ? stats.lastLogTimeNs - stats.firstLogTimeNs
+                                        : 0;
+            const double detailDurationSec = spanNs / 1000000000.0;
+            ordered_json detail = ordered_json::object();
+            detail["name"] = topic;
+            detail["fps"] = roundToOneDecimal(stats.count > 1 && detailDurationSec > 0.0
+                                                  ? (static_cast<double>(stats.count - 1) / detailDurationSec)
+                                                  : 0.0);
+            detail["duration_s"] = roundToOneDecimal(detailDurationSec);
+            detail["start_offset_us"] =
+                firstImageNs > 0 && stats.firstLogTimeNs >= firstImageNs
+                    ? static_cast<int64_t>((stats.firstLogTimeNs - firstImageNs) / 1000ULL)
+                    : 0;
+            videoDetails.push_back(std::move(detail));
+            collectionDurationS = std::max(collectionDurationS, detailDurationSec);
         }
-
-        double detailDurationSec = probe.durationSec;
-        std::string durationSource;
-        std::string durationError;
-        if (!loadEffectiveVideoDurationSec(
-                episodeDir,
-                artifact,
-                probe,
-                probe.durationSec,
-                &detailDurationSec,
-                &durationSource,
-                &durationError))
-        {
-            DM_LOG_WARN("{}", (::DA::utils::LogString()
-                               << "failed to load effective video duration, falling back to mkv probe: "
-                               << durationError << std::endl).str());
-            detailDurationSec = probe.durationSec;
-        }
-
-        const auto offsetIt = offsetByCamera.find(artifact.cameraName);
-        const int64_t startOffsetUs =
-            offsetIt != offsetByCamera.end() && minOffsetUs > 0
-                ? std::max<int64_t>(0, offsetIt->second - minOffsetUs)
-                : 0;
-
-        ordered_json detail = ordered_json::object();
-        detail["name"] = artifact.fileName;
-        detail["fps"] = roundToOneDecimal(nominalFpsForCamera(artifact.cameraName));
-        detail["duration_s"] = roundToOneDecimal(detailDurationSec);
-        detail["start_offset_us"] = startOffsetUs;
-        videoDetails.push_back(std::move(detail));
-        collectionDurationS = std::max(collectionDurationS, detailDurationSec);
     }
 
-    ordered_json requiredFiles = ordered_json::array({
-        "metadata.json",
-        "calibration.json",
-        "cam_left.mkv",
-        "cam_right.mkv",
-        "stereo_left.mkv",
-        "stereo_right.mkv",
-        "tcam_left_l.mkv",
-        "tcam_left_r.mkv",
-        "tcam_right_l.mkv",
-        "tcam_right_r.mkv",
-        "sensor_left.mcap",
-        "sensor_right.mcap",
-        "fays_data_left.mcap",
-        "fays_data_right.mcap",
-    });
-    if (chestCameraEnabled_)
-    {
-        requiredFiles.push_back("cam_chest.mkv");
-    }
+    ordered_json requiredFiles = ordered_json::array({"episode.mcap"});
 
     const bool hasAudio =
         RecordRuntime::fileExistsAndNotEmpty((episodePath / "audio_pre.wav").string()) ||

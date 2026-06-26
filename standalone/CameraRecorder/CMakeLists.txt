@@ -46,6 +46,7 @@ target_include_directories(${APP_NAME}
 )
 target_link_libraries(${APP_NAME}
     PRIVATE
+        episode_mcap_support
         camera_domain
         PP::utils
         yaml-cpp::yaml-cpp

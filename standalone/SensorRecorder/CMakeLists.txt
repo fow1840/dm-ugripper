@@ -118,6 +118,7 @@ target_link_libraries(${APP_NAME}
     PRIVATE
         sensor_protocol
         sensor_domain
+        episode_mcap_support
         sensorrecorder_mcap
         PP::utils
         ${SENSORRECORDER_LIBSERIALPORT_TARGET}

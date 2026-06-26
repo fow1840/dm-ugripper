@@ -89,6 +89,7 @@ target_link_libraries(fays_record_example
         "${FAYS_FTDI_LIBRARY}"
         "${FAYS_OPENCV_IMGPROC_LIBRARY}"
         "${FAYS_OPENCV_CORE_LIBRARY}"
+        episode_mcap_support
         fays_mcap
         PP::utils
         Threads::Threads

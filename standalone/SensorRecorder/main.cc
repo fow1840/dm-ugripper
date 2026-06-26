@@ -1,4 +1,5 @@
 #include "encoder_driver.h"
+#include "episode_mcap/episode_mcap_client.h"
 #include "utils/logger.h"
 #include "sensor_recorder/sensor_domain.h"
 
@@ -59,6 +60,8 @@ struct EncoderRuntime {
     SensorSideConfig config;
     std::unique_ptr<EncoderDriver> driver;
     mcap::Channel channel;
+    ugripper::episode_mcap::EpisodeMcapClient episodeMcapClient;
+    bool useEpisodeMcap = false;
     BatchTimestampSmoothingState timestampSmoothing;
     std::thread readThread;
     std::thread requestThread;
@@ -361,22 +364,48 @@ int main(int argc, char *argv[]) {
 
     SideWriter rightWriter;
     SideWriter leftWriter;
-    if (!openSideWriter(outputDir, rightConfig, &rightWriter) || !openSideWriter(outputDir, leftConfig, &leftWriter)) {
+    const fs::path episodeMcapSocket = ugripper::episode_mcap::ResolveEpisodeSocketPath(outputDir.string());
+    const bool useEpisodeMcap = ugripper::episode_mcap::SocketPathLooksEnabled(episodeMcapSocket.string());
+    if (!useEpisodeMcap &&
+        (!openSideWriter(outputDir, rightConfig, &rightWriter) || !openSideWriter(outputDir, leftConfig, &leftWriter))) {
         return -1;
     }
 
     EncoderRuntime rightEncoder{rightConfig, nullptr, mcap::Channel("encoder_right", "binary", rightWriter.encoderSchema.id)};
     EncoderRuntime leftEncoder{leftConfig, nullptr, mcap::Channel("encoder_left", "binary", leftWriter.encoderSchema.id)};
+    rightEncoder.useEpisodeMcap = useEpisodeMcap;
+    leftEncoder.useEpisodeMcap = useEpisodeMcap;
+    if (useEpisodeMcap) {
+        std::string connectError;
+        if (!rightEncoder.episodeMcapClient.Connect(episodeMcapSocket.string(), &connectError)) {
+            DM_LOG_ERROR("{}", (::DA::utils::LogString() << "failed to connect right encoder to episode MCAP: "
+                                  << connectError).str());
+            return -1;
+        }
+        if (!leftEncoder.episodeMcapClient.Connect(episodeMcapSocket.string(), &connectError)) {
+            DM_LOG_ERROR("{}", (::DA::utils::LogString() << "failed to connect left encoder to episode MCAP: "
+                                  << connectError).str());
+            return -1;
+        }
+        DM_LOG_INFO("{}", (::DA::utils::LogString() << "Recording encoder data to episode MCAP socket "
+                             << episodeMcapSocket).str());
+    }
     rightEncoder.timestampSmoothing = CreateBatchTimestampSmoothingState("encoder_right", kEncoderNominalPeriodNs);
     leftEncoder.timestampSmoothing = CreateBatchTimestampSmoothingState("encoder_left", kEncoderNominalPeriodNs);
     PendingWriteQueue rightPendingWrites{rightConfig.label};
     PendingWriteQueue leftPendingWrites{leftConfig.label};
 
-    rightWriter.writer.addChannel(rightEncoder.channel);
-    leftWriter.writer.addChannel(leftEncoder.channel);
+    if (!useEpisodeMcap) {
+        rightWriter.writer.addChannel(rightEncoder.channel);
+        leftWriter.writer.addChannel(leftEncoder.channel);
+    }
 
-    std::thread rightWriterThread(sideWriterThreadFunc, &rightWriter, &rightPendingWrites);
-    std::thread leftWriterThread(sideWriterThreadFunc, &leftWriter, &leftPendingWrites);
+    std::thread rightWriterThread;
+    std::thread leftWriterThread;
+    if (!useEpisodeMcap) {
+        rightWriterThread = std::thread(sideWriterThreadFunc, &rightWriter, &rightPendingWrites);
+        leftWriterThread = std::thread(sideWriterThreadFunc, &leftWriter, &leftPendingWrites);
+    }
 
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "Opening dual-arm sensors: "
                          << "right(encoder=" << rightConfig.encoderPort << ") "
@@ -424,13 +453,36 @@ int main(int argc, char *argv[]) {
             bool wroteFrame = false;
             const auto emitFrame = [&](uint64_t timestampNs, std::vector<std::byte> &&payload) {
                 const uint32_t sequence = encoderRuntime.sequence++;
-                auto message = buildQueuedMessage(
-                    encoderRuntime.channel.id,
-                    sequence,
-                    timestampNs,
-                    payload.data(),
-                    payload.size());
-                pendingWrites.push(std::move(message));
+                if (encoderRuntime.useEpisodeMcap) {
+                    const std::string topic = "/encoder_" + encoderRuntime.config.label;
+                    std::string sendError;
+                    const bool sent = encoderRuntime.episodeMcapClient.Send(
+                        ugripper::episode_mcap::FrameKind::EncoderBinary,
+                        topic,
+                        topic.substr(1),
+                        timestampNs,
+                        timestampNs,
+                        sequence,
+                        0,
+                        0,
+                        payload.data(),
+                        payload.size(),
+                        &sendError);
+                    if (!sent) {
+                        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+                                             << "failed to send " << topic << " to episode MCAP: "
+                                             << sendError).str());
+                        g_stopFlag = true;
+                    }
+                } else {
+                    auto message = buildQueuedMessage(
+                        encoderRuntime.channel.id,
+                        sequence,
+                        timestampNs,
+                        payload.data(),
+                        payload.size());
+                    pendingWrites.push(std::move(message));
+                }
                 encoderRuntime.lastEmittedSequence = sequence;
                 encoderRuntime.lastEmittedTimestampNs = timestampNs;
                 ++encoderRuntime.emittedMessageCount;
@@ -547,8 +599,10 @@ int main(int argc, char *argv[]) {
     drainEncoderRuntime(rightEncoder, rightPendingWrites);
     drainEncoderRuntime(leftEncoder, leftPendingWrites);
 
-    rightPendingWrites.stop();
-    leftPendingWrites.stop();
+    if (!useEpisodeMcap) {
+        rightPendingWrites.stop();
+        leftPendingWrites.stop();
+    }
     if (rightWriterThread.joinable()) {
         rightWriterThread.join();
     }
@@ -556,8 +610,13 @@ int main(int argc, char *argv[]) {
         leftWriterThread.join();
     }
 
-    rightWriter.writer.close();
-    leftWriter.writer.close();
+    if (useEpisodeMcap) {
+        rightEncoder.episodeMcapClient.Close();
+        leftEncoder.episodeMcapClient.Close();
+    } else {
+        rightWriter.writer.close();
+        leftWriter.writer.close();
+    }
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "[BatchTimestamp-encoder_right] batches=" << rightEncoder.timestampSmoothing.smoothed_batch_count
                          << ", frames=" << rightEncoder.timestampSmoothing.smoothed_frame_count).str());
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "[BatchTimestamp-encoder_left] batches=" << leftEncoder.timestampSmoothing.smoothed_batch_count

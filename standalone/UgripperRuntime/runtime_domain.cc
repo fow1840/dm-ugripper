@@ -3,6 +3,8 @@
 #include "record_runtime/recording_orchestrator.h"
 
 #include <cstdint>
+#include <cstdio>
+#include <filesystem>
 #include <future>
 #include <fstream>
 #include <initializer_list>
@@ -15,6 +17,7 @@
 #include <vector>
 
 #include <nlohmann/json.hpp>
+#include <unistd.h>
 
 using json = nlohmann::json;
 
@@ -32,6 +35,93 @@ std::string JoinStrings(const std::vector<std::string>& items, const char* separ
         stream << items[index];
     }
     return stream.str();
+}
+
+std::string PathBasename(const std::string& path)
+{
+    const size_t separator = path.find_last_of('/');
+    if (separator == std::string::npos)
+    {
+        return path;
+    }
+    return path.substr(separator + 1);
+}
+
+std::string SanitizeSocketPathComponent(std::string value)
+{
+    for (char& ch : value)
+    {
+        const unsigned char uch = static_cast<unsigned char>(ch);
+        if (!(std::isalnum(uch) || ch == '_' || ch == '-'))
+        {
+            ch = '_';
+        }
+    }
+    if (value.empty())
+    {
+        value = "episode";
+    }
+    return value;
+}
+
+std::string EpisodeMcapSocketMarkerPath(const std::string& episode_dir)
+{
+    return episode_dir + "/episode_mcap_socket_path.txt";
+}
+
+std::string EpisodeMcapRuntimeSocketPath(const std::string& episode_dir)
+{
+    const std::string episode_name = SanitizeSocketPathComponent(PathBasename(episode_dir));
+    return "/dev/shm/ugripper/episode_mcap_" + episode_name + "_" + std::to_string(getpid()) + ".sock";
+}
+
+bool WriteEpisodeMcapSocketMarker(const std::string& marker_path,
+                                  const std::string& socket_path,
+                                  std::string* error_message)
+{
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::path(socket_path).parent_path(), ec);
+    if (ec)
+    {
+        if (error_message != nullptr)
+        {
+            *error_message = "failed to create episode MCAP socket dir: " + ec.message();
+        }
+        return false;
+    }
+
+    std::ofstream marker(marker_path, std::ios::out | std::ios::trunc);
+    if (!marker.good())
+    {
+        if (error_message != nullptr)
+        {
+            *error_message = "failed to open episode MCAP socket marker: " + marker_path;
+        }
+        return false;
+    }
+    marker << socket_path << '\n';
+    marker.close();
+    if (!marker.good())
+    {
+        if (error_message != nullptr)
+        {
+            *error_message = "failed to write episode MCAP socket marker: " + marker_path;
+        }
+        return false;
+    }
+    return true;
+}
+
+void RemoveEpisodeMcapSocketFiles(const std::string& marker_path, const std::string& socket_path)
+{
+    if (!marker_path.empty())
+    {
+        std::remove(marker_path.c_str());
+    }
+    if (!socket_path.empty())
+    {
+        std::remove(socket_path.c_str());
+    }
 }
 
 std::string AppendHmiPortActivity(std::string detail, const std::vector<std::string>& port_activity)
@@ -896,6 +986,33 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         return false;
     }
 
+    if (dependencies_.path_exists != nullptr && !dependencies_.path_exists(options_.episode_mcap_recorder_bin))
+    {
+        CallLog(dependencies_.log_error, "episode MCAP recorder binary not found: " + options_.episode_mcap_recorder_bin);
+        stop_ego_startup_rollback();
+        if (dependencies_.remove_recording_lock != nullptr)
+        {
+            dependencies_.remove_recording_lock();
+        }
+        if (dependencies_.set_led_state != nullptr)
+        {
+            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+        }
+        if (dependencies_.set_audio_recovery_command != nullptr)
+        {
+            dependencies_.set_audio_recovery_command("error");
+        }
+        if (dependencies_.send_audio_command != nullptr)
+        {
+            dependencies_.send_audio_command("error");
+        }
+        if (error_message != nullptr)
+        {
+            *error_message = "episode MCAP recorder binary not found";
+        }
+        return false;
+    }
+
     if (dependencies_.write_recording_lock != nullptr &&
         !dependencies_.write_recording_lock(state_.current_episode_dir))
     {
@@ -921,6 +1038,114 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         if (error_message != nullptr)
         {
             *error_message = "failed to update recording lock";
+        }
+        return false;
+    }
+
+    const std::string episode_mcap_path = state_.current_episode_dir + "/episode.mcap";
+    const std::string episode_mcap_socket = EpisodeMcapRuntimeSocketPath(state_.current_episode_dir);
+    const std::string episode_mcap_socket_marker = EpisodeMcapSocketMarkerPath(state_.current_episode_dir);
+    auto cleanup_episode_mcap_socket = [&]() {
+        RemoveEpisodeMcapSocketFiles(episode_mcap_socket_marker, episode_mcap_socket);
+    };
+    if (!WriteEpisodeMcapSocketMarker(episode_mcap_socket_marker, episode_mcap_socket, &local_error))
+    {
+        CallLog(dependencies_.log_error, local_error);
+        stop_ego_startup_rollback();
+        if (dependencies_.remove_recording_lock != nullptr)
+        {
+            dependencies_.remove_recording_lock();
+        }
+        if (dependencies_.set_led_state != nullptr)
+        {
+            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+        }
+        if (dependencies_.set_audio_recovery_command != nullptr)
+        {
+            dependencies_.set_audio_recovery_command("error");
+        }
+        if (dependencies_.send_audio_command != nullptr)
+        {
+            dependencies_.send_audio_command("error");
+        }
+        if (error_message != nullptr)
+        {
+            *error_message = local_error.empty() ? "failed to write episode MCAP socket marker" : local_error;
+        }
+        return false;
+    }
+    const std::vector<std::string> episode_mcap_args = {
+        options_.episode_mcap_recorder_bin,
+        "--output",
+        episode_mcap_path,
+        "--socket",
+        episode_mcap_socket,
+    };
+    bool episode_mcap_started = false;
+    if (dependencies_.start_worker != nullptr)
+    {
+        episode_mcap_started = dependencies_.start_worker(
+            WorkerName::EpisodeMcapRecorder,
+            {
+                .name = "episode_mcap_recorder",
+                .argv = episode_mcap_args,
+                .stop_timeout_ms = options_.worker_stop_timeout_ms,
+                .stop_mode = ProcessStopMode::SigTermThenKill,
+                .restart_policy = ProcessRestartPolicy::Never,
+            },
+            nullptr);
+    }
+    if (!episode_mcap_started)
+    {
+        CallLog(dependencies_.log_error, "failed to launch episode MCAP recorder");
+        cleanup_episode_mcap_socket();
+        stop_ego_startup_rollback();
+        if (dependencies_.remove_recording_lock != nullptr)
+        {
+            dependencies_.remove_recording_lock();
+        }
+        if (dependencies_.set_led_state != nullptr)
+        {
+            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+        }
+        if (dependencies_.set_audio_recovery_command != nullptr)
+        {
+            dependencies_.set_audio_recovery_command("error");
+        }
+        if (dependencies_.send_audio_command != nullptr)
+        {
+            dependencies_.send_audio_command("error");
+        }
+        if (error_message != nullptr)
+        {
+            *error_message = "failed to launch episode MCAP recorder";
+        }
+        return false;
+    }
+    const int64_t mcap_socket_wait_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
+    while (dependencies_.path_exists != nullptr &&
+           !dependencies_.path_exists(episode_mcap_socket) &&
+           (steady_ms_fn_ == nullptr || steady_ms_fn_() - mcap_socket_wait_start_ms < 2000))
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    if (dependencies_.path_exists != nullptr && !dependencies_.path_exists(episode_mcap_socket))
+    {
+        CallLog(dependencies_.log_error, "episode MCAP recorder socket did not become ready");
+        dependencies_.stop_worker(WorkerName::EpisodeMcapRecorder, "startup rollback", nullptr);
+        cleanup_episode_mcap_socket();
+        stop_ego_startup_rollback();
+        if (dependencies_.remove_recording_lock != nullptr)
+        {
+            dependencies_.remove_recording_lock();
+        }
+        if (dependencies_.set_led_state != nullptr)
+        {
+            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+        }
+        if (error_message != nullptr)
+        {
+            *error_message = "episode MCAP recorder socket did not become ready";
         }
         return false;
     }
@@ -1003,6 +1228,11 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         {
             dependencies_.stop_worker(WorkerName::SensorRecorder, "startup rollback", nullptr);
         }
+        if (episode_mcap_started && dependencies_.stop_worker != nullptr)
+        {
+            dependencies_.stop_worker(WorkerName::EpisodeMcapRecorder, "startup rollback", nullptr);
+        }
+        cleanup_episode_mcap_socket();
         stop_ego_startup_rollback();
         if (dependencies_.remove_recording_lock != nullptr)
         {
@@ -1039,7 +1269,9 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         {
             dependencies_.stop_worker(WorkerName::CameraRecorder, "stereo session start failed", nullptr);
             dependencies_.stop_worker(WorkerName::SensorRecorder, "stereo session start failed", nullptr);
+            dependencies_.stop_worker(WorkerName::EpisodeMcapRecorder, "stereo session start failed", nullptr);
         }
+        cleanup_episode_mcap_socket();
         stop_ego_startup_rollback();
         if (dependencies_.remove_recording_lock != nullptr)
         {
@@ -1123,6 +1355,7 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     std::string stereo_error;
     bool stereo_stop_ok = dependencies_.stop_stereo_session != nullptr &&
                           dependencies_.stop_stereo_session(state_.current_episode_dir, stop_system_time_us, &stereo_error);
+    std::string mcap_stop_error;
     if (!stereo_stop_ok)
     {
         CallLog(dependencies_.log_error, "failed to send stereo stop command");
@@ -1255,9 +1488,29 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         CallPerfLog(dependencies_,
                 "[PERF] stereo merge done: ok=" + std::string(stereo_stop_ok ? "true" : "false") +
                     " elapsed_ms=" +
-                    std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stereo_merge_start_ms) -
-                                   stereo_merge_start_ms));
+                std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stereo_merge_start_ms) -
+                               stereo_merge_start_ms));
     }
+    if (dependencies_.stop_worker != nullptr)
+    {
+        const int64_t mcap_stop_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
+        const bool mcap_stop_ok = dependencies_.stop_worker(
+            WorkerName::EpisodeMcapRecorder,
+            "recording stop",
+            nullptr);
+        if (!mcap_stop_ok)
+        {
+            AddErrorType(&error_types, kErrorTypeFinalizeError);
+            mcap_stop_error = "episode MCAP recorder failed to stop cleanly";
+        }
+        CallPerfLog(dependencies_,
+                "[PERF] stop episode_mcap_recorder done: ok=" + std::string(mcap_stop_ok ? "true" : "false") +
+                    " elapsed_ms=" +
+                    std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : mcap_stop_start_ms) -
+                                   mcap_stop_start_ms));
+    }
+    RemoveEpisodeMcapSocketFiles(EpisodeMcapSocketMarkerPath(state_.current_episode_dir),
+                                 EpisodeMcapRuntimeSocketPath(state_.current_episode_dir));
     if (dependencies_.flush_episode_artifacts != nullptr)
     {
         dependencies_.flush_episode_artifacts(state_.current_episode_dir, "final");
@@ -1284,6 +1537,14 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
 
     std::string episode_validation_error;
     std::string final_error_message = due_to_error ? reason : std::string();
+    if (!mcap_stop_error.empty())
+    {
+        if (!final_error_message.empty())
+        {
+            final_error_message += "; ";
+        }
+        final_error_message += mcap_stop_error;
+    }
     HardwareFaultSide stereo_control_failure_side = HardwareFaultSide::Unknown;
     if (!stereo_stop_ok)
     {

@@ -3,6 +3,8 @@
 #include "camera_recorder/camera_config.h"
 #include "camera_recorder/camera_registry.h"
 #include "camera_recorder/stereo_control_json.h"
+#include "episode_mcap/episode_mcap_client.h"
+#include "episode_mcap/ros2_cdr_writer.h"
 #include "utils/logger.h"
 
 #include <algorithm>
@@ -321,6 +323,225 @@ bool WriteJsonFile(const fs::path& path, const json& value) {
         return false;
     }
     return true;
+}
+
+std::string TopicCameraNameForConfigName(const std::string& name) {
+    if (name == "left_cam_main") {
+        return "cam_left";
+    }
+    if (name == "right_cam_main") {
+        return "cam_right";
+    }
+    if (name == "chest_cam_main") {
+        return "cam_chest";
+    }
+    if (name == "left_tcam_l") {
+        return "tcam_left_l";
+    }
+    if (name == "left_tcam_r") {
+        return "tcam_left_r";
+    }
+    if (name == "right_tcam_l") {
+        return "tcam_right_l";
+    }
+    if (name == "right_tcam_r") {
+        return "tcam_right_r";
+    }
+    if (name == "left_stereo") {
+        return "stereo_left";
+    }
+    if (name == "right_stereo") {
+        return "stereo_right";
+    }
+    return name;
+}
+
+std::string CalibrationImageKeyForTopicCamera(const std::string& topic_camera) {
+    if (topic_camera == "cam_left") {
+        return "cam_left_main";
+    }
+    if (topic_camera == "cam_right") {
+        return "cam_right_main";
+    }
+    if (topic_camera == "cam_chest") {
+        return "cam_chest_main";
+    }
+    return topic_camera;
+}
+
+std::optional<json> LoadEpisodeCalibration(const fs::path& output_dir) {
+    return ReadJsonFile(output_dir / "calibration.json");
+}
+
+const json* CameraCalibrationEntry(const json& calibration, const std::string& topic_camera) {
+    if (!calibration.is_object()) {
+        return nullptr;
+    }
+    const auto obs_it = calibration.find("observation");
+    if (obs_it == calibration.end() || !obs_it->is_object()) {
+        return nullptr;
+    }
+    const auto images_it = obs_it->find("images");
+    if (images_it == obs_it->end() || !images_it->is_object()) {
+        return nullptr;
+    }
+    const std::string key = CalibrationImageKeyForTopicCamera(topic_camera);
+    const auto camera_it = images_it->find(key);
+    if (camera_it == images_it->end() || !camera_it->is_object()) {
+        return nullptr;
+    }
+    return &(*camera_it);
+}
+
+std::vector<double> JsonNumberArray(const json& value) {
+    std::vector<double> out;
+    if (!value.is_array()) {
+        return out;
+    }
+    for (const auto& item : value) {
+        if (item.is_number()) {
+            out.push_back(item.get<double>());
+        }
+    }
+    return out;
+}
+
+const json* SelectIntrinsicObject(const json& camera, int width, int height) {
+    const json* source = &camera;
+    if (camera.contains("cam0") && camera["cam0"].is_object()) {
+        source = &camera["cam0"];
+    }
+    const auto intrinsics_it = source->find("intrinsics");
+    if (intrinsics_it == source->end() || !intrinsics_it->is_object() || intrinsics_it->empty()) {
+        return nullptr;
+    }
+    const std::string preferred = std::to_string(width) + "x" + std::to_string(height);
+    const auto preferred_it = intrinsics_it->find(preferred);
+    if (preferred_it != intrinsics_it->end() && preferred_it->is_object()) {
+        return &(*preferred_it);
+    }
+    for (auto it = intrinsics_it->begin(); it != intrinsics_it->end(); ++it) {
+        if (it.value().is_object()) {
+            return &it.value();
+        }
+    }
+    return nullptr;
+}
+
+std::vector<uint8_t> ToU8Vector(std::vector<std::byte>&& data) {
+    std::vector<uint8_t> out(data.size());
+    if (!data.empty()) {
+        std::memcpy(out.data(), data.data(), data.size());
+    }
+    return out;
+}
+
+std::vector<uint8_t> BuildCameraInfoCdrPayload(const fs::path& output_dir,
+                                               const std::string& topic_camera,
+                                               const CameraConfig& config,
+                                               uint64_t timestamp_ns) {
+    std::string distortion_model;
+    std::vector<double> d;
+    std::vector<double> k;
+    std::vector<double> r = {1.0, 0.0, 0.0,
+                             0.0, 1.0, 0.0,
+                             0.0, 0.0, 1.0};
+    std::vector<double> p;
+
+    if (const auto calibration = LoadEpisodeCalibration(output_dir); calibration.has_value()) {
+        if (const json* camera = CameraCalibrationEntry(*calibration, topic_camera); camera != nullptr) {
+            const json* source = camera;
+            if (camera->contains("cam0") && (*camera)["cam0"].is_object()) {
+                source = &(*camera)["cam0"];
+            }
+            distortion_model = camera->value("distortion_model", std::string());
+            if (source->contains("distortion_coeffs")) {
+                d = JsonNumberArray((*source)["distortion_coeffs"]);
+            } else if (camera->contains("distortion_coeffs")) {
+                d = JsonNumberArray((*camera)["distortion_coeffs"]);
+            }
+            if (const json* intrinsics = SelectIntrinsicObject(*camera, config.width, config.height);
+                intrinsics != nullptr) {
+                const double fx = intrinsics->value("fx", static_cast<double>(config.width));
+                const double fy = intrinsics->value("fy", static_cast<double>(config.height));
+                const double ppx = intrinsics->value("ppx", static_cast<double>(config.width) / 2.0);
+                const double ppy = intrinsics->value("ppy", static_cast<double>(config.height) / 2.0);
+                k = {fx, 0.0, ppx,
+                     0.0, fy, ppy,
+                     0.0, 0.0, 1.0};
+                p = {fx, 0.0, ppx, 0.0,
+                     0.0, fy, ppy, 0.0,
+                     0.0, 0.0, 1.0, 0.0};
+            }
+        }
+    }
+
+    return ToU8Vector(ugripper::episode_mcap::EncodeCameraInfo(
+        timestamp_ns,
+        topic_camera,
+        static_cast<uint32_t>(config.width),
+        static_cast<uint32_t>(config.height),
+        distortion_model,
+        d,
+        k,
+        r,
+        p));
+}
+
+std::vector<uint8_t> BuildExtrinsicsJsonPayload(const fs::path& output_dir,
+                                                const std::string& topic_camera) {
+    json payload = json::object();
+    payload["camera"] = topic_camera;
+    payload["calibration_key"] = CalibrationImageKeyForTopicCamera(topic_camera);
+    payload["extrinsics"] = json::object();
+    if (const auto calibration = LoadEpisodeCalibration(output_dir); calibration.has_value()) {
+        if (const json* camera = CameraCalibrationEntry(*calibration, topic_camera); camera != nullptr &&
+            camera->contains("extrinsics") && (*camera)["extrinsics"].is_object()) {
+            payload["extrinsics"] = (*camera)["extrinsics"];
+        }
+    }
+    const std::string text = payload.dump();
+    return std::vector<uint8_t>(text.begin(), text.end());
+}
+
+bool SendCameraStaticMcapMetadata(ugripper::episode_mcap::EpisodeMcapClient* client,
+                                  const fs::path& output_dir,
+                                  const std::string& topic_camera,
+                                  const CameraConfig& config,
+                                  uint64_t timestamp_ns,
+                                  std::string* error_message) {
+    if (client == nullptr || !client->IsConnected()) {
+        if (error_message != nullptr) {
+            *error_message = "episode MCAP client is not connected";
+        }
+        return false;
+    }
+    const std::vector<uint8_t> camera_info =
+        BuildCameraInfoCdrPayload(output_dir, topic_camera, config, timestamp_ns);
+    if (!client->Send(ugripper::episode_mcap::FrameKind::CameraInfo,
+                      "/" + topic_camera + "/camera_info",
+                      topic_camera,
+                      timestamp_ns,
+                      timestamp_ns,
+                      0,
+                      static_cast<uint32_t>(config.width),
+                      static_cast<uint32_t>(config.height),
+                      camera_info,
+                      error_message)) {
+        return false;
+    }
+
+    const std::vector<uint8_t> extrinsics = BuildExtrinsicsJsonPayload(output_dir, topic_camera);
+    return client->Send(ugripper::episode_mcap::FrameKind::Json,
+                        "/" + topic_camera + "/calibration/extrinsics",
+                        topic_camera,
+                        timestamp_ns,
+                        timestamp_ns,
+                        0,
+                        0,
+                        0,
+                        extrinsics,
+                        error_message);
 }
 
 std::optional<int64_t> ParseSecondsTextUs(const std::string& text) {
@@ -1006,6 +1227,19 @@ public:
         if (started_) {
             return running_;
         }
+        episode_mcap_socket_path_ = ugripper::episode_mcap::ResolveEpisodeSocketPath(options_.output_dir.string());
+        use_episode_mcap_ = ugripper::episode_mcap::SocketPathLooksEnabled(episode_mcap_socket_path_.string());
+        if (use_episode_mcap_) {
+            std::string connect_error;
+            if (!episode_mcap_client_.Connect(episode_mcap_socket_path_.string(), &connect_error)) {
+                failure_ = true;
+                exit_code_ = -1;
+                last_error_ = "failed to connect episode MCAP socket: " + connect_error;
+                DM_LOG_ERROR("{}", (::DA::utils::LogString() << "[camera_recorder] failed to start "
+                                      << config_.name << ": " << last_error_).str());
+                return false;
+            }
+        }
         std::string error_message;
         if (!OpenDevice(&error_message) || !CreatePipeline(&error_message)) {
             failure_ = true;
@@ -1013,6 +1247,7 @@ public:
             last_error_ = error_message;
             DM_LOG_ERROR("{}", (::DA::utils::LogString() << "[camera_recorder] failed to start " << config_.name
                                   << ": " << error_message).str());
+            episode_mcap_client_.Close();
             CleanupPipeline();
             CleanupDevice();
             return false;
@@ -1085,6 +1320,7 @@ public:
 
         CleanupPipeline();
         CleanupDevice();
+        episode_mcap_client_.Close();
         running_ = false;
         const auto stop_elapsed = std::chrono::steady_clock::now() - stop_start;
         DM_LOG_INFO("{}", (::DA::utils::LogString()
@@ -1113,6 +1349,9 @@ public:
     }
 
     bool HasWrittenOutput() const override {
+        if (use_episode_mcap_) {
+            return frame_count_ > 0;
+        }
         std::error_code error;
         return fs::exists(output_path_, error) &&
                fs::file_size(output_path_, error) > 0;
@@ -1282,6 +1521,18 @@ private:
     }
 
     bool CreatePipeline(std::string* error_message) {
+        if (use_episode_mcap_) {
+            v4l2_buf_type buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            if (!RetryIoctl(fd_, VIDIOC_STREAMON, &buffer_type)) {
+                if (error_message != nullptr) {
+                    *error_message = "VIDIOC_STREAMON failed for " + config_.device + ": " + std::strerror(errno);
+                }
+                return false;
+            }
+            streaming_ = true;
+            return true;
+        }
+
         if (!EnsureGstreamerInitialized(error_message)) {
             return false;
         }
@@ -1402,6 +1653,20 @@ private:
 
             const int64_t system_time_us = V4l2BufferSystemTimeUs(buffer).value_or(CurrentSystemTimeUs());
             const int64_t pts_us = UpdateFrameTimingFromCapture(system_time_us);
+            const int64_t frame_unix_time_us = RecordTimeOffsetUs().value_or(system_time_us) + pts_us;
+
+            if (use_episode_mcap_) {
+                SendEpisodeMcapFrame(
+                    static_cast<uint64_t>(std::max<int64_t>(0, frame_unix_time_us)) * 1000ULL,
+                    sequence_for_mcap_++,
+                    static_cast<const uint8_t*>(buffers_[buffer.index].data),
+                    buffer.bytesused);
+                if (!RetryIoctl(fd_, VIDIOC_QBUF, &buffer)) {
+                    SetFailure("VIDIOC_QBUF failed for " + config_.name + ": " + std::strerror(errno));
+                    break;
+                }
+                continue;
+            }
 
             GstBuffer* gst_buffer = gst_buffer_new_allocate(nullptr, buffer.bytesused, nullptr);
             if (gst_buffer == nullptr) {
@@ -1719,6 +1984,45 @@ private:
         exit_code_ = -1;
     }
 
+    void SendEpisodeMcapFrame(uint64_t timestamp_ns,
+                              uint32_t sequence,
+                              const uint8_t* data,
+                              size_t size) {
+        if (!camera_info_sent_) {
+            std::string info_error;
+            if (!SendCameraStaticMcapMetadata(&episode_mcap_client_,
+                                              options_.output_dir,
+                                              TopicCameraName(),
+                                              config_,
+                                              timestamp_ns,
+                                              &info_error)) {
+                SetFailure("failed to send " + config_.name + " camera metadata to episode MCAP: " + info_error);
+                return;
+            }
+            camera_info_sent_ = true;
+        }
+
+        std::string send_error;
+        if (!episode_mcap_client_.Send(
+                ugripper::episode_mcap::FrameKind::CompressedImageH264,
+                "/" + TopicCameraName() + "/image_compressed",
+                TopicCameraName(),
+                timestamp_ns,
+                timestamp_ns,
+                sequence,
+                static_cast<uint32_t>(config_.width),
+                static_cast<uint32_t>(config_.height),
+                data,
+                size,
+                &send_error)) {
+            SetFailure("failed to send " + config_.name + " frame to episode MCAP: " + send_error);
+        }
+    }
+
+    std::string TopicCameraName() const {
+        return TopicCameraNameForConfigName(config_.name);
+    }
+
     CameraConfig config_;
     Options options_;
     std::string command_description_;
@@ -1738,6 +2042,11 @@ private:
     GstElement* queue_ = nullptr;
     GstBus* bus_ = nullptr;
     std::string last_error_;
+    fs::path episode_mcap_socket_path_;
+    ugripper::episode_mcap::EpisodeMcapClient episode_mcap_client_;
+    bool use_episode_mcap_ = false;
+    bool camera_info_sent_ = false;
+    uint32_t sequence_for_mcap_ = 0;
     std::chrono::steady_clock::time_point last_queue_diag_log_{};
     mutable std::mutex timing_mutex_;
     std::optional<int64_t> first_frame_pts_us_;
@@ -2210,6 +2519,379 @@ private:
     }
 };
 
+class H264AccessUnitSplitter {
+public:
+    using EmitFn = std::function<void(const uint8_t*, size_t)>;
+
+    void Append(const uint8_t* data, size_t size, const EmitFn& emit) {
+        if (data == nullptr || size == 0) {
+            return;
+        }
+        buffer_.insert(buffer_.end(), data, data + size);
+        Process(emit, false);
+    }
+
+    void Flush(const EmitFn& emit) {
+        Process(emit, true);
+        if (!buffer_.empty()) {
+            emit(buffer_.data(), buffer_.size());
+            buffer_.clear();
+        }
+        seen_aud_ = false;
+    }
+
+private:
+    static std::optional<std::pair<size_t, size_t>> FindStartCode(const std::vector<uint8_t>& data,
+                                                                  size_t from) {
+        if (data.size() < 4 || from >= data.size()) {
+            return std::nullopt;
+        }
+        for (size_t i = from; i + 3 < data.size(); ++i) {
+            if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1) {
+                return std::make_pair(i, size_t{3});
+            }
+            if (i + 4 < data.size() &&
+                data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 0 && data[i + 3] == 1) {
+                return std::make_pair(i, size_t{4});
+            }
+        }
+        return std::nullopt;
+    }
+
+    void Process(const EmitFn& emit, bool flush) {
+        size_t search = 0;
+        while (true) {
+            const auto found = FindStartCode(buffer_, search);
+            if (!found.has_value()) {
+                if (!flush && buffer_.size() > 4 * 1024 * 1024 && seen_aud_) {
+                    emit(buffer_.data(), buffer_.size());
+                    buffer_.clear();
+                    seen_aud_ = false;
+                }
+                return;
+            }
+            const size_t pos = found->first;
+            const size_t nal = pos + found->second;
+            if (nal >= buffer_.size()) {
+                return;
+            }
+            const uint8_t nal_type = buffer_[nal] & 0x1fU;
+            if (nal_type == 9) {
+                if (seen_aud_ && pos > 0) {
+                    emit(buffer_.data(), pos);
+                    buffer_.erase(buffer_.begin(), buffer_.begin() + static_cast<std::ptrdiff_t>(pos));
+                    search = 0;
+                    continue;
+                }
+                seen_aud_ = true;
+            }
+            search = nal + 1;
+        }
+    }
+
+    std::vector<uint8_t> buffer_;
+    bool seen_aud_ = false;
+};
+
+class EpisodeMcapHybridCameraRecorder final : public CameraRecorder {
+public:
+    EpisodeMcapHybridCameraRecorder(CameraConfig config, Options options)
+        : config_(std::move(config)),
+          options_(std::move(options)),
+          topic_camera_(TopicCameraNameForConfigName(config_.name)),
+          command_(BuildCommand()) {}
+
+    ~EpisodeMcapHybridCameraRecorder() override {
+        Stop();
+    }
+
+    const CameraConfig& config() const override { return config_; }
+    const std::string& command() const override { return command_; }
+
+    bool Start() override {
+        if (started_) {
+            return running_;
+        }
+        const fs::path socket_path = ugripper::episode_mcap::ResolveEpisodeSocketPath(options_.output_dir.string());
+        std::string connect_error;
+        if (!episode_mcap_client_.Connect(socket_path.string(), &connect_error)) {
+            failure_ = true;
+            exit_code_ = -1;
+            last_error_ = "failed to connect episode MCAP socket: " + connect_error;
+            return false;
+        }
+
+        std::string metadata_error;
+        const uint64_t now_ns = static_cast<uint64_t>(std::max<int64_t>(0, CurrentSystemTimeUs())) * 1000ULL;
+        if (!SendCameraStaticMcapMetadata(&episode_mcap_client_,
+                                          options_.output_dir,
+                                          topic_camera_,
+                                          config_,
+                                          now_ns,
+                                          &metadata_error)) {
+            failure_ = true;
+            exit_code_ = -1;
+            last_error_ = "failed to send camera metadata: " + metadata_error;
+            episode_mcap_client_.Close();
+            return false;
+        }
+
+        int stdout_pipe[2] = {-1, -1};
+        if (pipe(stdout_pipe) != 0) {
+            failure_ = true;
+            exit_code_ = -1;
+            episode_mcap_client_.Close();
+            return false;
+        }
+
+        const pid_t pid = fork();
+        if (pid < 0) {
+            close(stdout_pipe[0]);
+            close(stdout_pipe[1]);
+            failure_ = true;
+            exit_code_ = -1;
+            episode_mcap_client_.Close();
+            return false;
+        }
+
+        if (pid == 0) {
+            if (!ConfigureManagedChildProcessGroup()) {
+                _exit(126);
+            }
+            close(stdout_pipe[0]);
+            dup2(stdout_pipe[1], STDOUT_FILENO);
+            close(stdout_pipe[1]);
+            const int dev_null = open("/dev/null", O_WRONLY);
+            if (dev_null >= 0) {
+                dup2(dev_null, STDERR_FILENO);
+                if (dev_null > STDERR_FILENO) {
+                    close(dev_null);
+                }
+            }
+            execl("/bin/bash", "bash", "-lc", command_.c_str(), static_cast<char*>(nullptr));
+            _exit(127);
+        }
+
+        close(stdout_pipe[1]);
+        if (setpgid(pid, pid) != 0 && errno != EACCES) {
+            DM_LOG_WARN("{}", (::DA::utils::LogString()
+                               << "[camera_recorder] failed to assign MCAP hybrid process group: "
+                               << config_.name << " error=" << std::strerror(errno)).str());
+        }
+        pid_ = pid;
+        started_ = true;
+        running_ = true;
+        stdout_thread_ = std::thread([this, fd = stdout_pipe[0]]() { ReadEncodedStdout(fd); });
+        return true;
+    }
+
+    void Poll() override {
+        if (!running_ || pid_ <= 0) {
+            return;
+        }
+        int status = 0;
+        const pid_t result = waitpid(pid_, &status, WNOHANG);
+        if (result == 0 || result == -1) {
+            return;
+        }
+        running_ = false;
+        if (WIFEXITED(status)) {
+            exit_code_ = WEXITSTATUS(status);
+        } else if (WIFSIGNALED(status)) {
+            exit_code_ = 128 + WTERMSIG(status);
+        } else {
+            exit_code_ = status;
+        }
+        if (!stop_requested_) {
+            failure_ = true;
+        }
+    }
+
+    void Stop() override {
+        if (running_ && pid_ > 0) {
+            stop_requested_ = true;
+            kill(-pid_, SIGINT);
+            const auto deadline = std::chrono::steady_clock::now() + kRecorderStopSigintTimeout;
+            while (std::chrono::steady_clock::now() < deadline) {
+                Poll();
+                if (!running_) {
+                    break;
+                }
+                std::this_thread::sleep_for(kRecorderStopPollInterval);
+            }
+            if (running_) {
+                kill(-pid_, SIGTERM);
+                const auto term_deadline = std::chrono::steady_clock::now() + kRecorderStopSigtermTimeout;
+                while (std::chrono::steady_clock::now() < term_deadline) {
+                    Poll();
+                    if (!running_) {
+                        break;
+                    }
+                    std::this_thread::sleep_for(kRecorderStopPollInterval);
+                }
+            }
+            if (running_) {
+                kill(-pid_, SIGKILL);
+                Poll();
+            }
+        }
+        if (stdout_thread_.joinable()) {
+            stdout_thread_.join();
+        }
+        episode_mcap_client_.Close();
+        running_ = false;
+        if (!exit_code_.has_value()) {
+            exit_code_ = failure_ ? -1 : 0;
+        }
+    }
+
+    bool IsRunning() const override { return running_; }
+    bool HasStarted() const override { return started_; }
+    bool HasFailure() const override { return failure_; }
+    std::optional<int> ExitCode() const override { return exit_code_; }
+    bool HasWrittenOutput() const override { return frame_count_ > 0; }
+
+    std::optional<int64_t> RecordTimeOffsetUs() const override {
+        std::lock_guard<std::mutex> lock(timing_mutex_);
+        return record_time_offset_us_;
+    }
+    std::optional<int64_t> FirstFramePtsUs() const override {
+        std::lock_guard<std::mutex> lock(timing_mutex_);
+        return first_frame_pts_us_;
+    }
+    std::optional<int64_t> FirstFrameSystemTimeUs() const override {
+        std::lock_guard<std::mutex> lock(timing_mutex_);
+        return first_frame_system_time_us_;
+    }
+    std::optional<int64_t> LastFramePtsUs() const override {
+        std::lock_guard<std::mutex> lock(timing_mutex_);
+        return last_frame_pts_us_;
+    }
+    std::optional<int64_t> LastFrameSystemTimeUs() const override {
+        std::lock_guard<std::mutex> lock(timing_mutex_);
+        return last_frame_system_time_us_;
+    }
+
+private:
+    std::string BuildCommand() const {
+        const auto video_filter = ugripper::camera::BuildVideoFilter(config_);
+        std::ostringstream oss;
+        oss << options_.ffmpeg_bin << " -hide_banner -loglevel error -nostats -y "
+            << "-fflags +genpts ";
+        if (config_.input_thread_queue_size > 0) {
+            oss << "-thread_queue_size " << config_.input_thread_queue_size << ' ';
+        }
+        oss << "-f v4l2 -input_format " << ugripper::camera::CaptureInputFormat(config_) << ' '
+            << "-framerate " << config_.fps << ' '
+            << "-video_size " << ugripper::camera::CaptureWidth(config_) << 'x'
+            << ugripper::camera::CaptureHeight(config_) << ' '
+            << "-i " << ShellQuote(config_.device) << ' ';
+        if (video_filter.has_value()) {
+            oss << "-vf " << ShellQuote(*video_filter) << ' ';
+        }
+        oss << "-map 0:v:0 -an "
+            << "-c:v h264_rkmpp "
+            << "-rc_mode CQP "
+            << "-qp_init " << config_.qp_init << ' '
+            << "-qp_max " << config_.qp_max << ' '
+            << "-qp_min " << config_.qp_min << ' '
+            << "-qp_max_i " << config_.qp_max_i << ' '
+            << "-qp_min_i " << config_.qp_min_i << ' '
+            << "-bsf:v h264_metadata=aud=insert "
+            << "-f h264 pipe:1";
+        return oss.str();
+    }
+
+    int64_t NominalFrameDurationUs() const {
+        return std::max<int64_t>(1, static_cast<int64_t>(std::llround(
+            static_cast<long double>(kUsPerSecond) /
+            static_cast<long double>(std::max(1, config_.output_fps > 0 ? config_.output_fps : config_.fps)))));
+    }
+
+    uint64_t NextTimestampNs() {
+        std::lock_guard<std::mutex> lock(timing_mutex_);
+        const int64_t system_time_us = CurrentSystemTimeUs();
+        const int64_t pts_us = static_cast<int64_t>(frame_count_) * NominalFrameDurationUs();
+        if (!record_time_offset_us_.has_value()) {
+            record_time_offset_us_ = system_time_us - pts_us;
+            first_frame_pts_us_ = pts_us;
+            first_frame_system_time_us_ = system_time_us;
+        }
+        last_frame_pts_us_ = pts_us;
+        last_frame_system_time_us_ = system_time_us;
+        ++frame_count_;
+        const int64_t frame_unix_time_us = record_time_offset_us_.value_or(system_time_us) + pts_us;
+        return static_cast<uint64_t>(std::max<int64_t>(0, frame_unix_time_us)) * 1000ULL;
+    }
+
+    void ReadEncodedStdout(int fd) {
+        H264AccessUnitSplitter splitter;
+        std::array<uint8_t, 64 * 1024> buffer{};
+        auto emit = [this](const uint8_t* data, size_t size) {
+            if (data == nullptr || size == 0 || failure_) {
+                return;
+            }
+            const uint64_t timestamp_ns = NextTimestampNs();
+            std::string send_error;
+            if (!episode_mcap_client_.Send(
+                    ugripper::episode_mcap::FrameKind::CompressedImageH264,
+                    "/" + topic_camera_ + "/image_compressed",
+                    topic_camera_,
+                    timestamp_ns,
+                    timestamp_ns,
+                    static_cast<uint32_t>(frame_count_ - 1),
+                    static_cast<uint32_t>(config_.width),
+                    static_cast<uint32_t>(config_.height),
+                    data,
+                    size,
+                    &send_error)) {
+                failure_ = true;
+                last_error_ = "failed to send encoded frame: " + send_error;
+            }
+        };
+        while (true) {
+            const ssize_t got = read(fd, buffer.data(), buffer.size());
+            if (got < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                if (!stop_requested_) {
+                    failure_ = true;
+                    last_error_ = "failed reading ffmpeg H264 stdout: " + std::string(std::strerror(errno));
+                }
+                break;
+            }
+            if (got == 0) {
+                break;
+            }
+            splitter.Append(buffer.data(), static_cast<size_t>(got), emit);
+        }
+        splitter.Flush(emit);
+        close(fd);
+    }
+
+    CameraConfig config_;
+    Options options_;
+    std::string topic_camera_;
+    std::string command_;
+    pid_t pid_ = -1;
+    bool started_ = false;
+    bool running_ = false;
+    bool failure_ = false;
+    bool stop_requested_ = false;
+    std::optional<int> exit_code_;
+    std::string last_error_;
+    std::thread stdout_thread_;
+    ugripper::episode_mcap::EpisodeMcapClient episode_mcap_client_;
+    mutable std::mutex timing_mutex_;
+    std::optional<int64_t> first_frame_pts_us_;
+    std::optional<int64_t> first_frame_system_time_us_;
+    std::optional<int64_t> last_frame_pts_us_;
+    std::optional<int64_t> last_frame_system_time_us_;
+    std::optional<int64_t> record_time_offset_us_;
+    uint64_t frame_count_ = 0;
+};
+
 class StereoHybridRecorder final : public ShellCameraRecorder {
 public:
     StereoHybridRecorder(CameraConfig config, Options options)
@@ -2233,6 +2915,10 @@ std::unique_ptr<CameraRecorder> CreateRecorder(const CameraConfig& config, const
     case CameraRecordMode::DirectCopyH265:
         return std::make_unique<MainCameraRecorder>(config, options);
     case CameraRecordMode::HybridDecodeEncode:
+        if (ugripper::episode_mcap::SocketPathLooksEnabled(
+                ugripper::episode_mcap::ResolveEpisodeSocketPath(options.output_dir.string()))) {
+            return std::make_unique<EpisodeMcapHybridCameraRecorder>(config, options);
+        }
         return std::make_unique<HybridCameraRecorder>(config, options);
     case CameraRecordMode::StereoHybridDecodeEncode:
         return std::make_unique<StereoHybridRecorder>(config, options);

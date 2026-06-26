@@ -13,6 +13,7 @@ enum class WorkerName
 {
     AudioPlayer = 0,
     StereoDaemon,
+    EpisodeMcapRecorder,
     CameraRecorder,
     SensorRecorder,
     AudioRecorder,

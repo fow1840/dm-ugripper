@@ -1152,6 +1152,40 @@ PY
     return 1
 }
 
+side_recording_stopped() {
+    local side="$1"
+    local status_json
+    status_json="$(runtime_status_path "$side")"
+    python3 - "$status_json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        root = json.load(f)
+    if root.get("running") is not True:
+        sys.exit(1)
+    sys.exit(0 if root.get("recording_enabled") is not True else 1)
+except Exception:
+    sys.exit(1)
+PY
+}
+
+wait_for_episode_mcap_session_stop() {
+    local episode_dir="$1"
+    local deadline=$((SECONDS + FINALIZE_TIMEOUT_SEC))
+    while [ "$SECONDS" -le "$deadline" ]; do
+        check_runtime_health_during_finalize
+        [ -z "$LAST_FINALIZE_ERROR" ] || return 1
+        if side_recording_stopped left && side_recording_stopped right; then
+            return 0
+        fi
+        sleep 0.1
+    done
+    return 1
+}
+
 check_runtime_health_during_finalize() {
     if [ -n "$LAST_FINALIZE_ERROR" ]; then
         return 0
@@ -1283,28 +1317,35 @@ handle_stop() {
     fi
 
     if [ -z "$LAST_FINALIZE_ERROR" ]; then
-        wait_for_file_nonempty "$episode_dir/stereo_left.mkv" || {
-            LAST_FINALIZE_ERROR="stereo_left.mkv missing or empty"
-            fays_log "session finalize error: $LAST_FINALIZE_ERROR"
-        }
-    fi
-    if [ -z "$LAST_FINALIZE_ERROR" ]; then
-        wait_for_file_nonempty "$episode_dir/stereo_right.mkv" || {
-            LAST_FINALIZE_ERROR="stereo_right.mkv missing or empty"
-            fays_log "session finalize error: $LAST_FINALIZE_ERROR"
-        }
-    fi
-    if [ -z "$LAST_FINALIZE_ERROR" ]; then
-        wait_for_mcap_complete "$episode_dir/fays_data_left.mcap" || {
-            LAST_FINALIZE_ERROR="fays_data_left.mcap missing or incomplete"
-            fays_log "session finalize error: $LAST_FINALIZE_ERROR"
-        }
-    fi
-    if [ -z "$LAST_FINALIZE_ERROR" ]; then
-        wait_for_mcap_complete "$episode_dir/fays_data_right.mcap" || {
-            LAST_FINALIZE_ERROR="fays_data_right.mcap missing or incomplete"
-            fays_log "session finalize error: $LAST_FINALIZE_ERROR"
-        }
+        if [ -s "$episode_dir/episode_mcap_socket_path.txt" ]; then
+            wait_for_episode_mcap_session_stop "$episode_dir" || {
+                LAST_FINALIZE_ERROR="episode MCAP Fays session did not stop cleanly"
+                fays_log "session finalize error: $LAST_FINALIZE_ERROR"
+            }
+        else
+            wait_for_file_nonempty "$episode_dir/stereo_left.mkv" || {
+                LAST_FINALIZE_ERROR="stereo_left.mkv missing or empty"
+                fays_log "session finalize error: $LAST_FINALIZE_ERROR"
+            }
+            if [ -z "$LAST_FINALIZE_ERROR" ]; then
+                wait_for_file_nonempty "$episode_dir/stereo_right.mkv" || {
+                    LAST_FINALIZE_ERROR="stereo_right.mkv missing or empty"
+                    fays_log "session finalize error: $LAST_FINALIZE_ERROR"
+                }
+            fi
+            if [ -z "$LAST_FINALIZE_ERROR" ]; then
+                wait_for_mcap_complete "$episode_dir/fays_data_left.mcap" || {
+                    LAST_FINALIZE_ERROR="fays_data_left.mcap missing or incomplete"
+                    fays_log "session finalize error: $LAST_FINALIZE_ERROR"
+                }
+            fi
+            if [ -z "$LAST_FINALIZE_ERROR" ]; then
+                wait_for_mcap_complete "$episode_dir/fays_data_right.mcap" || {
+                    LAST_FINALIZE_ERROR="fays_data_right.mcap missing or incomplete"
+                    fays_log "session finalize error: $LAST_FINALIZE_ERROR"
+                }
+            fi
+        fi
     fi
 
     if [ -z "$LAST_FINALIZE_ERROR" ]; then

@@ -3,6 +3,7 @@
 #include <memory>
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <vector>
 #include <map>
 #include <algorithm>
@@ -20,6 +21,9 @@
 #include <cmath>
 #include <iterator>
 #include <sstream>
+#include <array>
+#include <functional>
+#include <optional>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -32,6 +36,7 @@
 #include <stdexcept>
 #include <opencv2/imgproc.hpp>
 #include "utils/fifo_utils.h"
+#include "episode_mcap/episode_mcap_client.h"
 #include "fays_atrak/fays_atrak_types.h"
 #include "fays_atrak/fays_vikit.h"
 #include "common/print_helpers.h"
@@ -1115,6 +1120,26 @@ public:
             writer_->close();
             isOpen_ = false;
         }
+        episodeMcapClient_.Close();
+        useEpisodeMcap_ = false;
+        sideLabel_ = path.find("left") != std::string::npos ? "left" :
+                     (path.find("right") != std::string::npos ? "right" : "unknown");
+        const std::filesystem::path outputPath(path);
+        const std::filesystem::path episodeSocket =
+            ugripper::episode_mcap::ResolveEpisodeSocketPath(outputPath.parent_path().string());
+        if (ugripper::episode_mcap::SocketPathLooksEnabled(episodeSocket.string())) {
+            std::string connectError;
+            if (!episodeMcapClient_.Connect(episodeSocket.string(), &connectError)) {
+                std::cerr << "[MCAP] Failed to connect episode MCAP socket "
+                          << episodeSocket << ": " << connectError << std::endl;
+                return false;
+            }
+            useEpisodeMcap_ = true;
+            imuSeq_ = 0;
+            camSeq_ = 0;
+            isOpen_ = true;
+            return true;
+        }
         writer_ = std::make_unique<mcap::McapWriter>();
 
         mcap::McapWriterOptions options("fays_recorder");
@@ -1166,7 +1191,11 @@ public:
     void Close() {
         std::lock_guard<std::mutex> lock(mtx_);
         if (isOpen_) {
-            writer_->close();
+            if (useEpisodeMcap_) {
+                episodeMcapClient_.Close();
+            } else {
+                writer_->close();
+            }
             isOpen_ = false;
         }
     }
@@ -1185,23 +1214,45 @@ public:
         sample.ay = imuData.acc[1];
         sample.az = imuData.acc[2];
 
-        mcap::Message msg;
-        msg.channelId = imuChannelId_;
-        msg.sequence = imuSeq_++;
-        msg.logTime = imuData.timestamp;
-        msg.publishTime = publishTimeNs;
-        msg.data = reinterpret_cast<const std::byte*>(&sample);
-        msg.dataSize = sizeof(sample);
+        if (useEpisodeMcap_) {
+            std::string sendError;
+            const std::string topic = "/fays_" + sideLabel_ + "/imu";
+            if (!episodeMcapClient_.Send(
+                    ugripper::episode_mcap::FrameKind::FaysImu,
+                    topic,
+                    "fays_" + sideLabel_ + "_imu",
+                    publishTimeNs,
+                    publishTimeNs,
+                    imuSeq_++,
+                    0,
+                    0,
+                    &sample,
+                    sizeof(sample),
+                    &sendError)) {
+                std::cerr << "[MCAP] Failed to send Fays IMU frame: " << sendError << std::endl;
+            }
+        } else {
+            mcap::Message msg;
+            msg.channelId = imuChannelId_;
+            msg.sequence = imuSeq_++;
+            msg.logTime = imuData.timestamp;
+            msg.publishTime = publishTimeNs;
+            msg.data = reinterpret_cast<const std::byte*>(&sample);
+            msg.dataSize = sizeof(sample);
 
-        auto writeStatus = writer_->write(msg);
-        if (!writeStatus.ok()) {
-            std::cerr << "[MCAP] Failed to write IMU frame: " << writeStatus.message << std::endl;
+            auto writeStatus = writer_->write(msg);
+            if (!writeStatus.ok()) {
+                std::cerr << "[MCAP] Failed to write IMU frame: " << writeStatus.message << std::endl;
+            }
         }
     }
 
     void LogCamTs(uint64_t faysTsNs, uint64_t publishTimeNs, uint32_t frameIndex) {
         std::lock_guard<std::mutex> lock(mtx_);
         if (!isOpen_) {
+            return;
+        }
+        if (useEpisodeMcap_) {
             return;
         }
 
@@ -1225,6 +1276,9 @@ public:
 private:
     std::unique_ptr<mcap::McapWriter> writer_;
     bool isOpen_;
+    bool useEpisodeMcap_ = false;
+    std::string sideLabel_;
+    ugripper::episode_mcap::EpisodeMcapClient episodeMcapClient_;
     mcap::ChannelId imuChannelId_;
     mcap::ChannelId camChannelId_;
     uint32_t imuSeq_;
@@ -1301,9 +1355,28 @@ public:
             return true;
         }
 
-        const std::string cameraCodec = ReadCameraCodecFromEnvironmentFile();
-        const std::string ffmpegEncoder = (cameraCodec == "h265") ? "hevc_rkmpp" : "h264_rkmpp";
+        const std::string cameraCodec = "h264";
+        const std::string ffmpegEncoder = "h264_rkmpp";
         const bool perfLogEnabled = kPerfLogEnabled;
+        width_ = width;
+        height_ = height;
+        sideLabel_ = savePath.find("left") != std::string::npos ? "left" :
+                     (savePath.find("right") != std::string::npos ? "right" : "unknown");
+        topicCamera_ = sideLabel_ == "right" ? "stereo_right" : "stereo_left";
+        const std::filesystem::path saveFile(savePath);
+        const std::filesystem::path episodeSocket =
+            ugripper::episode_mcap::ResolveEpisodeSocketPath(saveFile.parent_path().string());
+        useEpisodeMcap_ = ugripper::episode_mcap::SocketPathLooksEnabled(episodeSocket.string());
+        if (useEpisodeMcap_) {
+            std::string connectError;
+            if (!episodeMcapClient_.Connect(episodeSocket.string(), &connectError)) {
+                std::cerr << "[MCAP] Failed to connect episode MCAP socket for stereo video: "
+                          << connectError << std::endl;
+                useEpisodeMcap_ = false;
+                return false;
+            }
+            SendStaticMetadata(NowNs());
+        }
 
         std::stringstream cmd;
         cmd << "ffmpeg -hide_banner -loglevel error -nostats -y "
@@ -1319,16 +1392,29 @@ public:
             << "-qp_max 38 "
             << "-qp_min 24 "
             << "-qp_max_i 38 "
-            << "-qp_min_i 20 "
-            << "\"" << savePath << "\"";
+            << "-qp_min_i 20 ";
+        if (useEpisodeMcap_) {
+            cmd << "-bsf:v h264_metadata=aud=insert "
+                << "-f h264 pipe:1";
+        } else {
+            cmd << "\"" << savePath << "\"";
+        }
 
         std::cout << "[FFmpeg] CAMERA_CODEC=" << cameraCodec
                   << " -> " << ffmpegEncoder << std::endl;
         std::cout << "[FFmpeg] Command: " << cmd.str() << std::endl;
 
         int pipeFds[2] = {-1, -1};
+        int stdoutPipeFds[2] = {-1, -1};
         if (pipe(pipeFds) != 0) {
             std::cerr << "[FFmpeg] Failed to create pipe: " << std::strerror(errno) << std::endl;
+            return false;
+        }
+        if (useEpisodeMcap_ && pipe(stdoutPipeFds) != 0) {
+            std::cerr << "[FFmpeg] Failed to create stdout pipe: " << std::strerror(errno) << std::endl;
+            close(pipeFds[0]);
+            close(pipeFds[1]);
+            episodeMcapClient_.Close();
             return false;
         }
 
@@ -1337,25 +1423,36 @@ public:
             std::cerr << "[FFmpeg] Failed to fork: " << std::strerror(errno) << std::endl;
             close(pipeFds[0]);
             close(pipeFds[1]);
+            if (stdoutPipeFds[0] >= 0) close(stdoutPipeFds[0]);
+            if (stdoutPipeFds[1] >= 0) close(stdoutPipeFds[1]);
+            episodeMcapClient_.Close();
             return false;
         }
 
         if (pid == 0) {
             setpgid(0, 0);
             close(pipeFds[1]);
+            if (stdoutPipeFds[0] >= 0) close(stdoutPipeFds[0]);
             if (dup2(pipeFds[0], STDIN_FILENO) < 0) {
                 _exit(127);
             }
             close(pipeFds[0]);
-            if (!perfLogEnabled) {
-                const int devNull = open("/dev/null", O_WRONLY);
+            const int devNull = open("/dev/null", O_WRONLY);
+            if (useEpisodeMcap_) {
+                if (dup2(stdoutPipeFds[1], STDOUT_FILENO) < 0) {
+                    _exit(127);
+                }
+                close(stdoutPipeFds[1]);
                 if (devNull >= 0) {
+                    dup2(devNull, STDERR_FILENO);
+                    if (devNull > STDERR_FILENO) close(devNull);
+                }
+            } else if (!perfLogEnabled && devNull >= 0) {
                     dup2(devNull, STDOUT_FILENO);
                     dup2(devNull, STDERR_FILENO);
                     if (devNull > STDERR_FILENO) {
                         close(devNull);
                     }
-                }
             }
             execl("/bin/sh", "sh", "-c", cmd.str().c_str(), static_cast<char*>(nullptr));
             _exit(127);
@@ -1363,8 +1460,12 @@ public:
 
         setpgid(pid, pid);
         close(pipeFds[0]);
+        if (stdoutPipeFds[1] >= 0) close(stdoutPipeFds[1]);
         pipeFd_ = pipeFds[1];
         childPid_ = pid;
+        if (useEpisodeMcap_) {
+            stdoutThread_ = std::thread([this, fd = stdoutPipeFds[0]]() { ReadEncodedOutput(fd); });
+        }
 
         constexpr int kTargetPipeSz = 1048576;
         const int actual = fcntl(pipeFd_, F_SETPIPE_SZ, kTargetPipeSz);
@@ -1374,9 +1475,13 @@ public:
         return true;
     }
 
-    void Write(const uint8_t* data, size_t size) {
+    void Write(const uint8_t* data, size_t size, uint64_t timestampNs = 0) {
         if (pipeFd_ < 0 || data == nullptr || size == 0) {
             return;
+        }
+        if (useEpisodeMcap_) {
+            std::lock_guard<std::mutex> lock(timestampMtx_);
+            pendingTimestamps_.push_back(timestampNs != 0 ? timestampNs : NowNs());
         }
         const uint8_t* cursor = data;
         size_t remaining = size;
@@ -1388,12 +1493,15 @@ public:
                 }
                 if (errno == EPIPE) {
                     std::cerr << "[FFmpeg] Encoder pipe closed." << std::endl;
+                    DropPendingTimestamp();
                     return;
                 }
                 std::cerr << "[FFmpeg] Pipe write failed: " << std::strerror(errno) << std::endl;
+                DropPendingTimestamp();
                 return;
             }
             if (written == 0) {
+                DropPendingTimestamp();
                 return;
             }
             cursor += written;
@@ -1414,40 +1522,202 @@ public:
                 if (result == childPid_) {
                     childPid_ = -1;
                     std::cout << "[FFmpeg] Recording stopped." << std::endl;
-                    return;
+                    break;
                 }
                 if (result < 0 && errno == ECHILD) {
                     childPid_ = -1;
                     std::cout << "[FFmpeg] Recording stopped." << std::endl;
-                    return;
+                    break;
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
 
-            std::cerr << "[FFmpeg] Encoder did not exit after stdin close; sending SIGTERM." << std::endl;
-            kill(-childPid_, SIGTERM);
-            const auto termDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
-            while (std::chrono::steady_clock::now() < termDeadline) {
-                const pid_t result = waitpid(childPid_, &status, WNOHANG);
-                if (result == childPid_ || (result < 0 && errno == ECHILD)) {
-                    childPid_ = -1;
-                    std::cout << "[FFmpeg] Recording stopped." << std::endl;
-                    return;
+            if (childPid_ > 0) {
+                std::cerr << "[FFmpeg] Encoder did not exit after stdin close; sending SIGTERM." << std::endl;
+                kill(-childPid_, SIGTERM);
+                const auto termDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+                while (std::chrono::steady_clock::now() < termDeadline) {
+                    const pid_t result = waitpid(childPid_, &status, WNOHANG);
+                    if (result == childPid_ || (result < 0 && errno == ECHILD)) {
+                        childPid_ = -1;
+                        std::cout << "[FFmpeg] Recording stopped." << std::endl;
+                        break;
+                    }
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
 
-            std::cerr << "[FFmpeg] Encoder did not exit after SIGTERM; sending SIGKILL." << std::endl;
-            kill(-childPid_, SIGKILL);
-            waitpid(childPid_, &status, 0);
-            childPid_ = -1;
-            std::cout << "[FFmpeg] Recording stopped." << std::endl;
+            if (childPid_ > 0) {
+                std::cerr << "[FFmpeg] Encoder did not exit after SIGTERM; sending SIGKILL." << std::endl;
+                kill(-childPid_, SIGKILL);
+                waitpid(childPid_, &status, 0);
+                childPid_ = -1;
+                std::cout << "[FFmpeg] Recording stopped." << std::endl;
+            }
         }
+        if (stdoutThread_.joinable()) {
+            stdoutThread_.join();
+        }
+        episodeMcapClient_.Close();
+        useEpisodeMcap_ = false;
     }
 
 private:
+    static uint64_t NowNs() {
+        return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+    }
+
+    static std::string JsonBytes(const std::string& topicCamera) {
+        std::ostringstream out;
+        out << "{\"camera\":\"" << JsonEscape(topicCamera)
+            << "\",\"calibration_key\":\"" << JsonEscape(topicCamera)
+            << "\",\"extrinsics\":{}}";
+        return out.str();
+    }
+
+    void SendStaticMetadata(uint64_t timestampNs) {
+        std::string error;
+        episodeMcapClient_.Send(
+            ugripper::episode_mcap::FrameKind::CameraInfo,
+            "/" + topicCamera_ + "/camera_info",
+            topicCamera_,
+            timestampNs,
+            timestampNs,
+            0,
+            static_cast<uint32_t>(width_),
+            static_cast<uint32_t>(height_),
+            nullptr,
+            0,
+            &error);
+        const std::string extrinsics = JsonBytes(topicCamera_);
+        episodeMcapClient_.Send(
+            ugripper::episode_mcap::FrameKind::Json,
+            "/" + topicCamera_ + "/calibration/extrinsics",
+            topicCamera_,
+            timestampNs,
+            timestampNs,
+            0,
+            0,
+            0,
+            extrinsics.data(),
+            extrinsics.size(),
+            &error);
+    }
+
+    static std::optional<std::pair<size_t, size_t>> FindStartCode(const std::vector<uint8_t>& data, size_t from) {
+        if (data.size() < 4 || from >= data.size()) return std::nullopt;
+        for (size_t i = from; i + 3 < data.size(); ++i) {
+            if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1) {
+                return std::make_pair(i, size_t{3});
+            }
+            if (i + 4 < data.size() && data[i] == 0 && data[i + 1] == 0 &&
+                data[i + 2] == 0 && data[i + 3] == 1) {
+                return std::make_pair(i, size_t{4});
+            }
+        }
+        return std::nullopt;
+    }
+
+    void FeedH264Bytes(const uint8_t* data, size_t size) {
+        h264Buffer_.insert(h264Buffer_.end(), data, data + size);
+        size_t search = 0;
+        while (true) {
+            const auto found = FindStartCode(h264Buffer_, search);
+            if (!found.has_value()) return;
+            const size_t pos = found->first;
+            const size_t nal = pos + found->second;
+            if (nal >= h264Buffer_.size()) return;
+            const uint8_t nalType = h264Buffer_[nal] & 0x1fU;
+            if (nalType == 9) {
+                if (seenAud_ && pos > 0) {
+                    SendAccessUnit(h264Buffer_.data(), pos);
+                    h264Buffer_.erase(h264Buffer_.begin(), h264Buffer_.begin() + static_cast<std::ptrdiff_t>(pos));
+                    search = 0;
+                    continue;
+                }
+                seenAud_ = true;
+            }
+            search = nal + 1;
+        }
+    }
+
+    void FlushH264Bytes() {
+        if (!h264Buffer_.empty()) {
+            SendAccessUnit(h264Buffer_.data(), h264Buffer_.size());
+            h264Buffer_.clear();
+        }
+        seenAud_ = false;
+    }
+
+    uint64_t PopTimestamp() {
+        std::lock_guard<std::mutex> lock(timestampMtx_);
+        if (pendingTimestamps_.empty()) {
+            return NowNs();
+        }
+        const uint64_t ts = pendingTimestamps_.front();
+        pendingTimestamps_.pop_front();
+        return ts != 0 ? ts : NowNs();
+    }
+
+    void DropPendingTimestamp() {
+        if (!useEpisodeMcap_) return;
+        std::lock_guard<std::mutex> lock(timestampMtx_);
+        if (!pendingTimestamps_.empty()) {
+            pendingTimestamps_.pop_back();
+        }
+    }
+
+    void SendAccessUnit(const uint8_t* data, size_t size) {
+        if (!useEpisodeMcap_ || data == nullptr || size == 0) return;
+        const uint64_t timestampNs = PopTimestamp();
+        std::string error;
+        if (!episodeMcapClient_.Send(
+                ugripper::episode_mcap::FrameKind::CompressedImageH264,
+                "/" + topicCamera_ + "/image_compressed",
+                topicCamera_,
+                timestampNs,
+                timestampNs,
+                videoSeq_++,
+                static_cast<uint32_t>(width_),
+                static_cast<uint32_t>(height_),
+                data,
+                size,
+                &error)) {
+            std::cerr << "[MCAP] Failed to send stereo image frame: " << error << std::endl;
+        }
+    }
+
+    void ReadEncodedOutput(int fd) {
+        std::array<uint8_t, 64 * 1024> buffer{};
+        while (true) {
+            const ssize_t got = read(fd, buffer.data(), buffer.size());
+            if (got < 0) {
+                if (errno == EINTR) continue;
+                std::cerr << "[FFmpeg] Failed to read encoded H264 stdout: " << std::strerror(errno) << std::endl;
+                break;
+            }
+            if (got == 0) break;
+            FeedH264Bytes(buffer.data(), static_cast<size_t>(got));
+        }
+        FlushH264Bytes();
+        close(fd);
+    }
+
     int pipeFd_;
     pid_t childPid_;
+    bool useEpisodeMcap_ = false;
+    int width_ = 0;
+    int height_ = 0;
+    std::string sideLabel_;
+    std::string topicCamera_;
+    ugripper::episode_mcap::EpisodeMcapClient episodeMcapClient_;
+    std::thread stdoutThread_;
+    std::mutex timestampMtx_;
+    std::deque<uint64_t> pendingTimestamps_;
+    std::vector<uint8_t> h264Buffer_;
+    bool seenAud_ = false;
+    uint32_t videoSeq_ = 0;
 };
 
 class FaysRecorder;
@@ -2200,9 +2470,9 @@ private:
                         cv::Mat gray(vf.height, vf.width, CV_8UC1, vf.bytes.data());
                         cv::Mat bgr(vf.height, vf.width, CV_8UC3, bgrBuffer.data());
                         cv::cvtColor(gray, bgr, cv::COLOR_GRAY2BGR);
-                        mRecorder_.Write(bgrBuffer.data(), bgrBuffer.size());
+                        mRecorder_.Write(bgrBuffer.data(), bgrBuffer.size(), vf.publishTimeNs);
                     } else {
-                        mRecorder_.Write(vf.bytes.data(), vf.bytes.size());
+                        mRecorder_.Write(vf.bytes.data(), vf.bytes.size(), vf.publishTimeNs);
                     }
 
                     CamTsQueuedSample camSample{};

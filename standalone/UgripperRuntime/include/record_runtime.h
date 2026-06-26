@@ -30,6 +30,7 @@ struct RecordRuntimeOptions
     std::vector<std::string> gripperPorts;
     std::string cameraRecorderBin = "./bin/CameraRecorder/CameraRecorder";
     std::string sensorRecorderBin = "./bin/SensorRecorder/SensorRecorder";
+    std::string episodeMcapRecorderBin = "./bin/EpisodeMcap/EpisodeMcapRecorder";
     std::string faysStereoDaemonScript = "./bin/FaysStereoRecorder/scripts/run_fays_stereo_daemon.sh";
     std::string leftFaysConfig = "./bin/FaysStereoRecorder/config/fays_vikit_left.yaml";
     std::string rightFaysConfig = "./bin/FaysStereoRecorder/config/fays_vikit_right.yaml";

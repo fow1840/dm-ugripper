@@ -1241,6 +1241,20 @@ bool StereoSessionClient::WaitForFinalize(const std::string& episode_dir,
     if (!options_.left_control_fifo.empty() && !options_.right_control_fifo.empty())
     {
         const fs::path episode_path(episode_dir);
+        const bool unified_mcap_mode = FileExistsAndNotEmpty(episode_path / "episode_mcap_socket_path.txt") ||
+                                       FileExistsAndNotEmpty(episode_path / "episode.mcap");
+        if (unified_mcap_mode)
+        {
+            if (error_message != nullptr)
+            {
+                error_message->clear();
+            }
+            last_session_json_ = BuildStereoSessionJson(episode_dir,
+                                                        active_start_system_time_us_,
+                                                        active_stop_system_time_us_)
+                                     .dump();
+            return true;
+        }
         const fs::path left_video = episode_path / "stereo_left.mkv";
         const fs::path right_video = episode_path / "stereo_right.mkv";
         const fs::path left_mcap = episode_path / "fays_data_left.mcap";
