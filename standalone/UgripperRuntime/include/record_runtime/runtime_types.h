@@ -19,6 +19,7 @@ inline constexpr const char* kErrorTypeFrameLoss = "frame_loss";
 enum class RuntimeLedState
 {
     Init,
+    WaitStorage,
     Ready,
     Recording,
     Error1,

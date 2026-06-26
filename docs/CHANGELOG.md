@@ -8,7 +8,7 @@
 
 - 本机录制切换为单文件 `episode.mcap`：主摄、触觉、Fays stereo 图像统一写入 H264 `sensor_msgs/msg/CompressedImage` topic；每路相机写独立 ROS `CameraInfo` 和 `/<camera>/calibration/extrinsics` JSON topic；encoder 与 Fays IMU 也写入同一个 MCAP。停录强校验改为检查 MCAP channel/topic，不再以 MKV、拆分 sensor MCAP 或 Fays MCAP 文件作为本机必需产物。
 - 统一 MCAP writer 的 Unix socket 改到 `/dev/shm/ugripper/`，episode 目录只保留录制期临时 socket marker，避免 exfat 数据盘不支持 Unix socket 导致起录失败。
-- 开机后 Fays stereo daemon 延后约 `60s` 再启动，等待窗口内保持 `INIT` 蓝灯闪烁，并把 stereo daemon 健康检查启动宽限同步扩到约 `65s`，降低系统刚开机时 Fays SDK 抢设备或过早报错的概率。
+- Fays stereo daemon 启动改为按系统开机 uptime 控制：仅开机未满约 `60s` 时等待剩余时间并保持 `INIT` 蓝灯闪烁，服务重启时若系统已开机超过 `60s` 则不额外等待；等待窗口内暂停硬件健康监控和 restore USB 触发/重试，避免延迟启动本身造成反复复位。数据盘等待从 `run_record.sh` 下沉到 `record_runtime`，若 daemon 启动后 U 盘仍未插入，则保持 `WAIT_STORAGE` 白灯并继续等待 `/mnt/data_disk` 可写。stereo daemon 健康检查启动宽限同步扩到约 `65s`，降低系统刚开机时 Fays SDK 抢设备或过早报错的概率。
 - 新增错误态夹爪传感器复位入口：`record_runtime` 会在 `ERROR_2`、`ERROR_4` 以及主摄相关 `ERROR_1` 时异步触发 `/usr/local/sbin/ugripper_restore_usb`，`ERROR_3` 磁盘类错误和 `ERROR_5` 运行时兜底错误不触发；触发复位前会先暂停 Fays stereo daemon/recorder，避免 SDK 在 USB 断电重枚举窗口占用双目节点；每次复位完成后会按约 `1s` 周期检查全部关键传感器 symlink，symlink 齐后立即重启 Fays daemon 并开始健康恢复计时，最多等约 `25s` 仍缺 symlink 才重试；symlink 齐后最多继续等约 `25s` 检查健康状态与主摄缓存，仍未恢复则重试；等待窗口内如果健康状态提前恢复，会立即认定本轮复位成功并清除等待窗口，后续再异常按新的故障窗口处理；同一错误窗口连续 `3` 次失败后通过夹爪 HMI 蜂鸣器报警，单次蜂鸣最长 `5s` 后自动关闭。sudoers 允许 `ubuntu` 用户免密执行固定 root wrapper；wrapper 会在存在 `bluetooth_gatt.service` 时先停止以释放通信接口，不存在或停止失败不阻断复位主流程。
 - 自动复位断电前新增数据盘保护：录制中先按错误停录完成 episode 收尾，随后同步运行日志并通过 root system action 卸载 `/mnt/data_disk`；数据盘卸载失败时跳过本次复位且不消耗复位次数，避免 U 盘读写中被 USB 供电复位硬断。
 - 自动复位新增人工插拔保护：某侧夹爪完全未枚举时只保留错误提示，不触发软件复位且不消耗复位次数；检测到该侧任一关键节点或 HMI 重新出现时会重置复位次数，并给该侧 `20s` 插入稳定窗口，窗口内健康检查错误不触发软件复位。

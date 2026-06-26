@@ -26,8 +26,8 @@
 | 模块 | 入口 | 当前职责 | 关键输入/输出 |
 | --- | --- | --- | --- |
 | systemd 主服务 | `pack_script/ugripper.service` | 以 `ubuntu` 用户拉起录制服务 | `/opt/ugripper/run_record.sh` |
-| 薄壳启动脚本 | `run_record.sh` | 切到安装目录、等待 `/mnt/data_disk` 可写、维护本地 `/tmp` 到 `/mnt/data_disk/logs` 的增量日志同步，再拉起 `record_runtime` | `/tmp/umi_sys_<sn>_<date>.log`、`/mnt/data_disk/logs/umi_sys_<sn>_<date>.log` |
-| 主运行时 | `bin/UgripperRuntime/UgripperRuntime` | HMI 按键状态机、软件录制控制、LED 灯效、提示音、pre/post 音频、camera/sensor 子进程管理、停录校验、关机请求 | episode 目录、`/tmp/umi_record_control.pipe`、`/tmp/umi_shutdown_request` |
+| 薄壳启动脚本 | `run_record.sh` | 切到安装目录、维护本地 `/tmp` 到 `/mnt/data_disk/logs` 的增量日志同步，并直接拉起 `record_runtime`；不再在脚本层等待数据盘 | `/tmp/umi_sys_<sn>_<date>.log`、`/mnt/data_disk/logs/umi_sys_<sn>_<date>.log` |
+| 主运行时 | `bin/UgripperRuntime/UgripperRuntime` | HMI 按键状态机、软件录制控制、LED 灯效、提示音、pre/post 音频、camera/sensor 子进程管理、数据盘等待、停录校验、关机请求 | episode 目录、`/tmp/umi_record_control.pipe`、`/tmp/umi_shutdown_request` |
 | 安全 NTP 同步 | `time_sync/safe_ntp_sync.sh` / `ugripper-ntp-sync.service` | 开机或安装后只在非录制态执行一次性时间同步，优先使用板端现有 `sntp -S`，再 fallback 到 `ntpd -q -g` / `timedatectl`；同步完成、超时或录制开始后停止常驻 NTP 服务 | `/tmp/umi_recording.lock`、`sntp`/`ntp` |
 | 相机录制 | `bin/CameraRecorder/CameraRecorder` | 普通录制模式下负责主摄/触觉 H264 帧写入统一 MCAP；`--stereo-daemon` 模式下负责双目常驻预热、热插拔恢复与 session finalize | `episode.mcap` 内相机 topics |
 | 统一 MCAP writer | `bin/EpisodeMcap/EpisodeMcapRecorder` | 起录时先启动本地 Unix socket writer，真实 socket 放在 `/dev/shm/ugripper/`，所有相机/传感器子进程连接后写入同一个 `episode.mcap` | `episode.mcap`、录制期临时 `episode_mcap_socket_path.txt` |
@@ -47,9 +47,9 @@
 3. systemd 启动 `ugripper.service`。
 4. 服务进入 `/opt/ugripper/run_record.sh`。
 5. `run_record.sh` 读取 `/etc/environment` 中的 `DEVICE_SN`，建立当天运行日志文件名 `umi_sys_<device_sn_lower>_<YYYYMMDD>.log`。
-6. `run_record.sh` 检查 `./bin/UgripperRuntime/UgripperRuntime`，然后等待 `/mnt/data_disk` 成为真实可写挂载点。
-7. 数据盘可写后，`run_record.sh` 启动 v1 风格日志维护：业务 stdout/stderr 先落到 `/tmp`；当收到视频停录、音频停录请求或运行时退出时，再按增量方式同步到 `/mnt/data_disk/logs`，并清理本地与数据盘上同 SN 的非当天日志。
-8. `run_record.sh` 再拉起 `record_runtime`；运行时退出前会额外补一次日志同步。
+6. `run_record.sh` 检查 `./bin/UgripperRuntime/UgripperRuntime`，启动 v1 风格日志维护：业务 stdout/stderr 先落到 `/tmp`；当收到视频停录、音频停录请求或运行时退出时，再按增量方式同步到 `/mnt/data_disk/logs`，并清理本地与数据盘上同 SN 的非当天日志。
+7. `run_record.sh` 直接拉起 `record_runtime`；运行时退出前会额外补一次日志同步。若数据盘尚未插入或尚不可写，日志先保留在 `/tmp`。
+8. `record_runtime` 内部持续检测 `/mnt/data_disk` 是否成为真实可写挂载点；就绪后才初始化 episode 根目录，等待期间不允许起录制，也不把未插 U 盘升级为 `ERROR_3`。
 9. `record_runtime` 启动后读取 `/etc/environment`，至少关注：
    - `DEVICE_SN`：决定数据目录。
    - `CAMERA_CODEC`：当前本机录制强制使用 `h264`；若环境变量配置为其他值，运行时记录告警并锁定为 `h264`。
@@ -58,8 +58,8 @@
 - HMI 状态查询与 LED RGB 下发会在单个 gripper 串口内由驱动 owner 线程统一调度；`record_runtime` 只切换灯效模式，不再跨线程推送录制态的 500ms 亮灭边沿。当前驱动参考旧版 `driver_origin/led_manager` 的职责分离思路做了收敛：按键输入仍以 HMI 主动上报 `KeyReport` 为主，串口主动查询已降为约 `1s` 一次的低频探活/状态刷新；LED 仅在颜色变化、状态切换或低频补发时下发，避免高频状态查询与 RGB 指令互相抢占；若有专项诊断或直控需求，仍可走 direct RGB 通道覆盖当前效果。
 - `standalone/GripperHmiTool` 当前新增了 UMI SN / 标定参数协议封装：SN 固定为 32-byte 字段（当前现场 SN 文本示例为 16-char，尾部补 `0x00`），标定参数固定为 `1024 byte` 严格对齐结构；当前 payload 已覆盖 RGB 主相机、双目 `cam0/cam1`、`cam->imu` 外参、IMU 离散噪声/随机游走与残差统计，其中 header 会保留内部有效数据长度，但当前 `V1.1` 固件写入时仍必须补满 `64 x 16B` 数据包，具体协议见 `docs/umi_calibration_protocol.md`。
 - UMI 标定写入当前增加了异常恢复口径：若写入阶段收到 `0xFE`（当前 chunk 零数据校验错误），驱动会优先重发当前 chunk；若连续出现 `0xFE`，或后续读 SN / 读标定返回 `0xF3/0xFE`，则会发送一次 `AbortWriteInData` 清理固件残留写入状态后再重试。
-11. 初始化成功后会先保持约 `60s` 的 `INIT` 蓝灯闪烁窗口，期间不启动 Fays stereo daemon；窗口结束后才进入 `READY` 状态并等待右手夹爪按键事件。
-12. `record_runtime` 在开机延迟窗口结束后拉起一个常驻 Fays stereo daemon；该 daemon 分别以左右配置启动两份 Fays recorder，通过 `/tmp/umi_stereo_camera_status.json` 暴露 `ready/not-ready` 状态。当前 `ready=true` 需要左右 recorder 进程/FIFO 在线、左右 calibration 有效、左右 SDK serial 非空且不同、左右 stereo/IMU symlink 实时存在；Fays SDK 仍按其限制使用启动时解析出的 `/dev/videoN` 端口，但 handle 创建后会复查 symlink 目标，若初始化期间 videoN 漂移则让当前 recorder 失败退出并由外层 daemon 重启。外层 daemon 还会按低频检查每侧 recorder 工作状态：进程、FIFO、calibration/serial、stereo/IMU symlink 和最近实际 warmup frame 刷新任一异常都会按单侧重启；若异常发生在录制中，则只记录当前 session 错误并等待停录快速失败，不把重连后的设备续写回本条 episode。若左右 serial 重复，则重启两侧。左右 calibration JSON 由对应的常驻 recorder handle 写出，运行时 frame 刷新状态写到 `/dev/shm/umi_left_fays_runtime_status.json` / `/dev/shm/umi_right_fays_runtime_status.json`，不在外层脚本中额外创建短生命周期 SDK probe；已有 calibration JSON 只有在 `device_info.serial_number` 与当前 recorder handle 读到的 SDK serial 一致时才复用，否则启动时会丢弃旧 JSON 并从当前 handle 重新拉取标定，避免热插拔或 videoN 漂移后视频与旧标定错配。Fays `VideoFrameQueue` 默认容量为 32，ffmpeg rawvideo 输入 `thread_queue_size` 为 64，用于限制 raw frame 队列内存占用；stereo daemon 相关健康检查启动宽限约 `65s`，覆盖开机延迟窗口。
+11. 初始化成功后会读取 `/proc/uptime`：若系统开机未满约 `60s`，则先保持 `INIT` 蓝灯闪烁，并只等待剩余时间再启动 Fays stereo daemon；若系统已开机超过 `60s`，例如手工 `systemctl restart ugripper.service`，则不额外等待。
+12. Fays 开机延迟窗口结束后，`record_runtime` 拉起一个常驻 Fays stereo daemon；延迟窗口内不推进硬件健康监控和 restore USB 触发/重试，避免把“daemon 尚未允许启动”误判成可复位故障；如果 daemon 启动后数据盘仍未就绪，HMI 切到 `WAIT_STORAGE` 白灯并继续等待 U 盘，daemon 仍由 runtime 监督维护。该 daemon 分别以左右配置启动两份 Fays recorder，通过 `/tmp/umi_stereo_camera_status.json` 暴露 `ready/not-ready` 状态。当前 `ready=true` 需要左右 recorder 进程/FIFO 在线、左右 calibration 有效、左右 SDK serial 非空且不同、左右 stereo/IMU symlink 实时存在；Fays SDK 仍按其限制使用启动时解析出的 `/dev/videoN` 端口，但 handle 创建后会复查 symlink 目标，若初始化期间 videoN 漂移则让当前 recorder 失败退出并由外层 daemon 重启。外层 daemon 还会按低频检查每侧 recorder 工作状态：进程、FIFO、calibration/serial、stereo/IMU symlink 和最近实际 warmup frame 刷新任一异常都会按单侧重启；若异常发生在录制中，则只记录当前 session 错误并等待停录快速失败，不把重连后的设备续写回本条 episode。若左右 serial 重复，则重启两侧。左右 calibration JSON 由对应的常驻 recorder handle 写出，运行时 frame 刷新状态写到 `/dev/shm/umi_left_fays_runtime_status.json` / `/dev/shm/umi_right_fays_runtime_status.json`，不在外层脚本中额外创建短生命周期 SDK probe；已有 calibration JSON 只有在 `device_info.serial_number` 与当前 recorder handle 读到的 SDK serial 一致时才复用，否则启动时会丢弃旧 JSON 并从当前 handle 重新拉取标定，避免热插拔或 videoN 漂移后视频与旧标定错配。Fays `VideoFrameQueue` 默认容量为 32，ffmpeg rawvideo 输入 `thread_queue_size` 为 64，用于限制 raw frame 队列内存占用；stereo daemon 相关健康检查启动宽限约 `65s`，覆盖开机延迟窗口。
 13. `record_runtime` 当前按 recorder 进程组而不是单一父 PID 回收 `camera_recorder` / `sensor_recorder`；当停录或异常收尾时，会向整组发送退出信号，降低内部 `ffmpeg`/`gst` 子进程残留导致后续卡死的概率。
 14. `ugripper-ntp-sync.service` 属于独立 oneshot 辅助服务：安装后和开机后异步启动，不阻塞 `ugripper.service` 主链路；脚本先停止 `ntp.service` / `chrony.service` / `systemd-timesyncd.service` 这类常驻校时服务，再检查 `/tmp/umi_recording.lock`，录制中直接跳过，空闲时优先用 `sntp -S` 做一次性校时，再 fallback 到 `ntpd -q -g` 或 `timedatectl`。同步完成、超时、失败或检测到录制开始后都会再次停止常驻 NTP 服务，避免录制时间轴被系统时间校准跳变影响。
 
@@ -67,6 +67,7 @@
 ### 5.1 空闲态与阈值
 - `READY`：绿色呼吸灯，提示系统可开始录制。
 - `INIT`：蓝灯闪烁，表示运行时仍在初始化或等待开机 Fays 延迟启动窗口结束。
+- `WAIT_STORAGE`：白灯常亮，表示运行时已启动但 `/mnt/data_disk` 尚未成为真实可写挂载点；此状态下忽略起录制请求。
 - 当前 `READY` 呼吸灯周期约 `4.5s`，LED 渲染线程约每 `20ms` 按单调时钟刷新一次；驱动只在亮度实际变化时发送 RGB，并以约 `250ms` 的低频做灯效补发、约 `1s` 的低频做串口探活，降低肉眼可见抖动和录制态丢闪。
 - 主循环轮询周期约 `20ms`。
 - 长按判定阈值 `800ms`，右手双键关机提示阈值 `2000ms`，双键执行阈值 `4000ms`。

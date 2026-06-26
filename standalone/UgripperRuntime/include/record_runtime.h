@@ -80,6 +80,7 @@ private:
     enum class LedState
     {
         Init,
+        WaitStorage,
         Ready,
         Warning,
         Recording,
@@ -380,6 +381,8 @@ private:
     bool cleanupEgoRemote(const std::string &episodeDir, std::string *errorMessage);
     bool mergeEpisodeInfo(const std::string &episodeDir, std::string *errorMessage) const;
     bool syncRuntimeLogToDisk(const char *reason) const;
+    bool maintainDataStorage();
+    bool ensureEpisodeManagerInitialized();
     bool isStereoDaemonDelayedStartActive() const;
     void markTactileReferencePendingForSide(const std::string &side,
                                             const std::string &reason);
@@ -484,6 +487,8 @@ private:
     bool restoreUsbPendingTriggerLogged_ = false;
     std::string restoreUsbLastSkipLogKey_;
     std::string restoreUsbLastReason_;
+    bool episodeManagerInitialized_ = false;
+    bool dataStorageWaitLogged_ = false;
     LedState lastLoggedLedState_ = LedState::Init;
     double lastLoggedLedProgress_ = 0.0;
     bool hasLastLoggedLedState_ = false;

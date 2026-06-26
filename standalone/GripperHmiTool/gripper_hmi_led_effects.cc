@@ -104,6 +104,10 @@ bool GripperLedEffectRenderer::parseStateText(const std::string &text, GripperLe
     {
         parsed.state = GripperLedEffectState::Init;
     }
+    else if (stateText == "WAIT_STORAGE")
+    {
+        parsed.state = GripperLedEffectState::WaitStorage;
+    }
     else if (stateText == "READY")
     {
         parsed.state = GripperLedEffectState::Ready;
@@ -195,6 +199,8 @@ std::string GripperLedEffectRenderer::stateText(const GripperLedEffect &effect)
     {
     case GripperLedEffectState::Init:
         return "INIT";
+    case GripperLedEffectState::WaitStorage:
+        return "WAIT_STORAGE";
     case GripperLedEffectState::Ready:
         return "READY";
     case GripperLedEffectState::Warning:
@@ -240,6 +246,8 @@ GripperLedColor GripperLedEffectRenderer::render(const GripperLedEffect &effect,
         const bool on = (steadyMs % kCalibBlinkPeriodMs) < (kCalibBlinkPeriodMs / 2);
         return on ? GripperLedColor{0, 122, 255} : GripperLedColor{0, 0, 0};
     }
+    case GripperLedEffectState::WaitStorage:
+        return GripperLedColor{255, 255, 255};
     case GripperLedEffectState::Ready:
     {
         const double phase = static_cast<double>(steadyMs % kReadyBreathPeriodMs) /
