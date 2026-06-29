@@ -1494,60 +1494,7 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stereo_merge_start_ms) -
                                stereo_merge_start_ms));
     }
-    if (dependencies_.stop_worker != nullptr)
-    {
-        const int64_t mcap_stop_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
-        const bool mcap_stop_ok = dependencies_.stop_worker(
-            WorkerName::EpisodeMcapRecorder,
-            "recording stop",
-            nullptr);
-        if (!mcap_stop_ok)
-        {
-            AddErrorType(&error_types, kErrorTypeFinalizeError);
-            mcap_stop_error = "episode MCAP recorder failed to stop cleanly";
-        }
-        CallPerfLog(dependencies_,
-                "[PERF] stop episode_mcap_recorder done: ok=" + std::string(mcap_stop_ok ? "true" : "false") +
-                    " elapsed_ms=" +
-                    std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : mcap_stop_start_ms) -
-                                   mcap_stop_start_ms));
-    }
-    RemoveEpisodeMcapSocketFiles(EpisodeMcapSocketMarkerPath(state_.current_episode_dir),
-                                 EpisodeMcapRuntimeSocketPath(state_.current_episode_dir));
-    if (dependencies_.flush_episode_artifacts != nullptr)
-    {
-        dependencies_.flush_episode_artifacts(state_.current_episode_dir, "final");
-    }
-    if (ego_stop_ok && dependencies_.cleanup_ego_remote != nullptr)
-    {
-        std::string cleanup_error;
-        if (!dependencies_.cleanup_ego_remote(state_.current_episode_dir, &cleanup_error))
-        {
-            CallLog(dependencies_.log_warn,
-                    "ego remote cleanup failed: " +
-                        (cleanup_error.empty() ? std::string("unknown error") : cleanup_error));
-        }
-        if (dependencies_.flush_episode_artifacts != nullptr)
-        {
-            dependencies_.flush_episode_artifacts(state_.current_episode_dir, "ego_cleanup");
-        }
-    }
-    CallPerfLog(dependencies_,
-            "[PERF] writing phase end: episode_dir=" + state_.current_episode_dir +
-                " elapsed_ms=" +
-                std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : write_phase_start_ms) -
-                               write_phase_start_ms));
-
-    std::string episode_validation_error;
     std::string final_error_message = due_to_error ? reason : std::string();
-    if (!mcap_stop_error.empty())
-    {
-        if (!final_error_message.empty())
-        {
-            final_error_message += "; ";
-        }
-        final_error_message += mcap_stop_error;
-    }
     HardwareFaultSide stereo_control_failure_side = HardwareFaultSide::Unknown;
     if (!stereo_stop_ok)
     {
@@ -1593,14 +1540,6 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
             final_error_message += "; " + stereo_failure;
         }
     }
-    const int64_t validate_phase_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
-    CallPerfLog(dependencies_, "[PERF] validation phase begin: episode_dir=" + state_.current_episode_dir);
-    const bool skip_episode_validation = !stereo_stop_ok;
-    if (skip_episode_validation)
-    {
-        CallLog(dependencies_.log_warn,
-                "skip episode validation because stereo finalize already failed: " + final_error_message);
-    }
     if (dependencies_.write_episode_metadata != nullptr)
     {
         dependencies_.write_episode_metadata(
@@ -1608,6 +1547,67 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
             !due_to_error && stereo_stop_ok,
             final_error_message,
             SelectPrimaryErrorType(error_types));
+    }
+    if (dependencies_.stop_worker != nullptr)
+    {
+        const int64_t mcap_stop_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
+        const bool mcap_stop_ok = dependencies_.stop_worker(
+            WorkerName::EpisodeMcapRecorder,
+            "recording stop",
+            nullptr);
+        if (!mcap_stop_ok)
+        {
+            AddErrorType(&error_types, kErrorTypeFinalizeError);
+            mcap_stop_error = "episode MCAP recorder failed to stop cleanly";
+        }
+        CallPerfLog(dependencies_,
+                "[PERF] stop episode_mcap_recorder done: ok=" + std::string(mcap_stop_ok ? "true" : "false") +
+                    " elapsed_ms=" +
+                    std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : mcap_stop_start_ms) -
+                                   mcap_stop_start_ms));
+    }
+    RemoveEpisodeMcapSocketFiles(EpisodeMcapSocketMarkerPath(state_.current_episode_dir),
+                                 EpisodeMcapRuntimeSocketPath(state_.current_episode_dir));
+    if (dependencies_.flush_episode_artifacts != nullptr)
+    {
+        dependencies_.flush_episode_artifacts(state_.current_episode_dir, "final");
+    }
+    if (ego_stop_ok && dependencies_.cleanup_ego_remote != nullptr)
+    {
+        std::string cleanup_error;
+        if (!dependencies_.cleanup_ego_remote(state_.current_episode_dir, &cleanup_error))
+        {
+            CallLog(dependencies_.log_warn,
+                    "ego remote cleanup failed: " +
+                        (cleanup_error.empty() ? std::string("unknown error") : cleanup_error));
+        }
+        if (dependencies_.flush_episode_artifacts != nullptr)
+        {
+            dependencies_.flush_episode_artifacts(state_.current_episode_dir, "ego_cleanup");
+        }
+    }
+    CallPerfLog(dependencies_,
+            "[PERF] writing phase end: episode_dir=" + state_.current_episode_dir +
+                " elapsed_ms=" +
+                std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : write_phase_start_ms) -
+                               write_phase_start_ms));
+
+    std::string episode_validation_error;
+    if (!mcap_stop_error.empty())
+    {
+        if (!final_error_message.empty())
+        {
+            final_error_message += "; ";
+        }
+        final_error_message += mcap_stop_error;
+    }
+    const int64_t validate_phase_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
+    CallPerfLog(dependencies_, "[PERF] validation phase begin: episode_dir=" + state_.current_episode_dir);
+    const bool skip_episode_validation = !stereo_stop_ok;
+    if (skip_episode_validation)
+    {
+        CallLog(dependencies_.log_warn,
+                "skip episode validation because stereo finalize already failed: " + final_error_message);
     }
     std::vector<std::string> episode_validation_error_types;
     const bool episode_valid =
@@ -1640,14 +1640,6 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
                 " valid=" + std::string(valid ? "true" : "false") + " elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : validate_phase_start_ms) -
                                validate_phase_start_ms));
-    if (!valid && dependencies_.write_episode_metadata != nullptr)
-    {
-        dependencies_.write_episode_metadata(
-            state_.current_episode_dir,
-            false,
-            final_error_message,
-            SelectPrimaryErrorType(error_types));
-    }
     if (!valid)
     {
         CallLog(dependencies_.log_error, "episode validation failed: " + final_error_message);
@@ -1675,14 +1667,6 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
             else if (!finalize_dir_error.empty())
             {
                 final_error_message += "; " + finalize_dir_error;
-            }
-            if (dependencies_.write_episode_metadata != nullptr)
-            {
-                dependencies_.write_episode_metadata(
-                    state_.current_episode_dir,
-                    false,
-                    final_error_message,
-                    SelectPrimaryErrorType(error_types));
             }
             if (dependencies_.write_validation_error_log != nullptr)
             {

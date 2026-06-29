@@ -1,12 +1,14 @@
 # UGripper Episode MCAP Format
 
-UGripper 本机录制现在每条 episode 只生成一个 `episode.mcap`。录制开始时 `UgripperRuntime` 先启动 `EpisodeMcapRecorder`，真实 Unix socket 放在 `/dev/shm/ugripper/` 下；episode 目录内只在录制期间临时写入 `episode_mcap_socket_path.txt` 供其他 recorder 解析 socket 路径，停录或启动失败后清理。
+UGripper 本机录制每条 episode 最终只生成一个必需数据文件：`episode.mcap`。录制期间 `UgripperRuntime` 会临时启动 `EpisodeMcapRecorder`，真实 Unix socket 放在 `/dev/shm/ugripper/` 下；episode 目录内的 socket marker、`calibration.json` 和 `episode.mcap.stats.json` 只服务录制/停录收尾，最终目录不保留。
 
 ## 文件
 
 - 必需文件：`episode.mcap`
-- 元数据文件：`metadata.json`、`calibration.json`
 - 条件文件：`audio_pre.wav`、`audio_post.wav`、`validation_error.log`、可选 `ego/`
+- 不再生成最终文件：`metadata.json`、`calibration.json`
+
+原 `metadata.json` 的完整内容写入 MCAP topic `/metadata`。原 `calibration.json` 的完整内容写入 MCAP topic `/calibration`。
 
 ## 图像 Topics
 
@@ -22,38 +24,70 @@ UGripper 本机录制现在每条 episode 只生成一个 `episode.mcap`。录�
 - `/stereo_left/image_compressed`
 - `/stereo_right/image_compressed`
 
-## 相机标定 Topics
+`header.stamp` 与 MCAP `logTime` 一致，均为 Unix ns 对齐后的时间。
 
-每路相机各自写一条 ROS2 CDR `sensor_msgs/msg/CameraInfo`：
+## 相机 CameraInfo
+
+每路相机各写一条标准 ROS2 CDR `sensor_msgs/msg/CameraInfo`：
 
 - `/<camera>/camera_info`
 
-每路相机各自写一条 JSON 外参 topic：
-
-- `/<camera>/calibration/extrinsics`
-
 `<camera>` 使用 `cam_left`、`cam_right`、`cam_chest`、`tcam_left_l`、`tcam_left_r`、`tcam_right_l`、`tcam_right_r`、`stereo_left`、`stereo_right`。
+
+`CameraInfo` 字段来源：
+
+- `header.stamp`：该路相机首帧 Unix 对齐时间。
+- `header.frame_id`：相机 topic 名。
+- `height` / `width`：标定中的 `shape` 或运行时配置分辨率。
+- `distortion_model`：标定中的畸变模型字符串，例如 `plumb_bob`、`equidistant` 或设备标定给出的模型名。
+- `d`：畸变参数数组，对应 `distortion_coeffs`。
+- `k`：3x3 内参矩阵，对应 `intrinsics` 中的 `fx/fy/cx/cy`。
+- `r`：3x3 rectification matrix；未提供时写单位矩阵。
+- `p`：3x4 projection matrix；未提供时由内参填充。
+- `binning_x` / `binning_y` / `roi`：当前写默认值。
+
+## Calibration Topic
+
+完整标定写入单条 JSON topic：
+
+- `/calibration`
+
+该 topic 使用 MCAP channel encoding `json`，schema name 为 `ugripper.CalibrationJson`，payload 是原 episode `calibration.json` 的完整 JSON 内容。外参不再拆成 `/<camera>/calibration/extrinsics`；读取外参时应从 `/calibration.observation.images` 下对应相机条目获取，例如 stereo 的 `cam0/cam1/extrinsics`。
+
+## Metadata Topic
+
+完整元数据写入单条 JSON topic：
+
+- `/metadata`
+
+该 topic 使用 MCAP channel encoding `json`，schema name 为 `ugripper.MetadataJson`，payload 是原 episode `metadata.json` 的完整 JSON 内容，包含 `device_sn`、版本、`hardware_list`、`quality_check_status`、`quality_check_err_type`、`collection_duration_s`、`require_files`、`video_details` 等字段。
 
 ## 传感器 Topics
 
 - `/encoder_left`
 - `/encoder_right`
-- `/fays_left/imu`
-- `/fays_right/imu`
+- `/imu_left`
+- `/imu_right`
 
-Fays IMU 使用 ROS2 CDR `sensor_msgs/msg/Imu`。Encoder topic 保持 UGripper binary payload。
+`/imu_left` 与 `/imu_right` 使用标准 ROS2 CDR `sensor_msgs/msg/Imu`。orientation 当前无有效姿态估计，写 `w=1` 且 `orientation_covariance[0] = -1` 标记姿态不可用；angular velocity 与 linear acceleration 使用 Fays IMU 原始数据。
+
+Encoder topic 保持 UGripper binary payload。
 
 ## 时间语义
 
 - 主摄与触觉相机：以本路首个输出帧建立 `PTS -> Unix time` offset，后续帧用该 offset 映射到 Unix 时间戳。
-- Fays stereo 图像：使用 Fays 硬件 timestamp，通过 IMU timestamp 与主机 Unix time 的 offset 对齐到 Unix 时间轴，不走编码 PTS。
+- Fays stereo 图像：Fays 硬件 timestamp 通过 IMU 首帧硬件时间与 Unix time 的 offset 对齐到 Unix 时间轴，不走编码 PTS。
 - Fays IMU：使用同一 Fays 硬件时间对齐后的 Unix 时间轴。
-- MCAP `logTime`、`publishTime` 与 ROS header stamp 均使用上述 Unix ns。
+- Fays 图像和 IMU 的 MCAP `logTime`：Unix 对齐后的时间。
+- Fays 图像和 IMU 的 MCAP `publishTime`：Fays 相机/IMU 独立硬件时间轴原始值。
+- Fays 图像和 IMU 的 ROS `header.stamp`：与 `logTime` 一致，便于 ROS/Foxglove 直接按 Unix 时间播放。
+- 主摄、触觉、encoder：`logTime` 和 `publishTime` 均使用 Unix/system 时间。
 
 ## 校验口径
 
 停录强校验读取 `episode.mcap` channels/topics：
 
-- 所有启用相机的 `image_compressed`、`camera_info`、`calibration/extrinsics` topic 必须存在且非空。
-- `/encoder_left`、`/encoder_right`、`/fays_left/imu`、`/fays_right/imu` 必须存在且非空。
+- `/metadata`、`/calibration` 必须存在且非空。
+- 所有启用相机的 `image_compressed`、`camera_info` topic 必须存在且非空。
+- `/encoder_left`、`/encoder_right`、`/imu_left`、`/imu_right` 必须存在且非空。
 - 所有图像 topic 时间戳必须单调，跨度不能过短，且不能比最长图像 topic 短超过阈值。

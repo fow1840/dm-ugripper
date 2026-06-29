@@ -1216,13 +1216,13 @@ public:
 
         if (useEpisodeMcap_) {
             std::string sendError;
-            const std::string topic = "/fays_" + sideLabel_ + "/imu";
+            const std::string topic = "/imu_" + sideLabel_;
             if (!episodeMcapClient_.Send(
                     ugripper::episode_mcap::FrameKind::FaysImu,
                     topic,
-                    "fays_" + sideLabel_ + "_imu",
+                    "imu_" + sideLabel_,
                     publishTimeNs,
-                    publishTimeNs,
+                    imuData.timestamp,
                     imuSeq_++,
                     0,
                     0,
@@ -1475,13 +1475,17 @@ public:
         return true;
     }
 
-    void Write(const uint8_t* data, size_t size, uint64_t timestampNs = 0) {
+    void Write(const uint8_t* data, size_t size, uint64_t logTimeNs = 0, uint64_t publishTimeNs = 0) {
         if (pipeFd_ < 0 || data == nullptr || size == 0) {
             return;
         }
         if (useEpisodeMcap_) {
             std::lock_guard<std::mutex> lock(timestampMtx_);
-            pendingTimestamps_.push_back(timestampNs != 0 ? timestampNs : NowNs());
+            const uint64_t now = NowNs();
+            pendingTimestamps_.push_back({
+                logTimeNs != 0 ? logTimeNs : now,
+                publishTimeNs != 0 ? publishTimeNs : (logTimeNs != 0 ? logTimeNs : now),
+            });
         }
         const uint8_t* cursor = data;
         size_t remaining = size;
@@ -1568,14 +1572,6 @@ private:
             std::chrono::system_clock::now().time_since_epoch()).count());
     }
 
-    static std::string JsonBytes(const std::string& topicCamera) {
-        std::ostringstream out;
-        out << "{\"camera\":\"" << JsonEscape(topicCamera)
-            << "\",\"calibration_key\":\"" << JsonEscape(topicCamera)
-            << "\",\"extrinsics\":{}}";
-        return out.str();
-    }
-
     void SendStaticMetadata(uint64_t timestampNs) {
         std::string error;
         episodeMcapClient_.Send(
@@ -1589,19 +1585,6 @@ private:
             static_cast<uint32_t>(height_),
             nullptr,
             0,
-            &error);
-        const std::string extrinsics = JsonBytes(topicCamera_);
-        episodeMcapClient_.Send(
-            ugripper::episode_mcap::FrameKind::Json,
-            "/" + topicCamera_ + "/calibration/extrinsics",
-            topicCamera_,
-            timestampNs,
-            timestampNs,
-            0,
-            0,
-            0,
-            extrinsics.data(),
-            extrinsics.size(),
             &error);
     }
 
@@ -1650,14 +1633,24 @@ private:
         seenAud_ = false;
     }
 
-    uint64_t PopTimestamp() {
+    struct FrameTimestamp {
+        uint64_t log_time_ns = 0;
+        uint64_t publish_time_ns = 0;
+    };
+
+    FrameTimestamp PopTimestamp() {
         std::lock_guard<std::mutex> lock(timestampMtx_);
         if (pendingTimestamps_.empty()) {
-            return NowNs();
+            const uint64_t now = NowNs();
+            return {now, now};
         }
-        const uint64_t ts = pendingTimestamps_.front();
+        const FrameTimestamp ts = pendingTimestamps_.front();
         pendingTimestamps_.pop_front();
-        return ts != 0 ? ts : NowNs();
+        if (ts.log_time_ns == 0) {
+            const uint64_t now = NowNs();
+            return {now, ts.publish_time_ns != 0 ? ts.publish_time_ns : now};
+        }
+        return ts;
     }
 
     void DropPendingTimestamp() {
@@ -1670,14 +1663,14 @@ private:
 
     void SendAccessUnit(const uint8_t* data, size_t size) {
         if (!useEpisodeMcap_ || data == nullptr || size == 0) return;
-        const uint64_t timestampNs = PopTimestamp();
+        const FrameTimestamp timestamp = PopTimestamp();
         std::string error;
         if (!episodeMcapClient_.Send(
                 ugripper::episode_mcap::FrameKind::CompressedImageH264,
                 "/" + topicCamera_ + "/image_compressed",
                 topicCamera_,
-                timestampNs,
-                timestampNs,
+                timestamp.log_time_ns,
+                timestamp.publish_time_ns != 0 ? timestamp.publish_time_ns : timestamp.log_time_ns,
                 videoSeq_++,
                 static_cast<uint32_t>(width_),
                 static_cast<uint32_t>(height_),
@@ -1714,7 +1707,7 @@ private:
     ugripper::episode_mcap::EpisodeMcapClient episodeMcapClient_;
     std::thread stdoutThread_;
     std::mutex timestampMtx_;
-    std::deque<uint64_t> pendingTimestamps_;
+    std::deque<FrameTimestamp> pendingTimestamps_;
     std::vector<uint8_t> h264Buffer_;
     bool seenAud_ = false;
     uint32_t videoSeq_ = 0;
@@ -2470,9 +2463,9 @@ private:
                         cv::Mat gray(vf.height, vf.width, CV_8UC1, vf.bytes.data());
                         cv::Mat bgr(vf.height, vf.width, CV_8UC3, bgrBuffer.data());
                         cv::cvtColor(gray, bgr, cv::COLOR_GRAY2BGR);
-                        mRecorder_.Write(bgrBuffer.data(), bgrBuffer.size(), vf.publishTimeNs);
+                        mRecorder_.Write(bgrBuffer.data(), bgrBuffer.size(), vf.publishTimeNs, vf.faysTsNs);
                     } else {
-                        mRecorder_.Write(vf.bytes.data(), vf.bytes.size(), vf.publishTimeNs);
+                        mRecorder_.Write(vf.bytes.data(), vf.bytes.size(), vf.publishTimeNs, vf.faysTsNs);
                     }
 
                     CamTsQueuedSample camSample{};

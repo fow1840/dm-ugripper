@@ -488,22 +488,6 @@ std::vector<uint8_t> BuildCameraInfoCdrPayload(const fs::path& output_dir,
         p));
 }
 
-std::vector<uint8_t> BuildExtrinsicsJsonPayload(const fs::path& output_dir,
-                                                const std::string& topic_camera) {
-    json payload = json::object();
-    payload["camera"] = topic_camera;
-    payload["calibration_key"] = CalibrationImageKeyForTopicCamera(topic_camera);
-    payload["extrinsics"] = json::object();
-    if (const auto calibration = LoadEpisodeCalibration(output_dir); calibration.has_value()) {
-        if (const json* camera = CameraCalibrationEntry(*calibration, topic_camera); camera != nullptr &&
-            camera->contains("extrinsics") && (*camera)["extrinsics"].is_object()) {
-            payload["extrinsics"] = (*camera)["extrinsics"];
-        }
-    }
-    const std::string text = payload.dump();
-    return std::vector<uint8_t>(text.begin(), text.end());
-}
-
 bool SendCameraStaticMcapMetadata(ugripper::episode_mcap::EpisodeMcapClient* client,
                                   const fs::path& output_dir,
                                   const std::string& topic_camera,
@@ -518,29 +502,15 @@ bool SendCameraStaticMcapMetadata(ugripper::episode_mcap::EpisodeMcapClient* cli
     }
     const std::vector<uint8_t> camera_info =
         BuildCameraInfoCdrPayload(output_dir, topic_camera, config, timestamp_ns);
-    if (!client->Send(ugripper::episode_mcap::FrameKind::CameraInfo,
-                      "/" + topic_camera + "/camera_info",
-                      topic_camera,
-                      timestamp_ns,
-                      timestamp_ns,
-                      0,
-                      static_cast<uint32_t>(config.width),
-                      static_cast<uint32_t>(config.height),
-                      camera_info,
-                      error_message)) {
-        return false;
-    }
-
-    const std::vector<uint8_t> extrinsics = BuildExtrinsicsJsonPayload(output_dir, topic_camera);
-    return client->Send(ugripper::episode_mcap::FrameKind::Json,
-                        "/" + topic_camera + "/calibration/extrinsics",
+    return client->Send(ugripper::episode_mcap::FrameKind::CameraInfo,
+                        "/" + topic_camera + "/camera_info",
                         topic_camera,
                         timestamp_ns,
                         timestamp_ns,
                         0,
-                        0,
-                        0,
-                        extrinsics,
+                        static_cast<uint32_t>(config.width),
+                        static_cast<uint32_t>(config.height),
+                        camera_info,
                         error_message);
 }
 

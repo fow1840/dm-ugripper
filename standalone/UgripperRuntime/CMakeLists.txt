@@ -119,6 +119,7 @@ set_target_properties(${APP_NAME} PROPERTIES
 target_include_directories(${APP_NAME}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../EpisodeMcap/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../CameraRecorder/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../GripperHmiTool/include
 )
@@ -126,6 +127,7 @@ target_link_libraries(${APP_NAME}
     PRIVATE
         runtime_control_plane
         runtime_process_boundary
+        episode_mcap_support
         ugripperruntime_mcap
         ugripperruntime_support_utils
         gripper_hmi

@@ -163,8 +163,12 @@ std::vector<std::byte> EncodeImu(uint64_t stamp_ns,
                                  double az) {
     CdrWriter writer;
     writer.Header(stamp_ns, frame_id);
-    for (int i = 0; i < 4; ++i) writer.F64(0.0);
-    for (int i = 0; i < 9; ++i) writer.F64(0.0);
+    writer.F64(0.0);
+    writer.F64(0.0);
+    writer.F64(0.0);
+    writer.F64(1.0);
+    writer.F64(-1.0);
+    for (int i = 1; i < 9; ++i) writer.F64(0.0);
     writer.F64(gx);
     writer.F64(gy);
     writer.F64(gz);

@@ -1,5 +1,6 @@
 #include "record_runtime.h"
 #include "main_camera_calibration_data.h"
+#include "episode_mcap/episode_mcap_client.h"
 #include "utils/logger.h"
 #include "record_runtime/gripper_refresh_logic.h"
 #include "utils/env_utils.h"
@@ -59,8 +60,9 @@ constexpr uint64_t kPostUmountAudioDelayMs = 2000;
 constexpr uint64_t kAudioPlayerRestartIntervalMs = 2000;
 constexpr uint64_t kAudioPlayerReadyGraceMs = 3000;
 constexpr uint64_t kStereoDaemonRestartIntervalMs = 2000;
-constexpr uint64_t kStereoDaemonBootDelayMs = 60000;
+constexpr uint64_t kStereoDaemonBootDelayMs = 0;
 constexpr uint64_t kStereoDaemonStartupGraceMs = kStereoDaemonBootDelayMs + 5000;
+constexpr uint64_t kStereoDaemonPostStartHealthGraceMs = 90000;
 constexpr uint64_t kStereoFinalizeWaitPollMs = 100;
 constexpr uint64_t kRecordControlDebounceMs = 300;
 constexpr uint64_t kRestoreUsbSymlinkPollIntervalMs = 1000;
@@ -119,6 +121,8 @@ constexpr int kTactileSnapshotTimeoutMs = 2500;
 constexpr const char *kEpisodeTimingFileName = ".recording_timing.json";
 constexpr const char *kEpisodeTimingShmPrefix = "ugripper_recording_timing_";
 constexpr const char *kEgoSyncStatusFileName = "ego_sync.json";
+constexpr const char *kEpisodeMcapStatsSuffix = ".stats.json";
+constexpr const char *kEpisodeMcapExportStatsTopic = "/__ugripper/control/export_stats";
 
 #ifndef UGRIPPER_ENABLE_PERF_LOG
 #define UGRIPPER_ENABLE_PERF_LOG 0
@@ -2072,7 +2076,7 @@ bool shouldFlushPathForPhase(const fs::path &episodeDir,
     }
     if (phase == "metadata_final")
     {
-        return fileName == "metadata.json" ||
+        return fileName == "episode.mcap" ||
                fileName == "validation_error.log";
     }
     return true;
@@ -2101,8 +2105,7 @@ void flushEpisodeArtifactsToDisk(const fs::path &episodeDir, bool chestCameraEna
     }
 
     paths.push_back(episodeDir / "episode.mcap");
-    paths.push_back(episodeDir / "metadata.json");
-    paths.push_back(episodeDir / "calibration.json");
+    paths.push_back(episodeDir / "episode.mcap.stats.json");
     paths.push_back(episodeDir / "validation_error.log");
     paths.push_back(episodeDir / kEgoSyncStatusFileName);
 
@@ -3854,6 +3857,7 @@ RecordRuntime::~RecordRuntime()
 
 bool RecordRuntime::initialize()
 {
+    runtimeStartedSteadyMs_ = currentSteadyMs();
     deviceSn_ = readEnvValue(options_.envFile, "DEVICE_SN");
     if (deviceSn_.empty())
     {
@@ -4172,7 +4176,7 @@ bool RecordRuntime::initialize()
                             error_type,
                             &metadataError))
                     {
-                        DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to write metadata.json: "
+                        DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to write MCAP metadata topics: "
                                       << metadataError << std::endl).str());
                         return;
                     }
@@ -4264,9 +4268,11 @@ bool RecordRuntime::initialize()
         const uint64_t remainingDelayMs = kStereoDaemonBootDelayMs - bootUptimeMs;
         stereoDaemonDelayedStartUntilMs_ = currentSteadyMs() + remainingDelayMs;
         DM_LOG_INFO("{}", (::DA::utils::LogString()
-            << "delay stereo daemon startup until boot uptime reaches 60s"
+            << "delay stereo daemon startup until boot uptime reaches "
+            << (kStereoDaemonBootDelayMs / 1000) << "s"
             << " uptime_ms=" << bootUptimeMs
             << " remaining_ms=" << remainingDelayMs
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
             << std::endl).str());
     }
     else
@@ -4275,6 +4281,7 @@ bool RecordRuntime::initialize()
         DM_LOG_INFO("{}", (::DA::utils::LogString()
             << "boot delay elapsed; stereo daemon can start immediately"
             << " uptime_ms=" << bootUptimeMs
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
             << std::endl).str());
     }
     initializeRecordControlPipe();
@@ -4305,16 +4312,22 @@ int RecordRuntime::run()
         maintainTactileCameraRuntimeStates();
         maintainAudioPlayer();
         maintainStereoDaemon();
+        maintainStereoDaemonHealthGrace();
         const bool storageReady = maintainDataStorage();
         maintainBackgroundTactileValidation();
         const bool stereoBootDelayActive = isStereoDaemonDelayedStartActive();
-        if (!stereoBootDelayActive)
+        const bool stereoStartupGateActive = stereoBootDelayActive || isStereoDaemonHealthGraceActive();
+        if (!stereoStartupGateActive)
         {
             maintainRestoreUsbDevicePresence();
             maintainRestoreUsbRetry();
             maintainRestoreUsbFailureAlarm();
         }
-        if (storageReady && !stereoBootDelayActive)
+        else if (storageReady && !isRecordingActive())
+        {
+            setLedState(LedState::Init);
+        }
+        if (storageReady && !stereoStartupGateActive)
         {
             monitorHardwareHealth();
         }
@@ -4407,20 +4420,31 @@ bool RecordRuntime::startStereoDaemon()
 {
     stereoDaemonDelayedStartUntilMs_ = 0;
     std::string errorMessage;
+    DM_LOG_INFO("{}", (::DA::utils::LogString()
+        << "stereo daemon start requested"
+        << " runtime_elapsed_ms=" << runtimeElapsedMs()
+        << " uptime_ms=" << bootUptimeMsForLog()
+        << std::endl).str());
     const bool started = stereoSessionClient_ != nullptr && stereoSessionClient_->StartDaemon(&errorMessage);
     if (!started)
     {
         DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to start stereo daemon"
                              << (errorMessage.empty() ? "" : (": " + errorMessage))
+                             << " runtime_elapsed_ms=" << runtimeElapsedMs()
+                             << " uptime_ms=" << bootUptimeMsForLog()
                              << std::endl).str());
     }
-    else if (!isRecordingActive())
+    else
     {
-        applyIdleState();
-        if (episodeManagerInitialized_ && !tactileWarningActive_)
+        observeStereoDaemonStart("explicit_start");
+        if (!isRecordingActive())
         {
-            setAudioRecoveryCommand("ready");
-            sendAudioCommand("ready");
+            applyIdleState();
+            if (episodeManagerInitialized_ && !tactileWarningActive_ && !isStereoDaemonHealthGraceActive())
+            {
+                setAudioRecoveryCommand("ready");
+                sendAudioCommand("ready");
+            }
         }
     }
     return started;
@@ -4448,10 +4472,15 @@ void RecordRuntime::maintainStereoDaemon()
     if (stereoDaemonDelayedStartUntilMs_ != 0)
     {
         stereoDaemonDelayedStartUntilMs_ = 0;
+        DM_LOG_INFO("{}", (::DA::utils::LogString()
+            << "stereo daemon boot delay elapsed"
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
+            << " uptime_ms=" << bootUptimeMsForLog()
+            << std::endl).str());
         if (!isRecordingActive())
         {
             applyIdleState();
-            if (episodeManagerInitialized_ && !tactileWarningActive_)
+            if (episodeManagerInitialized_ && !tactileWarningActive_ && !isStereoDaemonHealthGraceActive())
             {
                 setAudioRecoveryCommand("ready");
                 sendAudioCommand("ready");
@@ -4461,6 +4490,7 @@ void RecordRuntime::maintainStereoDaemon()
     if (stereoSessionClient_ != nullptr)
     {
         stereoSessionClient_->MaintainDaemon();
+        observeStereoDaemonStart("maintain");
     }
 }
 
@@ -4470,6 +4500,114 @@ bool RecordRuntime::isStereoDaemonDelayedStartActive() const
            currentSteadyMs() < stereoDaemonDelayedStartUntilMs_;
 }
 
+bool RecordRuntime::isStereoDaemonHealthGraceActive() const
+{
+    return stereoDaemonHealthGraceUntilMs_ != 0 &&
+           currentSteadyMs() < stereoDaemonHealthGraceUntilMs_;
+}
+
+bool RecordRuntime::isStereoDaemonStatusReady() const
+{
+    std::ifstream input(options_.stereoStatusFile);
+    if (!input.is_open())
+    {
+        return false;
+    }
+    try
+    {
+        const json status = json::parse(input);
+        return status.value("ready", false);
+    }
+    catch (const std::exception&)
+    {
+        return false;
+    }
+}
+
+uint64_t RecordRuntime::runtimeElapsedMs() const
+{
+    if (runtimeStartedSteadyMs_ == 0)
+    {
+        return 0;
+    }
+    const uint64_t nowMs = currentSteadyMs();
+    return nowMs >= runtimeStartedSteadyMs_ ? nowMs - runtimeStartedSteadyMs_ : 0;
+}
+
+uint64_t RecordRuntime::bootUptimeMsForLog() const
+{
+    return readSystemUptimeMs().value_or(0);
+}
+
+void RecordRuntime::observeStereoDaemonStart(const char *reason)
+{
+    if (stereoSessionClient_ == nullptr || !stereoSessionClient_->daemon_started())
+    {
+        return;
+    }
+    const uint64_t startAttemptMs = stereoSessionClient_->last_start_attempt_ms();
+    if (startAttemptMs == 0 || startAttemptMs == lastObservedStereoDaemonStartMs_)
+    {
+        return;
+    }
+    lastObservedStereoDaemonStartMs_ = startAttemptMs;
+    stereoDaemonHealthGraceUntilMs_ = currentSteadyMs() + kStereoDaemonPostStartHealthGraceMs;
+    healthState_ = {};
+    DM_LOG_INFO("{}", (::DA::utils::LogString()
+        << "stereo daemon running; defer health/restore until warmup settles"
+        << " reason=" << (reason != nullptr ? reason : "unknown")
+        << " grace_ms=" << kStereoDaemonPostStartHealthGraceMs
+        << " runtime_elapsed_ms=" << runtimeElapsedMs()
+        << " uptime_ms=" << bootUptimeMsForLog()
+        << std::endl).str());
+}
+
+void RecordRuntime::maintainStereoDaemonHealthGrace()
+{
+    if (stereoDaemonHealthGraceUntilMs_ == 0)
+    {
+        return;
+    }
+
+    const uint64_t nowMs = currentSteadyMs();
+    if (isStereoDaemonStatusReady())
+    {
+        const uint64_t remainingMs = nowMs < stereoDaemonHealthGraceUntilMs_
+                                         ? stereoDaemonHealthGraceUntilMs_ - nowMs
+                                         : 0;
+        stereoDaemonHealthGraceUntilMs_ = 0;
+        healthState_ = {};
+        DM_LOG_INFO("{}", (::DA::utils::LogString()
+            << "stereo daemon status ready; end startup health grace"
+            << " remaining_ms=" << remainingMs
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
+            << " uptime_ms=" << bootUptimeMsForLog()
+            << std::endl).str());
+        if (!isRecordingActive())
+        {
+            applyIdleState();
+            if (episodeManagerInitialized_ && !tactileWarningActive_)
+            {
+                setAudioRecoveryCommand("ready");
+                sendAudioCommand("ready");
+            }
+        }
+        return;
+    }
+
+    if (nowMs >= stereoDaemonHealthGraceUntilMs_)
+    {
+        stereoDaemonHealthGraceUntilMs_ = 0;
+        healthState_ = {};
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << "stereo daemon startup health grace expired; resume health/restore checks"
+            << " grace_ms=" << kStereoDaemonPostStartHealthGraceMs
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
+            << " uptime_ms=" << bootUptimeMsForLog()
+            << std::endl).str());
+    }
+}
+
 void RecordRuntime::suspendStereoDaemonForRestoreUsb(const std::string &reason)
 {
     if (restoreUsbStereoDaemonStopped_)
@@ -4477,6 +4615,8 @@ void RecordRuntime::suspendStereoDaemonForRestoreUsb(const std::string &reason)
         DM_LOG_INFO("{}", (::DA::utils::LogString()
             << "stereo daemon already suspended for restore usb"
             << " reason=" << reason
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
+            << " uptime_ms=" << bootUptimeMsForLog()
             << std::endl).str());
         return;
     }
@@ -4485,6 +4625,8 @@ void RecordRuntime::suspendStereoDaemonForRestoreUsb(const std::string &reason)
     DM_LOG_WARN("{}", (::DA::utils::LogString()
         << "suspend stereo daemon before restore usb"
         << " reason=" << reason
+        << " runtime_elapsed_ms=" << runtimeElapsedMs()
+        << " uptime_ms=" << bootUptimeMsForLog()
         << std::endl).str());
     stopStereoDaemon();
 }
@@ -4500,6 +4642,8 @@ void RecordRuntime::resumeStereoDaemonAfterRestoreUsb(const std::string &reason)
     DM_LOG_WARN("{}", (::DA::utils::LogString()
         << "resume stereo daemon after restore usb"
         << " reason=" << reason
+        << " runtime_elapsed_ms=" << runtimeElapsedMs()
+        << " uptime_ms=" << bootUptimeMsForLog()
         << std::endl).str());
     startStereoDaemon();
 }
@@ -5268,7 +5412,7 @@ bool RecordRuntime::ensureEpisodeManagerInitialized()
     if (!isRecordingActive())
     {
         applyIdleState();
-        if (!tactileWarningActive_ && !isStereoDaemonDelayedStartActive())
+        if (!tactileWarningActive_ && !isStereoDaemonDelayedStartActive() && !isStereoDaemonHealthGraceActive())
         {
             setAudioRecoveryCommand("ready");
             sendAudioCommand("ready");
@@ -5930,6 +6074,11 @@ void RecordRuntime::applyIdleState()
         setLedState(LedState::WaitStorage);
         return;
     }
+    if (isStereoDaemonHealthGraceActive())
+    {
+        setLedState(LedState::Init);
+        return;
+    }
     if (tactileWarningActive_)
     {
         setTactileWarningLedState();
@@ -6498,6 +6647,8 @@ void RecordRuntime::logRestoreUsbRequested(const RestoreUsbTriggerContext &conte
         << " cause=" << context.cause
         << " evidence=" << context.evidence
         << " side=" << context.side
+        << " runtime_elapsed_ms=" << runtimeElapsedMs()
+        << " uptime_ms=" << bootUptimeMsForLog()
         << std::endl).str());
 }
 
@@ -6518,6 +6669,8 @@ bool RecordRuntime::confirmRestoreUsbTrigger(const RestoreUsbTriggerContext &con
                 << " evidence=" << restoreUsbPendingTriggerEvidence_
                 << " side=" << restoreUsbPendingTriggerSide_
                 << " age_ms=" << ageMs
+                << " runtime_elapsed_ms=" << runtimeElapsedMs()
+                << " uptime_ms=" << bootUptimeMsForLog()
                 << std::endl).str());
         }
         restoreUsbPendingTriggerKey_ = key;
@@ -6533,6 +6686,8 @@ bool RecordRuntime::confirmRestoreUsbTrigger(const RestoreUsbTriggerContext &con
             << " evidence=" << context.evidence
             << " side=" << context.side
             << " stable_ms=" << kRestoreUsbTriggerStableMs
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
+            << " uptime_ms=" << bootUptimeMsForLog()
             << std::endl).str());
         return false;
     }
@@ -6581,6 +6736,8 @@ void RecordRuntime::maintainRestoreUsbRetry()
             << " attempt="
             << restoreUsbAttemptsInCurrentError_
             << " elapsed_ms=" << elapsedMs
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
+            << " uptime_ms=" << bootUptimeMsForLog()
             << std::endl).str());
         resetRestoreUsbErrorWindow();
         return;
@@ -6612,6 +6769,8 @@ void RecordRuntime::maintainRestoreUsbRetry()
                         << " attempt=" << restoreUsbAttemptsInCurrentError_
                         << " elapsed_ms=" << elapsedMs
                         << " evidence=" << missingDetail
+                        << " runtime_elapsed_ms=" << runtimeElapsedMs()
+                        << " uptime_ms=" << bootUptimeMsForLog()
                         << std::endl).str());
                 }
                 return;
@@ -6621,6 +6780,8 @@ void RecordRuntime::maintainRestoreUsbRetry()
                 << " attempt=" << restoreUsbAttemptsInCurrentError_
                 << " elapsed_ms=" << elapsedMs
                 << " evidence=" << missingDetail
+                << " runtime_elapsed_ms=" << runtimeElapsedMs()
+                << " uptime_ms=" << bootUptimeMsForLog()
                 << std::endl).str());
             restoreUsbPendingRetryCheck_ = false;
             if (restoreUsbAttemptsInCurrentError_ >= kRestoreUsbMaxAttemptsPerError)
@@ -6643,6 +6804,8 @@ void RecordRuntime::maintainRestoreUsbRetry()
             << " attempt="
             << restoreUsbAttemptsInCurrentError_
             << " elapsed_ms=" << elapsedMs
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
+            << " uptime_ms=" << bootUptimeMsForLog()
             << std::endl).str());
     }
 
@@ -6663,6 +6826,8 @@ void RecordRuntime::maintainRestoreUsbRetry()
             << attempt
             << " elapsed_ms=" << elapsedMs
             << " ready_elapsed_ms=" << readyElapsedMs
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
+            << " uptime_ms=" << bootUptimeMsForLog()
             << std::endl).str());
         resetRestoreUsbErrorWindow();
         return;
@@ -6673,6 +6838,8 @@ void RecordRuntime::maintainRestoreUsbRetry()
         << " attempt=" << restoreUsbAttemptsInCurrentError_
         << " elapsed_ms=" << elapsedMs
         << " ready_elapsed_ms=" << readyElapsedMs
+        << " runtime_elapsed_ms=" << runtimeElapsedMs()
+        << " uptime_ms=" << bootUptimeMsForLog()
         << std::endl).str());
     if (restoreUsbAttemptsInCurrentError_ >= kRestoreUsbMaxAttemptsPerError)
     {
@@ -6740,6 +6907,8 @@ void RecordRuntime::triggerRestoreUsbOnError(const std::string &reason, bool che
             << " cooldown_ms=" << kRestoreUsbPreflightFailureCooldownMs
             << " attempts=" << restoreUsbAttemptsInCurrentError_
             << " reason=" << reason
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
+            << " uptime_ms=" << bootUptimeMsForLog()
             << std::endl).str());
         return;
     }
@@ -6767,24 +6936,39 @@ void RecordRuntime::triggerRestoreUsbOnError(const std::string &reason, bool che
     const auto inProgress = restoreUsbInProgress_;
     const auto lastFinishMs = restoreUsbLastFinishMs_;
     const int attempt = restoreUsbAttemptsInCurrentError_;
-    std::thread([command, inProgress, lastFinishMs, attempt]() {
+    const uint64_t runtimeElapsedAtStartMs = runtimeElapsedMs();
+    const uint64_t uptimeAtStartMs = bootUptimeMsForLog();
+    DM_LOG_WARN("{}", (::DA::utils::LogString()
+        << "restore usb start scheduled"
+        << " attempt=" << attempt
+        << " reason=" << reason
+        << " runtime_elapsed_ms=" << runtimeElapsedAtStartMs
+        << " uptime_ms=" << uptimeAtStartMs
+        << std::endl).str());
+    std::thread([command, inProgress, lastFinishMs, attempt, runtimeElapsedAtStartMs, uptimeAtStartMs]() {
         DM_LOG_WARN("{}", (::DA::utils::LogString()
             << "restore usb start"
             << " attempt=" << attempt
+            << " runtime_elapsed_ms=" << runtimeElapsedAtStartMs
+            << " uptime_ms=" << uptimeAtStartMs
             << std::endl).str());
 
+        const uint64_t commandStartMs = RecordRuntime::currentSteadyMs();
         const int rc = std::system(command.c_str());
+        const uint64_t commandElapsedMs = RecordRuntime::currentSteadyMs() - commandStartMs;
         if (rc == -1)
         {
             DM_LOG_ERROR("{}", (::DA::utils::LogString()
                 << "restore usb command failed to start"
                 << " command=" << command
+                << " elapsed_ms=" << commandElapsedMs
                 << std::endl).str());
         }
         else if (WIFEXITED(rc) && WEXITSTATUS(rc) == 0)
         {
             DM_LOG_INFO("{}", (::DA::utils::LogString()
                 << "restore usb command completed"
+                << " elapsed_ms=" << commandElapsedMs
                 << std::endl).str());
         }
         else
@@ -6793,6 +6977,7 @@ void RecordRuntime::triggerRestoreUsbOnError(const std::string &reason, bool che
                 << "restore usb command failed"
                 << " command=" << command
                 << " status=" << rc
+                << " elapsed_ms=" << commandElapsedMs
                 << std::endl).str());
         }
         lastFinishMs->store(RecordRuntime::currentSteadyMs());
@@ -6871,6 +7056,18 @@ bool RecordRuntime::startRecording(bool resetRecording)
         {
             setLedState(LedState::WaitStorage);
         }
+        return false;
+    }
+    if (isStereoDaemonDelayedStartActive() || isStereoDaemonHealthGraceActive())
+    {
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << "ignore start recording while stereo daemon is still starting"
+            << " boot_delay_active=" << boolText(isStereoDaemonDelayedStartActive())
+            << " health_grace_active=" << boolText(isStereoDaemonHealthGraceActive())
+            << " runtime_elapsed_ms=" << runtimeElapsedMs()
+            << " uptime_ms=" << bootUptimeMsForLog()
+            << std::endl).str());
+        setLedState(LedState::Init);
         return false;
     }
     cancelBackgroundTactileValidation();
@@ -9183,6 +9380,8 @@ std::vector<std::string> episodeImageTopics(bool chestCameraEnabled)
 std::vector<std::string> episodeRequiredTopics(bool chestCameraEnabled)
 {
     std::vector<std::string> topics = episodeImageTopics(chestCameraEnabled);
+    topics.push_back("/metadata");
+    topics.push_back("/calibration");
     const std::vector<std::string> cameraInfoTopics = {
         "/cam_left/camera_info",
         "/cam_right/camera_info",
@@ -9198,26 +9397,47 @@ std::vector<std::string> episodeRequiredTopics(bool chestCameraEnabled)
     {
         topics.push_back("/cam_chest/camera_info");
     }
-    const std::vector<std::string> extrinsicsTopics = {
-        "/cam_left/calibration/extrinsics",
-        "/cam_right/calibration/extrinsics",
-        "/tcam_left_l/calibration/extrinsics",
-        "/tcam_left_r/calibration/extrinsics",
-        "/tcam_right_l/calibration/extrinsics",
-        "/tcam_right_r/calibration/extrinsics",
-        "/stereo_left/calibration/extrinsics",
-        "/stereo_right/calibration/extrinsics",
-    };
-    topics.insert(topics.end(), extrinsicsTopics.begin(), extrinsicsTopics.end());
-    if (chestCameraEnabled)
-    {
-        topics.push_back("/cam_chest/calibration/extrinsics");
-    }
     topics.push_back("/encoder_left");
     topics.push_back("/encoder_right");
-    topics.push_back("/fays_left/imu");
-    topics.push_back("/fays_right/imu");
+    topics.push_back("/imu_left");
+    topics.push_back("/imu_right");
     return topics;
+}
+
+bool loadEpisodeMcapTopicStatsSidecar(const fs::path &statsPath,
+                                      const std::vector<std::string> &topics,
+                                      std::map<std::string, EpisodeMcapTopicStats> *stats,
+                                      std::string *errorMessage)
+{
+    json root = json::object();
+    if (!loadJsonFile(statsPath.string(), &root, errorMessage))
+    {
+        return false;
+    }
+    if (!root.is_object() || !root.contains("topics") || !root["topics"].is_object())
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "episode MCAP stats sidecar has invalid format: " + statsPath.string();
+        }
+        return false;
+    }
+
+    for (const auto &topic : topics)
+    {
+        const auto it = root["topics"].find(topic);
+        if (it == root["topics"].end() || !it->is_object())
+        {
+            continue;
+        }
+        EpisodeMcapTopicStats entry;
+        entry.count = it->value("count", 0ULL);
+        entry.firstLogTimeNs = it->value("first_log_time_ns", 0ULL);
+        entry.lastLogTimeNs = it->value("last_log_time_ns", 0ULL);
+        entry.timestampRegressions = it->value("timestamp_regressions", 0ULL);
+        (*stats)[topic] = entry;
+    }
+    return true;
 }
 
 bool loadEpisodeMcapTopicStats(const fs::path &mcapPath,
@@ -9261,6 +9481,12 @@ bool loadEpisodeMcapTopicStats(const fs::path &mcapPath,
         });
     if (!summaryStatus.ok())
     {
+        const fs::path statsPath(mcapPath.string() + kEpisodeMcapStatsSuffix);
+        if (fs::exists(statsPath) &&
+            loadEpisodeMcapTopicStatsSidecar(statsPath, topics, stats, nullptr))
+        {
+            return true;
+        }
         if (errorMessage != nullptr)
         {
             *errorMessage = "failed to read episode.mcap summary: " + summaryStatus.message;
@@ -9398,6 +9624,141 @@ std::string jsonStringPath(const json &root, const std::string &path)
     }
     return "";
 }
+
+bool readTextFile(const fs::path &path, std::string *content, std::string *errorMessage)
+{
+    if (content == nullptr)
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "internal error: missing text output";
+        }
+        return false;
+    }
+    std::ifstream input(path);
+    if (!input.is_open())
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "cannot open text file: " + path.string();
+        }
+        return false;
+    }
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    *content = buffer.str();
+    return true;
+}
+
+uint64_t systemTimeNowNs()
+{
+    return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count());
+}
+
+bool sendEpisodeMcapJsonTopic(const fs::path &episodePath,
+                              const std::string &topic,
+                              const std::string &payload,
+                              uint32_t sequence,
+                              std::string *errorMessage)
+{
+    const std::string socketPath =
+        ugripper::episode_mcap::ResolveEpisodeSocketPath(episodePath.string());
+    if (!ugripper::episode_mcap::SocketPathLooksEnabled(socketPath))
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "episode MCAP socket not available: " + socketPath;
+        }
+        return false;
+    }
+
+    ugripper::episode_mcap::EpisodeMcapClient client;
+    if (!client.Connect(socketPath, errorMessage))
+    {
+        return false;
+    }
+    const uint64_t nowNs = systemTimeNowNs();
+    return client.Send(ugripper::episode_mcap::FrameKind::Json,
+                       topic,
+                       "",
+                       nowNs,
+                       nowNs,
+                       sequence,
+                       0,
+                       0,
+                       payload.data(),
+                       payload.size(),
+                       errorMessage);
+}
+
+bool exportEpisodeMcapStats(const fs::path &episodePath, std::string *errorMessage)
+{
+    const fs::path statsPath(episodePath / (std::string("episode.mcap") + kEpisodeMcapStatsSuffix));
+    std::error_code removeError;
+    fs::remove(statsPath, removeError);
+
+    const std::string socketPath =
+        ugripper::episode_mcap::ResolveEpisodeSocketPath(episodePath.string());
+    if (!ugripper::episode_mcap::SocketPathLooksEnabled(socketPath))
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "episode MCAP socket not available: " + socketPath;
+        }
+        return false;
+    }
+
+    ugripper::episode_mcap::EpisodeMcapClient client;
+    if (!client.Connect(socketPath, errorMessage))
+    {
+        return false;
+    }
+    const uint64_t nowNs = systemTimeNowNs();
+    std::string payload = "{}";
+    if (!client.Send(ugripper::episode_mcap::FrameKind::Json,
+                     kEpisodeMcapExportStatsTopic,
+                     "",
+                     nowNs,
+                     nowNs,
+                     0,
+                     0,
+                     0,
+                     payload.data(),
+                     payload.size(),
+                     errorMessage))
+    {
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        std::error_code existsError;
+        if (fs::exists(statsPath, existsError) && !existsError)
+        {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    if (errorMessage != nullptr)
+    {
+        *errorMessage = "episode MCAP stats sidecar was not exported in time: " + statsPath.string();
+    }
+    return false;
+}
+
+void removeEpisodeMcapTemporaryFiles(const fs::path &episodePath)
+{
+    std::error_code removeError;
+    fs::remove(episodePath / "metadata.json", removeError);
+    removeError.clear();
+    fs::remove(episodePath / "calibration.json", removeError);
+    removeError.clear();
+    fs::remove(episodePath / "episode.mcap.stats.json", removeError);
+    removeError.clear();
+    fs::remove(episodePath / "episode.mcap.stats.json.tmp", removeError);
+}
 }
 
 bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episodeDir,
@@ -9407,6 +9768,14 @@ bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episod
                                                        std::string *errorMessage) const
 {
     const fs::path episodePath(episodeDir);
+    std::string statsExportError;
+    if (!exportEpisodeMcapStats(episodePath, &statsExportError))
+    {
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << "failed to export episode MCAP stats before metadata topic: "
+            << statsExportError << std::endl).str());
+    }
+
     json existingMetadata = json::object();
     std::string ignoredError;
     loadJsonFile((episodePath / "metadata.json").string(), &existingMetadata, &ignoredError);
@@ -9541,10 +9910,27 @@ bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episod
     metadata["require_files"] = std::move(requiredFiles);
     metadata["video_details"] = std::move(videoDetails);
 
-    if (!writeTextFileAtomically(episodePath / "metadata.json", metadata.dump(2) + "\n", errorMessage))
+    std::string calibrationText;
+    if (!readTextFile(episodePath / "calibration.json", &calibrationText, errorMessage))
     {
         return false;
     }
+    const std::string metadataText = metadata.dump(2) + "\n";
+
+    if (!sendEpisodeMcapJsonTopic(episodePath, "/calibration", calibrationText, 0, errorMessage))
+    {
+        return false;
+    }
+    if (!sendEpisodeMcapJsonTopic(episodePath, "/metadata", metadataText, 0, errorMessage))
+    {
+        return false;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    std::error_code removeError;
+    fs::remove(episodePath / "metadata.json", removeError);
+    removeError.clear();
+    fs::remove(episodePath / "calibration.json", removeError);
     return true;
 }
 
@@ -9556,6 +9942,7 @@ std::string RecordRuntime::EpisodeManager::finalizeEpisodeDir(const std::string 
     const std::string finalName = stripEpisodeTempSuffix(sourceName);
     if (finalName == sourceName)
     {
+        removeEpisodeMcapTemporaryFiles(sourcePath);
         return episodeDir;
     }
 
@@ -9580,6 +9967,7 @@ std::string RecordRuntime::EpisodeManager::finalizeEpisodeDir(const std::string 
         return {};
     }
 
+    removeEpisodeMcapTemporaryFiles(targetPath);
     std::error_code removeError;
     fs::remove(episodeTimingPath(sourcePath), removeError);
     if (removeError)

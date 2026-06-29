@@ -115,8 +115,10 @@ Recommended image topics in Foxglove Image panels:
   /tcam_right_r/image_compressed
 
 Recommended non-image topics:
-  /fays_left/imu
-  /fays_right/imu
+  /imu_left
+  /imu_right
+  /metadata
+  /calibration
   /encoder_left
   /encoder_right
 EOF

@@ -1455,6 +1455,11 @@ bool StereoSessionClient::daemon_started() const
     return daemon_started_;
 }
 
+uint64_t StereoSessionClient::last_start_attempt_ms() const
+{
+    return last_start_attempt_ms_;
+}
+
 uint64_t StereoSessionClient::command_seq() const
 {
     return command_seq_;

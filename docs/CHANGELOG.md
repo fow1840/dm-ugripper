@@ -6,9 +6,11 @@
 
 ## v2.1.1 - Unreleased
 
-- 本机录制切换为单文件 `episode.mcap`：主摄、触觉、Fays stereo 图像统一写入 H264 `sensor_msgs/msg/CompressedImage` topic；每路相机写独立 ROS `CameraInfo` 和 `/<camera>/calibration/extrinsics` JSON topic；encoder 与 Fays IMU 也写入同一个 MCAP。停录强校验改为检查 MCAP channel/topic，不再以 MKV、拆分 sensor MCAP 或 Fays MCAP 文件作为本机必需产物。
+- 本机录制切换为单文件 `episode.mcap`：主摄、触觉、Fays stereo 图像统一写入 H264 `sensor_msgs/msg/CompressedImage` topic；每路相机写独立 ROS `CameraInfo`；完整 metadata 和 calibration 分别写入 `/metadata`、`/calibration` JSON topic；encoder 与 Fays IMU 也写入同一个 MCAP。Fays IMU topic 改为 `/imu_left`、`/imu_right`，并使用标准 ROS `sensor_msgs/msg/Imu`。停录强校验改为检查 MCAP channel/topic，不再以 MKV、拆分 sensor MCAP、Fays MCAP、`metadata.json` 或 `calibration.json` 作为本机必需产物。
 - 统一 MCAP writer 的 Unix socket 改到 `/dev/shm/ugripper/`，episode 目录只保留录制期临时 socket marker，避免 exfat 数据盘不支持 Unix socket 导致起录失败。
-- Fays stereo daemon 启动改为按系统开机 uptime 控制：仅开机未满约 `60s` 时等待剩余时间并保持 `INIT` 蓝灯闪烁，服务重启时若系统已开机超过 `60s` 则不额外等待；等待窗口内暂停硬件健康监控和 restore USB 触发/重试，避免延迟启动本身造成反复复位。数据盘等待从 `run_record.sh` 下沉到 `record_runtime`，若 daemon 启动后 U 盘仍未插入，则保持 `WAIT_STORAGE` 白灯并继续等待 `/mnt/data_disk` 可写。stereo daemon 健康检查启动宽限同步扩到约 `65s`，降低系统刚开机时 Fays SDK 抢设备或过早报错的概率。
+- Fays stereo daemon 启动改为跟随 `ugripper.service` 立即启动，不再额外等待固定开机 uptime；v3 板端已通过 `After=cftc_users.service` 等待板厂 GPIO 上电和 PCIe USB host reset 完成。数据盘等待从 `run_record.sh` 下沉到 `record_runtime`，若 daemon 启动后 U 盘仍未插入，则保持 `WAIT_STORAGE` 白灯并继续等待 `/mnt/data_disk` 可写。daemon 真正启动后新增最多约 `90s` post-start health grace，等待 stereo status `ready=true` 后提前解除；Fays daemon 默认仅保留每侧 `5s` symlink 稳定确认，不再额外做初始 settle 或单侧 recorder 启动前固定 delay，启动、ready、restore pending/request/start 日志中记录 runtime elapsed 与 boot uptime，降低系统刚开机时 Fays SDK 抢设备或过早报错触发复位的概率。
+- `ugripper.service` 启动顺序补充 `After=cftc_users.service`，在 v3 板端先等待板厂 `user_start.sh` 完成 GPIO 上电和 PCIe USB host unbind/bind，再进入 UGripper runtime，避免 HMI/相机链路在板级 USB 复位前抢先启动。
+- 固定 USB 规则补齐 v3 拓扑：Fays stereo/IMU 支持 USB3 直连 `6-1/8-1/10-1/12-1` 以及 hub 下游口，主摄补齐 `.7`，tactile 补齐 `.5`，CH9344 helper 支持 `.4` 子口，避免 v3 设备重装主包后缺少 `/dev/stereo_*`、`*_fays_imu`、左手 HMI/encoder 或部分相机 symlink。
 - 新增错误态夹爪传感器复位入口：`record_runtime` 会在 `ERROR_2`、`ERROR_4` 以及主摄相关 `ERROR_1` 时异步触发 `/usr/local/sbin/ugripper_restore_usb`，`ERROR_3` 磁盘类错误和 `ERROR_5` 运行时兜底错误不触发；触发复位前会先暂停 Fays stereo daemon/recorder，避免 SDK 在 USB 断电重枚举窗口占用双目节点；每次复位完成后会按约 `1s` 周期检查全部关键传感器 symlink，symlink 齐后立即重启 Fays daemon 并开始健康恢复计时，最多等约 `25s` 仍缺 symlink 才重试；symlink 齐后最多继续等约 `25s` 检查健康状态与主摄缓存，仍未恢复则重试；等待窗口内如果健康状态提前恢复，会立即认定本轮复位成功并清除等待窗口，后续再异常按新的故障窗口处理；同一错误窗口连续 `3` 次失败后通过夹爪 HMI 蜂鸣器报警，单次蜂鸣最长 `5s` 后自动关闭。sudoers 允许 `ubuntu` 用户免密执行固定 root wrapper；wrapper 会在存在 `bluetooth_gatt.service` 时先停止以释放通信接口，不存在或停止失败不阻断复位主流程。
 - 自动复位断电前新增数据盘保护：录制中先按错误停录完成 episode 收尾，随后同步运行日志并通过 root system action 卸载 `/mnt/data_disk`；数据盘卸载失败时跳过本次复位且不消耗复位次数，避免 U 盘读写中被 USB 供电复位硬断。
 - 自动复位新增人工插拔保护：某侧夹爪完全未枚举时只保留错误提示，不触发软件复位且不消耗复位次数；检测到该侧任一关键节点或 HMI 重新出现时会重置复位次数，并给该侧 `20s` 插入稳定窗口，窗口内健康检查错误不触发软件复位。
@@ -50,7 +52,7 @@
 - 收口 SXR ego 联动采集：起录前同步 ego 时间，等待本次 temp episode 后再启动本机录制，并将 ego 数据直接落到当前 episode 的 `ego/`。
 - 增强夹爪掉线复现 SOP：支持主机侧一键 SSH 启动连续软件录制测试、本地刷新 `hws` 状态，并在错误后自动抓取现场日志后暂停等待恢复。
 - 加固 ego 停录收尾：修复 MP4/M4A `moov` 与文件变小残留尾部问题，显式 flush 后再安全清理远端 finalized episode。
-- 新增本机软件录制控制 FIFO `/tmp/umi_record_control.pipe`，支持 `START/STOP/SHORT_UP/SHORT_DOWN` 并复用按键停录路径。
+- 新增本机软件录制控制 FIFO `/dev/shm/ugripper/umi_record_control.pipe`，支持 `START/STOP/SHORT_UP/SHORT_DOWN` 并复用按键停录路径。
 - Fays stereo cached calibration 复用增加 SN 校验，避免热插拔或单侧重启后视频与旧标定错配。
 - 修正左手新 hub 触觉 `udev` 映射，并保留旧特殊 hub 兼容规则。
 - 收敛 recording timing 诊断口径，补充 shm 路径、缺失 offset 和 flush/close 失败日志。

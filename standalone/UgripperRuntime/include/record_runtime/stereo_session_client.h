@@ -49,6 +49,7 @@ public:
                          std::string* error_message = nullptr) const;
 
     bool daemon_started() const;
+    uint64_t last_start_attempt_ms() const;
     uint64_t command_seq() const;
 
 private:

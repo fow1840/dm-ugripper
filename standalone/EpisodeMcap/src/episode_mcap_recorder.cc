@@ -9,9 +9,11 @@
 #include <cstring>
 #include <filesystem>
 #include <fcntl.h>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -61,9 +63,37 @@ std::string BytesToString(std::vector<uint8_t>&& data) {
     return std::string(reinterpret_cast<const char*>(data.data()), data.size());
 }
 
+std::string JsonEscape(const std::string& value) {
+    std::ostringstream out;
+    for (const char ch : value) {
+        switch (ch) {
+        case '\\':
+            out << "\\\\";
+            break;
+        case '"':
+            out << "\\\"";
+            break;
+        case '\n':
+            out << "\\n";
+            break;
+        case '\r':
+            out << "\\r";
+            break;
+        case '\t':
+            out << "\\t";
+            break;
+        default:
+            out << ch;
+            break;
+        }
+    }
+    return out.str();
+}
+
 class EpisodeWriter {
 public:
     bool Open(const fs::path& output_file) {
+        output_file_ = output_file;
         mcap::McapWriterOptions options("ugripper-episode-mcap/1.0");
         options.noChunking = false;
         options.chunkSize = 1024 * 1024;
@@ -91,6 +121,11 @@ public:
                const std::string& topic,
                const std::string& frame_id,
                const std::vector<uint8_t>& payload) {
+        if (topic == "/__ugripper/control/export_stats") {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return ExportStatsLocked();
+        }
+
         using ugripper::episode_mcap::FrameKind;
         std::vector<std::byte> data;
         std::string schema_key;
@@ -145,8 +180,16 @@ public:
             }
             break;
         case FrameKind::Json:
-            schema_key = "ugripper/json";
-            schema_name = "ugripper.Json";
+            if (topic == "/metadata") {
+                schema_key = "ugripper/metadata";
+                schema_name = "ugripper.MetadataJson";
+            } else if (topic == "/calibration") {
+                schema_key = "ugripper/calibration";
+                schema_name = "ugripper.CalibrationJson";
+            } else {
+                schema_key = "ugripper/json";
+                schema_name = "ugripper.Json";
+            }
             schema_encoding = "jsonschema";
             channel_encoding = "json";
             data.resize(payload.size());
@@ -185,10 +228,71 @@ public:
                       << ": " << status.message << std::endl;
             return false;
         }
+        UpdateStatsLocked(topic, message.logTime);
         return true;
     }
 
 private:
+    struct TopicStats {
+        uint64_t count = 0;
+        uint64_t first_log_time_ns = 0;
+        uint64_t last_log_time_ns = 0;
+        uint64_t timestamp_regressions = 0;
+    };
+
+    void UpdateStatsLocked(const std::string& topic, uint64_t log_time_ns) {
+        auto& stats = topic_stats_[topic];
+        if (stats.count == 0) {
+            stats.first_log_time_ns = log_time_ns;
+        } else if (log_time_ns < stats.last_log_time_ns) {
+            ++stats.timestamp_regressions;
+        }
+        stats.last_log_time_ns = log_time_ns;
+        ++stats.count;
+    }
+
+    bool ExportStatsLocked() {
+        if (output_file_.empty()) {
+            return false;
+        }
+        const fs::path stats_file(output_file_.string() + ".stats.json");
+        const fs::path tmp_file(stats_file.string() + ".tmp");
+        std::ofstream output(tmp_file, std::ios::trunc);
+        if (!output.is_open()) {
+            std::cerr << "[EpisodeMcapRecorder] failed to open stats sidecar: " << tmp_file << std::endl;
+            return false;
+        }
+        output << "{\n  \"topics\": {\n";
+        bool first = true;
+        for (const auto& [topic, stats] : topic_stats_) {
+            if (!first) {
+                output << ",\n";
+            }
+            first = false;
+            output << "    \"" << JsonEscape(topic) << "\": {"
+                   << "\"count\": " << stats.count
+                   << ", \"first_log_time_ns\": " << stats.first_log_time_ns
+                   << ", \"last_log_time_ns\": " << stats.last_log_time_ns
+                   << ", \"timestamp_regressions\": " << stats.timestamp_regressions
+                   << "}";
+        }
+        output << "\n  }\n}\n";
+        output.flush();
+        if (!output.good()) {
+            std::cerr << "[EpisodeMcapRecorder] failed to write stats sidecar: " << tmp_file << std::endl;
+            return false;
+        }
+        output.close();
+        std::error_code error;
+        fs::rename(tmp_file, stats_file, error);
+        if (error) {
+            std::cerr << "[EpisodeMcapRecorder] failed to publish stats sidecar: "
+                      << stats_file << " error=" << error.message() << std::endl;
+            return false;
+        }
+        return true;
+    }
+
     mcap::ChannelId EnsureChannel(const std::string& topic,
                                   const std::string& schema_key,
                                   const std::string& schema_name,
@@ -215,6 +319,10 @@ private:
                 schema_data = ugripper::episode_mcap::ImuSchema();
             } else if (schema_key == "ugripper/encoder") {
                 schema_data = R"({"title":"UGripperEncoderBinary","description":"little-endian int32 raw + float32 rad"})";
+            } else if (schema_key == "ugripper/metadata") {
+                schema_data = R"({"title":"UGripperEpisodeMetadata","type":"object"})";
+            } else if (schema_key == "ugripper/calibration") {
+                schema_data = R"({"title":"UGripperEpisodeCalibration","type":"object"})";
             }
 
             mcap::Schema schema(schema_name, schema_encoding, schema_data);
@@ -230,10 +338,12 @@ private:
         return channel.id;
     }
 
+    fs::path output_file_;
     mcap::McapWriter writer_;
     std::mutex mutex_;
     std::map<std::string, mcap::SchemaId> schema_ids_;
     std::map<std::string, mcap::ChannelId> channel_ids_;
+    std::map<std::string, TopicStats> topic_stats_;
 };
 
 void ClientThread(int fd, EpisodeWriter* writer) {
