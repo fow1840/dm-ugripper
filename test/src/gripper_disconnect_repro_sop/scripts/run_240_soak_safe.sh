@@ -168,7 +168,7 @@ wait_remote_safe_for_data_ops() {
   while [ "${SECONDS}" -lt "${deadline}" ]; do
     if ssh_cmd "${TARGET}" '
       [ ! -f /tmp/umi_recording.lock ] &&
-      [ -p /tmp/umi_record_control.pipe ] &&
+      [ -p /dev/shm/ugripper/umi_record_control.pipe ] &&
       [ "$(systemctl is-active ugripper.service 2>/dev/null || true)" = active ] &&
       findmnt -rn --mountpoint /mnt/data_disk >/dev/null 2>&1 &&
       findmnt -rn --mountpoint /mnt/data_disk -o OPTIONS 2>/dev/null | grep -qw rw &&

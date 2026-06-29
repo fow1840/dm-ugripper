@@ -497,7 +497,7 @@ TEST(RecordingOrchestratorTest, StartRecordingFaysFifoFailureMapsToError4)
     RecordingHarness harness;
     harness.stereo_start_ok = false;
     harness.stereo_start_error =
-        "right Fays FIFO command failed: open FIFO failed for /tmp/umi_right_fays_cmd: No such file or directory";
+        "right Fays FIFO command failed: open FIFO failed for /dev/shm/ugripper/umi_right_fays_cmd: No such file or directory";
     auto orchestrator = harness.Make();
 
     ASSERT_FALSE(orchestrator.StartRecording(false));
