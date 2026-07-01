@@ -35,6 +35,8 @@ LEFT_PID=""
 RIGHT_PID=""
 LEFT_STARTED_AT=0
 RIGHT_STARTED_AT=0
+LEFT_LAST_UNHEALTHY_REASON=""
+RIGHT_LAST_UNHEALTHY_REASON=""
 LAST_COMMAND_SEQ=0
 ACTIVE_EPISODE_DIR=""
 ACTIVE_START_US=0
@@ -721,6 +723,30 @@ side_in_health_grace() {
     [ "$started_at" -gt 0 ] && [ $((SECONDS - started_at)) -lt "$HEALTH_GRACE_SEC" ]
 }
 
+side_last_unhealthy_reason() {
+    local side="$1"
+    if [ "$side" = "left" ]; then
+        printf '%s\n' "$LEFT_LAST_UNHEALTHY_REASON"
+    else
+        printf '%s\n' "$RIGHT_LAST_UNHEALTHY_REASON"
+    fi
+}
+
+set_side_last_unhealthy_reason() {
+    local side="$1"
+    local reason="$2"
+    if [ "$side" = "left" ]; then
+        LEFT_LAST_UNHEALTHY_REASON="$reason"
+    else
+        RIGHT_LAST_UNHEALTHY_REASON="$reason"
+    fi
+}
+
+clear_side_last_unhealthy_reason() {
+    local side="$1"
+    set_side_last_unhealthy_reason "$side" ""
+}
+
 calibration_serial() {
     local calib_json="$1"
     python3 - "$calib_json" <<'PY'
@@ -1015,11 +1041,20 @@ maintain_side_daemon() {
 
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ -p "$fifo" ] &&
        check_side_working_state "$side" "$config" "$fifo" "$calib_json" "$pid" true; then
+        clear_side_last_unhealthy_reason "$side"
         return 0
     fi
 
     if [ -n "$pid" ] || [ -p "$fifo" ]; then
-        fays_log "$side recorder unhealthy; restarting pid=${pid:-none} recording=$RECORDING finalizing=$FINALIZE_PENDING"
+        local unhealthy_reason
+        unhealthy_reason="$(check_side_working_state_reason "$side" "$config" "$fifo" "$calib_json" "$pid" true)"
+        if [ -z "$unhealthy_reason" ]; then
+            unhealthy_reason="unknown"
+        fi
+        if [ "$(side_last_unhealthy_reason "$side")" != "$unhealthy_reason" ]; then
+            fays_log "$side recorder unhealthy; restarting pid=${pid:-none} recording=$RECORDING finalizing=$FINALIZE_PENDING reason=$unhealthy_reason"
+            set_side_last_unhealthy_reason "$side" "$unhealthy_reason"
+        fi
         mark_session_error "$side Fays recorder unhealthy during session"
         stop_side_daemon "$side" "$fifo" "$pid"
     fi
