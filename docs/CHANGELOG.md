@@ -4,6 +4,12 @@
 >
 > 仓库没有 `v2.0.x` git tag。下面的发布边界按 `build_deb.sh` / `scripts/build_arm_deb_in_pp_arm_dev.sh` 中 `BASE_VERSION` 的提交记录推定：`2caf6e0` 为 v2.0.0，`d81c3c1` 为 v2.0.1。
 
+## v2.1.2 - Unreleased
+
+- 自动复位 symlink 齐全后的 ready 等待窗口从约 `25s` 提到约 `45s`，降低 Fays stereo daemon 重启和主摄缓存刷新接近边界时被误判为复位失败的概率。
+- Fays stereo daemon 不再按单侧 SDK startup complete 串行启动左右 recorder；同轮维护中会直接拉起可用侧 recorder，ready 状态继续由健康检查收敛。
+- 录制中新增 CameraRecorder 主摄 V4L2/USB 故障直达 `ERROR_2`：主摄启动阶段若返回 `VIDIOC_*`、I/O error、设备消失或超时，CameraRecorder 会写入 `/dev/shm` 故障证据，`record_runtime` 立即中断录制并触发现有 USB 复位流程；主摄录制窗口达到约 `5s` 后若仍只有明显短流，也按同一路径处理，`5s` 内快速启停不触发短流判定；CameraRecorder 内核 D 状态兜底阈值同步收敛为 `5s`，用于应用层无法返回错误的 ioctl 卡死场景。
+
 ## v2.1.1 - Unreleased
 
 - 本机录制切换为单文件 `episode.mcap`：主摄、触觉、Fays stereo 图像统一写入 H264 `sensor_msgs/msg/CompressedImage` topic；每路相机写独立 ROS `CameraInfo`；完整 metadata 和 calibration 分别写入 `/metadata`、`/calibration` JSON topic；encoder 与 Fays IMU 也写入同一个 MCAP。Fays IMU topic 改为 `/imu_left`、`/imu_right`，并使用标准 ROS `sensor_msgs/msg/Imu`。停录强校验改为检查 MCAP channel/topic，不再以 MKV、拆分 sensor MCAP、Fays MCAP、`metadata.json` 或 `calibration.json` 作为本机必需产物。
