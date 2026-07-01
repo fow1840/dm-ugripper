@@ -3015,6 +3015,10 @@ public:
         std::lock_guard<std::mutex> lock(timing_mutex_);
         return last_frame_system_time_us_;
     }
+    uint64_t ObservedFrameCount() const override {
+        std::lock_guard<std::mutex> lock(timing_mutex_);
+        return frame_count_;
+    }
 
 private:
     std::string BuildCommand() const {
