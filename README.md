@@ -130,11 +130,12 @@ cd /home/dm/proj/pp-main/standalone/UGripper
 
 默认会在当前容器内自动完成：
 - 设置 `PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig`
-- 编译主包必需目标
+- 增量复用 `build/arm_container_release` 编译主包必需目标
 - 调用 `build_deb.sh -q` 产出 `arm64 deb`
 - 如果脚本以 root 运行，把 `build/`、`temp_build_deb*` 和生成的 `.deb` 所有权回收给仓库目录 owner
 
 脚本默认要求在容器内运行；如确实需要在非容器环境中复用，可显式设置 `ALLOW_HOST_RUN=1`。
+如需丢弃旧 CMake 构建目录并做干净构建，显式传 `--clean`；日常默认增量复用可减少 VS Code 对构建目录大量删除/新建事件的压力。
 
 如果需要手动补齐容器环境，可单独执行：
 
@@ -174,6 +175,7 @@ PACKAGED_BUILD_DIR=build/arm_container_release ./build_deb.sh -q
 
 ```bash
 PARALLEL=12 ./scripts/build_arm_deb_in_pp_arm_dev.sh
+./scripts/build_arm_deb_in_pp_arm_dev.sh --clean
 VERSION_SUFFIX=+merge1 ./scripts/build_arm_deb_in_pp_arm_dev.sh
 HOST_UID=$(id -u) HOST_GID=$(id -g) ./scripts/build_arm_deb_in_pp_arm_dev.sh
 ALLOW_HOST_RUN=1 ./scripts/build_arm_deb_in_pp_arm_dev.sh
@@ -185,6 +187,7 @@ DPKG_DEB_COMPRESSOR=xz DPKG_DEB_LEVEL=3 ./build_deb.sh
 
 变量说明：
 - `PARALLEL`：容器内编译并行度
+- `--clean`：显式清空 `PACKAGED_BUILD_DIR` 后重新配置/编译；默认不清空，优先增量复用
 - `BASE_VERSION` / `VERSION_SUFFIX` / `VERSION`：透传给 `build_deb.sh`，决定最终 `.deb` 文件名；当前默认 `BASE_VERSION=1.2.8` 只是脚本占位值
 - `HOST_UID` / `HOST_GID`：脚本以 root 运行时，出包后回收文件所有权使用的用户 / 组；默认取仓库目录 owner
 - `ALLOW_HOST_RUN`：默认不允许在非容器环境中运行；设为 `1` 后跳过容器环境检查

@@ -60,11 +60,17 @@ fi
 
 list_ugripper_inputs() {
   find . -type f \
+    -not -path './.git' \
     -not -path './.git/*' \
+    -not -path './.vscode/*' \
+    -not -path './.local-deps/*' \
     -not -path './.venv/*' \
     -not -path './build/*' \
     -not -path './temp_build_deb/*' \
+    -not -path './temp_build_deb_aux/*' \
     -not -path './temp_build_usb_updater/*' \
+    -not -path './tmp/*' \
+    -not -path './graphify-out/*' \
     -not -path './docs/*' \
     -not -path './.codex/*' \
     -not -path './ASR/*' \

@@ -656,6 +656,52 @@ check_side_device_paths() {
     return 0
 }
 
+check_side_working_state_reason() {
+    local side="$1"
+    local config="$2"
+    local fifo="$3"
+    local calib_json="$4"
+    local pid="$5"
+    local quiet="${6:-false}"
+
+    if ! check_side_device_paths "$side" "$config" "$fifo" true "$quiet"; then
+        local stereo_path imu_path
+        stereo_path="$(config_value "$config" stereo_dev_port)"
+        imu_path="$(config_value "$config" imu_dev_port)"
+        if [ -z "$stereo_path" ] || [ "$stereo_path" = "NULL" ] || [ ! -e "$stereo_path" ]; then
+            printf 'stereo symlink missing: %s\n' "${stereo_path:-<empty>}"
+        elif [ -z "$imu_path" ] || [ "$imu_path" = "NULL" ] || [ ! -e "$imu_path" ]; then
+            printf 'IMU symlink missing: %s\n' "${imu_path:-<empty>}"
+        else
+            printf 'FIFO missing: %s\n' "$fifo"
+        fi
+        return 1
+    fi
+
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+        printf 'process not running\n'
+        return 1
+    fi
+
+    if calibration_serial "$calib_json" >/dev/null 2>&1; then
+        if runtime_frame_fresh "$side"; then
+            return 0
+        fi
+        if side_in_health_grace "$side"; then
+            return 0
+        fi
+        printf 'warmup frame stale after %ss\n' "$FRAME_STALE_SEC"
+        return 1
+    fi
+
+    if side_in_health_grace "$side"; then
+        return 0
+    fi
+
+    printf 'calibration/serial not ready after %ss: %s\n' "$HEALTH_GRACE_SEC" "$calib_json"
+    return 1
+}
+
 wait_for_side_symlinks_stable() {
     local side="$1"
     local config="$2"

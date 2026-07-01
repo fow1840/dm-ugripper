@@ -4,11 +4,15 @@
 >
 > 仓库没有 `v2.0.x` git tag。下面的发布边界按 `build_deb.sh` / `scripts/build_arm_deb_in_pp_arm_dev.sh` 中 `BASE_VERSION` 的提交记录推定：`2caf6e0` 为 v2.0.0，`d81c3c1` 为 v2.0.1。
 
-## v2.1.2 - Unreleased
+## v2.1.3 - Unreleased
 
+- 最终 MCAP 文件名改为 `<DEVICE_SN>_<YYYYMMDD_HHMMSS>.mcap`，其中 `DEVICE_SN` 来自 `/etc/environment`，时间戳使用起录时刻并精确到秒；最终 episode 目录只保留该 MCAP 与 `metadata.json` 等条件产物，校验与 `require_files` 跟随真实 MCAP 文件名。
+- 最终 episode 恢复保留 `metadata.json`，作为停录后质量结果与视频详情的落盘载体；MCAP 只保留媒体/传感器与起录阶段写入的 `/calibration`，不再由停录后的信息消息拉长总 span。
+- Fays stereo daemon 并行维护补齐单侧 unhealthy reason helper，避免 head-raw-mcap 分支运行时反复输出 `check_side_working_state_reason: command not found` 并导致 recorder 健康维护异常。
 - 自动复位 symlink 齐全后的 ready 等待窗口从约 `25s` 提到约 `45s`，降低 Fays stereo daemon 重启和主摄缓存刷新接近边界时被误判为复位失败的概率。
 - Fays stereo daemon 不再按单侧 SDK startup complete 串行启动左右 recorder；同轮维护中会直接拉起可用侧 recorder，ready 状态继续由健康检查收敛。
 - 录制中新增 CameraRecorder 主摄 V4L2/USB 故障直达 `ERROR_2`：主摄启动阶段若返回 `VIDIOC_*`、I/O error、设备消失或超时，CameraRecorder 会写入 `/dev/shm` 故障证据，`record_runtime` 立即中断录制并触发现有 USB 复位流程；主摄录制窗口达到约 `5s` 后若仍只有明显短流，也按同一路径处理，`5s` 内快速启停不触发短流判定；CameraRecorder 内核 D 状态兜底阈值同步收敛为 `5s`，用于应用层无法返回错误的 ioctl 卡死场景。
+- 构建脚本默认主包版本调整到 `2.1.3`。
 
 ## v2.1.1 - Unreleased
 

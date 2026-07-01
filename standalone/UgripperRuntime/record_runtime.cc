@@ -1406,6 +1406,64 @@ TactileFrameMetrics computeTactileFrameMetrics(const std::vector<uint8_t> &basel
     return metrics;
 }
 
+bool fsyncRegularFileForAtomicWrite(const fs::path &filePath, std::string *errorMessage)
+{
+    const int fd = open(filePath.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0)
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "open file for fsync failed: " + filePath.string() +
+                            " error=" + std::strerror(errno);
+        }
+        return false;
+    }
+    if (::fsync(fd) != 0)
+    {
+        const int savedErrno = errno;
+        close(fd);
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "fsync file failed: " + filePath.string() +
+                            " error=" + std::strerror(savedErrno);
+        }
+        return false;
+    }
+    close(fd);
+    return true;
+}
+
+bool fsyncDirectoryForAtomicWrite(const fs::path &dirPath, std::string *errorMessage)
+{
+    if (dirPath.empty())
+    {
+        return true;
+    }
+    const int fd = open(dirPath.c_str(), O_RDONLY | O_CLOEXEC | O_DIRECTORY);
+    if (fd < 0)
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "open directory for fsync failed: " + dirPath.string() +
+                            " error=" + std::strerror(errno);
+        }
+        return false;
+    }
+    if (::fsync(fd) != 0)
+    {
+        const int savedErrno = errno;
+        close(fd);
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "fsync directory failed: " + dirPath.string() +
+                            " error=" + std::strerror(savedErrno);
+        }
+        return false;
+    }
+    close(fd);
+    return true;
+}
+
 bool writeTextFileAtomically(const fs::path &path, const std::string &content, std::string *errorMessage)
 {
     const fs::path parent = path.parent_path();
@@ -1453,6 +1511,12 @@ bool writeTextFileAtomically(const fs::path &path, const std::string &content, s
         }
     }
 
+    if (!fsyncRegularFileForAtomicWrite(tempPath, errorMessage))
+    {
+        fs::remove(tempPath, error);
+        return false;
+    }
+
     fs::rename(tempPath, path, error);
     if (error)
     {
@@ -1463,6 +1527,9 @@ bool writeTextFileAtomically(const fs::path &path, const std::string &content, s
         fs::remove(tempPath, error);
         return false;
     }
+
+    std::string ignoredSyncError;
+    (void)fsyncDirectoryForAtomicWrite(parent, &ignoredSyncError);
 
     return true;
 }
@@ -2282,6 +2349,7 @@ bool shouldFlushPathForPhase(const fs::path &episodeDir,
     if (phase == "metadata_final")
     {
         return fileName == mcapFileName ||
+               fileName == "metadata.json" ||
                fileName == "validation_error.log";
     }
     return true;
@@ -2312,6 +2380,7 @@ void flushEpisodeArtifactsToDisk(const fs::path &episodeDir, bool chestCameraEna
     const fs::path mcapPath = episodeMcapPathFromManifestOrLegacy(episodeDir);
     paths.push_back(mcapPath);
     paths.push_back(fs::path(mcapPath.string() + kEpisodeMcapStatsSuffix));
+    paths.push_back(episodeDir / "metadata.json");
     paths.push_back(episodeDir / "validation_error.log");
     paths.push_back(episodeDir / kEgoSyncStatusFileName);
 

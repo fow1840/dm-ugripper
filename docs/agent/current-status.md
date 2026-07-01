@@ -169,9 +169,10 @@
 - 当前这条路径的定位是“给日常维护者和 agent 的默认安全路径”
 - 它默认在 `pp-arm-dev` 容器内部执行，并依次完成：
   - 设置 `PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig`
-  - 用本仓 `cmake/arm-linux-toolchain.cmake` 把 5 个主包必需目标编到 `build/arm_container_release`
+  - 用本仓 `cmake/arm-linux-toolchain.cmake` 把 5 个主包必需目标增量编到 `build/arm_container_release`
   - 在容器内调用 `PACKAGED_BUILD_DIR=build/arm_container_release ./build_deb.sh -q`
   - 如果脚本以 root 运行，把 `build/`、`temp_build_deb*` 和生成的 `.deb` 统一 `chown` 回仓库目录 owner
+- 一键脚本默认不再清空 `build/arm_container_release`；如需干净构建，显式传 `--clean`。日常默认增量复用可降低 VS Code 对构建目录大量删除/新建事件的扫描压力。
 - 当前一键脚本会把 `BASE_VERSION` / `VERSION_SUFFIX` / `VERSION` 透传给 `build_deb.sh`，因此最终 `.deb` 文件名与主打包脚本保持同一口径，不再写死版本号
 - 当前一键脚本默认要求在容器环境内运行；若确实要在非容器环境复用，需要显式传 `ALLOW_HOST_RUN=1`
 - 当前这样设计的原因是：

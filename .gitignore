@@ -12,6 +12,7 @@ build/
 *.egg-info/
 *.deb
 /temp_build_deb/
+/temp_build_deb_aux/
 /temp_build_usb_updater/
 # Python 缓存
 __pycache__/

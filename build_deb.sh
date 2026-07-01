@@ -4,7 +4,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ================= 变量定义区域 =================
 APP_NAME="ugripper"
-BASE_VERSION="${BASE_VERSION:-2.1.1}"
+BASE_VERSION="${BASE_VERSION:-2.1.3}"
 VERSION_SUFFIX="${VERSION_SUFFIX:-}"
 VERSION="${VERSION:-${BASE_VERSION}${VERSION_SUFFIX}}"
 ARCH="arm64"
@@ -525,7 +525,9 @@ rm -rf "$BUILD_AUX_ROOT"
 
 # Refresh source baseline manifest for auto-release-deb diff detection.
 MANIFEST_WRITER=".codex/skills/auto-release-deb/scripts/write_source_manifest.sh"
-if [ -x "$MANIFEST_WRITER" ]; then
+if [ "${SKIP_SOURCE_MANIFEST:-false}" = "true" ]; then
+    echo "--> [SKIP] Skipping source manifest refresh."
+elif [ -x "$MANIFEST_WRITER" ]; then
     bash "$MANIFEST_WRITER" --target ugripper --output "$BUILD_ROOT/.auto_release_ugripper.manifest" || true
 fi
 

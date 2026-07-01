@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 APP_NAME="ugripper"
 ARCH="arm64"
-BASE_VERSION="${BASE_VERSION:-2.1.1}"
+BASE_VERSION="${BASE_VERSION:-2.1.3}"
 VERSION_SUFFIX="${VERSION_SUFFIX:-}"
 VERSION="${VERSION:-${BASE_VERSION}${VERSION_SUFFIX}}"
 PACKAGE_DEB_NAME="${APP_NAME}_${VERSION}_${ARCH}.deb"
@@ -17,7 +17,7 @@ PARALLEL="${PARALLEL:-16}"
 HOST_UID="${HOST_UID:-$(stat -c %u "${REPO_ROOT}")}"
 HOST_GID="${HOST_GID:-$(stat -c %g "${REPO_ROOT}")}"
 QUICK_MODE=false
-CLEAN_BUILD=true
+CLEAN_BUILD=false
 
 usage() {
     cat <<'EOF'
@@ -33,8 +33,8 @@ Modes:
 Options:
   --build-dir PATH  Override PACKAGED_BUILD_DIR (default: build/arm_container_release).
   -j, --parallel N  Override CMake build parallelism (default: 16 or PARALLEL env).
-  --clean           Remove PACKAGED_BUILD_DIR before a full C++ build (default).
-  --no-clean        Reuse PACKAGED_BUILD_DIR during a full C++ build.
+  --clean           Remove PACKAGED_BUILD_DIR before a full C++ build.
+  --no-clean        Reuse PACKAGED_BUILD_DIR during a full C++ build (default).
   -h, --help        Show this help message.
 
 Common env:
@@ -118,6 +118,7 @@ else
   echo "  build_dir=${REPO_ROOT}/${PACKAGED_BUILD_DIR}"
   echo "  toolchain=${TOOLCHAIN_FILE}"
   echo "  parallel=${PARALLEL}"
+  echo "  clean_build=${CLEAN_BUILD}"
 
   if [[ ! -f ".local-deps/arm-build-env.sh" ]]; then
       ./scripts/setup_arm_build_env.sh
@@ -145,7 +146,10 @@ else
   fi
 
   if [[ "${CLEAN_BUILD}" == true ]]; then
+      echo "--> Removing existing build dir before configure: ${PACKAGED_BUILD_DIR}"
       rm -rf "${PACKAGED_BUILD_DIR}"
+  else
+      echo "--> Reusing existing build dir when possible: ${PACKAGED_BUILD_DIR}"
   fi
   cmake -S . -B "${PACKAGED_BUILD_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
