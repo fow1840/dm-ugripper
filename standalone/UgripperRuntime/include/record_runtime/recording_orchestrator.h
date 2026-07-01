@@ -28,7 +28,9 @@ public:
     using EpochUsFn = int64_t (*)();
     using SteadyMsFn = int64_t (*)();
     using EpisodeDirFn = std::function<std::string()>;
+    using EpisodeMcapPathFn = std::function<std::string(const std::string&, int64_t)>;
     using PrepareEpisodeFn = std::function<bool(const std::string&, bool, const std::string&, std::string*)>;
+    using WriteEpisodeCalibrationFn = std::function<bool(const std::string&, std::string*)>;
     using ValidateEpisodeFn = std::function<bool(const std::string&, std::string*, std::vector<std::string>*)>;
     using PrepareSensorStartFn = std::function<void(std::vector<std::string>*, std::vector<int>*)>;
     using FinalizeSensorStartFn = std::function<void()>;
@@ -61,7 +63,9 @@ public:
     struct Dependencies
     {
         EpisodeDirFn create_next_episode_dir;
+        EpisodeMcapPathFn episode_mcap_path;
         PrepareEpisodeFn prepare_episode;
+        WriteEpisodeCalibrationFn write_episode_calibration;
         ValidateEpisodeFn validate_episode;
         PrepareSensorStartFn prepare_sensor_start;
         FinalizeSensorStartFn finalize_sensor_start;

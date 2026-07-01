@@ -250,6 +250,7 @@ private:
 
         bool initialize();
         std::string createNextEpisodeDir();
+        std::string episodeMcapPath(const std::string &episodeDir, int64_t startSystemTimeUs) const;
         void setGripperRuntimeStates(const std::array<GripperRuntimeState, 2> &states);
         void setMainCameraRuntimeStates(const std::array<MainCameraRuntimeState, 3> &states);
         void setTactileCameraRuntimeStates(const std::array<TactileCameraRuntimeState, 4> &states);
@@ -259,6 +260,7 @@ private:
                             bool resetRecording,
                             const std::string &resetSourceDir,
                             std::string *errorMessage) const;
+        bool writeCalibrationTopic(const std::string &episodeDir, std::string *errorMessage) const;
         bool validateEpisode(const std::string &episodeDir,
                              std::string *errorMessage,
                              std::vector<std::string> *errorTypes = nullptr,

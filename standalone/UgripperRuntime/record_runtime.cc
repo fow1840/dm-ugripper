@@ -118,6 +118,8 @@ constexpr double kTactileMadToSigma = 1.4826;
 constexpr int kTactileResidualMinNeighborCount = 3;
 constexpr size_t kTactileResidualMinComponentPixels = 8;
 constexpr int kTactileResidualLowFrequencyBlurRadius = 2;
+constexpr const char *kLegacyEpisodeMcapFileName = "episode.mcap";
+constexpr const char *kEpisodeMcapManifestFileName = "episode_mcap_name.txt";
 constexpr size_t kTactileResidualArtifactMaxComponentPixels = 25;
 constexpr double kTactileResidualArtifactLowFrequencyMeanThreshold = 5.0;
 constexpr size_t kTactileHistoryWindow = 3;
@@ -699,6 +701,74 @@ std::string stripEpisodeTempSuffix(const std::string &name)
         return name.substr(0, name.size() - suffixLen);
     }
     return name;
+}
+
+fs::path episodeMcapManifestPath(const fs::path &episodeDir)
+{
+    return episodeDir / kEpisodeMcapManifestFileName;
+}
+
+std::string readEpisodeMcapManifestName(const fs::path &episodeDir)
+{
+    std::ifstream input(episodeMcapManifestPath(episodeDir));
+    std::string name;
+    if (input.is_open())
+    {
+        std::getline(input, name);
+    }
+    while (!name.empty() && std::isspace(static_cast<unsigned char>(name.front())) != 0)
+    {
+        name.erase(name.begin());
+    }
+    while (!name.empty() && std::isspace(static_cast<unsigned char>(name.back())) != 0)
+    {
+        name.pop_back();
+    }
+    if (name.empty() || name.find('/') != std::string::npos)
+    {
+        return {};
+    }
+    if (name.size() < 6 || name.substr(name.size() - 5) != ".mcap")
+    {
+        return {};
+    }
+    return name;
+}
+
+fs::path episodeMcapPathFromManifestOrLegacy(const fs::path &episodeDir)
+{
+    const std::string manifestName = readEpisodeMcapManifestName(episodeDir);
+    if (!manifestName.empty())
+    {
+        return episodeDir / manifestName;
+    }
+
+    const fs::path legacyPath = episodeDir / kLegacyEpisodeMcapFileName;
+    std::error_code legacyError;
+    if (fs::exists(legacyPath, legacyError) && !legacyError)
+    {
+        return legacyPath;
+    }
+
+    std::error_code walkError;
+    for (const auto &entry : fs::directory_iterator(episodeDir, walkError))
+    {
+        if (walkError)
+        {
+            break;
+        }
+        const std::string fileName = entry.path().filename().string();
+        if (fileName.size() >= 6 &&
+            fileName.substr(fileName.size() - 5) == ".mcap" &&
+            fileName != "sensor_left.mcap" &&
+            fileName != "sensor_right.mcap" &&
+            entry.is_regular_file())
+        {
+            return entry.path();
+        }
+    }
+
+    return episodeDir / kLegacyEpisodeMcapFileName;
 }
 
 fs::path tactileHistoryPath(const fs::path &root)
@@ -2179,8 +2249,8 @@ bool shouldFlushPathForPhase(const fs::path &episodeDir,
                              const std::string &phase,
                              const std::set<std::string> &selectedVideoFileNames)
 {
-    (void)episodeDir;
     const std::string fileName = path.filename().string();
+    const std::string mcapFileName = episodeMcapPathFromManifestOrLegacy(episodeDir).filename().string();
     if (selectedVideoFileNames.find(fileName) != selectedVideoFileNames.end())
     {
         return true;
@@ -2188,7 +2258,7 @@ bool shouldFlushPathForPhase(const fs::path &episodeDir,
 
     if (phase == "pre_stereo_finalize")
     {
-        return fileName == "episode.mcap" ||
+        return fileName == mcapFileName ||
                fileName == "calibration.json" ||
                fileName == "audio_pre.wav" ||
                fileName == "audio_post.wav";
@@ -2207,11 +2277,11 @@ bool shouldFlushPathForPhase(const fs::path &episodeDir,
         {
             return true;
         }
-        return fileName == "episode.mcap";
+        return fileName == mcapFileName;
     }
     if (phase == "metadata_final")
     {
-        return fileName == "episode.mcap" ||
+        return fileName == mcapFileName ||
                fileName == "validation_error.log";
     }
     return true;
@@ -2239,8 +2309,9 @@ void flushEpisodeArtifactsToDisk(const fs::path &episodeDir, bool chestCameraEna
         }
     }
 
-    paths.push_back(episodeDir / "episode.mcap");
-    paths.push_back(episodeDir / "episode.mcap.stats.json");
+    const fs::path mcapPath = episodeMcapPathFromManifestOrLegacy(episodeDir);
+    paths.push_back(mcapPath);
+    paths.push_back(fs::path(mcapPath.string() + kEpisodeMcapStatsSuffix));
     paths.push_back(episodeDir / "validation_error.log");
     paths.push_back(episodeDir / kEgoSyncStatusFileName);
 
@@ -4199,6 +4270,12 @@ bool RecordRuntime::initialize()
                 [this]() {
                     return episodeManager_ != nullptr ? episodeManager_->createNextEpisodeDir() : std::string();
                 },
+            .episode_mcap_path =
+                [this](const std::string& episode_dir, int64_t start_system_time_us) {
+                    return episodeManager_ != nullptr
+                               ? episodeManager_->episodeMcapPath(episode_dir, start_system_time_us)
+                               : std::string();
+                },
             .prepare_episode =
                 [this](const std::string& episode_dir,
                        bool reset_recording,
@@ -4207,6 +4284,11 @@ bool RecordRuntime::initialize()
                     return episodeManager_ != nullptr &&
                            episodeManager_->prepareEpisode(
                                episode_dir, reset_recording, reset_source_dir, error_message);
+                },
+            .write_episode_calibration =
+                [this](const std::string& episode_dir, std::string* error_message) {
+                    return episodeManager_ != nullptr &&
+                           episodeManager_->writeCalibrationTopic(episode_dir, error_message);
                 },
             .validate_episode =
                 [this](const std::string& episode_dir,
@@ -4321,7 +4403,7 @@ bool RecordRuntime::initialize()
                             error_type,
                             &metadataError))
                     {
-                        DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to write MCAP metadata topics: "
+                        DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to write final metadata: "
                                       << metadataError << std::endl).str());
                         return;
                     }
@@ -4895,24 +4977,8 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
                                       int64_t,
                                       std::string *errorMessage)
 {
+    (void)episodeDir;
     egoRecordingAttempted_ = false;
-    if (!fs::exists(options_.egoRecordingScript))
-    {
-        if (errorMessage != nullptr)
-        {
-            *errorMessage = "ego recording script not found: " + options_.egoRecordingScript;
-        }
-        return false;
-    }
-
-    if (!hasAdbUsbInterface())
-    {
-        DM_LOG_INFO("{}", (::DA::utils::LogString()
-            << "skip ego recording sidecar: no ADB USB interface detected"
-            << std::endl).str());
-        return true;
-    }
-
     if (egoRecordingWorker_.has_value())
     {
         std::string ignoredError;
@@ -4922,83 +4988,8 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
             &ignoredError);
         egoRecordingWorker_.reset();
     }
-
-    egoRecordingWorker_.emplace("ego_recording_worker");
-    egoRecordingAttempted_ = true;
-    if (!egoRecordingWorker_->Start(egoWorkerArgs(options_.egoRecordingScript,
-                                                 "start",
-                                                 episodeDir,
-                                                 options_.cameraCodec),
-                                   {},
-                                   errorMessage))
-    {
-        egoRecordingWorker_.reset();
-        egoRecordingAttempted_ = false;
-        return false;
-    }
-    const fs::path statusPath = fs::path(episodeDir) / "ego" / kEgoSyncStatusFileName;
-    const uint64_t startMs = currentSteadyMs();
-    while ((currentSteadyMs() - startMs) < kEgoStartAckWaitMs)
-    {
-        json status = json::object();
-        std::string loadError;
-        if (loadJsonFile(statusPath.string(), &status, &loadError) && status.is_object())
-        {
-            const std::string state = status.value("status", std::string());
-            if (state == "recording")
-            {
-                const std::string remoteEpisode = status.value("remote_episode", std::string());
-                if (!remoteEpisode.empty())
-                {
-                    return true;
-                }
-            }
-            if (status.contains("start_broadcast_returncode"))
-            {
-                const int returnCode = status.value("start_broadcast_returncode", -1);
-                if (returnCode != 0)
-                {
-                    if (errorMessage != nullptr)
-                    {
-                        *errorMessage = status.value("error", std::string("ego START_RECORDING broadcast failed"));
-                    }
-                    return false;
-                }
-            }
-            if (state == "not_found")
-            {
-                return true;
-            }
-            if (state == "start_timeout")
-            {
-                if (errorMessage != nullptr)
-                {
-                    *errorMessage = status.value("error", std::string("ego app did not create episode_*-temp"));
-                }
-                DM_LOG_WARN("{}", (::DA::utils::LogString()
-                    << "ego recording sidecar did not report remote episode before gripper start: "
-                    << status.value("error", std::string("start_timeout"))
-                    << std::endl).str());
-                return true;
-            }
-            if (state == "start_failed" || state == "error")
-            {
-                if (errorMessage != nullptr)
-                {
-                    *errorMessage = status.value("error", state);
-                }
-                return false;
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(kEgoStartAckPollMs));
-    }
-
-    if (errorMessage != nullptr)
-    {
-        *errorMessage = "timed out waiting for ego remote episode status";
-    }
-    DM_LOG_WARN("{}", (::DA::utils::LogString()
-        << "ego recording sidecar did not report remote episode before gripper start"
+    DM_LOG_INFO("{}", (::DA::utils::LogString()
+        << "skip ego recording sidecar: disabled for episode output reduction"
         << std::endl).str());
     return true;
 }
@@ -5007,6 +4998,8 @@ bool RecordRuntime::stopEgoRecording(const std::string &episodeDir,
                                      int64_t,
                                      std::string *errorMessage)
 {
+    (void)episodeDir;
+    (void)errorMessage;
     if (egoRecordingWorker_.has_value())
     {
         std::string ignoredError;
@@ -5016,75 +5009,27 @@ bool RecordRuntime::stopEgoRecording(const std::string &episodeDir,
             &ignoredError);
         egoRecordingWorker_.reset();
     }
-
-    if (!fs::exists(options_.egoRecordingScript))
-    {
-        if (errorMessage != nullptr)
-        {
-            *errorMessage = "ego recording script not found: " + options_.egoRecordingScript;
-        }
-        return false;
-    }
-
-    return runCommandSync(egoWorkerArgs(options_.egoRecordingScript, "stop", episodeDir));
+    return true;
 }
 
 bool RecordRuntime::cleanupEgoRemote(const std::string &episodeDir,
                                      std::string *errorMessage)
 {
-    if (!egoRecordingAttempted_)
-    {
-        return true;
-    }
-    if (!fs::exists(options_.egoRecordingScript))
-    {
-        if (errorMessage != nullptr)
-        {
-            *errorMessage = "ego recording script not found: " + options_.egoRecordingScript;
-        }
-        return false;
-    }
-    return runCommandSync(egoWorkerArgs(options_.egoRecordingScript, "cleanup", episodeDir));
+    (void)episodeDir;
+    (void)errorMessage;
+    egoRecordingAttempted_ = false;
+    return true;
 }
 
 bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
                                        int timeoutMs,
                                        std::string *errorMessage)
 {
-    if (!egoRecordingAttempted_)
-    {
-        return true;
-    }
-    const fs::path statusPath = fs::path(episodeDir) / "ego" / kEgoSyncStatusFileName;
-    const uint64_t startMs = currentSteadyMs();
-    while ((currentSteadyMs() - startMs) < static_cast<uint64_t>(std::max(timeoutMs, 0)))
-    {
-        json status = json::object();
-        std::string loadError;
-        if (loadJsonFile(statusPath.string(), &status, &loadError) && status.is_object())
-        {
-            const std::string state = status.value("status", std::string());
-            if (state == "finalized" || state == "not_found" || state == "stop_no_remote_episode")
-            {
-                return true;
-            }
-            if (state == "finalize_timeout" || state == "error")
-            {
-                if (errorMessage != nullptr)
-                {
-                    *errorMessage = status.value("error", state);
-                }
-                return false;
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(kEgoFinalizeWaitPollMs));
-    }
-
-    if (errorMessage != nullptr)
-    {
-        *errorMessage = "timed out waiting for ego finalize status";
-    }
-    return false;
+    (void)episodeDir;
+    (void)timeoutMs;
+    (void)errorMessage;
+    egoRecordingAttempted_ = false;
+    return true;
 }
 
 bool RecordRuntime::mergeEpisodeInfo(const std::string &episodeDir, std::string *errorMessage) const
@@ -9215,6 +9160,33 @@ std::string RecordRuntime::EpisodeManager::createNextEpisodeDir()
     return episodePath.string();
 }
 
+std::string RecordRuntime::EpisodeManager::episodeMcapPath(const std::string &episodeDir,
+                                                           int64_t startSystemTimeUs) const
+{
+    const int64_t timestampUs = startSystemTimeUs > 0 ? startSystemTimeUs : currentEpochUs();
+    const std::time_t startTime = static_cast<std::time_t>(timestampUs / 1000000);
+    std::tm localTime{};
+    localtime_r(&startTime, &localTime);
+
+    char timeBuffer[32] = {0};
+    std::strftime(timeBuffer, sizeof(timeBuffer), "%Y%m%d_%H%M%S", &localTime);
+
+    std::string deviceSnUpper = deviceSn_;
+    std::transform(deviceSnUpper.begin(), deviceSnUpper.end(), deviceSnUpper.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::toupper(ch));
+    });
+    const std::string fileName = sanitizeFileComponent(deviceSnUpper) + "_" + timeBuffer + ".mcap";
+    const fs::path episodePath(episodeDir);
+    const fs::path manifestPath = episodeMcapManifestPath(episodePath);
+    std::string writeError;
+    if (!writeTextFileAtomically(manifestPath, fileName + "\n", &writeError))
+    {
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << "failed to write episode MCAP manifest: " << writeError << std::endl).str());
+    }
+    return (episodePath / fileName).string();
+}
+
 void RecordRuntime::EpisodeManager::markTactileReferencePendingForSide(
     const std::string &side,
     const std::string &reason)
@@ -9350,7 +9322,7 @@ bool RecordRuntime::EpisodeManager::validateEpisode(const std::string &episodeDi
 {
     const int64_t validateStartMs = steadyNowMs();
     logPerf((::DA::utils::LogString() << "[PERF] validateEpisode begin: episode_dir=" << episodeDir).str());
-    const fs::path episodeMcapPath = fs::path(episodeDir) / "episode.mcap";
+    const fs::path episodeMcapPath = episodeMcapPathFromManifestOrLegacy(fs::path(episodeDir));
     if (!RecordRuntime::fileExistsAndNotEmpty(episodeMcapPath.string()))
     {
         return setEpisodeValidationFailure(
@@ -9859,7 +9831,6 @@ std::vector<std::string> episodeImageTopics(bool chestCameraEnabled)
 std::vector<std::string> episodeRequiredTopics(bool chestCameraEnabled)
 {
     std::vector<std::string> topics = episodeImageTopics(chestCameraEnabled);
-    topics.push_back("/metadata");
     topics.push_back("/calibration");
     const std::vector<std::string> cameraInfoTopics = {
         "/cam_left/camera_info",
@@ -10173,7 +10144,8 @@ bool sendEpisodeMcapJsonTopic(const fs::path &episodePath,
 
 bool exportEpisodeMcapStats(const fs::path &episodePath, std::string *errorMessage)
 {
-    const fs::path statsPath(episodePath / (std::string("episode.mcap") + kEpisodeMcapStatsSuffix));
+    const fs::path mcapPath = episodeMcapPathFromManifestOrLegacy(episodePath);
+    const fs::path statsPath(mcapPath.string() + kEpisodeMcapStatsSuffix);
     std::error_code removeError;
     fs::remove(statsPath, removeError);
 
@@ -10230,14 +10202,27 @@ bool exportEpisodeMcapStats(const fs::path &episodePath, std::string *errorMessa
 void removeEpisodeMcapTemporaryFiles(const fs::path &episodePath)
 {
     std::error_code removeError;
-    fs::remove(episodePath / "metadata.json", removeError);
-    removeError.clear();
     fs::remove(episodePath / "calibration.json", removeError);
     removeError.clear();
-    fs::remove(episodePath / "episode.mcap.stats.json", removeError);
+    const fs::path mcapPath = episodeMcapPathFromManifestOrLegacy(episodePath);
+    fs::remove(fs::path(mcapPath.string() + kEpisodeMcapStatsSuffix), removeError);
     removeError.clear();
-    fs::remove(episodePath / "episode.mcap.stats.json.tmp", removeError);
+    fs::remove(fs::path(mcapPath.string() + kEpisodeMcapStatsSuffix + ".tmp"), removeError);
+    removeError.clear();
+    fs::remove(episodeMcapManifestPath(episodePath), removeError);
 }
+}
+
+bool RecordRuntime::EpisodeManager::writeCalibrationTopic(const std::string &episodeDir,
+                                                          std::string *errorMessage) const
+{
+    const fs::path episodePath(episodeDir);
+    std::string calibrationText;
+    if (!readTextFile(episodePath / "calibration.json", &calibrationText, errorMessage))
+    {
+        return false;
+    }
+    return sendEpisodeMcapJsonTopic(episodePath, "/calibration", calibrationText, 0, errorMessage);
 }
 
 bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episodeDir,
@@ -10251,7 +10236,7 @@ bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episod
     if (!exportEpisodeMcapStats(episodePath, &statsExportError))
     {
         DM_LOG_WARN("{}", (::DA::utils::LogString()
-            << "failed to export episode MCAP stats before metadata topic: "
+            << "failed to export episode MCAP stats before final metadata: "
             << statsExportError << std::endl).str());
     }
 
@@ -10313,11 +10298,12 @@ bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episod
 
     ordered_json videoDetails = ordered_json::array();
     double collectionDurationS = 0.0;
+    const fs::path episodeMcapPath = episodeMcapPathFromManifestOrLegacy(episodePath);
     std::map<std::string, EpisodeMcapTopicStats> imageTopicStats;
     std::string imageTopicError;
     const std::vector<std::string> imageTopics = episodeImageTopics(chestCameraEnabled_);
     const bool loadedImageTopics =
-        loadEpisodeMcapTopicStats(episodePath / "episode.mcap", imageTopics, &imageTopicStats, &imageTopicError);
+        loadEpisodeMcapTopicStats(episodeMcapPath, imageTopics, &imageTopicStats, &imageTopicError);
     uint64_t firstImageNs = std::numeric_limits<uint64_t>::max();
     if (loadedImageTopics)
     {
@@ -10363,7 +10349,7 @@ bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episod
         }
     }
 
-    ordered_json requiredFiles = ordered_json::array({"episode.mcap"});
+    ordered_json requiredFiles = ordered_json::array({episodeMcapPath.filename().string()});
 
     const bool hasAudio =
         RecordRuntime::fileExistsAndNotEmpty((episodePath / "audio_pre.wav").string()) ||
@@ -10389,26 +10375,19 @@ bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episod
     metadata["require_files"] = std::move(requiredFiles);
     metadata["video_details"] = std::move(videoDetails);
 
-    std::string calibrationText;
-    if (!readTextFile(episodePath / "calibration.json", &calibrationText, errorMessage))
-    {
-        return false;
-    }
     const std::string metadataText = metadata.dump(2) + "\n";
 
-    if (!sendEpisodeMcapJsonTopic(episodePath, "/calibration", calibrationText, 0, errorMessage))
+    std::string writeError;
+    if (!writeTextFileAtomically(episodePath / "metadata.json", metadataText, &writeError))
     {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to write metadata.json: " + writeError;
+        }
         return false;
     }
-    if (!sendEpisodeMcapJsonTopic(episodePath, "/metadata", metadataText, 0, errorMessage))
-    {
-        return false;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     std::error_code removeError;
-    fs::remove(episodePath / "metadata.json", removeError);
-    removeError.clear();
     fs::remove(episodePath / "calibration.json", removeError);
     return true;
 }

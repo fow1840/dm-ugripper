@@ -1241,8 +1241,30 @@ bool StereoSessionClient::WaitForFinalize(const std::string& episode_dir,
     if (!options_.left_control_fifo.empty() && !options_.right_control_fifo.empty())
     {
         const fs::path episode_path(episode_dir);
+        const auto has_unified_mcap_file = [&]() {
+            std::error_code walk_error;
+            for (const auto& entry : fs::directory_iterator(episode_path, walk_error))
+            {
+                if (walk_error)
+                {
+                    break;
+                }
+                const std::string file_name = entry.path().filename().string();
+                if (file_name.size() >= 6 &&
+                    file_name.substr(file_name.size() - 5) == ".mcap" &&
+                    file_name != "sensor_left.mcap" &&
+                    file_name != "sensor_right.mcap" &&
+                    file_name != "fays_data_left.mcap" &&
+                    file_name != "fays_data_right.mcap" &&
+                    FileExistsAndNotEmpty(entry.path()))
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
         const bool unified_mcap_mode = FileExistsAndNotEmpty(episode_path / "episode_mcap_socket_path.txt") ||
-                                       FileExistsAndNotEmpty(episode_path / "episode.mcap");
+                                       has_unified_mcap_file();
         if (unified_mcap_mode)
         {
             if (error_message != nullptr)

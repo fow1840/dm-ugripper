@@ -1,14 +1,14 @@
 # UGripper Episode MCAP Format
 
-UGripper 本机录制每条 episode 最终只生成一个必需数据文件：`episode.mcap`。录制期间 `UgripperRuntime` 会临时启动 `EpisodeMcapRecorder`，真实 Unix socket 放在 `/dev/shm/ugripper/` 下；episode 目录内的 socket marker、`calibration.json` 和 `episode.mcap.stats.json` 只服务录制/停录收尾，最终目录不保留。
+UGripper 本机录制每条 episode 最终只生成两个主要产物：`<DEVICE_SN>_<YYYYMMDD_HHMMSS>.mcap` 和 `metadata.json`。MCAP 文件名中的 `DEVICE_SN` 来自 `/etc/environment`，时间戳使用起录时刻并精确到秒。录制期间 `UgripperRuntime` 会临时启动 `EpisodeMcapRecorder`，真实 Unix socket 放在 `/dev/shm/ugripper/` 下；episode 目录内的 socket marker、`calibration.json` 和 MCAP stats sidecar 只服务录制/停录收尾，最终目录不保留。
 
 ## 文件
 
-- 必需文件：`episode.mcap`
-- 条件文件：`audio_pre.wav`、`audio_post.wav`、`validation_error.log`、可选 `ego/`
-- 不再生成最终文件：`metadata.json`、`calibration.json`
+- 必需文件：`<DEVICE_SN>_<YYYYMMDD_HHMMSS>.mcap`
+- 条件文件：`audio_pre.wav`、`audio_post.wav`、`validation_error.log`
+- 不再生成最终文件：`calibration.json`
 
-原 `metadata.json` 的完整内容写入 MCAP topic `/metadata`。原 `calibration.json` 的完整内容写入 MCAP topic `/calibration`。
+原 `calibration.json` 的完整内容在统一 MCAP socket 就绪后、相机/传感器真正起录前写入 MCAP topic `/calibration`。`metadata.json` 保留在 episode 目录，作为最终校验结果载体；停录收尾阶段不再向 MCAP 追加 `/metadata` 或 `/calibration` 这类 info JSON topic。
 
 ## 图像 Topics
 
@@ -52,15 +52,11 @@ UGripper 本机录制每条 episode 最终只生成一个必需数据文件：`e
 
 - `/calibration`
 
-该 topic 使用 MCAP channel encoding `json`，schema name 为 `ugripper.CalibrationJson`，payload 是原 episode `calibration.json` 的完整 JSON 内容。外参不再拆成 `/<camera>/calibration/extrinsics`；读取外参时应从 `/calibration.observation.images` 下对应相机条目获取，例如 stereo 的 `cam0/cam1/extrinsics`。
+该 topic 在录制开始阶段写入，使用 MCAP channel encoding `json`，schema name 为 `ugripper.CalibrationJson`，payload 是原 episode `calibration.json` 的完整 JSON 内容。外参不再拆成 `/<camera>/calibration/extrinsics`；读取外参时应从 `/calibration.observation.images` 下对应相机条目获取，例如 stereo 的 `cam0/cam1/extrinsics`。
 
-## Metadata Topic
+## Metadata File
 
-完整元数据写入单条 JSON topic：
-
-- `/metadata`
-
-该 topic 使用 MCAP channel encoding `json`，schema name 为 `ugripper.MetadataJson`，payload 是原 episode `metadata.json` 的完整 JSON 内容，包含 `device_sn`、版本、`hardware_list`、`quality_check_status`、`quality_check_err_type`、`collection_duration_s`、`require_files`、`video_details` 等字段。
+完整元数据保留在 episode 目录下的 `metadata.json`，停录强校验和离线使用都以该文件为准。
 
 ## 传感器 Topics
 
@@ -85,9 +81,9 @@ Encoder topic 保持 UGripper binary payload。
 
 ## 校验口径
 
-停录强校验读取 `episode.mcap` channels/topics：
+停录强校验读取最终 MCAP 的 channels/topics：
 
-- `/metadata`、`/calibration` 必须存在且非空。
+- `/calibration` 必须存在且非空。
 - 所有启用相机的 `image_compressed`、`camera_info` topic 必须存在且非空。
 - `/encoder_left`、`/encoder_right`、`/imu_left`、`/imu_right` 必须存在且非空。
 - 所有图像 topic 时间戳必须单调，跨度不能过短，且不能比最长图像 topic 短超过阈值。

@@ -1048,7 +1048,14 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         return false;
     }
 
-    const std::string episode_mcap_path = state_.current_episode_dir + "/episode.mcap";
+    std::string episode_mcap_path =
+        dependencies_.episode_mcap_path != nullptr
+            ? dependencies_.episode_mcap_path(state_.current_episode_dir, session_start_system_time_us)
+            : std::string();
+    if (episode_mcap_path.empty())
+    {
+        episode_mcap_path = state_.current_episode_dir + "/episode.mcap";
+    }
     const std::string episode_mcap_socket = EpisodeMcapRuntimeSocketPath(state_.current_episode_dir);
     const std::string episode_mcap_socket_marker = EpisodeMcapSocketMarkerPath(state_.current_episode_dir);
     auto cleanup_episode_mcap_socket = [&]() {
@@ -1152,6 +1159,41 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         if (error_message != nullptr)
         {
             *error_message = "episode MCAP recorder socket did not become ready";
+        }
+        return false;
+    }
+
+    if (dependencies_.write_episode_calibration == nullptr ||
+        !dependencies_.write_episode_calibration(state_.current_episode_dir, &local_error))
+    {
+        CallLog(dependencies_.log_error,
+                "failed to write startup calibration topic: " +
+                    (local_error.empty() ? std::string("unknown error") : local_error));
+        if (dependencies_.stop_worker != nullptr)
+        {
+            dependencies_.stop_worker(WorkerName::EpisodeMcapRecorder, "startup rollback", nullptr);
+        }
+        cleanup_episode_mcap_socket();
+        stop_ego_startup_rollback();
+        if (dependencies_.remove_recording_lock != nullptr)
+        {
+            dependencies_.remove_recording_lock();
+        }
+        if (dependencies_.set_led_state != nullptr)
+        {
+            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+        }
+        if (dependencies_.set_audio_recovery_command != nullptr)
+        {
+            dependencies_.set_audio_recovery_command("error");
+        }
+        if (dependencies_.send_audio_command != nullptr)
+        {
+            dependencies_.send_audio_command("error");
+        }
+        if (error_message != nullptr)
+        {
+            *error_message = local_error.empty() ? "failed to write startup calibration topic" : local_error;
         }
         return false;
     }
