@@ -189,15 +189,68 @@ def slug_topic(topic: str) -> str:
     return topic.lstrip("/").replace("/", "_")
 
 
+def normalize_video_format(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    if normalized in {"h264", "avc", "avc1"}:
+        return "h264"
+    if normalized in {"h265", "hevc", "hev1", "hvc1"}:
+        return "h265"
+    return ""
+
+
+def ffmpeg_demuxer_for_format(video_format: str) -> str:
+    if video_format == "h265":
+        return "hevc"
+    return "h264"
+
+
+def bitstream_suffix_for_format(video_format: str) -> str:
+    return ".h265" if video_format == "h265" else ".h264"
+
+
 def collect_mcap_files(path: Path) -> list[Path]:
     if path.is_file():
         return [path]
     if not path.exists():
         raise FileNotFoundError(path)
+
+    metadata_path = path / "metadata.json"
+    if metadata_path.is_file():
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            require_files = metadata.get("require_files") or []
+            candidates = [
+                path / name
+                for name in require_files
+                if isinstance(name, str) and name.endswith(".mcap") and (path / name).is_file()
+            ]
+            if candidates:
+                return sorted(candidates)
+        except (OSError, json.JSONDecodeError):
+            pass
+
     candidates = sorted(path.rglob("episode.mcap"))
     if candidates:
         return candidates
-    raise FileNotFoundError(f"no episode.mcap found under {path}")
+
+    candidates = []
+    for metadata_path in sorted(path.rglob("metadata.json")):
+        episode_dir = metadata_path.parent
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for name in metadata.get("require_files") or []:
+            if isinstance(name, str) and name.endswith(".mcap") and (episode_dir / name).is_file():
+                candidates.append(episode_dir / name)
+    if candidates:
+        return sorted(candidates)
+
+    candidates = sorted(path.glob("*.mcap"))
+    if candidates:
+        return candidates
+
+    raise FileNotFoundError(f"no episode MCAP found under {path}")
 
 
 @dataclass
@@ -213,6 +266,7 @@ class TopicStats:
     payload_bytes: int = 0
     output_file: str = ""
     output_bytes: int = 0
+    image_format: str = ""
 
     def update_log_time(self, log_time_ns: int) -> None:
         if self.first_log_time_ns is None or log_time_ns < self.first_log_time_ns:
@@ -227,7 +281,7 @@ class TopicStats:
             self.last_stamp_ns = stamp_ns
 
 
-def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_h264: bool) -> dict:
+def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_bitstream: bool) -> dict:
     with mcap_path.open("rb") as f:
         reader = make_reader(f)
         summary = reader.get_summary()
@@ -235,6 +289,7 @@ def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_h264: boo
         channels = list(summary.channels.values())
 
     topic_meta: dict[str, tuple[str, str]] = {}
+    image_formats: dict[str, str] = {}
     image_topics: list[str] = []
     raw_topics: list[str] = []
     for channel in channels:
@@ -243,6 +298,9 @@ def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_h264: boo
         topic_meta[channel.topic] = (schema_name, channel.message_encoding)
         if schema_name == IMAGE_SCHEMA and channel.message_encoding == "cdr":
             image_topics.append(channel.topic)
+            image_formats[channel.topic] = normalize_video_format(
+                (channel.metadata or {}).get("video_format")
+            )
         else:
             raw_topics.append(channel.topic)
 
@@ -265,7 +323,8 @@ def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_h264: boo
 
     for topic in image_topics:
         slug = slug_topic(topic)
-        image_tmp_paths[topic] = videos_dir / f"{slug}.h264"
+        video_format = image_formats.get(topic) or "h264"
+        image_tmp_paths[topic] = videos_dir / f"{slug}{bitstream_suffix_for_format(video_format)}"
         image_tmp_paths[topic].write_bytes(b"")
         image_handles[topic] = image_tmp_paths[topic].open("ab")
     for topic in raw_topics:
@@ -299,10 +358,13 @@ def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_h264: boo
 
                 if topic in image_tmp_paths:
                     parsed = parse_compressed_image(msg.data)
+                    video_format = normalize_video_format(parsed.get("format")) or image_formats.get(topic) or "h264"
+                    image_formats[topic] = video_format
                     payload = parsed["payload"]
                     stamp_ns = parsed["stamp_ns"]
                     st.update_stamp(stamp_ns)
                     st.payload_bytes += len(payload)
+                    st.image_format = video_format
                     image_handles[topic].write(payload)
                     if first_image_log_time_ns is None or msg.log_time < first_image_log_time_ns:
                         first_image_log_time_ns = msg.log_time
@@ -345,12 +407,28 @@ def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_h264: boo
         slug = slug_topic(topic).split("_image_compressed", 1)[0]
         src = image_tmp_paths[topic]
         dst = videos_dir / f"{slug}.mkv"
+        video_format = image_formats.get(topic) or "h264"
         subprocess.run(
-            [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "h264", "-r", str(video_fps.get(slug, 30)), "-i", str(src), "-c", "copy", str(dst)],
+            [
+                ffmpeg,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                ffmpeg_demuxer_for_format(video_format),
+                "-r",
+                str(video_fps.get(slug, 30)),
+                "-i",
+                str(src),
+                "-c",
+                "copy",
+                str(dst),
+            ],
             check=True,
             env=ffmpeg_env,
         )
-        if not keep_h264:
+        if not keep_bitstream:
             src.unlink(missing_ok=True)
 
         st = stats[topic]
@@ -403,10 +481,11 @@ def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_h264: boo
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Extract UGripper episode MCAPs into video and raw topic files.")
-    parser.add_argument("path", type=Path, help="episode.mcap file or a directory containing episode_*/episode.mcap")
+    parser.add_argument("path", type=Path, help="episode MCAP file or a directory containing episode MCAPs")
     parser.add_argument("--out-root", type=Path, help="output root directory (default: sibling extracted_mcap)")
     parser.add_argument("--ffmpeg", default="/usr/bin/ffmpeg", help="ffmpeg executable path")
-    parser.add_argument("--keep-h264", action="store_true", help="keep intermediate .h264 files")
+    parser.add_argument("--keep-bitstream", action="store_true", help="keep intermediate .h264/.h265 files")
+    parser.add_argument("--keep-h264", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--episode", action="append", help="only extract matching episode directory name; may be repeated")
     parser.add_argument("--json", action="store_true", help="print JSON summary only")
     args = parser.parse_args(argv)
@@ -428,7 +507,7 @@ def main(argv: list[str] | None = None) -> int:
 
     summaries = []
     for mcap_path in mcap_files:
-        manifest = extract_episode(mcap_path, out_root, args.ffmpeg, args.keep_h264)
+        manifest = extract_episode(mcap_path, out_root, args.ffmpeg, args.keep_bitstream or args.keep_h264)
         summaries.append(manifest)
         episode = manifest["episode"]
         image_sync = manifest.get("image_sync", {})

@@ -13,6 +13,7 @@ enum class FrameKind : uint16_t {
     Json = 3,
     EncoderBinary = 4,
     FaysImu = 5,
+    CompressedImageH265 = 6,
 };
 
 struct FrameHeader {

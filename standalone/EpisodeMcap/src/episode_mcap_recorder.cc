@@ -147,6 +147,17 @@ public:
                 payload.data(),
                 payload.size());
             break;
+        case FrameKind::CompressedImageH265:
+            schema_key = "sensor_msgs/msg/CompressedImage";
+            schema_name = schema_key;
+            metadata["video_format"] = "h265";
+            data = ugripper::episode_mcap::EncodeCompressedImage(
+                header.log_time_ns,
+                frame_id,
+                "h265",
+                payload.data(),
+                payload.size());
+            break;
         case FrameKind::CameraInfo:
             schema_key = "sensor_msgs/msg/CameraInfo";
             schema_name = schema_key;

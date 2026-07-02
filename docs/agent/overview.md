@@ -6,7 +6,7 @@
 ## 1. 当前系统一句话
 - 当前系统默认以**单机双手、本地控制**方式运行。
 - 主控制链路当前以 `run_record.sh -> /opt/ugripper/bin/UgripperRuntime/UgripperRuntime` 作为安装入口。
-- 默认录制产物为 `<DEVICE_SN>_<YYYYMMDD_HHMMSS>.mcap` 加最终 `metadata.json`：MCAP 文件名使用 `/etc/environment` 中的 `DEVICE_SN` 与起录时刻秒级时间戳；MCAP 包含主摄、stereo、触觉相机 H264 `CompressedImage`、每路相机 `CameraInfo`、`/calibration` JSON topic、左右 encoder 与标准 ROS Fays IMU；`metadata.json` 保留停录后质量结果与视频详情。
+- 默认录制产物为 `<DEVICE_SN>_<YYYYMMDD_HHMMSS>.mcap` 加最终 `metadata.json`：MCAP 文件名使用 `/etc/environment` 中的 `DEVICE_SN` 与起录时刻秒级时间戳；MCAP 包含主摄/触觉相机 H264 与 stereo H265 `CompressedImage`、每路相机 `CameraInfo`、`/calibration` JSON topic、左右 encoder 与标准 ROS Fays IMU；`metadata.json` 保留停录后质量结果与视频详情。
 - HMI 按键、RGB 灯效、提示音、pre/post 音频录制、停录校验，以及右手双键关机/左手双键卸载数据盘请求都已纳入当前运行时。
 - U 盘流程统一负责 `deb` 升级/重装、`config.txt` 导入、标定数据导入和 encoder 零位校准触发；当前自动安装名单已覆盖 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint` 与 `device-ota-mender`，deb 安装窗口会复用 HMI 灯效提示安装中/失败/完成状态，并会在整批安装完成后通过 PulseAudio 播放 `upgrade_completed.wav`。
 
@@ -29,7 +29,7 @@
 | 薄壳启动脚本 | `run_record.sh` | 切到安装目录、维护本地 `/tmp` 到 `/mnt/data_disk/logs` 的增量日志同步，并直接拉起 `record_runtime`；不再在脚本层等待数据盘 | `/tmp/umi_sys_<sn>_<date>.log`、`/mnt/data_disk/logs/umi_sys_<sn>_<date>.log` |
 | 主运行时 | `bin/UgripperRuntime/UgripperRuntime` | HMI 按键状态机、软件录制控制、LED 灯效、提示音、pre/post 音频、camera/sensor 子进程管理、数据盘等待、停录校验、关机请求 | episode 目录、`/dev/shm/ugripper/umi_record_control.pipe`、`/tmp/umi_shutdown_request` |
 | 安全 NTP 同步 | `time_sync/safe_ntp_sync.sh` / `ugripper-ntp-sync.service` | 开机或安装后只在非录制态执行一次性时间同步，优先使用板端现有 `sntp -S`，再 fallback 到 `ntpd -q -g` / `timedatectl`；同步完成、超时或录制开始后停止常驻 NTP 服务 | `/tmp/umi_recording.lock`、`sntp`/`ntp` |
-| 相机录制 | `bin/CameraRecorder/CameraRecorder` | 普通录制模式下负责主摄/触觉 H264 帧写入统一 MCAP；`--stereo-daemon` 模式下负责双目常驻预热、热插拔恢复与 session finalize | 最终 MCAP 内相机 topics |
+| 相机录制 | `bin/CameraRecorder/CameraRecorder` / `bin/FaysStereoRecorder/fays_record_example` | 普通录制模式下负责主摄/触觉 H264 帧写入统一 MCAP；Fays stereo recorder 负责双目常驻预热、热插拔恢复、session finalize，并将 stereo H265 帧写入统一 MCAP | 最终 MCAP 内相机 topics |
 | 统一 MCAP writer | `bin/EpisodeMcap/EpisodeMcapRecorder` | 起录时先启动本地 Unix socket writer，真实 socket 放在 `/dev/shm/ugripper/`，所有相机/传感器子进程连接后写入同一个 `<DEVICE_SN>_<YYYYMMDD_HHMMSS>.mcap` | 最终 MCAP、录制期临时 `episode_mcap_socket_path.txt` |
 | 传感器录制 | `bin/SensorRecorder/SensorRecorder` | 录制左右 encoder；检测到统一 MCAP socket 时直接写入最终 MCAP，否则保留旧拆分 MCAP fallback | `/encoder_left`、`/encoder_right` |
 | HMI 类库 | `standalone/GripperHmiTool` | 读取夹爪按键，并在驱动内部以单线程 owner 线程完成状态查询、灯效生成与 RGB 指令发送；默认由状态机切灯效，必要时仍可直接下发 RGB；当前也提供 SN 与 1024-byte 标定参数读写 API | 按键快照、RGB 指令、SN/标定参数读写 |
@@ -159,7 +159,7 @@
   - `boot_time_offset_us`
   - 8 路 `<camera>_record_time_offset_us`
   - 若写出失败，`camera_recorder` 会区分记录“打开文件失败 / flush-close 失败 / 缺少哪一路 `record_time_offset_us`”，便于直接判断是 shm 写失败还是某路 recorder 未产出 offset。
-- 双目当前实现为“后台 MJPEG warmup + 录制时编码写统一 MCAP”：空闲态不再保留 UDP / MPEG-TS live relay；按下录制后，session writer 只消费当前会话的 MJPEG 帧，编码为 H264 access unit 后写入 `/stereo_left/image_compressed` / `/stereo_right/image_compressed`。
+- 双目当前实现为“后台 MJPEG warmup + 录制时编码写统一 MCAP”：空闲态不再保留 UDP / MPEG-TS live relay；按下录制后，session writer 只消费当前会话的 MJPEG 帧，编码为 H265 access unit 后写入 `/stereo_left/image_compressed` / `/stereo_right/image_compressed`。
 - stereo 内部 `<camera>_record_time_offset_us` 与主摄/触觉保持同一语义：都以“本次最终输出首个写入帧”的 `PTS -> 系统时间` 映射为准。
 
 ### 6.3 传感器链路

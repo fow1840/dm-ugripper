@@ -1355,8 +1355,8 @@ public:
             return true;
         }
 
-        const std::string cameraCodec = "h264";
-        const std::string ffmpegEncoder = "h264_rkmpp";
+        const std::string cameraCodec = "h265";
+        const std::string ffmpegEncoder = "hevc_rkmpp";
         const bool perfLogEnabled = kPerfLogEnabled;
         width_ = width;
         height_ = height;
@@ -1394,8 +1394,8 @@ public:
             << "-qp_max_i 38 "
             << "-qp_min_i 20 ";
         if (useEpisodeMcap_) {
-            cmd << "-bsf:v h264_metadata=aud=insert "
-                << "-f h264 pipe:1";
+            cmd << "-bsf:v hevc_metadata=aud=insert "
+                << "-f hevc pipe:1";
         } else {
             cmd << "\"" << savePath << "\"";
         }
@@ -1602,20 +1602,20 @@ private:
         return std::nullopt;
     }
 
-    void FeedH264Bytes(const uint8_t* data, size_t size) {
-        h264Buffer_.insert(h264Buffer_.end(), data, data + size);
+    void FeedH265Bytes(const uint8_t* data, size_t size) {
+        h265Buffer_.insert(h265Buffer_.end(), data, data + size);
         size_t search = 0;
         while (true) {
-            const auto found = FindStartCode(h264Buffer_, search);
+            const auto found = FindStartCode(h265Buffer_, search);
             if (!found.has_value()) return;
             const size_t pos = found->first;
             const size_t nal = pos + found->second;
-            if (nal >= h264Buffer_.size()) return;
-            const uint8_t nalType = h264Buffer_[nal] & 0x1fU;
-            if (nalType == 9) {
+            if (nal >= h265Buffer_.size()) return;
+            const uint8_t nalType = (h265Buffer_[nal] >> 1U) & 0x3fU;
+            if (nalType == 35) {
                 if (seenAud_ && pos > 0) {
-                    SendAccessUnit(h264Buffer_.data(), pos);
-                    h264Buffer_.erase(h264Buffer_.begin(), h264Buffer_.begin() + static_cast<std::ptrdiff_t>(pos));
+                    SendAccessUnit(h265Buffer_.data(), pos);
+                    h265Buffer_.erase(h265Buffer_.begin(), h265Buffer_.begin() + static_cast<std::ptrdiff_t>(pos));
                     search = 0;
                     continue;
                 }
@@ -1625,10 +1625,10 @@ private:
         }
     }
 
-    void FlushH264Bytes() {
-        if (!h264Buffer_.empty()) {
-            SendAccessUnit(h264Buffer_.data(), h264Buffer_.size());
-            h264Buffer_.clear();
+    void FlushH265Bytes() {
+        if (!h265Buffer_.empty()) {
+            SendAccessUnit(h265Buffer_.data(), h265Buffer_.size());
+            h265Buffer_.clear();
         }
         seenAud_ = false;
     }
@@ -1666,7 +1666,7 @@ private:
         const FrameTimestamp timestamp = PopTimestamp();
         std::string error;
         if (!episodeMcapClient_.Send(
-                ugripper::episode_mcap::FrameKind::CompressedImageH264,
+                ugripper::episode_mcap::FrameKind::CompressedImageH265,
                 "/" + topicCamera_ + "/image_compressed",
                 topicCamera_,
                 timestamp.log_time_ns,
@@ -1687,13 +1687,13 @@ private:
             const ssize_t got = read(fd, buffer.data(), buffer.size());
             if (got < 0) {
                 if (errno == EINTR) continue;
-                std::cerr << "[FFmpeg] Failed to read encoded H264 stdout: " << std::strerror(errno) << std::endl;
+                std::cerr << "[FFmpeg] Failed to read encoded H265 stdout: " << std::strerror(errno) << std::endl;
                 break;
             }
             if (got == 0) break;
-            FeedH264Bytes(buffer.data(), static_cast<size_t>(got));
+            FeedH265Bytes(buffer.data(), static_cast<size_t>(got));
         }
-        FlushH264Bytes();
+        FlushH265Bytes();
         close(fd);
     }
 
@@ -1708,7 +1708,7 @@ private:
     std::thread stdoutThread_;
     std::mutex timestampMtx_;
     std::deque<FrameTimestamp> pendingTimestamps_;
-    std::vector<uint8_t> h264Buffer_;
+    std::vector<uint8_t> h265Buffer_;
     bool seenAud_ = false;
     uint32_t videoSeq_ = 0;
 };

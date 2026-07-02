@@ -4,6 +4,11 @@
 >
 > 仓库没有 `v2.0.x` git tag。下面的发布边界按 `build_deb.sh` / `scripts/build_arm_deb_in_pp_arm_dev.sh` 中 `BASE_VERSION` 的提交记录推定：`2caf6e0` 为 v2.0.0，`d81c3c1` 为 v2.0.1。
 
+## v2.1.4 - Unreleased
+
+- Fays stereo 写入统一 MCAP 的图像编码由 H264 切换为 H265，`/stereo_left/image_compressed` 与 `/stereo_right/image_compressed` 的 ROS `CompressedImage.format` 同步写为 `h265`，降低 stereo 压缩质量对轨迹重建的影响。
+- 构建脚本默认主包版本调整到 `2.1.4`。
+
 ## v2.1.3 - Unreleased
 
 - 最终 MCAP 文件名改为 `<DEVICE_SN>_<YYYYMMDD_HHMMSS>.mcap`，其中 `DEVICE_SN` 来自 `/etc/environment`，时间戳使用起录时刻并精确到秒；最终 episode 目录只保留该 MCAP 与 `metadata.json` 等条件产物，校验与 `require_files` 跟随真实 MCAP 文件名。

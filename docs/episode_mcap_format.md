@@ -12,7 +12,7 @@ UGripper 本机录制每条 episode 最终只生成两个主要产物：`<DEVICE
 
 ## 图像 Topics
 
-所有图像 topic 使用 ROS2 CDR `sensor_msgs/msg/CompressedImage`，`format=h264`。
+所有图像 topic 使用 ROS2 CDR `sensor_msgs/msg/CompressedImage`。主摄与触觉相机当前写 `format=h264`；Fays stereo 图像写 `format=h265`。
 
 - `/cam_left/image_compressed`
 - `/cam_right/image_compressed`
@@ -21,8 +21,8 @@ UGripper 本机录制每条 episode 最终只生成两个主要产物：`<DEVICE
 - `/tcam_left_r/image_compressed`
 - `/tcam_right_l/image_compressed`
 - `/tcam_right_r/image_compressed`
-- `/stereo_left/image_compressed`
-- `/stereo_right/image_compressed`
+- `/stereo_left/image_compressed`（`format=h265`）
+- `/stereo_right/image_compressed`（`format=h265`）
 
 `header.stamp` 与 MCAP `logTime` 一致，均为 Unix ns 对齐后的时间。
 
