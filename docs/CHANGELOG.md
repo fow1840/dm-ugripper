@@ -7,6 +7,7 @@
 ## v2.1.4 - Unreleased
 
 - 新增停录后人工失败补标：左手单键长按可将上一条完成 episode 标记为 `operator_marked_failed`，同步更新 `metadata.json` 与 MCAP 首个 chunk 中的 `/metadata` 标记消息，成功后双手蜂鸣器各提示两声并多次重试关闭蜂鸣，且不与左手双键卸载 U 盘手势冲突。
+- 物理 `BTN_UP` / `BTN_DOWN` 录制启停改为 `1s` 内同键双击触发，降低单次短按误触；软件 FIFO 控制命令仍保持单次触发，便于自动化录制与现场复现。
 - Fays stereo 写入统一 MCAP 的图像编码由 H264 切换为 H265，`/stereo_left/image_compressed` 与 `/stereo_right/image_compressed` 的 ROS `CompressedImage.format` 同步写为 `h265`，降低 stereo 压缩质量对轨迹重建的影响。
 - 构建脚本默认主包版本调整到 `2.1.4`。
 
