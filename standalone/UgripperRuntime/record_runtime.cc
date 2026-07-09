@@ -8,6 +8,7 @@
 #include "utils/time_utils.h"
 
 #include <mcap/reader.hpp>
+#include <mcap/writer.hpp>
 #include <nlohmann/json.hpp>
 #include <uuid/uuid.h>
 
@@ -74,6 +75,10 @@ constexpr uint64_t kRestoreUsbFailureAlarmSilenceRetryMs = 250;
 constexpr uint64_t kRestoreUsbManualInsertGraceMs = 20000;
 constexpr uint64_t kRestoreUsbTriggerStableMs = 6000;
 constexpr uint64_t kRestoreUsbPreflightFailureCooldownMs = 30000;
+constexpr int kOperatorMarkBeepOnMs = 120;
+constexpr int kOperatorMarkBeepOffMs = 120;
+constexpr int kOperatorMarkBeepSilenceRetryAttempts = 5;
+constexpr int kOperatorMarkBeepSilenceRetryIntervalMs = 80;
 constexpr int kRestoreUsbMaxAttemptsPerError = 3;
 constexpr uint64_t kCameraRecorderDStateFaultMs = 5000;
 constexpr uint64_t kCameraRecorderDStateLogIntervalMs = 3000;
@@ -623,6 +628,9 @@ struct TactileFrameMetrics
 
 bool writeTextFileAtomically(const fs::path &path, const std::string &content, std::string *errorMessage);
 bool loadJsonFile(const std::string &path, json *output, std::string *errorMessage);
+bool rewriteEpisodeMcapWithOperatorFailureMarker(const fs::path &mcapPath,
+                                                 const std::string &episodeName,
+                                                 std::string *errorMessage);
 std::string resolveDeviceNodeTarget(const std::string &devicePath);
 
 struct TactileCalibrationTarget
@@ -7691,6 +7699,165 @@ bool RecordRuntime::handleLeftDualUmountAction()
     return false;
 }
 
+bool RecordRuntime::markEpisodeMcapOperatorFailed(const std::string &episodeDir, std::string *errorMessage) const
+{
+    const fs::path episodePath(episodeDir);
+    const fs::path mcapPath = episodeMcapPathFromManifestOrLegacy(episodePath);
+    return rewriteEpisodeMcapWithOperatorFailureMarker(
+        mcapPath,
+        stripEpisodeTempSuffix(episodePath.filename().string()),
+        errorMessage);
+}
+
+bool RecordRuntime::markEpisodeOperatorFailed(const std::string &episodeDir, std::string *errorMessage) const
+{
+    if (episodeDir.empty())
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "no completed episode available";
+        }
+        return false;
+    }
+
+    const fs::path episodePath(episodeDir);
+    std::error_code existsError;
+    if (!fs::exists(episodePath, existsError) || existsError)
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "episode directory not found: " + episodePath.string();
+        }
+        return false;
+    }
+
+    const fs::path metadataPath = episodePath / "metadata.json";
+    std::ifstream input(metadataPath);
+    if (!input.is_open())
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "metadata.json not found: " + metadataPath.string();
+        }
+        return false;
+    }
+
+    ordered_json metadata = ordered_json::object();
+    try
+    {
+        input >> metadata;
+    }
+    catch (const std::exception &ex)
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = std::string("failed to parse metadata.json: ") + ex.what();
+        }
+        return false;
+    }
+    if (!metadata.is_object())
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "metadata.json top-level value must be an object";
+        }
+        return false;
+    }
+
+    metadata["quality_check_status"] = "fail";
+    metadata["quality_check_err_type"] = ugripper::runtime::kErrorTypeOperatorMarkedFailed;
+
+    std::string writeError;
+    if (!writeTextFileAtomically(metadataPath, metadata.dump(2) + "\n", &writeError))
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to write metadata.json: " + writeError;
+        }
+        return false;
+    }
+
+    std::error_code flushError;
+    if (!flushFileToDisk(metadataPath, &flushError))
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to flush metadata.json: " + flushError.message();
+        }
+        return false;
+    }
+
+    writeValidationErrorLog(episodePath, "operator marked episode failed by left-hand single long press");
+
+    if (!markEpisodeMcapOperatorFailed(episodeDir, errorMessage))
+    {
+        return false;
+    }
+
+    if (!flushDirectoryToDisk(episodePath, &flushError))
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to flush episode directory after operator mark: " + flushError.message();
+        }
+        return false;
+    }
+    return true;
+}
+
+void RecordRuntime::playOperatorMarkFailedBeep()
+{
+    for (int pulse = 0; pulse < 2; ++pulse)
+    {
+        panelManager_.setBeepEnabledForSide("left", true);
+        panelManager_.setBeepEnabledForSide("right", true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(kOperatorMarkBeepOnMs));
+        for (int attempt = 0; attempt < kOperatorMarkBeepSilenceRetryAttempts; ++attempt)
+        {
+            panelManager_.silenceBeepForSide("left");
+            panelManager_.silenceBeepForSide("right");
+            if (attempt + 1 < kOperatorMarkBeepSilenceRetryAttempts)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(kOperatorMarkBeepSilenceRetryIntervalMs));
+            }
+        }
+        if (pulse == 0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(kOperatorMarkBeepOffMs));
+        }
+    }
+}
+
+bool RecordRuntime::handleLeftSingleLongMarkFailedAction()
+{
+    DM_LOG_INFO("{}", (::DA::utils::LogString() << "left single-button long press mark failed requested" << std::endl).str());
+    if (isRecordingActive())
+    {
+        DM_LOG_WARN("{}", (::DA::utils::LogString() << "ignore operator fail mark while recording" << std::endl).str());
+        sendAudioCommand("error");
+        return false;
+    }
+
+    const std::string episodeDir = lastEpisodeDir();
+    std::string errorMessage;
+    if (!markEpisodeOperatorFailed(episodeDir, &errorMessage))
+    {
+        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+            << "failed to mark episode as operator failed"
+            << " episode_dir=" << episodeDir
+            << " error=" << errorMessage << std::endl).str());
+        sendAudioCommand("error");
+        return false;
+    }
+
+    DM_LOG_INFO("{}", (::DA::utils::LogString()
+        << "episode marked as operator failed"
+        << " episode_dir=" << episodeDir << std::endl).str());
+    playOperatorMarkFailedBeep();
+    syncRuntimeLogToDisk("operator mark failed");
+    return true;
+}
+
 bool RecordRuntime::recordAudioClip(const std::string &audioType, bool monitorUpButton)
 {
     if (!fs::exists(options_.audioRecordScript))
@@ -7884,6 +8051,8 @@ void RecordRuntime::handleLeftButtons(const ButtonSnapshot &buttons)
             leftDualChordActive_ = true;
             leftBothPressedSinceMs_ = nowMs;
             leftDualLongHandled_ = false;
+            leftSinglePressedSinceMs_ = 0;
+            leftSingleLongHandled_ = false;
             DM_LOG_INFO("{}", (::DA::utils::LogString() << "left dual-button chord armed" << std::endl).str());
         }
 
@@ -7898,12 +8067,44 @@ void RecordRuntime::handleLeftButtons(const ButtonSnapshot &buttons)
         return;
     }
 
-    if (leftDualChordActive_ && !buttons.upPressed && !buttons.downPressed)
+    if (leftDualChordActive_)
     {
-        leftDualChordActive_ = false;
-        leftBothPressedSinceMs_ = 0;
-        leftDualLongHandled_ = false;
+        if (!buttons.upPressed && !buttons.downPressed)
+        {
+            leftDualChordActive_ = false;
+            leftBothPressedSinceMs_ = 0;
+            leftDualLongHandled_ = false;
+        }
+        lastLeftButtons_ = buttons;
+        return;
     }
+
+    if (buttons.upPressed || buttons.downPressed)
+    {
+        const bool freshSinglePress =
+            (!lastLeftButtons_.upPressed && !lastLeftButtons_.downPressed) ||
+            (buttons.upPressed != lastLeftButtons_.upPressed) ||
+            (buttons.downPressed != lastLeftButtons_.downPressed);
+        if (freshSinglePress)
+        {
+            leftSinglePressedSinceMs_ = nowMs;
+            leftSingleLongHandled_ = false;
+        }
+
+        const uint64_t heldMs = leftSinglePressedSinceMs_ > 0 && nowMs >= leftSinglePressedSinceMs_
+                                    ? nowMs - leftSinglePressedSinceMs_
+                                    : 0;
+        if (heldMs >= kLongPressThresholdMs && !leftSingleLongHandled_)
+        {
+            leftSingleLongHandled_ = true;
+            handleLeftSingleLongMarkFailedAction();
+        }
+        lastLeftButtons_ = buttons;
+        return;
+    }
+
+    leftSinglePressedSinceMs_ = 0;
+    leftSingleLongHandled_ = false;
     lastLeftButtons_ = buttons;
 }
 
@@ -10209,6 +10410,210 @@ bool sendEpisodeMcapJsonTopic(const fs::path &episodePath,
                        payload.data(),
                        payload.size(),
                        errorMessage);
+}
+
+bool rewriteEpisodeMcapWithOperatorFailureMarker(const fs::path &mcapPath,
+                                                 const std::string &episodeName,
+                                                 std::string *errorMessage)
+{
+    if (mcapPath.empty() || !fs::exists(mcapPath))
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "episode MCAP not found: " + mcapPath.string();
+        }
+        return false;
+    }
+
+    mcap::McapReader reader;
+    const auto openStatus = reader.open(mcapPath.string());
+    if (!openStatus.ok())
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to open episode MCAP: " + openStatus.message;
+        }
+        return false;
+    }
+    const auto summaryStatus = reader.readSummary(mcap::ReadSummaryMethod::AllowFallbackScan);
+    if (!summaryStatus.ok())
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to read episode MCAP summary: " + summaryStatus.message;
+        }
+        return false;
+    }
+
+    const fs::path tempPath = mcapPath.string() + ".operator_mark_failed.tmp";
+    std::error_code removeError;
+    fs::remove(tempPath, removeError);
+
+    const std::string profile = reader.header().has_value() && !reader.header()->profile.empty()
+                                    ? reader.header()->profile
+                                    : "ugripper-episode-mcap/1.0";
+    mcap::McapWriterOptions options(profile);
+    options.noChunking = false;
+    options.chunkSize = 1024 * 1024;
+    options.compression = mcap::Compression::None;
+    options.compressionLevel = mcap::CompressionLevel::Default;
+    options.forceCompression = false;
+    options.noRepeatedSchemas = false;
+    options.noRepeatedChannels = false;
+    options.noMessageIndex = false;
+
+    mcap::McapWriter writer;
+    const auto writeOpenStatus = writer.open(tempPath.string(), options);
+    if (!writeOpenStatus.ok())
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to create marked MCAP temp file: " + writeOpenStatus.message;
+        }
+        return false;
+    }
+
+    std::vector<mcap::SchemaId> schemaIds;
+    for (const auto &[schemaId, schema] : reader.schemas())
+    {
+        if (schema != nullptr)
+        {
+            schemaIds.push_back(schemaId);
+        }
+    }
+    std::sort(schemaIds.begin(), schemaIds.end());
+    for (const auto schemaId : schemaIds)
+    {
+        const auto schemaPtr = reader.schema(schemaId);
+        if (schemaPtr == nullptr)
+        {
+            continue;
+        }
+        mcap::Schema schema = *schemaPtr;
+        writer.addSchema(schema);
+    }
+
+    std::vector<mcap::ChannelId> channelIds;
+    for (const auto &[channelId, channel] : reader.channels())
+    {
+        if (channel != nullptr)
+        {
+            channelIds.push_back(channelId);
+        }
+    }
+    std::sort(channelIds.begin(), channelIds.end());
+    for (const auto channelId : channelIds)
+    {
+        const auto channelPtr = reader.channel(channelId);
+        if (channelPtr == nullptr)
+        {
+            continue;
+        }
+        mcap::Channel channel = *channelPtr;
+        writer.addChannel(channel);
+    }
+
+    mcap::Schema markerSchema("ugripper.MetadataJson", "jsonschema",
+                              R"({"title":"UGripperEpisodeMetadata","type":"object"})");
+    writer.addSchema(markerSchema);
+    mcap::Channel markerChannel("/metadata", "json", markerSchema.id);
+    markerChannel.metadata["record_role"] = "operator_quality_marker";
+    writer.addChannel(markerChannel);
+
+    ordered_json marker = ordered_json::object();
+    marker["quality_check_status"] = "fail";
+    marker["quality_check_err_type"] = ugripper::runtime::kErrorTypeOperatorMarkedFailed;
+    marker["source"] = "left_hand_single_long_press";
+    marker["episode_name"] = episodeName;
+    marker["marked_time_us"] = static_cast<int64_t>(systemTimeNowNs() / 1000ULL);
+    const std::string markerText = marker.dump();
+    mcap::Message markerMessage;
+    markerMessage.channelId = markerChannel.id;
+    markerMessage.sequence = 0;
+    markerMessage.logTime = systemTimeNowNs();
+    markerMessage.publishTime = markerMessage.logTime;
+    markerMessage.data = reinterpret_cast<const std::byte *>(markerText.data());
+    markerMessage.dataSize = markerText.size();
+    const auto markerStatus = writer.write(markerMessage);
+    if (!markerStatus.ok())
+    {
+        writer.close();
+        fs::remove(tempPath, removeError);
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to write MCAP operator marker: " + markerStatus.message;
+        }
+        return false;
+    }
+
+    for (const auto &view : reader.readMessages())
+    {
+        const auto channel = view.channel;
+        if (channel != nullptr && channel->topic == "/metadata" && view.message.data != nullptr)
+        {
+            const std::string payload(
+                reinterpret_cast<const char *>(view.message.data),
+                static_cast<size_t>(view.message.dataSize));
+            if (payload.find(ugripper::runtime::kErrorTypeOperatorMarkedFailed) != std::string::npos &&
+                payload.find("left_hand_single_long_press") != std::string::npos)
+            {
+                continue;
+            }
+        }
+        const auto status = writer.write(view.message);
+        if (!status.ok())
+        {
+            writer.close();
+            fs::remove(tempPath, removeError);
+            if (errorMessage != nullptr)
+            {
+                *errorMessage = "failed to copy MCAP message: " + status.message;
+            }
+            return false;
+        }
+    }
+    writer.close();
+
+    std::error_code flushError;
+    if (!flushFileToDisk(tempPath, &flushError))
+    {
+        fs::remove(tempPath, removeError);
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to flush marked MCAP temp file: " + flushError.message();
+        }
+        return false;
+    }
+
+    std::error_code renameError;
+    fs::rename(tempPath, mcapPath, renameError);
+    if (renameError)
+    {
+        fs::remove(tempPath, removeError);
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to replace episode MCAP: " + renameError.message();
+        }
+        return false;
+    }
+
+    if (!flushFileToDisk(mcapPath, &flushError))
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to flush marked MCAP: " + flushError.message();
+        }
+        return false;
+    }
+    if (!flushDirectoryToDisk(mcapPath.parent_path(), &flushError))
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "failed to flush episode directory after MCAP replace: " + flushError.message();
+        }
+        return false;
+    }
+    return true;
 }
 
 bool exportEpisodeMcapStats(const fs::path &episodePath, std::string *errorMessage)

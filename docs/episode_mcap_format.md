@@ -8,7 +8,7 @@ UGripper 本机录制每条 episode 最终只生成两个主要产物：`<DEVICE
 - 条件文件：`audio_pre.wav`、`audio_post.wav`、`validation_error.log`
 - 不再生成最终文件：`calibration.json`
 
-原 `calibration.json` 的完整内容在统一 MCAP socket 就绪后、相机/传感器真正起录前写入 MCAP topic `/calibration`。`metadata.json` 保留在 episode 目录，作为最终校验结果载体；停录收尾阶段不再向 MCAP 追加 `/metadata` 或 `/calibration` 这类 info JSON topic。
+原 `calibration.json` 的完整内容在统一 MCAP socket 就绪后、相机/传感器真正起录前写入 MCAP topic `/calibration`。`metadata.json` 保留在 episode 目录，作为最终校验结果载体；普通停录收尾阶段不再向 MCAP 追加 `/metadata` 或 `/calibration` 这类 info JSON topic。若数采员在停录后通过左手单键长按把上一条 episode 补标为失败，运行时会离线改写最终 MCAP，在首个 chunk 中增加 `/metadata` JSON 标记消息。
 
 ## 图像 Topics
 
@@ -57,6 +57,8 @@ UGripper 本机录制每条 episode 最终只生成两个主要产物：`<DEVICE
 ## Metadata File
 
 完整元数据保留在 episode 目录下的 `metadata.json`，停录强校验和离线使用都以该文件为准。
+
+停录后人工失败补标会把上一条 episode 的 `metadata.json` 更新为 `quality_check_status=fail`、`quality_check_err_type=operator_marked_failed`。同一次补标还会重写最终 MCAP：先完整读取原 MCAP，再生成临时 MCAP，并把一个 `/metadata` JSON 标记消息写为新文件的首条消息，使其位于第一个 chunk。标记 payload 至少包含 `quality_check_status`、`quality_check_err_type`、`source=left_hand_single_long_press`、`episode_name` 与 `marked_time_us`。临时 MCAP 写完后会 flush、rename 覆盖原文件，并再次 flush MCAP 文件和 episode 目录。
 
 ## 传感器 Topics
 

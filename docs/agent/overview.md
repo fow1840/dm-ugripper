@@ -84,10 +84,15 @@
 - 右手双键长按：
   - 2 秒时播放 `shutdown` 提示音。
   - 4 秒时进入 `EXIT`，必要时先停录，然后写 `/run/ugripper/system_action_request=shutdown`。
+- 左手单键长按：
+  - 仅在停止录制后生效；将上一条已完成 episode 标记为数采员判定失败。
+  - 成功后更新上一条 episode 的 `metadata.json` 与 MCAP 标记信息，并通过双手 HMI 蜂鸣器各提示两声；蜂鸣关闭会多次重试，降低偶发关闭失败导致持续响的概率。
+  - 录制中忽略并播报 `error`；没有上一条 episode 或上一条 episode 不完整时只记录失败并播报 `error`。
 - 左手双键长按：
   - 仅在停止录制状态下生效；录制中忽略并播报 `error`。
   - 4 秒时先触发 `writing` 并刷写运行日志，然后写 `/run/ugripper/system_action_request=umount`。
   - root helper 卸载 `/mnt/data_disk` 成功后播放 `umount`；失败播放 `error`。
+  - 左手双键 chord 一旦进入卸载判定窗口，会等双键全部松开才允许新的左手单键长按标记，避免与人工失败标记冲突。
 
 ## 6. 录制生命周期
 ### 6.1 开始录制
@@ -210,7 +215,8 @@
 - `data_uuid` 使用系统随机 UUID；若 `/proc/sys/kernel/random/uuid` 不可用则回退 `libuuid` 的 `uuid_generate/uuid_unparse`。无音频文件时 `audio_uuid` 允许为空字符串。
 - `hardware_version` 默认 `v2.5`，可通过 `UGRIPPER_HARDWARE_VERSION` 覆盖；`software_version` 来自 ugripper 主包版本并带 `v` 前缀；`das_usb_updater_version` 优先读取 `das-usb-updater` 包版本。
 - `hardware_list` 只存各硬件 SN：左右 gripper、左右主摄、可选胸部主摄、四路 tactile、左右 stereo。左右 gripper SN 在 gripper 插入并完成运行时 refresh 后缓存，拔出后清理；写 metadata 时只使用该缓存，不再额外同步读串口。gripper HMI 不再参与 calibration 读取，后续标定完全从相机侧读取。主摄/胸部相机 SN 同样只使用插入/目标变化时通过 Yuzhou UVC XU 维护的运行时缓存，读取失败写空字符串，不回退 USB serial；tactile SN 由运行时在 `/dev/tcam_*` 插入或 symlink 目标变化时读取 USB sysfs `serial` 并缓存，metadata/calibration/后台 tactile 校验只消费缓存，不再每条 episode 执行 `udevadm`；stereo 使用 Fays daemon 状态中的 SDK serial。`video_details` 不再重复写 `serial`。
-- `quality_check_status` 取值为 `success` / `fail` / 空字符串；`quality_check_err_type` 保持单字段兼容，只写本次失败的主 `error_type`。常见取值包括 `missing_file`、`collection_duration_too_short`、`frame_loss`、`finalize_error`、`stereo_control_failed`、`calibration_error`、`runtime_error`、`device_disconnected`，以及健康监控直接上报的 `disk_mount_lost`、`disk_not_writable`、`disk_full`、`critical_devices_missing`、`stereo_not_ready`、`hmi_*` 等 fault key；无法归类时写 `unknown`。
+- `quality_check_status` 取值为 `success` / `fail` / 空字符串；`quality_check_err_type` 保持单字段兼容，只写本次失败的主 `error_type`。常见取值包括 `missing_file`、`collection_duration_too_short`、`frame_loss`、`finalize_error`、`stereo_control_failed`、`calibration_error`、`runtime_error`、`device_disconnected`、数采员通过左手单键长按补标的 `operator_marked_failed`，以及健康监控直接上报的 `disk_mount_lost`、`disk_not_writable`、`disk_full`、`critical_devices_missing`、`stereo_not_ready`、`hmi_*` 等 fault key；无法归类时写 `unknown`。
+- 停录后人工补标失败时，运行时会原子更新上一条 episode 的 `metadata.json`，写出 `quality_check_status=fail` 与 `quality_check_err_type=operator_marked_failed`，同时改写最终 MCAP：生成临时 MCAP、在首个 chunk 中写入 `/metadata` JSON 标记消息，再原子替换原 MCAP，并显式 flush MCAP 文件与 episode 目录。
 - `collection_duration_s` 取最终 MCAP 内所有图像 topic 有效时长最大值，保留 1 位小数；`video_details[].fps` 与 `duration_s` 也保留 1 位小数。
 - `video_details[].start_offset_us` 由各图像 topic 首帧 logTime 折算而来，单位为微秒，字段名带 `_us` 后缀；计算时以本 episode 最早一路图像 topic 为 0。
 - `require_files` 固定为最终 MCAP 文件名；启用音频时对应条件产物仍可出现，但不进入本机强校验必需文件。
