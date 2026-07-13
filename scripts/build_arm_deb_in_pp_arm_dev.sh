@@ -6,8 +6,13 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 APP_NAME="ugripper"
 ARCH="arm64"
-BASE_VERSION="${BASE_VERSION:-2.1.4}"
-VERSION_SUFFIX="${VERSION_SUFFIX:-}"
+BASE_VERSION="${BASE_VERSION:-2.1.5}"
+CURRENT_BRANCH="$(git -C "${REPO_ROOT}" branch --show-current 2>/dev/null || true)"
+DEFAULT_VERSION_SUFFIX=""
+if [[ "${CURRENT_BRANCH}" == "feature/zhouwu/head-raw-mcap-h264" ]]; then
+    DEFAULT_VERSION_SUFFIX="+xht1"
+fi
+VERSION_SUFFIX="${VERSION_SUFFIX:-${DEFAULT_VERSION_SUFFIX}}"
 VERSION="${VERSION:-${BASE_VERSION}${VERSION_SUFFIX}}"
 PACKAGE_DEB_NAME="${APP_NAME}_${VERSION}_${ARCH}.deb"
 

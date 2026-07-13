@@ -3,6 +3,8 @@
 ## Unreleased
 
 - 统一 MCAP episode 的 `metadata.json` 使用 `data_version=3.0_mcap`，与旧版 `3.0` 数据目录格式明确区分。
+- 物理录制按键短按释放去抖由 `250ms` 调整为 `80ms`，保留 `1s` 双击窗口；人工失败补标成功后，双侧紫灯闪烁与两声蜂鸣同步，并在提示结束后恢复原运行灯效。
+- 人工失败补标写入的 `/metadata` MCAP 消息改用 episode 最早消息时间作为 `log_time/publish_time`；XHT 专用分支默认构建版本升级到 `2.1.5+xht1`，显式版本参数仍可覆盖自动后缀。
 
 > 说明：本文件只保留 v2.0.0 以来的高信号发布变更；当前系统行为以 `docs/agent/overview.md` 为准。
 >

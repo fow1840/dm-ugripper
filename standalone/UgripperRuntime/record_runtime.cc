@@ -73,7 +73,7 @@ void CloseChildFileDescriptors(int fdLimit)
 }
 
 constexpr const char *kChestCameraEnvKey = "ENABLE_CHEST_CAM_MAIN";
-constexpr uint64_t kActionDebounceMs = 250;
+constexpr uint64_t kActionDebounceMs = 80;
 constexpr uint64_t kLongPressThresholdMs = 800;
 constexpr uint64_t kDualLongPressThresholdMs = 4000;
 constexpr uint64_t kShutdownPromptThresholdMs = 2000;
@@ -102,6 +102,9 @@ constexpr int kOperatorMarkBeepOnMs = 120;
 constexpr int kOperatorMarkBeepOffMs = 120;
 constexpr int kOperatorMarkBeepSilenceRetryAttempts = 5;
 constexpr int kOperatorMarkBeepSilenceRetryIntervalMs = 80;
+constexpr uint8_t kOperatorMarkLedRed = 180;
+constexpr uint8_t kOperatorMarkLedGreen = 0;
+constexpr uint8_t kOperatorMarkLedBlue = 255;
 constexpr int kRestoreUsbMaxAttemptsPerError = 3;
 constexpr uint64_t kCameraRecorderDStateFaultMs = 5000;
 constexpr uint64_t kCameraRecorderDStateLogIntervalMs = 3000;
@@ -7891,9 +7894,11 @@ void RecordRuntime::playOperatorMarkFailedBeep()
 {
     for (int pulse = 0; pulse < 2; ++pulse)
     {
+        panelManager_.setLedColor(kOperatorMarkLedRed, kOperatorMarkLedGreen, kOperatorMarkLedBlue);
         panelManager_.setBeepEnabledForSide("left", true);
         panelManager_.setBeepEnabledForSide("right", true);
         std::this_thread::sleep_for(std::chrono::milliseconds(kOperatorMarkBeepOnMs));
+        panelManager_.turnOff();
         for (int attempt = 0; attempt < kOperatorMarkBeepSilenceRetryAttempts; ++attempt)
         {
             panelManager_.silenceBeepForSide("left");
@@ -7908,6 +7913,7 @@ void RecordRuntime::playOperatorMarkFailedBeep()
             std::this_thread::sleep_for(std::chrono::milliseconds(kOperatorMarkBeepOffMs));
         }
     }
+    applyIdleState();
 }
 
 bool RecordRuntime::handleLeftSingleLongMarkFailedAction()
@@ -10638,6 +10644,16 @@ bool rewriteEpisodeMcapWithOperatorFailureMarker(const fs::path &mcapPath,
     markerChannel.metadata["record_role"] = "operator_quality_marker";
     writer.addChannel(markerChannel);
 
+    uint64_t firstLogTimeNs = std::numeric_limits<uint64_t>::max();
+    for (const auto &view : reader.readMessages())
+    {
+        firstLogTimeNs = std::min(firstLogTimeNs, view.message.logTime);
+    }
+    if (firstLogTimeNs == std::numeric_limits<uint64_t>::max())
+    {
+        firstLogTimeNs = systemTimeNowNs();
+    }
+
     ordered_json marker = ordered_json::object();
     marker["quality_check_status"] = "fail";
     marker["quality_check_err_type"] = ugripper::runtime::kErrorTypeOperatorMarkedFailed;
@@ -10648,8 +10664,8 @@ bool rewriteEpisodeMcapWithOperatorFailureMarker(const fs::path &mcapPath,
     mcap::Message markerMessage;
     markerMessage.channelId = markerChannel.id;
     markerMessage.sequence = 0;
-    markerMessage.logTime = systemTimeNowNs();
-    markerMessage.publishTime = markerMessage.logTime;
+    markerMessage.logTime = firstLogTimeNs;
+    markerMessage.publishTime = firstLogTimeNs;
     markerMessage.data = reinterpret_cast<const std::byte *>(markerText.data());
     markerMessage.dataSize = markerText.size();
     const auto markerStatus = writer.write(markerMessage);
