@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- 统一 MCAP episode 的 `metadata.json` 使用 `data_version=3.0_mcap`，与旧版 `3.0` 数据目录格式明确区分。
+
 > 说明：本文件只保留 v2.0.0 以来的高信号发布变更；当前系统行为以 `docs/agent/overview.md` 为准。
 >
 > 仓库没有 `v2.0.x` git tag。下面的发布边界按 `build_deb.sh` / `scripts/build_arm_deb_in_pp_arm_dev.sh` 中 `BASE_VERSION` 的提交记录推定：`2caf6e0` 为 v2.0.0，`d81c3c1` 为 v2.0.1。

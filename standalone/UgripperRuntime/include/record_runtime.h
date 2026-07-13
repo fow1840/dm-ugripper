@@ -501,7 +501,6 @@ private:
     bool restoreUsbCheckMainCameraRecovery_ = false;
     bool restoreUsbFailureAlarmActive_ = false;
     uint64_t restoreUsbFailureAlarmStartMs_ = 0;
-    uint64_t restoreUsbFailureAlarmLastSilenceMs_ = 0;
     uint64_t restoreUsbPreflightFailureUntilMs_ = 0;
     bool restoreUsbStereoDaemonStopped_ = false;
     uint64_t stereoDaemonDelayedStartUntilMs_ = 0;
