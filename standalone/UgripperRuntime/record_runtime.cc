@@ -39,6 +39,7 @@
 #include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <thread>
@@ -51,6 +52,26 @@ using json = nlohmann::json;
 using ordered_json = nlohmann::ordered_json;
 
 namespace {
+int ChildFileDescriptorLimit()
+{
+    const long openMax = sysconf(_SC_OPEN_MAX);
+    return openMax > 0 ? static_cast<int>(openMax) : 1024;
+}
+
+void CloseChildFileDescriptors(int fdLimit)
+{
+#ifdef SYS_close_range
+    if (syscall(SYS_close_range, 3U, ~0U, 0U) == 0)
+    {
+        return;
+    }
+#endif
+    for (int fd = 3; fd < fdLimit; ++fd)
+    {
+        close(fd);
+    }
+}
+
 constexpr const char *kChestCameraEnvKey = "ENABLE_CHEST_CAM_MAIN";
 constexpr uint64_t kActionDebounceMs = 250;
 constexpr uint64_t kLongPressThresholdMs = 800;
@@ -2726,6 +2747,7 @@ CommandCaptureResult runCommandCapture(const std::vector<std::string> &arguments
     }
     argv.push_back(nullptr);
 
+    const int childFdLimit = ChildFileDescriptorLimit();
     const pid_t pid = fork();
     if (pid < 0)
     {
@@ -2740,6 +2762,7 @@ CommandCaptureResult runCommandCapture(const std::vector<std::string> &arguments
         dup2(pipefd[1], STDERR_FILENO);
         close(pipefd[0]);
         close(pipefd[1]);
+        CloseChildFileDescriptors(childFdLimit);
         execvp(argv[0], argv.data());
         _exit(127);
     }
@@ -3115,7 +3138,7 @@ std::optional<YuzhouMainCameraIdentity> readYuzhouMainCameraIdentity(const std::
         return std::nullopt;
     }
 
-    const int fd = open(devicePath.c_str(), O_RDWR | O_NONBLOCK);
+    const int fd = open(devicePath.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0)
     {
         if (detail != nullptr)
@@ -8744,6 +8767,7 @@ bool RecordRuntime::runCommandSync(const std::vector<std::string> &arguments)
     }
     argv.push_back(nullptr);
 
+    const int childFdLimit = ChildFileDescriptorLimit();
     const pid_t pid = fork();
     if (pid < 0)
     {
@@ -8752,6 +8776,7 @@ bool RecordRuntime::runCommandSync(const std::vector<std::string> &arguments)
 
     if (pid == 0)
     {
+        CloseChildFileDescriptors(childFdLimit);
         execvp(argv[0], argv.data());
         _exit(127);
     }

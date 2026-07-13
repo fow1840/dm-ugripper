@@ -1013,7 +1013,7 @@ start_side_daemon() {
         --mcap-name "$mcap_name" \
         --calib-json "$calib_json" \
         --status-json "$runtime_status_json" \
-        daemon &
+        daemon 9>&- &
     local pid="$!"
     if ! wait_for_fifo "$fifo" "$FIFO_STARTUP_TIMEOUT_SEC"; then
         fays_log "$side recorder FIFO wait timed out: timeout_s=$FIFO_STARTUP_TIMEOUT_SEC pid=$pid fifo=$fifo daemon_elapsed_ms=$(daemon_elapsed_ms) uptime_ms=$(boot_uptime_ms)"
