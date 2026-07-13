@@ -42,6 +42,14 @@
   - 递归扫描一个或多个目录中的 `cam_left.mkv` / `cam_right.mkv`，并发检查包时间戳异常、显著时间洞和可疑解码报错。
   - 默认先做快速 `ffprobe` 包级扫描，只对可疑文件追加 `ffmpeg` 解码扫描；适合批量数据排查。
   - 会按同目录左右主摄对齐“大时间洞”事件，便于判断是否存在左右同时异常。
+- `test/scripts/board_tactile_ffmpeg_streamon_soak.sh`
+  - 对单个触觉相机节点反复执行短时 FFmpeg 拉流和关闭，重点复现 `VIDIOC_STREAMON`、零帧、低帧及进程卡死。
+  - 测试期间临时停止 `ugripper.service` 释放硬件，脚本通过退出 trap 自动恢复服务；失败轮次会额外保存 USB/UVC、设备占用和内核日志快照。
+- `test/scripts/board_tactile_ffmpeg_parallel_soak.sh`
+  - 四路触觉相机并发短周期拉流，默认每 `1s` 同时关闭并立即重新打开四路设备，用于提高 USB/UVC 并发启停压力。
+  - 按设备、轮次记录结果；任一路异常都会保存该轮四路原始日志和统一现场快照。
+- `test/scripts/board_encoder_cmd_ack_latency.sh`
+  - 临时停止服务后左右并行发送生产 encoder 位置读取命令，统计合法 Modbus 应答的 `cmd -> ack` 延迟、超时和 CRC 错误，退出时自动恢复服务。
 
 ## 建议用法
 在仓库根目录执行：
