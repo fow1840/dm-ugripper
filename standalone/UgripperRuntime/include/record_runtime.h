@@ -68,7 +68,7 @@ public:
 
     bool initialize();
     int run();
-    void requestStop();
+    void requestStop() noexcept;
 
 private:
     struct ButtonSnapshot

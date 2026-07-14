@@ -138,9 +138,8 @@ struct PendingWriteQueue {
 
 static_assert(sizeof(EncoderSample) == 8, "EncoderSample layout changed");
 
-void signalHandler(int signum) {
-    DM_LOG_INFO("{}", (::DA::utils::LogString() << "Interrupt signal (" << signum << ") received. Stopping...").str());
-    g_stopFlag = true;
+void signalHandler(int) {
+    g_stopFlag.store(true, std::memory_order_relaxed);
 }
 
 EncoderSample create_encoder_sample(const EncoderData &d) {
@@ -537,13 +536,6 @@ int main(int argc, char *argv[]) {
     g_stopFlag = true;
     DM_LOG_INFO("Stopping sensors...");
 
-    if (rightEncoder.driver) {
-        rightEncoder.driver->disconnect();
-    }
-    if (leftEncoder.driver) {
-        leftEncoder.driver->disconnect();
-    }
-
     if (rightEncoder.readThread.joinable()) {
         rightEncoder.readThread.join();
     }
@@ -555,6 +547,12 @@ int main(int argc, char *argv[]) {
     }
     if (leftEncoder.requestThread.joinable()) {
         leftEncoder.requestThread.join();
+    }
+    if (rightEncoder.driver) {
+        rightEncoder.driver->disconnect();
+    }
+    if (leftEncoder.driver) {
+        leftEncoder.driver->disconnect();
     }
     const auto drainEncoderRuntime = [](EncoderRuntime &encoderRuntime, PendingWriteQueue &pendingWrites) {
         const auto emitFrame = [&](uint64_t timestampNs, std::vector<std::byte> &&payload) {

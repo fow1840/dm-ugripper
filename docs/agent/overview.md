@@ -27,11 +27,11 @@
 | --- | --- | --- | --- |
 | systemd 主服务 | `pack_script/ugripper.service` | 以 `ubuntu` 用户拉起录制服务 | `/opt/ugripper/run_record.sh` |
 | 薄壳启动脚本 | `run_record.sh` | 切到安装目录、维护本地 `/tmp` 到 `/mnt/data_disk/logs` 的增量日志同步，并直接拉起 `record_runtime`；不再在脚本层等待数据盘 | `/tmp/umi_sys_<sn>_<date>.log`、`/mnt/data_disk/logs/umi_sys_<sn>_<date>.log` |
-| 主运行时 | `bin/UgripperRuntime/UgripperRuntime` | HMI 按键状态机、软件录制控制、LED 灯效、提示音、pre/post 音频、camera/sensor 子进程管理、数据盘等待、停录校验、关机请求 | episode 目录、`/dev/shm/ugripper/umi_record_control.pipe`、`/tmp/umi_shutdown_request` |
+| 主运行时 | `bin/UgripperRuntime/UgripperRuntime` | HMI 按键状态机、软件录制控制、LED 灯效、提示音、pre/post 音频、camera/sensor 子进程管理、数据盘等待、停录校验、关机请求；SIGINT/SIGTERM handler 只设置原子停止标志，ego 与其他子进程统一由主循环退出后的正常收尾路径停止 | episode 目录、`/dev/shm/ugripper/umi_record_control.pipe`、`/tmp/umi_shutdown_request` |
 | 安全 NTP 同步 | `time_sync/safe_ntp_sync.sh` / `ugripper-ntp-sync.service` | 开机或安装后只在非录制态执行一次性时间同步，优先使用板端现有 `sntp -S`，再 fallback 到 `ntpd -q -g` / `timedatectl`；同步完成、超时或录制开始后停止常驻 NTP 服务 | `/tmp/umi_recording.lock`、`sntp`/`ntp` |
 | 相机录制 | `bin/CameraRecorder/CameraRecorder` / `bin/FaysStereoRecorder/fays_record_example` | 普通录制模式下负责主摄/触觉 H264 帧写入统一 MCAP；Fays stereo recorder 负责双目常驻预热、热插拔恢复、session finalize，并将 stereo H265 帧写入统一 MCAP | 最终 MCAP 内相机 topics |
 | 统一 MCAP writer | `bin/EpisodeMcap/EpisodeMcapRecorder` | 起录时先启动本地 Unix socket writer，真实 socket 放在 `/dev/shm/ugripper/`，所有相机/传感器子进程连接后写入同一个 `<DEVICE_SN>_<YYYYMMDD_HHMMSS>.mcap` | 最终 MCAP、录制期临时 `episode_mcap_socket_path.txt` |
-| 传感器录制 | `bin/SensorRecorder/SensorRecorder` | 录制左右 encoder；检测到统一 MCAP socket 时直接写入最终 MCAP，否则保留旧拆分 MCAP fallback | `/encoder_left`、`/encoder_right` |
+| 传感器录制 | `bin/SensorRecorder/SensorRecorder` | 录制左右 encoder；检测到统一 MCAP socket 时直接写入最终 MCAP，否则保留旧拆分 MCAP fallback；收到 SIGINT/SIGTERM 时只设置停止标志，退出主循环后先等待编码器读写线程停止，再关闭串口、排空队列并关闭 MCAP，encoder zeroing 使用相同的信号安全约束 | `/encoder_left`、`/encoder_right` |
 | HMI 类库 | `standalone/GripperHmiTool` | 读取夹爪按键，并在驱动内部以单线程 owner 线程完成状态查询、灯效生成与 RGB 指令发送；默认由状态机切灯效，必要时仍可直接下发 RGB；当前也提供 SN 与 1024-byte 标定参数读写 API | 按键快照、RGB 指令、SN/标定参数读写 |
 | 音频播放 | `bin/UgripperRuntime/audio/audio_play.py` | 优先绑定受支持 USB 耳机、无耳机时回退系统默认声卡；播放提示音并处理耳机 HID 音量键；初始化阶段受控处理 idle suspend | `/dev/shm/ugripper/umi_audio_pipe` |
 | 音频采集 | `audio/record_usb_audio.py` | 优先从受支持 USB 耳机麦克风录音，无耳机时回退系统默认 source，供 pre/post 处理链路使用 | 临时 wav 文件 |

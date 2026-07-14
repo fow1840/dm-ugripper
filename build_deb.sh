@@ -4,7 +4,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ================= 变量定义区域 =================
 APP_NAME="ugripper"
-BASE_VERSION="${BASE_VERSION:-2.1.5}"
+BASE_VERSION="${BASE_VERSION:-2.1.6}"
 CURRENT_BRANCH="$(git -C "$script_dir" branch --show-current 2>/dev/null || true)"
 DEFAULT_VERSION_SUFFIX=""
 if [[ "$CURRENT_BRANCH" == "feature/zhouwu/head-raw-mcap-h264" ]]; then
