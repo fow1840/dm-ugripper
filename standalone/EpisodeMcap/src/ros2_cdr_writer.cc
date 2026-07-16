@@ -1,6 +1,10 @@
 #include "episode_mcap/ros2_cdr_writer.h"
 
+#include <fastcdr/Cdr.h>
+#include <fastcdr/FastBuffer.h>
+
 #include <algorithm>
+#include <cstring>
 
 namespace ugripper::episode_mcap {
 namespace {
@@ -35,6 +39,10 @@ public:
     }
 
     void U32(uint32_t value) {
+        WritePod(value);
+    }
+
+    void F32(float value) {
         WritePod(value);
     }
 
@@ -180,6 +188,34 @@ std::vector<std::byte> EncodeImu(uint64_t stamp_ns,
     return writer.Take();
 }
 
+std::vector<std::byte> EncodeEncoder(uint64_t stamp_ns,
+                                     int32_t raw,
+                                     float rad) {
+    CdrWriter writer;
+    const RosTime time = RosTimeFromUnixNs(stamp_ns);
+    writer.I32(time.sec);
+    writer.U32(time.nanosec);
+    writer.I32(raw);
+    writer.F32(rad);
+    return writer.Take();
+}
+
+std::vector<std::byte> EncodeString(const std::string& value) {
+    std::vector<char> buffer(4 + 4 + value.size() + 1);
+    eprosima::fastcdr::FastBuffer fast_buffer(buffer.data(), buffer.size());
+    eprosima::fastcdr::Cdr serializer(
+        fast_buffer,
+        eprosima::fastcdr::Cdr::LITTLE_ENDIANNESS,
+        eprosima::fastcdr::Cdr::DDS_CDR);
+    serializer.serialize_encapsulation();
+    serializer << value;
+
+    const size_t size = serializer.getSerializedDataLength();
+    std::vector<std::byte> data(size);
+    std::memcpy(data.data(), buffer.data(), size);
+    return data;
+}
+
 const char* CompressedImageSchema() {
     return R"(std_msgs/Header header
 string format
@@ -250,6 +286,20 @@ MSG: geometry_msgs/Vector3
 float64 x
 float64 y
 float64 z)";
+}
+
+const char* EncoderSchema() {
+    return R"(builtin_interfaces/Time stamp
+int32 raw
+float32 rad
+================================================================================
+MSG: builtin_interfaces/Time
+int32 sec
+uint32 nanosec)";
+}
+
+const char* StringSchema() {
+    return "string data";
 }
 
 }  // namespace ugripper::episode_mcap

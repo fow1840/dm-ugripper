@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 APP_NAME="ugripper"
 ARCH="arm64"
-BASE_VERSION="${BASE_VERSION:-2.1.6}"
+BASE_VERSION="${BASE_VERSION:-2.1.7}"
 CURRENT_BRANCH="$(git -C "${REPO_ROOT}" branch --show-current 2>/dev/null || true)"
 DEFAULT_VERSION_SUFFIX=""
 if [[ "${CURRENT_BRANCH}" == "feature/zhouwu/head-raw-mcap-h264" ]]; then

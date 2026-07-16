@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Read UGripper MCAP files as plain MCAP data.
+Read UGripper MCAP files and report their container and topic structure.
 
 This script is intentionally a small, readable example for data consumers. It
-does not treat UGripper MCAP files as ROS 2 bags. Current UGripper episode MCAP
-files are generic MCAP containers with compact binary payloads:
+supports the current unified ROS 2-profile episode MCAP as well as legacy split
+MCAP files. The unified file contains ROS 2 CDR camera/IMU/encoder messages and
+JSON text wrapped in ROS 2 String CDR. Legacy inputs include:
 
 - sensor_left.mcap / sensor_right.mcap:
   topic encoder_left / encoder_right, payload little-endian int32 raw + float32 rad
@@ -44,6 +45,9 @@ EPISODE_MCAP_NAMES = (
     "fays_data_right.mcap",
     "ego/sensor.mcap",
 )
+
+ENCODER_SCHEMA = "ugripper_msgs/msg/Encoder"
+STRING_SCHEMA = "std_msgs/msg/String"
 
 
 @dataclass
@@ -132,13 +136,59 @@ def finite_float(value: float) -> float | str:
     return value if math.isfinite(value) else str(value)
 
 
-def decode_payload(topic: str, payload: bytes, message_encoding: str, schema_name: str) -> tuple[str, Any]:
-    if topic.startswith("encoder_") and len(payload) >= 8:
-        raw, rad = struct.unpack("<if", payload[:8])
-        return "ugripper.encoder", {
+def decode_encoder_payload(
+    payload: bytes,
+    message_encoding: str = "",
+    schema_name: str = "",
+) -> dict[str, Any]:
+    is_cdr = message_encoding.lower() == "cdr" and schema_name == ENCODER_SCHEMA
+    if is_cdr:
+        if len(payload) < 20:
+            raise ValueError(f"encoder CDR payload too short: {len(payload)}")
+        if payload[:4] != b"\x00\x01\x00\x00":
+            raise ValueError(f"unsupported encoder CDR encapsulation: {payload[:4].hex()}")
+        sec, nanosec, raw, rad = struct.unpack_from("<iIif", payload, 4)
+        return {
+            "stamp_ns": sec * 1_000_000_000 + nanosec,
             "raw": int(raw),
             "rad": finite_float(float(rad)),
         }
+
+    if len(payload) < 8:
+        raise ValueError(f"legacy encoder payload too short: {len(payload)}")
+    raw, rad = struct.unpack_from("<if", payload, 0)
+    return {
+        "raw": int(raw),
+        "rad": finite_float(float(rad)),
+    }
+
+
+def decode_string_cdr(payload: bytes) -> str:
+    if len(payload) < 9:
+        raise ValueError(f"String CDR payload too short: {len(payload)}")
+    if payload[:4] != b"\x00\x01\x00\x00":
+        raise ValueError(f"unsupported String CDR encapsulation: {payload[:4].hex()}")
+    (size,) = struct.unpack_from("<I", payload, 4)
+    if size == 0 or 8 + size > len(payload):
+        raise ValueError(f"invalid String CDR length: {size}, payload={len(payload)}")
+    raw = payload[8 : 8 + size]
+    if raw[-1] != 0:
+        raise ValueError("String CDR is missing the null terminator")
+    return raw[:-1].decode("utf-8")
+
+
+def decode_payload(topic: str, payload: bytes, message_encoding: str, schema_name: str) -> tuple[str, Any]:
+    if topic.lstrip("/").startswith("encoder_"):
+        decoded = decode_encoder_payload(payload, message_encoding, schema_name)
+        kind = "ugripper.encoder_cdr" if schema_name == ENCODER_SCHEMA else "ugripper.encoder_legacy"
+        return kind, decoded
+
+    if message_encoding.lower() == "cdr" and schema_name == STRING_SCHEMA:
+        text = decode_string_cdr(payload)
+        try:
+            return "json", json.loads(text)
+        except json.JSONDecodeError:
+            return "ros2.string", text
 
     if topic == "i" and len(payload) >= 48:
         gx, gy, gz, ax, ay, az = struct.unpack("<6d", payload[:48])
@@ -214,9 +264,30 @@ def iter_messages_with_fallback(path: Path):
                     yield schemas.get(channel.schema_id), channel, record
 
 
-def read_mcap(path: Path, sample_limit: int, topic_filters: set[str] | None) -> dict[str, Any]:
+def read_mcap(
+    path: Path,
+    sample_limit: int,
+    topic_filters: set[str] | None,
+    expected_profile: str | None,
+) -> dict[str, Any]:
     topics: dict[str, TopicStats] = {}
     file_error = None
+    profile = ""
+    library = ""
+    validation_errors: list[str] = []
+
+    try:
+        with path.open("rb") as stream:
+            header = make_reader(stream).get_header()
+            profile = header.profile
+            library = header.library
+    except Exception as exc:
+        file_error = f"failed to read MCAP header: {exc}"
+
+    if expected_profile is not None and profile != expected_profile:
+        validation_errors.append(
+            f"unexpected MCAP profile: expected {expected_profile!r}, got {profile!r}"
+        )
 
     try:
         for schema, channel, message in iter_messages_with_fallback(path):
@@ -269,7 +340,10 @@ def read_mcap(path: Path, sample_limit: int, topic_filters: set[str] | None) -> 
         "path": str(path),
         "exists": path.exists(),
         "size_bytes": path.stat().st_size if path.exists() else 0,
+        "profile": profile,
+        "library": library,
         "error": file_error,
+        "validation_errors": validation_errors,
         "topics": topic_values,
     }
 
@@ -278,9 +352,12 @@ def print_report(report: dict[str, Any], show_samples: bool) -> None:
     for file_report in report["files"]:
         print(f"\n== {file_report['path']}")
         print(f"size={file_report['size_bytes']} bytes")
+        print(f"profile={file_report['profile'] or '-'} library={file_report['library'] or '-'}")
         if file_report["error"]:
             print(f"ERROR: {file_report['error']}")
             continue
+        for error in file_report["validation_errors"]:
+            print(f"VALIDATION_ERROR: {error}")
         if not file_report["topics"]:
             print("No messages matched.")
             continue
@@ -321,6 +398,7 @@ def main() -> int:
     parser.add_argument("--topic", action="append", help="Topic to include; may be repeated")
     parser.add_argument("--limit", type=int, default=3, help="Sample messages to decode per topic (default: 3)")
     parser.add_argument("--no-samples", action="store_true", help="Only print topic summary")
+    parser.add_argument("--expect-profile", help="Fail unless each MCAP Header uses this profile")
     parser.add_argument("--json-out", type=Path, help="Write full report JSON to this path")
     args = parser.parse_args()
 
@@ -333,7 +411,10 @@ def main() -> int:
 
     report = {
         "input": str(args.path),
-        "files": [read_mcap(path, max(0, args.limit), topic_filters) for path in paths],
+        "files": [
+            read_mcap(path, max(0, args.limit), topic_filters, args.expect_profile)
+            for path in paths
+        ],
     }
     print_report(report, show_samples=not args.no_samples)
 
@@ -342,7 +423,10 @@ def main() -> int:
         args.json_out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\njson_out={args.json_out}")
 
-    return 1 if any(file_report["error"] for file_report in report["files"]) else 0
+    return 1 if any(
+        file_report["error"] or file_report["validation_errors"]
+        for file_report in report["files"]
+    ) else 0
 
 
 if __name__ == "__main__":

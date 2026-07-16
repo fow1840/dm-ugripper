@@ -56,6 +56,23 @@ add_host_only_sensor_gtest(test_imu_batch_timestamp
     test_imu_batch_timestamp.cc
 )
 
+add_executable(test_encoder_cdr_writer
+    test_encoder_cdr_writer.cc
+)
+target_include_directories(test_encoder_cdr_writer
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/standalone/EpisodeMcap/include
+)
+target_link_libraries(test_encoder_cdr_writer
+    PRIVATE
+        episode_mcap_support
+        GTest::gtest_main
+)
+gtest_discover_tests(test_encoder_cdr_writer
+    PROPERTIES
+        LABELS "host-only;unit;sensor;mcap"
+)
+
 add_host_only_sensor_gtest(test_sensor_mcap_checker
     test_sensor_mcap_checker.cc
 )

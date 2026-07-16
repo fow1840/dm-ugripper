@@ -4,6 +4,8 @@ set(EPISODE_MCAP_INCLUDE_DIR
 set(EPISODE_MCAP_SOURCE
     "${CMAKE_CURRENT_SOURCE_DIR}/../SensorRecorder/third_party/mcap/src/lib.cc")
 
+add_subdirectory(third_party/fastcdr)
+
 add_library(episode_mcap_support STATIC
     src/episode_mcap_client.cc
     src/ros2_cdr_writer.cc
@@ -17,6 +19,7 @@ target_include_directories(episode_mcap_support
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+target_link_libraries(episode_mcap_support PUBLIC FastCDR::fastcdr)
 
 add_library(episode_mcap_vendor STATIC
     ${EPISODE_MCAP_SOURCE}

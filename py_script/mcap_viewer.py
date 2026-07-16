@@ -5,6 +5,10 @@ import struct
 from collections import defaultdict
 
 
+ENCODER_SCHEMA = "ugripper_msgs/msg/Encoder"
+STRING_SCHEMA = "std_msgs/msg/String"
+
+
 def as_vector(data, key, size, default):
     value = data.get(key, default)
 
@@ -98,7 +102,7 @@ def format_payload(data):
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 
 
-def format_binary_payload(topic, payload_bytes, log_time_ns, publish_time_ns):
+def format_binary_payload(topic, payload_bytes, log_time_ns, publish_time_ns, schema_name="", encoding=""):
     time_delta_suffix = format_time_delta(log_time_ns, publish_time_ns)
 
     if topic == "imu_raw" and len(payload_bytes) >= 40:
@@ -112,7 +116,21 @@ def format_binary_payload(topic, payload_bytes, log_time_ns, publish_time_ns):
             f"{time_delta_suffix}"
         )
 
-    if topic == "encoder" and len(payload_bytes) >= 8:
+    if schema_name == ENCODER_SCHEMA and encoding.lower() == "cdr" and len(payload_bytes) >= 20:
+        sec, nanosec, raw, rad = struct.unpack_from("<iIif", payload_bytes, 4)
+        stamp_ns = sec * 1_000_000_000 + nanosec
+        return f"StampNs: {stamp_ns} PosRaw: {raw:<8} PosRad: {rad:.6f}{time_delta_suffix}"
+
+    if schema_name == STRING_SCHEMA and encoding.lower() == "cdr" and len(payload_bytes) >= 9:
+        (size,) = struct.unpack_from("<I", payload_bytes, 4)
+        if size > 0 and 8 + size <= len(payload_bytes) and payload_bytes[8 + size - 1] == 0:
+            text = payload_bytes[8 : 8 + size - 1].decode("utf-8")
+            try:
+                return format_payload(json.loads(text)) + time_delta_suffix
+            except json.JSONDecodeError:
+                return text + time_delta_suffix
+
+    if topic.lstrip("/").startswith("encoder") and len(payload_bytes) >= 8:
         raw, rad = struct.unpack("<if", payload_bytes[:8])
         return f"PosRaw: {raw:<8} PosRad: {rad:.6f}{time_delta_suffix}"
 
@@ -222,6 +240,8 @@ def read_mcap(file_path, topic_filters=None):
                             message.data,
                             message.log_time,
                             publish_time,
+                            getattr(schema, "name", "") if schema else "",
+                            encoding,
                         )
 
                 except Exception as e:

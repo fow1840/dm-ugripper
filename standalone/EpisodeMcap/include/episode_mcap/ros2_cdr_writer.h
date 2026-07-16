@@ -39,8 +39,16 @@ std::vector<std::byte> EncodeImu(uint64_t stamp_ns,
                                  double ay,
                                  double az);
 
+std::vector<std::byte> EncodeEncoder(uint64_t stamp_ns,
+                                     int32_t raw,
+                                     float rad);
+
+std::vector<std::byte> EncodeString(const std::string& value);
+
 const char* CompressedImageSchema();
 const char* CameraInfoSchema();
 const char* ImuSchema();
+const char* EncoderSchema();
+const char* StringSchema();
 
 }  // namespace ugripper::episode_mcap

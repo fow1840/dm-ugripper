@@ -6,7 +6,7 @@
 ## 1. 当前系统一句话
 - 当前系统默认以**单机双手、本地控制**方式运行。
 - 主控制链路当前以 `run_record.sh -> /opt/ugripper/bin/UgripperRuntime/UgripperRuntime` 作为安装入口。
-- 默认录制产物为 `<DEVICE_SN>_<YYYYMMDD_HHMMSS>.mcap` 加最终 `metadata.json`：MCAP 文件名使用 `/etc/environment` 中的 `DEVICE_SN` 与起录时刻秒级时间戳；MCAP 包含主摄/触觉相机 H264 与 stereo H265 `CompressedImage`、每路相机 `CameraInfo`、`/calibration` JSON topic、左右 encoder 与标准 ROS Fays IMU；`metadata.json` 保留停录后质量结果与视频详情。
+- 默认录制产物为 `<DEVICE_SN>_<YYYYMMDD_HHMMSS>.mcap` 加最终 `metadata.json`：MCAP 文件名使用 `/etc/environment` 中的 `DEVICE_SN` 与起录时刻秒级时间戳；MCAP 包含主摄/触觉相机 H264 与 stereo H265 `CompressedImage`、每路相机 `CameraInfo`、JSON 文本封装为 `std_msgs/msg/String` CDR 的 `/calibration`、左右 encoder 与标准 ROS Fays IMU；`metadata.json` 保留停录后质量结果与视频详情。
 - HMI 按键、RGB 灯效、提示音、pre/post 音频录制、停录校验，以及右手双键关机/左手双键卸载数据盘请求都已纳入当前运行时。
 - U 盘流程统一负责 `deb` 升级/重装、`config.txt` 导入、标定数据导入和 encoder 零位校准触发；当前自动安装名单已覆盖 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint` 与 `device-ota-mender`，deb 安装窗口会复用 HMI 灯效提示安装中/失败/完成状态，并会在整批安装完成后通过 PulseAudio 播放 `upgrade_completed.wav`。
 
@@ -211,13 +211,13 @@
 停录收尾阶段、关闭统一 MCAP recorder 前，`record_runtime` 将最终 metadata 写到 episode 目录的 `metadata.json`；当前顶层字段固定为：
 `device_sn / device_type / device_mode / camera_codec / hardware_version / software_version / das_usb_updater_version / data_version / hardware_list / episode_name / data_uuid / audio_uuid / quality_check_status / quality_check_err_type / collection_duration_s / require_files / video_details`。
 
-- `device_sn` 使用主控 `DEVICE_SN`，写出前统一转大写；`device_type=ugripper`，`device_mode=dual`，统一 MCAP episode 使用 `data_version=3.0_mcap`。
+- `device_sn` 使用主控 `DEVICE_SN`，写出前统一转大写；`device_type=ugripper`，`device_mode=dual`，统一 MCAP episode 使用 `data_version=3.2_mcap`。该版本在 `3.1_mcap` Encoder CDR 基础上，将 `/calibration` 和条件生成的 `/metadata` 从 raw JSON channel 升级为 `std_msgs/msg/String` ROS 2 CDR，使完整 MCAP 的 serialization format 统一为 `cdr`。
 - `metadata.json` 使用范本顺序写出顶层字段、`hardware_list` 字段和 `video_details[]` 字段；校验脚本会把 key 顺序漂移作为格式错误。
 - `data_uuid` 使用系统随机 UUID；若 `/proc/sys/kernel/random/uuid` 不可用则回退 `libuuid` 的 `uuid_generate/uuid_unparse`。无音频文件时 `audio_uuid` 允许为空字符串。
 - `hardware_version` 默认 `v2.5`，可通过 `UGRIPPER_HARDWARE_VERSION` 覆盖；`software_version` 来自 ugripper 主包版本并带 `v` 前缀；`das_usb_updater_version` 优先读取 `das-usb-updater` 包版本。
 - `hardware_list` 只存各硬件 SN：左右 gripper、左右主摄、可选胸部主摄、四路 tactile、左右 stereo。左右 gripper SN 在 gripper 插入并完成运行时 refresh 后缓存，拔出后清理；写 metadata 时只使用该缓存，不再额外同步读串口。gripper HMI 不再参与 calibration 读取，后续标定完全从相机侧读取。主摄/胸部相机 SN 同样只使用插入/目标变化时通过 Yuzhou UVC XU 维护的运行时缓存，读取失败写空字符串，不回退 USB serial；tactile SN 由运行时在 `/dev/tcam_*` 插入或 symlink 目标变化时读取 USB sysfs `serial` 并缓存，metadata/calibration/后台 tactile 校验只消费缓存，不再每条 episode 执行 `udevadm`；stereo 使用 Fays daemon 状态中的 SDK serial。`video_details` 不再重复写 `serial`。
 - `quality_check_status` 取值为 `success` / `fail` / 空字符串；`quality_check_err_type` 保持单字段兼容，只写本次失败的主 `error_type`。常见取值包括 `missing_file`、`collection_duration_too_short`、`frame_loss`、`finalize_error`、`stereo_control_failed`、`calibration_error`、`runtime_error`、`device_disconnected`、数采员通过左手单键长按补标的 `operator_marked_failed`，以及健康监控直接上报的 `disk_mount_lost`、`disk_not_writable`、`disk_full`、`critical_devices_missing`、`stereo_not_ready`、`hmi_*` 等 fault key；无法归类时写 `unknown`。
-- 停录后人工补标失败时，运行时会原子更新上一条 episode 的 `metadata.json`，写出 `quality_check_status=fail` 与 `quality_check_err_type=operator_marked_failed`，同时改写最终 MCAP：生成临时 MCAP、在首个 chunk 中写入 `/metadata` JSON 标记消息，并将该消息的 `log_time/publish_time` 对齐原 MCAP 最早消息时间；JSON 内的 `marked_time_us` 仍保留实际人工补标时间。随后原子替换原 MCAP，并显式 flush MCAP 文件与 episode 目录。
+- 停录后人工补标失败时，运行时会原子更新上一条 episode 的 `metadata.json`，写出 `quality_check_status=fail` 与 `quality_check_err_type=operator_marked_failed`，同时改写最终 MCAP：生成临时 MCAP、在首个 chunk 中写入 `std_msgs/msg/String` CDR `/metadata` 标记消息，并将该消息的 `log_time/publish_time` 对齐原 MCAP 最早消息时间；`String.data` JSON 内的 `marked_time_us` 仍保留实际人工补标时间。随后原子替换原 MCAP，并显式 flush MCAP 文件与 episode 目录。
 - `collection_duration_s` 取最终 MCAP 内所有图像 topic 有效时长最大值，保留 1 位小数；`video_details[].fps` 与 `duration_s` 也保留 1 位小数。
 - `video_details[].start_offset_us` 由各图像 topic 首帧 logTime 折算而来，单位为微秒，字段名带 `_us` 后缀；计算时以本 episode 最早一路图像 topic 为 0。
 - `require_files` 固定为最终 MCAP 文件名；启用音频时对应条件产物仍可出现，但不进入本机强校验必需文件。
@@ -496,7 +496,7 @@ PY
 - 建议从仓库根目录显式执行 `bash test/scripts/<script>.sh`；详细参数与注意事项见 `test/README.md`。
 - `scripts/extract_mcap_episode.py` 可直接输入单个 MCAP 或完整 episode 目录，将图像 topic 还原为 MKV，并把 `/calibration`、CameraInfo、IMU、encoder 等非图像 topic 拆到 `raw/`，便于对比文件大小和抽检内容。
   `python3 py_script/read_ugripper_mcap.txt /mnt/data_disk/<device_sn_lower>/data/episode_<date>_<index> --json-out /tmp/ugripper_mcap_report.json`。
-- 当前 UGripper MCAP 是通用 MCAP 容器，不是 ROS 2 bag；不要用 `ros2 bag info` 或 Foxglove 的 ROS bag 可视化入口作为数据是否正常的判断依据。若要可视化，需要按脚本里的 payload 定义转换成 Foxglove/ROS 可识别 schema 后再导入。
+- 当前 UGripper MCAP Header 使用 `ros2` profile，所有 channel 都使用 ROS 2 CDR。安装 `rosbag2_storage_mcap` 并构建、source `/opt/ugripper/ros2/ugripper_msgs` 后，Humble 可直接执行完整 MCAP 的 `ros2 bag info` 与 `ros2 bag play`；`/calibration` 和条件生成的 `/metadata` 类型为 `std_msgs/msg/String`，应用层继续解析 `data` 内的 JSON。
 - 若现场需要脱离主服务、单独向夹爪 HMI 写入 SN / 标定，可使用 `py_script/hmi_sn_batch_writer.py`：脚本直接读取一个或多个 `.xlsx` 的多 sheet `SN码` 列，支持操作员输入 SN 后 4 位或任意连续片段做唯一匹配，自动扫描 CH9344 相关串口确认可用 HMI 口，并在匹配到目标 SN 后写入 SN 与可选 `1024-byte` 标定 payload。
 - `py_script/hmi_sn_batch_writer.py` 默认会在启动时把自身和本次使用的 `.xlsx` 同步复制到 `/mnt/data_disk/hmi_sn_writer/`；标定源目录可通过 `--calib-root` 指向包含 `.bin`、summary `.md` 或 `rgb_video_ros-camchain.yaml + output-results-imucam.txt` 的目录。若未找到目标 SN 对应标定文件，脚本会只写 SN，并在控制台用黄色提示“未写标定”。
 

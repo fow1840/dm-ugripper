@@ -19,6 +19,8 @@ from mcap.reader import make_reader
 IMAGE_SCHEMA = "sensor_msgs/msg/CompressedImage"
 CAMERA_INFO_SCHEMA = "sensor_msgs/msg/CameraInfo"
 IMU_SCHEMA = "sensor_msgs/msg/Imu"
+ENCODER_SCHEMA = "ugripper_msgs/msg/Encoder"
+STRING_SCHEMA = "std_msgs/msg/String"
 
 
 def clean_ffmpeg_env() -> dict[str, str]:
@@ -175,14 +177,40 @@ def parse_imu(data: bytes) -> dict:
     }
 
 
-def parse_encoder(data: bytes) -> dict:
+def parse_encoder(data: bytes, *, cdr: bool = False) -> dict:
+    if cdr:
+        if len(data) < 20:
+            raise ValueError(f"encoder CDR payload too short: {len(data)}")
+        if data[:4] != b"\x00\x01\x00\x00":
+            raise ValueError(f"unsupported encoder CDR encapsulation: {data[:4].hex()}")
+        sec, nanosec, raw, rad = struct.unpack_from("<iIif", data, 4)
+        return {
+            "stamp_ns": sec * 1_000_000_000 + nanosec,
+            "raw": raw,
+            "rad": rad,
+        }
+
     if len(data) < 8:
-        raise ValueError(f"encoder payload too short: {len(data)}")
+        raise ValueError(f"legacy encoder payload too short: {len(data)}")
     raw, rad = struct.unpack_from("<if", data, 0)
     return {
         "raw": raw,
         "rad": rad,
     }
+
+
+def parse_string_cdr(data: bytes) -> str:
+    if len(data) < 9:
+        raise ValueError(f"String CDR payload too short: {len(data)}")
+    if data[:4] != b"\x00\x01\x00\x00":
+        raise ValueError(f"unsupported String CDR encapsulation: {data[:4].hex()}")
+    (size,) = struct.unpack_from("<I", data, 4)
+    if size == 0 or 8 + size > len(data):
+        raise ValueError(f"invalid String CDR length: {size}, payload={len(data)}")
+    raw = data[8 : 8 + size]
+    if raw[-1] != 0:
+        raise ValueError("String CDR is missing the null terminator")
+    return raw[:-1].decode("utf-8")
 
 
 def slug_topic(topic: str) -> str:
@@ -330,8 +358,10 @@ def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_bitstream
     for topic in raw_topics:
         schema_name, encoding = topic_meta[topic]
         slug = slug_topic(topic)
-        if schema_name == CAMERA_INFO_SCHEMA or schema_name == IMU_SCHEMA:
+        if schema_name in {CAMERA_INFO_SCHEMA, IMU_SCHEMA, ENCODER_SCHEMA}:
             suffix = ".cdr"
+        elif schema_name == STRING_SCHEMA:
+            suffix = ".jsonl"
         elif encoding == "json":
             suffix = ".jsonl"
         elif encoding == "binary":
@@ -370,7 +400,11 @@ def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_bitstream
                         first_image_log_time_ns = msg.log_time
                 else:
                     handle = raw_handles[topic]
-                    handle.write(msg.data)
+                    if schema_name == STRING_SCHEMA:
+                        handle.write(parse_string_cdr(msg.data).encode("utf-8"))
+                        handle.write(b"\n")
+                    else:
+                        handle.write(msg.data)
                     if encoding == "json":
                         handle.write(b"\n")
                     st.payload_bytes += len(msg.data)
@@ -380,9 +414,9 @@ def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_bitstream
                     elif schema_name == IMU_SCHEMA:
                         parsed = parse_imu(msg.data)
                         st.update_stamp(parsed["stamp_ns"])
-                    elif schema_name == "EncoderFrame":
-                        parsed = parse_encoder(msg.data)
-                        st.update_stamp(msg.log_time)
+                    elif schema_name in {"EncoderFrame", "ugripper.Encoder", ENCODER_SCHEMA}:
+                        parsed = parse_encoder(msg.data, cdr=schema_name == ENCODER_SCHEMA)
+                        st.update_stamp(parsed.get("stamp_ns", msg.log_time))
 
                 if topic in prev_log_time_ns:
                     frame_intervals_us[topic].append((msg.log_time - prev_log_time_ns[topic]) / 1000.0)
@@ -439,7 +473,7 @@ def extract_episode(mcap_path: Path, out_root: Path, ffmpeg: str, keep_bitstream
         st = stats[topic]
         slug = slug_topic(topic)
         schema_name, encoding = topic_meta[topic]
-        suffix = ".cdr" if schema_name in {CAMERA_INFO_SCHEMA, IMU_SCHEMA} else (".jsonl" if encoding == "json" else ".bin" if encoding == "binary" else ".raw")
+        suffix = ".cdr" if schema_name in {CAMERA_INFO_SCHEMA, IMU_SCHEMA, ENCODER_SCHEMA} else (".jsonl" if schema_name == STRING_SCHEMA or encoding == "json" else ".bin" if encoding == "binary" else ".raw")
         out_file = raw_dir / f"{slug}{suffix}"
         st.output_file = str(out_file.relative_to(episode_out))
         st.output_bytes = out_file.stat().st_size

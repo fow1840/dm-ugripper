@@ -1,6 +1,7 @@
 #include "record_runtime.h"
 #include "main_camera_calibration_data.h"
 #include "episode_mcap/episode_mcap_client.h"
+#include "episode_mcap/ros2_cdr_writer.h"
 #include "utils/logger.h"
 #include "record_runtime/gripper_refresh_logic.h"
 #include "utils/env_utils.h"
@@ -10570,7 +10571,7 @@ bool rewriteEpisodeMcapWithOperatorFailureMarker(const fs::path &mcapPath,
 
     const std::string profile = reader.header().has_value() && !reader.header()->profile.empty()
                                     ? reader.header()->profile
-                                    : "ugripper-episode-mcap/1.0";
+                                    : "ros2";
     mcap::McapWriterOptions options(profile);
     options.noChunking = false;
     options.chunkSize = 1024 * 1024;
@@ -10632,11 +10633,13 @@ bool rewriteEpisodeMcapWithOperatorFailureMarker(const fs::path &mcapPath,
         writer.addChannel(channel);
     }
 
-    mcap::Schema markerSchema("ugripper.MetadataJson", "jsonschema",
-                              R"({"title":"UGripperEpisodeMetadata","type":"object"})");
+    mcap::Schema markerSchema("std_msgs/msg/String", "ros2msg",
+                              ugripper::episode_mcap::StringSchema());
     writer.addSchema(markerSchema);
-    mcap::Channel markerChannel("/metadata", "json", markerSchema.id);
+    mcap::Channel markerChannel("/metadata", "cdr", markerSchema.id);
     markerChannel.metadata["record_role"] = "operator_quality_marker";
+    markerChannel.metadata["content_type"] = "application/json";
+    markerChannel.metadata["ugripper_json_kind"] = "operator_marker";
     writer.addChannel(markerChannel);
 
     uint64_t firstLogTimeNs = std::numeric_limits<uint64_t>::max();
@@ -10656,13 +10659,15 @@ bool rewriteEpisodeMcapWithOperatorFailureMarker(const fs::path &mcapPath,
     marker["episode_name"] = episodeName;
     marker["marked_time_us"] = static_cast<int64_t>(systemTimeNowNs() / 1000ULL);
     const std::string markerText = marker.dump();
+    const std::vector<std::byte> markerPayload =
+        ugripper::episode_mcap::EncodeString(markerText);
     mcap::Message markerMessage;
     markerMessage.channelId = markerChannel.id;
     markerMessage.sequence = 0;
     markerMessage.logTime = firstLogTimeNs;
     markerMessage.publishTime = firstLogTimeNs;
-    markerMessage.data = reinterpret_cast<const std::byte *>(markerText.data());
-    markerMessage.dataSize = markerText.size();
+    markerMessage.data = markerPayload.data();
+    markerMessage.dataSize = markerPayload.size();
     const auto markerStatus = writer.write(markerMessage);
     if (!markerStatus.ok())
     {
@@ -10966,7 +10971,7 @@ bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episod
     metadata["hardware_version"] = hardwareVersion_;
     metadata["software_version"] = addVersionPrefix(packageVersion_);
     metadata["das_usb_updater_version"] = updaterVersion_;
-    metadata["data_version"] = "3.0_mcap";
+    metadata["data_version"] = "3.2_mcap";
     metadata["hardware_list"] = std::move(hardwareList);
     metadata["episode_name"] = stripEpisodeTempSuffix(episodePath.filename().string());
     metadata["data_uuid"] = existingMetadata.value("data_uuid", generateUuid());

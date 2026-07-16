@@ -94,7 +94,7 @@ class EpisodeWriter {
 public:
     bool Open(const fs::path& output_file) {
         output_file_ = output_file;
-        mcap::McapWriterOptions options("ugripper-episode-mcap/1.0");
+        mcap::McapWriterOptions options("ros2");
         options.noChunking = false;
         options.chunkSize = 1024 * 1024;
         options.compression = mcap::Compression::None;
@@ -191,28 +191,34 @@ public:
             }
             break;
         case FrameKind::Json:
+            schema_key = "std_msgs/msg/String";
+            schema_name = schema_key;
+            metadata["content_type"] = "application/json";
             if (topic == "/metadata") {
-                schema_key = "ugripper/metadata";
-                schema_name = "ugripper.MetadataJson";
+                metadata["ugripper_json_kind"] = "operator_marker";
             } else if (topic == "/calibration") {
-                schema_key = "ugripper/calibration";
-                schema_name = "ugripper.CalibrationJson";
+                metadata["ugripper_json_kind"] = "calibration";
             } else {
-                schema_key = "ugripper/json";
-                schema_name = "ugripper.Json";
+                metadata["ugripper_json_kind"] = "generic";
             }
-            schema_encoding = "jsonschema";
-            channel_encoding = "json";
-            data.resize(payload.size());
-            std::memcpy(data.data(), payload.data(), payload.size());
+            data = ugripper::episode_mcap::EncodeString(
+                std::string(reinterpret_cast<const char*>(payload.data()), payload.size()));
             break;
         case FrameKind::EncoderBinary:
-            schema_key = "ugripper/encoder";
-            schema_name = "ugripper.Encoder";
-            schema_encoding = "jsonschema";
-            channel_encoding = "binary";
-            data.resize(payload.size());
-            std::memcpy(data.data(), payload.data(), payload.size());
+            if (payload.size() != sizeof(int32_t) + sizeof(float)) {
+                return false;
+            } else {
+                int32_t raw = 0;
+                float rad = 0.0F;
+                std::memcpy(&raw, payload.data(), sizeof(raw));
+                std::memcpy(&rad, payload.data() + sizeof(raw), sizeof(rad));
+                schema_key = "ugripper_msgs/msg/Encoder";
+                schema_name = schema_key;
+                data = ugripper::episode_mcap::EncodeEncoder(
+                    header.log_time_ns,
+                    raw,
+                    rad);
+            }
             break;
         default:
             return false;
@@ -328,12 +334,10 @@ private:
                 schema_data = ugripper::episode_mcap::CameraInfoSchema();
             } else if (schema_key == "sensor_msgs/msg/Imu") {
                 schema_data = ugripper::episode_mcap::ImuSchema();
-            } else if (schema_key == "ugripper/encoder") {
-                schema_data = R"({"title":"UGripperEncoderBinary","description":"little-endian int32 raw + float32 rad"})";
-            } else if (schema_key == "ugripper/metadata") {
-                schema_data = R"({"title":"UGripperEpisodeMetadata","type":"object"})";
-            } else if (schema_key == "ugripper/calibration") {
-                schema_data = R"({"title":"UGripperEpisodeCalibration","type":"object"})";
+            } else if (schema_key == "ugripper_msgs/msg/Encoder") {
+                schema_data = ugripper::episode_mcap::EncoderSchema();
+            } else if (schema_key == "std_msgs/msg/String") {
+                schema_data = ugripper::episode_mcap::StringSchema();
             }
 
             mcap::Schema schema(schema_name, schema_encoding, schema_data);

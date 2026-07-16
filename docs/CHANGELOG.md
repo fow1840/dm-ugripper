@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- 统一 MCAP episode 的 `metadata.json` 使用 `data_version=3.0_mcap`，与旧版 `3.0` 数据目录格式明确区分。
+- 统一 MCAP episode 的 `metadata.json` 使用 `data_version=3.2_mcap`：`/encoder_left` 与 `/encoder_right` 使用 `ugripper_msgs/msg/Encoder` CDR；`/calibration` 和人工失败补标 `/metadata` 使用 Fast-CDR 1.0.23 生成的 `std_msgs/msg/String` CDR，使完整 MCAP 可由 Humble `ros2 bag play` 直接发布；消息源码随主包交付，解析脚本兼容旧 binary/raw JSON 与新 CDR。
 - 物理录制按键短按释放去抖由 `250ms` 调整为 `80ms`，保留 `1s` 双击窗口；人工失败补标成功后，双侧紫灯闪烁与两声蜂鸣同步，并在提示结束后恢复原运行灯效。
 - 人工失败补标写入的 `/metadata` MCAP 消息改用 episode 最早消息时间作为 `log_time/publish_time`；XHT 专用分支默认构建版本升级到 `2.1.5+xht1`，显式版本参数仍可覆盖自动后缀。
 - HMI 物理按键在动作状态机前新增按下、松开各 `40ms` 的双向稳定滤波，过滤短暂电平毛刺；原有 `80ms` 短按动作间隔保持不变。

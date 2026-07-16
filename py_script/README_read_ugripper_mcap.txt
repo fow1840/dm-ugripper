@@ -69,9 +69,28 @@ MCAP 读取说明
 
   /usr/bin/python3 read_ugripper_mcap.txt /tmp/sensor_left.mcap --no-samples
 
+验证当前统一 episode MCAP 使用 ROS 2 profile：
+
+  /usr/bin/python3 read_ugripper_mcap.txt /path/to/episode.mcap --no-samples --expect-profile ros2
+
 
 5. 当前 payload 格式
 --------------------
+
+当前统一 episode MCAP：
+
+  topic: /encoder_left / /encoder_right
+  schema: ugripper_msgs/msg/Encoder
+  encoding: ROS 2 CDR
+  fields: builtin_interfaces/Time stamp, int32 raw, float32 rad
+  payload: 固定 20 bytes
+
+ugripper_msgs 源码随主包放在 /opt/ugripper/ros2/ugripper_msgs。播放前需要在 ROS 2 workspace 中执行 colcon build，并 source install/setup.bash。
+
+  topic: /calibration / 条件生成的 /metadata
+  schema: std_msgs/msg/String
+  encoding: ROS 2 CDR
+  data: UTF-8 JSON 文本
 
 sensor_left.mcap / sensor_right.mcap：
 
@@ -88,11 +107,14 @@ fays_data_left.mcap / fays_data_right.mcap：
   payload: little-endian uint32 frame_index
 
 
-6. 为什么 ros2 bag info / Foxglove 可能打不开
-----------------------------------------------
+6. ROS 2 / Foxglove 兼容性
+--------------------------
 
-当前 UGripper MCAP 是通用 MCAP 容器，里面是自定义紧凑二进制 payload，不是 ROS 2 bag。
+当前统一 episode MCAP 使用标准 ros2 profile。安装 rosbag2 MCAP 存储插件后，可以直接查看：
 
-ros2 bag info 需要 rosbag2 的 metadata 和 ROS 消息序列化信息。Foxglove 直接可视化也需要它认识的 schema 或 encoding。因此，这些文件能作为 MCAP 被读取，但不能用 ros2 bag info 或 Foxglove ROS bag 入口是否能打开来判断数据是否正常。
+  sudo apt install ros-<distro>-rosbag2-storage-mcap
+  ros2 bag info /path/to/episode.mcap
 
-如果需要在 ROS 或 Foxglove 中可视化，需要先把脚本解出的数值转换成 ROS 消息类型，或转换成 Foxglove 能识别的 schema。
+当前 `3.2_mcap` 的图像、CameraInfo、IMU、encoder、calibration 和条件 metadata topic 全部使用 ROS 2 CDR。encoder 是自定义 `ugripper_msgs/msg/Encoder`，需要先安装对应消息类型；`/calibration` 与 `/metadata` 使用标准 `std_msgs/msg/String`，其 `data` 字段继续承载 JSON。完成消息包安装后，Humble 可直接播放完整 episode。
+
+旧拆分 sensor/Fays MCAP 保留自定义 profile 和紧凑二进制 payload，只建议用本脚本读取。

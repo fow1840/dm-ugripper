@@ -4,7 +4,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ================= 变量定义区域 =================
 APP_NAME="ugripper"
-BASE_VERSION="${BASE_VERSION:-2.1.6}"
+BASE_VERSION="${BASE_VERSION:-2.1.7}"
 CURRENT_BRANCH="$(git -C "$script_dir" branch --show-current 2>/dev/null || true)"
 DEFAULT_VERSION_SUFFIX=""
 if [[ "$CURRENT_BRANCH" == "feature/zhouwu/head-raw-mcap-h264" ]]; then
@@ -180,6 +180,7 @@ sync_project_tree() {
     copy_if_exists "scripts" "$TARGET_INSTALL_ROOT/scripts"
     copy_if_exists "auto_calibration" "$TARGET_INSTALL_ROOT/auto_calibration"
     copy_if_exists "auto_update/trigger_shutdown.sh" "$TARGET_INSTALL_ROOT/auto_update/trigger_shutdown.sh"
+    copy_if_exists "ros2/ugripper_msgs" "$TARGET_INSTALL_ROOT/ros2/ugripper_msgs"
     find "$TARGET_INSTALL_ROOT" \
         \( -type d -name '__pycache__' -o -type f -name '*.pyc' \) \
         -exec rm -rf {} +
@@ -459,6 +460,8 @@ rm -rf "$TARGET_INSTALL_ROOT/bin/UgripperRuntime/ego/__pycache__"
 copy_if_exists "standalone/UgripperRuntime/adb" "$TARGET_INSTALL_ROOT/bin/UgripperRuntime/adb"
 copy_if_exists "standalone/UgripperRuntime/config/fakeCamCalib.json" \
     "$TARGET_INSTALL_ROOT/bin/UgripperRuntime/config/fakeCamCalib.json"
+copy_if_exists "standalone/EpisodeMcap/third_party/fastcdr/LICENSE" \
+    "$TARGET_INSTALL_ROOT/third_party_licenses/Fast-CDR-1.0.23-LICENSE"
 
 # py_script is excluded from rsync by default; restore required runtime/test scripts explicitly.
 copy_if_exists "py_script/usb_audio_play_test.py" "$TARGET_INSTALL_ROOT/py_script/usb_audio_play_test.py"
