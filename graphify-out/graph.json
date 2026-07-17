@@ -63,7 +63,7 @@
       "source_file": "",
       "source_location": "",
       "id": "runtimeerror",
-      "community": 224,
+      "community": 140,
       "norm_label": "runtimeerror"
     },
     {
@@ -2007,7 +2007,7 @@
       "source_file": "py_script/hmi_calibration_backfill.py",
       "source_location": "L1",
       "id": "py_script_hmi_calibration_backfill_py",
-      "community": 3,
+      "community": 313,
       "norm_label": "hmi_calibration_backfill.py"
     },
     {
@@ -2016,7 +2016,7 @@
       "source_file": "py_script/hmi_calibration_backfill.py",
       "source_location": "L10",
       "id": "py_script_hmi_calibration_backfill_parse_args",
-      "community": 3,
+      "community": 313,
       "norm_label": "parse_args()"
     },
     {
@@ -2025,7 +2025,7 @@
       "source_file": "py_script/hmi_calibration_backfill.py",
       "source_location": "L33",
       "id": "py_script_hmi_calibration_backfill_main",
-      "community": 3,
+      "community": 313,
       "norm_label": "main()"
     },
     {
@@ -2142,7 +2142,7 @@
       "source_file": "py_script/usb_audio_play_test.py",
       "source_location": "L1",
       "id": "py_script_usb_audio_play_test_py",
-      "community": 250,
+      "community": 175,
       "norm_label": "usb_audio_play_test.py"
     },
     {
@@ -2151,7 +2151,7 @@
       "source_file": "py_script/usb_audio_play_test.py",
       "source_location": "L18",
       "id": "py_script_usb_audio_play_test_generate_tone_wav",
-      "community": 250,
+      "community": 175,
       "norm_label": "generate_tone_wav()"
     },
     {
@@ -2160,7 +2160,7 @@
       "source_file": "py_script/usb_audio_play_test.py",
       "source_location": "L32",
       "id": "py_script_usb_audio_play_test_main",
-      "community": 250,
+      "community": 175,
       "norm_label": "main()"
     },
     {
@@ -2230,7 +2230,7 @@
       "label": "read_mcap()",
       "file_type": "code",
       "source_file": "py_script/mcap_viewer.py",
-      "source_location": "L141",
+      "source_location": "L150",
       "id": "py_script_mcap_viewer_read_mcap",
       "community": 54,
       "norm_label": "read_mcap()"
@@ -2511,7 +2511,7 @@
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L141",
       "id": "py_script_fix_video_pts_v2_safe_float",
-      "community": 182,
+      "community": 33,
       "norm_label": "_safe_float()"
     },
     {
@@ -2520,7 +2520,7 @@
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L150",
       "id": "py_script_fix_video_pts_v2_parse_fraction",
-      "community": 182,
+      "community": 33,
       "norm_label": "_parse_fraction()"
     },
     {
@@ -2601,7 +2601,7 @@
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L236",
       "id": "py_script_fix_video_pts_v2_run_ffprobe_json",
-      "community": 182,
+      "community": 33,
       "norm_label": "_run_ffprobe_json()"
     },
     {
@@ -2610,7 +2610,7 @@
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L254",
       "id": "py_script_fix_video_pts_v2_probe_stream",
-      "community": 182,
+      "community": 33,
       "norm_label": "probe_stream()"
     },
     {
@@ -2619,7 +2619,7 @@
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L274",
       "id": "py_script_fix_video_pts_v2_probe_frames",
-      "community": 182,
+      "community": 33,
       "norm_label": "probe_frames()"
     },
     {
@@ -2628,7 +2628,7 @@
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L294",
       "id": "py_script_fix_video_pts_v2_infer_header_fps",
-      "community": 182,
+      "community": 33,
       "norm_label": "infer_header_fps()"
     },
     {
@@ -2637,7 +2637,7 @@
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L304",
       "id": "py_script_fix_video_pts_v2_median",
-      "community": 182,
+      "community": 33,
       "norm_label": "_median()"
     },
     {
@@ -2646,7 +2646,7 @@
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L314",
       "id": "py_script_fix_video_pts_v2_estimate_effective_fps",
-      "community": 182,
+      "community": 33,
       "norm_label": "_estimate_effective_fps()"
     },
     {
@@ -2655,7 +2655,7 @@
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L324",
       "id": "py_script_fix_video_pts_v2_collect_frame_stats",
-      "community": 182,
+      "community": 33,
       "norm_label": "_collect_frame_stats()"
     },
     {
@@ -2664,7 +2664,7 @@
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L368",
       "id": "py_script_fix_video_pts_v2_build_issue_tags",
-      "community": 182,
+      "community": 33,
       "norm_label": "_build_issue_tags()"
     },
     {
@@ -2673,7 +2673,7 @@
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L404",
       "id": "py_script_fix_video_pts_v2_analyze_video",
-      "community": 182,
+      "community": 33,
       "norm_label": "analyze_video()"
     },
     {
@@ -3733,7 +3733,7 @@
       "label": "EncodeString()",
       "file_type": "code",
       "source_file": "standalone/EpisodeMcap/src/ros2_cdr_writer.cc",
-      "source_location": "L203",
+      "source_location": "L201",
       "id": "src_ros2_cdr_writer_encodestring",
       "community": 177,
       "norm_label": "encodestring()"
@@ -3742,7 +3742,7 @@
       "label": "CompressedImageSchema()",
       "file_type": "code",
       "source_file": "standalone/EpisodeMcap/src/ros2_cdr_writer.cc",
-      "source_location": "L219",
+      "source_location": "L217",
       "id": "src_ros2_cdr_writer_compressedimageschema",
       "community": 177,
       "norm_label": "compressedimageschema()"
@@ -3751,7 +3751,7 @@
       "label": "CameraInfoSchema()",
       "file_type": "code",
       "source_file": "standalone/EpisodeMcap/src/ros2_cdr_writer.cc",
-      "source_location": "L233",
+      "source_location": "L231",
       "id": "src_ros2_cdr_writer_camerainfoschema",
       "community": 177,
       "norm_label": "camerainfoschema()"
@@ -3760,7 +3760,7 @@
       "label": "ImuSchema()",
       "file_type": "code",
       "source_file": "standalone/EpisodeMcap/src/ros2_cdr_writer.cc",
-      "source_location": "L262",
+      "source_location": "L260",
       "id": "src_ros2_cdr_writer_imuschema",
       "community": 177,
       "norm_label": "imuschema()"
@@ -3769,7 +3769,7 @@
       "label": "EncoderSchema()",
       "file_type": "code",
       "source_file": "standalone/EpisodeMcap/src/ros2_cdr_writer.cc",
-      "source_location": "L291",
+      "source_location": "L289",
       "id": "src_ros2_cdr_writer_encoderschema",
       "community": 177,
       "norm_label": "encoderschema()"
@@ -3778,7 +3778,7 @@
       "label": "StringSchema()",
       "file_type": "code",
       "source_file": "standalone/EpisodeMcap/src/ros2_cdr_writer.cc",
-      "source_location": "L301",
+      "source_location": "L303",
       "id": "src_ros2_cdr_writer_stringschema",
       "community": 177,
       "norm_label": "stringschema()"
@@ -4446,7 +4446,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L477",
       "id": "ugripperruntime_record_runtime_restoreusbsidefortext",
-      "community": 131,
+      "community": 130,
       "norm_label": "restoreusbsidefortext()"
     },
     {
@@ -4653,7 +4653,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L881",
       "id": "ugripperruntime_record_runtime_isfalselikevalue",
-      "community": 130,
+      "community": 131,
       "norm_label": "isfalselikevalue()"
     },
     {
@@ -5013,7 +5013,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2117",
       "id": "ugripperruntime_record_runtime_movefilewithcrossdevicefallback",
-      "community": 130,
+      "community": 131,
       "norm_label": "movefilewithcrossdevicefallback()"
     },
     {
@@ -5031,7 +5031,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2177",
       "id": "ugripperruntime_record_runtime_flushfiletodisk",
-      "community": 130,
+      "community": 131,
       "norm_label": "flushfiletodisk()"
     },
     {
@@ -5040,7 +5040,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2209",
       "id": "ugripperruntime_record_runtime_flushdirectorytodisk",
-      "community": 130,
+      "community": 131,
       "norm_label": "flushdirectorytodisk()"
     },
     {
@@ -5103,7 +5103,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2516",
       "id": "ugripperruntime_record_runtime_makelocaldatetimestring",
-      "community": 130,
+      "community": 131,
       "norm_label": "makelocaldatetimestring()"
     },
     {
@@ -5112,7 +5112,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2528",
       "id": "ugripperruntime_record_runtime_writevalidationerrorlog",
-      "community": 130,
+      "community": 131,
       "norm_label": "writevalidationerrorlog()"
     },
     {
@@ -5706,7 +5706,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5294",
       "id": "ugripperruntime_record_runtime_syncruntimelogtodisk",
-      "community": 130,
+      "community": 131,
       "norm_label": "syncruntimelogtodisk()"
     },
     {
@@ -5922,7 +5922,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6396",
       "id": "ugripperruntime_record_runtime_shouldrestoreusbforfailure",
-      "community": 130,
+      "community": 131,
       "norm_label": "shouldrestoreusbforfailure()"
     },
     {
@@ -5949,7 +5949,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6476",
       "id": "ugripperruntime_record_runtime_detectcamerarecorderstartupfailureforepisode",
-      "community": 131,
+      "community": 130,
       "norm_label": "detectcamerarecorderstartupfailureforepisode()"
     },
     {
@@ -6057,7 +6057,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6922",
       "id": "ugripperruntime_record_runtime_isdatadiskmounted",
-      "community": 130,
+      "community": 131,
       "norm_label": "isdatadiskmounted()"
     },
     {
@@ -6066,7 +6066,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6954",
       "id": "ugripperruntime_record_runtime_requestdatadiskumountforrestoreusb",
-      "community": 130,
+      "community": 131,
       "norm_label": "requestdatadiskumountforrestoreusb()"
     },
     {
@@ -6075,7 +6075,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7013",
       "id": "ugripperruntime_record_runtime_preparedatadiskforrestoreusb",
-      "community": 130,
+      "community": 131,
       "norm_label": "preparedatadiskforrestoreusb()"
     },
     {
@@ -6129,7 +6129,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7427",
       "id": "ugripperruntime_record_runtime_attachpendingpreaudio",
-      "community": 130,
+      "community": 131,
       "norm_label": "attachpendingpreaudio()"
     },
     {
@@ -6246,7 +6246,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7783",
       "id": "ugripperruntime_record_runtime_markepisodemcapoperatorfailed",
-      "community": 130,
+      "community": 131,
       "norm_label": "markepisodemcapoperatorfailed()"
     },
     {
@@ -6255,7 +6255,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7793",
       "id": "ugripperruntime_record_runtime_markepisodeoperatorfailed",
-      "community": 130,
+      "community": 131,
       "norm_label": "markepisodeoperatorfailed()"
     },
     {
@@ -6426,7 +6426,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8693",
       "id": "ugripperruntime_record_runtime_tolower",
-      "community": 130,
+      "community": 131,
       "norm_label": "tolower()"
     },
     {
@@ -6678,7 +6678,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9367",
       "id": "ugripperruntime_record_runtime_gripperpanelmanager_turnoff",
-      "community": 362,
+      "community": 180,
       "norm_label": "gripperpanelmanager::turnoff()"
     },
     {
@@ -6975,7 +6975,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L10535",
       "id": "ugripperruntime_record_runtime_rewriteepisodemcapwithoperatorfailuremarker",
-      "community": 130,
+      "community": 131,
       "norm_label": "rewriteepisodemcapwithoperatorfailuremarker()"
     },
     {
@@ -7065,7 +7065,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L56",
       "id": "ugripperruntime_runtime_process_retryintervalelapsed",
-      "community": 228,
+      "community": 345,
       "norm_label": "retryintervalelapsed()"
     },
     {
@@ -7074,7 +7074,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L61",
       "id": "ugripperruntime_runtime_process_fileexistsandnotempty",
-      "community": 16,
+      "community": 330,
       "norm_label": "fileexistsandnotempty()"
     },
     {
@@ -7083,7 +7083,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L67",
       "id": "ugripperruntime_runtime_process_mcapfilecomplete",
-      "community": 16,
+      "community": 330,
       "norm_label": "mcapfilecomplete()"
     },
     {
@@ -7092,7 +7092,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L98",
       "id": "ugripperruntime_runtime_process_childfdscanlimit",
-      "community": 228,
+      "community": 221,
       "norm_label": "childfdscanlimit()"
     },
     {
@@ -7101,7 +7101,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L117",
       "id": "ugripperruntime_runtime_process_isinheritedfd",
-      "community": 16,
+      "community": 221,
       "norm_label": "isinheritedfd()"
     },
     {
@@ -7110,7 +7110,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L122",
       "id": "ugripperruntime_runtime_process_preparechildfiledescriptors",
-      "community": 16,
+      "community": 221,
       "norm_label": "preparechildfiledescriptors()"
     },
     {
@@ -7119,7 +7119,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L147",
       "id": "ugripperruntime_runtime_process_buildstereosessionjson",
-      "community": 16,
+      "community": 330,
       "norm_label": "buildstereosessionjson()"
     },
     {
@@ -7146,7 +7146,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L226",
       "id": "ugripperruntime_runtime_process_fifostereosessionport",
-      "community": 16,
+      "community": 368,
       "norm_label": "fifostereosessionport"
     },
     {
@@ -7155,7 +7155,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L229",
       "id": "ugripperruntime_runtime_process_fifostereosessionport_fifostereosessionport",
-      "community": 16,
+      "community": 368,
       "norm_label": ".fifostereosessionport()"
     },
     {
@@ -7164,7 +7164,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L450",
       "id": "ugripperruntime_runtime_process_fileshutdownrequestport",
-      "community": 16,
+      "community": 369,
       "norm_label": "fileshutdownrequestport"
     },
     {
@@ -7173,7 +7173,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L453",
       "id": "ugripperruntime_runtime_process_fileshutdownrequestport_fileshutdownrequestport",
-      "community": 16,
+      "community": 369,
       "norm_label": ".fileshutdownrequestport()"
     },
     {
@@ -7182,7 +7182,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L531",
       "id": "ugripperruntime_runtime_process_joinarguments",
-      "community": 228,
+      "community": 221,
       "norm_label": "joinarguments()"
     },
     {
@@ -7236,7 +7236,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L637",
       "id": "ugripperruntime_runtime_process_start",
-      "community": 228,
+      "community": 221,
       "norm_label": "start()"
     },
     {
@@ -7263,7 +7263,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L718",
       "id": "ugripperruntime_runtime_process_sendsignal",
-      "community": 16,
+      "community": 370,
       "norm_label": "sendsignal()"
     },
     {
@@ -7290,7 +7290,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L783",
       "id": "ugripperruntime_runtime_process_lastexitcode",
-      "community": 228,
+      "community": 221,
       "norm_label": "lastexitcode()"
     },
     {
@@ -7299,7 +7299,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L788",
       "id": "ugripperruntime_runtime_process_pid",
-      "community": 228,
+      "community": 221,
       "norm_label": "pid()"
     },
     {
@@ -7308,7 +7308,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L793",
       "id": "ugripperruntime_runtime_process_signaltarget",
-      "community": 16,
+      "community": 370,
       "norm_label": "signaltarget()"
     },
     {
@@ -7335,7 +7335,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L941",
       "id": "ugripperruntime_runtime_process_getstatus",
-      "community": 228,
+      "community": 221,
       "norm_label": "getstatus()"
     },
     {
@@ -7353,7 +7353,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L962",
       "id": "ugripperruntime_runtime_process_refreshstatus",
-      "community": 228,
+      "community": 221,
       "norm_label": "refreshstatus()"
     },
     {
@@ -7434,7 +7434,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1200",
       "id": "ugripperruntime_runtime_process_startdaemon",
-      "community": 228,
+      "community": 345,
       "norm_label": "startdaemon()"
     },
     {
@@ -7443,7 +7443,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1223",
       "id": "ugripperruntime_runtime_process_stopdaemon",
-      "community": 16,
+      "community": 342,
       "norm_label": "stopdaemon()"
     },
     {
@@ -7452,7 +7452,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1233",
       "id": "ugripperruntime_runtime_process_maintaindaemon",
-      "community": 228,
+      "community": 345,
       "norm_label": "maintaindaemon()"
     },
     {
@@ -7461,7 +7461,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1255",
       "id": "ugripperruntime_runtime_process_startsession",
-      "community": 16,
+      "community": 342,
       "norm_label": "startsession()"
     },
     {
@@ -7470,7 +7470,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1270",
       "id": "ugripperruntime_runtime_process_stopsession",
-      "community": 16,
+      "community": 342,
       "norm_label": "stopsession()"
     },
     {
@@ -7479,7 +7479,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1278",
       "id": "ugripperruntime_runtime_process_waitforfinalize",
-      "community": 16,
+      "community": 330,
       "norm_label": "waitforfinalize()"
     },
     {
@@ -7524,7 +7524,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1531",
       "id": "ugripperruntime_runtime_process_writecontrol",
-      "community": 16,
+      "community": 342,
       "norm_label": "writecontrol()"
     },
     {
@@ -8550,7 +8550,7 @@
       "source_file": "standalone/UgripperRuntime/audio/record_usb_audio.py",
       "source_location": "L1",
       "id": "standalone_ugripperruntime_audio_record_usb_audio_py",
-      "community": 29,
+      "community": 175,
       "norm_label": "record_usb_audio.py"
     },
     {
@@ -8559,7 +8559,7 @@
       "source_file": "audio/record_usb_audio.py",
       "source_location": "L18",
       "id": "audio_record_usb_audio_forward_signal",
-      "community": 29,
+      "community": 175,
       "norm_label": "forward_signal()"
     },
     {
@@ -8568,7 +8568,7 @@
       "source_file": "audio/record_usb_audio.py",
       "source_location": "L25",
       "id": "audio_record_usb_audio_main",
-      "community": 29,
+      "community": 175,
       "norm_label": "main()"
     },
     {
@@ -8676,7 +8676,7 @@
       "source_file": "standalone/UgripperRuntime/audio/audio_play.py",
       "source_location": "L1",
       "id": "standalone_ugripperruntime_audio_audio_play_py",
-      "community": 287,
+      "community": 204,
       "norm_label": "audio_play.py"
     },
     {
@@ -8685,7 +8685,7 @@
       "source_file": "audio/audio_play.py",
       "source_location": "L45",
       "id": "audio_audio_play_setup_audio_device",
-      "community": 287,
+      "community": 204,
       "norm_label": "setup_audio_device()"
     },
     {
@@ -8694,7 +8694,7 @@
       "source_file": "audio/audio_play.py",
       "source_location": "L50",
       "id": "audio_audio_play_find_event_device",
-      "community": 287,
+      "community": 204,
       "norm_label": "_find_event_device()"
     },
     {
@@ -8703,7 +8703,7 @@
       "source_file": "audio/audio_play.py",
       "source_location": "L80",
       "id": "audio_audio_play_run_pactl",
-      "community": 287,
+      "community": 204,
       "norm_label": "_run_pactl()"
     },
     {
@@ -8712,7 +8712,7 @@
       "source_file": "audio/audio_play.py",
       "source_location": "L85",
       "id": "audio_audio_play_handle_volume_key",
-      "community": 287,
+      "community": 204,
       "norm_label": "_handle_volume_key()"
     },
     {
@@ -8892,7 +8892,7 @@
       "source_file": "audio/audio_play.py",
       "source_location": "L446",
       "id": "audio_audio_play_audioplayer_volume_key_loop",
-      "community": 287,
+      "community": 204,
       "norm_label": ".volume_key_loop()"
     },
     {
@@ -8901,7 +8901,7 @@
       "source_file": "audio/audio_play.py",
       "source_location": "L513",
       "id": "audio_audio_play_audioplayer_run",
-      "community": 287,
+      "community": 204,
       "norm_label": ".run()"
     },
     {
@@ -8910,7 +8910,7 @@
       "source_file": "audio/audio_play.py",
       "source_location": "L535",
       "id": "audio_audio_play_main",
-      "community": 287,
+      "community": 204,
       "norm_label": "main()"
     },
     {
@@ -9072,7 +9072,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L50",
       "id": "gripperhmitool_gripper_hmi_driver_trimtrailingzerolength",
-      "community": 180,
+      "community": 172,
       "norm_label": "trimtrailingzerolength()"
     },
     {
@@ -9081,7 +9081,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L66",
       "id": "gripperhmitool_gripper_hmi_driver_formathexbyte",
-      "community": 180,
+      "community": 172,
       "norm_label": "formathexbyte()"
     },
     {
@@ -9090,7 +9090,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L73",
       "id": "gripperhmitool_gripper_hmi_driver_describestatusframe",
-      "community": 180,
+      "community": 172,
       "norm_label": "describestatusframe()"
     },
     {
@@ -9108,7 +9108,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L91",
       "id": "gripperhmitool_gripper_hmi_driver_logcommandsummary",
-      "community": 180,
+      "community": 172,
       "norm_label": "logcommandsummary()"
     },
     {
@@ -9162,7 +9162,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L197",
       "id": "gripperhmitool_gripper_hmi_driver_hasallcalibrationchunks",
-      "community": 180,
+      "community": 172,
       "norm_label": "hasallcalibrationchunks()"
     },
     {
@@ -9198,7 +9198,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L237",
       "id": "gripperhmitool_gripper_hmi_driver_allocatecommandidlocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "allocatecommandidlocked()"
     },
     {
@@ -9261,7 +9261,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L457",
       "id": "gripperhmitool_gripper_hmi_driver_writeframelocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "writeframelocked()"
     },
     {
@@ -9288,7 +9288,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L509",
       "id": "gripperhmitool_gripper_hmi_driver_setledcolor",
-      "community": 362,
+      "community": 180,
       "norm_label": "setledcolor()"
     },
     {
@@ -9306,7 +9306,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L548",
       "id": "gripperhmitool_gripper_hmi_driver_setbeepstate",
-      "community": 359,
+      "community": 180,
       "norm_label": "setbeepstate()"
     },
     {
@@ -9315,7 +9315,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L562",
       "id": "gripperhmitool_gripper_hmi_driver_setbeepenabled",
-      "community": 359,
+      "community": 180,
       "norm_label": "setbeepenabled()"
     },
     {
@@ -9324,7 +9324,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L571",
       "id": "gripperhmitool_gripper_hmi_driver_silencebeep",
-      "community": 359,
+      "community": 180,
       "norm_label": "silencebeep()"
     },
     {
@@ -9342,7 +9342,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L642",
       "id": "gripperhmitool_gripper_hmi_driver_resumeiothreadlocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "resumeiothreadlocked()"
     },
     {
@@ -9351,7 +9351,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L653",
       "id": "gripperhmitool_gripper_hmi_driver_readbyteslocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "readbyteslocked()"
     },
     {
@@ -9369,7 +9369,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L730",
       "id": "gripperhmitool_gripper_hmi_driver_readstatusframelocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "readstatusframelocked()"
     },
     {
@@ -9378,7 +9378,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L735",
       "id": "gripperhmitool_gripper_hmi_driver_readanystatusframelocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "readanystatusframelocked()"
     },
     {
@@ -9387,7 +9387,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L740",
       "id": "gripperhmitool_gripper_hmi_driver_abortcalibrationwritestatelocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "abortcalibrationwritestatelocked()"
     },
     {
@@ -9396,7 +9396,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L767",
       "id": "gripperhmitool_gripper_hmi_driver_readexpectedstatusframelocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "readexpectedstatusframelocked()"
     },
     {
@@ -9423,7 +9423,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L849",
       "id": "gripperhmitool_gripper_hmi_driver_readcalibrationframelocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "readcalibrationframelocked()"
     },
     {
@@ -9432,7 +9432,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L891",
       "id": "gripperhmitool_gripper_hmi_driver_readrawdataorstatusframelocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "readrawdataorstatusframelocked()"
     },
     {
@@ -9441,7 +9441,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L939",
       "id": "gripperhmitool_gripper_hmi_driver_readdataorstatusframelocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "readdataorstatusframelocked()"
     },
     {
@@ -9450,7 +9450,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L988",
       "id": "gripperhmitool_gripper_hmi_driver_runexclusivecommand",
-      "community": 180,
+      "community": 172,
       "norm_label": "runexclusivecommand()"
     },
     {
@@ -9459,7 +9459,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L1016",
       "id": "gripperhmitool_gripper_hmi_driver_readserialnumber",
-      "community": 180,
+      "community": 172,
       "norm_label": "readserialnumber()"
     },
     {
@@ -9468,7 +9468,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L1025",
       "id": "gripperhmitool_gripper_hmi_driver_readserialnumberandcalibration",
-      "community": 180,
+      "community": 172,
       "norm_label": "readserialnumberandcalibration()"
     },
     {
@@ -9477,7 +9477,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L1050",
       "id": "gripperhmitool_gripper_hmi_driver_writeserialnumber",
-      "community": 180,
+      "community": 172,
       "norm_label": "writeserialnumber()"
     },
     {
@@ -9486,7 +9486,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L1260",
       "id": "gripperhmitool_gripper_hmi_driver_readcalibrationdata",
-      "community": 180,
+      "community": 172,
       "norm_label": "readcalibrationdata()"
     },
     {
@@ -9495,7 +9495,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L1269",
       "id": "gripperhmitool_gripper_hmi_driver_readserialnumberlocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "readserialnumberlocked()"
     },
     {
@@ -9504,7 +9504,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L1364",
       "id": "gripperhmitool_gripper_hmi_driver_readcalibrationdatalocked",
-      "community": 180,
+      "community": 172,
       "norm_label": "readcalibrationdatalocked()"
     },
     {
@@ -9513,7 +9513,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L1639",
       "id": "gripperhmitool_gripper_hmi_driver_writecalibrationdata",
-      "community": 180,
+      "community": 172,
       "norm_label": "writecalibrationdata()"
     },
     {
@@ -10287,7 +10287,7 @@
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L71",
       "id": "src_record_tolowercopy",
-      "community": 184,
+      "community": 168,
       "norm_label": "tolowercopy()"
     },
     {
@@ -10377,7 +10377,7 @@
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L357",
       "id": "src_record_readenvuint64",
-      "community": 262,
+      "community": 184,
       "norm_label": "readenvuint64()"
     },
     {
@@ -10431,7 +10431,7 @@
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L489",
       "id": "src_record_extractjsonstringvalue",
-      "community": 262,
+      "community": 184,
       "norm_label": "extractjsonstringvalue()"
     },
     {
@@ -10440,7 +10440,7 @@
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L530",
       "id": "src_record_readcalibrationjsonserial",
-      "community": 262,
+      "community": 184,
       "norm_label": "readcalibrationjsonserial()"
     },
     {
@@ -10449,7 +10449,7 @@
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L546",
       "id": "src_record_getfaysdeviceserial",
-      "community": 262,
+      "community": 184,
       "norm_label": "getfaysdeviceserial()"
     },
     {
@@ -10503,7 +10503,7 @@
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L797",
       "id": "src_record_readcameracodecfromenvironmentfile",
-      "community": 184,
+      "community": 168,
       "norm_label": "readcameracodecfromenvironmentfile()"
     },
     {
@@ -10620,7 +10620,7 @@
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L1735",
       "id": "src_record_faysrecorder",
-      "community": 262,
+      "community": 184,
       "norm_label": "faysrecorder"
     },
     {
@@ -10629,7 +10629,7 @@
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L1742",
       "id": "src_record_faysrecorder_faysrecorder",
-      "community": 262,
+      "community": 184,
       "norm_label": ".faysrecorder()"
     },
     {
@@ -12672,7 +12672,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L337",
       "id": "camerarecorder_camera_recorder_sanitizetimingpathcomponent",
-      "community": 233,
+      "community": 186,
       "norm_label": "sanitizetimingpathcomponent()"
     },
     {
@@ -12681,7 +12681,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L353",
       "id": "camerarecorder_camera_recorder_recordingtimingpathforepisode",
-      "community": 233,
+      "community": 186,
       "norm_label": "recordingtimingpathforepisode()"
     },
     {
@@ -12699,7 +12699,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L365",
       "id": "camerarecorder_camera_recorder_shellquote",
-      "community": 350,
+      "community": 186,
       "norm_label": "shellquote()"
     },
     {
@@ -12726,7 +12726,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L403",
       "id": "camerarecorder_camera_recorder_joinargumentsforshell",
-      "community": 350,
+      "community": 186,
       "norm_label": "joinargumentsforshell()"
     },
     {
@@ -12735,7 +12735,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L414",
       "id": "camerarecorder_camera_recorder_runshellcommandcapture",
-      "community": 350,
+      "community": 186,
       "norm_label": "runshellcommandcapture()"
     },
     {
@@ -12744,7 +12744,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L451",
       "id": "camerarecorder_camera_recorder_readjsonfile",
-      "community": 186,
+      "community": 179,
       "norm_label": "readjsonfile()"
     },
     {
@@ -12771,7 +12771,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L524",
       "id": "camerarecorder_camera_recorder_calibrationimagekeyfortopiccamera",
-      "community": 186,
+      "community": 179,
       "norm_label": "calibrationimagekeyfortopiccamera()"
     },
     {
@@ -12780,7 +12780,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L537",
       "id": "camerarecorder_camera_recorder_loadepisodecalibration",
-      "community": 186,
+      "community": 179,
       "norm_label": "loadepisodecalibration()"
     },
     {
@@ -12789,7 +12789,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L541",
       "id": "camerarecorder_camera_recorder_cameracalibrationentry",
-      "community": 186,
+      "community": 179,
       "norm_label": "cameracalibrationentry()"
     },
     {
@@ -12798,7 +12798,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L561",
       "id": "camerarecorder_camera_recorder_jsonnumberarray",
-      "community": 186,
+      "community": 179,
       "norm_label": "jsonnumberarray()"
     },
     {
@@ -12807,7 +12807,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L574",
       "id": "camerarecorder_camera_recorder_selectintrinsicobject",
-      "community": 186,
+      "community": 179,
       "norm_label": "selectintrinsicobject()"
     },
     {
@@ -12816,7 +12816,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L596",
       "id": "camerarecorder_camera_recorder_tou8vector",
-      "community": 186,
+      "community": 179,
       "norm_label": "tou8vector()"
     },
     {
@@ -12825,7 +12825,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L604",
       "id": "camerarecorder_camera_recorder_buildcamerainfocdrpayload",
-      "community": 186,
+      "community": 179,
       "norm_label": "buildcamerainfocdrpayload()"
     },
     {
@@ -12834,7 +12834,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L656",
       "id": "camerarecorder_camera_recorder_sendcamerastaticmcapmetadata",
-      "community": 186,
+      "community": 179,
       "norm_label": "sendcamerastaticmcapmetadata()"
     },
     {
@@ -12843,7 +12843,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L682",
       "id": "camerarecorder_camera_recorder_parsesecondstextus",
-      "community": 350,
+      "community": 186,
       "norm_label": "parsesecondstextus()"
     },
     {
@@ -12852,7 +12852,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L696",
       "id": "camerarecorder_camera_recorder_probevideowindowus",
-      "community": 350,
+      "community": 186,
       "norm_label": "probevideowindowus()"
     },
     {
@@ -13122,7 +13122,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L3022",
       "id": "camerarecorder_camera_recorder_hybridcamerarecorder",
-      "community": 13,
+      "community": 365,
       "norm_label": "hybridcamerarecorder"
     },
     {
@@ -13131,7 +13131,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L3024",
       "id": "camerarecorder_camera_recorder_hybridcamerarecorder_hybridcamerarecorder",
-      "community": 13,
+      "community": 365,
       "norm_label": ".hybridcamerarecorder()"
     },
     {
@@ -13167,7 +13167,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L3417",
       "id": "camerarecorder_camera_recorder_stereohybridrecorder",
-      "community": 346,
+      "community": 13,
       "norm_label": "stereohybridrecorder"
     },
     {
@@ -13176,7 +13176,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L3419",
       "id": "camerarecorder_camera_recorder_stereohybridrecorder_stereohybridrecorder",
-      "community": 346,
+      "community": 13,
       "norm_label": ".stereohybridrecorder()"
     },
     {
@@ -13230,7 +13230,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L4276",
       "id": "camerarecorder_camera_recorder_stereocameratrack",
-      "community": 13,
+      "community": 366,
       "norm_label": "stereocameratrack"
     },
     {
@@ -13239,7 +13239,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L4278",
       "id": "camerarecorder_camera_recorder_stereocameratrack_stereocameratrack",
-      "community": 13,
+      "community": 366,
       "norm_label": ".stereocameratrack()"
     },
     {
@@ -13302,7 +13302,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L4936",
       "id": "camerarecorder_camera_recorder_monitoruntilstop",
-      "community": 233,
+      "community": 186,
       "norm_label": "monitoruntilstop()"
     },
     {
@@ -13338,7 +13338,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L5005",
       "id": "camerarecorder_camera_recorder_allexpectedtimingoffsetsavailable",
-      "community": 233,
+      "community": 186,
       "norm_label": "allexpectedtimingoffsetsavailable()"
     },
     {
@@ -13347,7 +13347,7 @@
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L5022",
       "id": "camerarecorder_camera_recorder_writeinfojson",
-      "community": 233,
+      "community": 186,
       "norm_label": "writeinfojson()"
     },
     {
@@ -13725,7 +13725,7 @@
       "source_file": "src/utils/include/utils/file_utils.hpp",
       "source_location": "L1",
       "id": "src_utils_include_utils_file_utils_hpp",
-      "community": 342,
+      "community": 14,
       "norm_label": "file_utils.hpp"
     },
     {
@@ -13734,7 +13734,7 @@
       "source_file": "src/utils/include/utils/file_utils.hpp",
       "source_location": "L9",
       "id": "utils_file_utils_fileexistsandnotempty",
-      "community": 342,
+      "community": 14,
       "norm_label": "fileexistsandnotempty()"
     },
     {
@@ -13761,7 +13761,7 @@
       "source_file": "src/utils/src/utils_smoke_test.cc",
       "source_location": "L1",
       "id": "src_utils_src_utils_smoke_test_cc",
-      "community": 133,
+      "community": 14,
       "norm_label": "utils_smoke_test.cc"
     },
     {
@@ -13770,7 +13770,7 @@
       "source_file": "src/utils/src/utils_smoke_test.cc",
       "source_location": "L17",
       "id": "src_utils_smoke_test_writeall",
-      "community": 133,
+      "community": 14,
       "norm_label": "writeall()"
     },
     {
@@ -13779,7 +13779,7 @@
       "source_file": "src/utils/src/utils_smoke_test.cc",
       "source_location": "L34",
       "id": "src_utils_smoke_test_main",
-      "community": 133,
+      "community": 14,
       "norm_label": "main()"
     },
     {
@@ -13950,7 +13950,7 @@
       "source_file": "src/utils/src/time_utils.cc",
       "source_location": "L1",
       "id": "src_utils_src_time_utils_cc",
-      "community": 330,
+      "community": 14,
       "norm_label": "time_utils.cc"
     },
     {
@@ -13959,7 +13959,7 @@
       "source_file": "src/utils/src/time_utils.cc",
       "source_location": "L7",
       "id": "src_time_utils_currentsteadyms",
-      "community": 330,
+      "community": 14,
       "norm_label": "currentsteadyms()"
     },
     {
@@ -13968,7 +13968,7 @@
       "source_file": "src/utils/src/time_utils.cc",
       "source_location": "L14",
       "id": "src_time_utils_currentepochms",
-      "community": 330,
+      "community": 14,
       "norm_label": "currentepochms()"
     },
     {
@@ -13977,7 +13977,7 @@
       "source_file": "src/utils/src/time_utils.cc",
       "source_location": "L21",
       "id": "src_time_utils_currentepochus",
-      "community": 330,
+      "community": 14,
       "norm_label": "currentepochus()"
     },
     {
@@ -14049,7 +14049,7 @@
       "source_file": "src/utils/src/env_utils.cc",
       "source_location": "L1",
       "id": "src_utils_src_env_utils_cc",
-      "community": 267,
+      "community": 14,
       "norm_label": "env_utils.cc"
     },
     {
@@ -14058,7 +14058,7 @@
       "source_file": "src/utils/src/env_utils.cc",
       "source_location": "L11",
       "id": "src_env_utils_trimwhitespace",
-      "community": 267,
+      "community": 14,
       "norm_label": "trimwhitespace()"
     },
     {
@@ -14067,7 +14067,7 @@
       "source_file": "src/utils/src/env_utils.cc",
       "source_location": "L28",
       "id": "src_env_utils_readenvvalue",
-      "community": 267,
+      "community": 14,
       "norm_label": "readenvvalue()"
     },
     {
@@ -14335,7 +14335,7 @@
       "label": "parse_string_cdr()",
       "file_type": "code",
       "source_file": "scripts/extract_mcap_episode.py",
-      "source_location": "L202",
+      "source_location": "L212",
       "id": "scripts_extract_mcap_episode_parse_string_cdr",
       "community": 20,
       "norm_label": "parse_string_cdr()"
@@ -14344,7 +14344,7 @@
       "label": "slug_topic()",
       "file_type": "code",
       "source_file": "scripts/extract_mcap_episode.py",
-      "source_location": "L216",
+      "source_location": "L226",
       "id": "scripts_extract_mcap_episode_slug_topic",
       "community": 20,
       "norm_label": "slug_topic()"
@@ -14353,7 +14353,7 @@
       "label": "normalize_video_format()",
       "file_type": "code",
       "source_file": "scripts/extract_mcap_episode.py",
-      "source_location": "L220",
+      "source_location": "L230",
       "id": "scripts_extract_mcap_episode_normalize_video_format",
       "community": 20,
       "norm_label": "normalize_video_format()"
@@ -14362,7 +14362,7 @@
       "label": "ffmpeg_demuxer_for_format()",
       "file_type": "code",
       "source_file": "scripts/extract_mcap_episode.py",
-      "source_location": "L229",
+      "source_location": "L239",
       "id": "scripts_extract_mcap_episode_ffmpeg_demuxer_for_format",
       "community": 20,
       "norm_label": "ffmpeg_demuxer_for_format()"
@@ -14371,7 +14371,7 @@
       "label": "bitstream_suffix_for_format()",
       "file_type": "code",
       "source_file": "scripts/extract_mcap_episode.py",
-      "source_location": "L235",
+      "source_location": "L245",
       "id": "scripts_extract_mcap_episode_bitstream_suffix_for_format",
       "community": 20,
       "norm_label": "bitstream_suffix_for_format()"
@@ -14380,7 +14380,7 @@
       "label": "collect_mcap_files()",
       "file_type": "code",
       "source_file": "scripts/extract_mcap_episode.py",
-      "source_location": "L239",
+      "source_location": "L249",
       "id": "scripts_extract_mcap_episode_collect_mcap_files",
       "community": 20,
       "norm_label": "collect_mcap_files()"
@@ -14389,7 +14389,7 @@
       "label": "TopicStats",
       "file_type": "code",
       "source_file": "scripts/extract_mcap_episode.py",
-      "source_location": "L285",
+      "source_location": "L295",
       "id": "scripts_extract_mcap_episode_topicstats",
       "community": 20,
       "norm_label": "topicstats"
@@ -14398,7 +14398,7 @@
       "label": ".update_log_time()",
       "file_type": "code",
       "source_file": "scripts/extract_mcap_episode.py",
-      "source_location": "L299",
+      "source_location": "L309",
       "id": "scripts_extract_mcap_episode_topicstats_update_log_time",
       "community": 20,
       "norm_label": ".update_log_time()"
@@ -14407,7 +14407,7 @@
       "label": ".update_stamp()",
       "file_type": "code",
       "source_file": "scripts/extract_mcap_episode.py",
-      "source_location": "L305",
+      "source_location": "L315",
       "id": "scripts_extract_mcap_episode_topicstats_update_stamp",
       "community": 20,
       "norm_label": ".update_stamp()"
@@ -14416,7 +14416,7 @@
       "label": "extract_episode()",
       "file_type": "code",
       "source_file": "scripts/extract_mcap_episode.py",
-      "source_location": "L312",
+      "source_location": "L322",
       "id": "scripts_extract_mcap_episode_extract_episode",
       "community": 20,
       "norm_label": "extract_episode()"
@@ -14425,7 +14425,7 @@
       "label": "main()",
       "file_type": "code",
       "source_file": "scripts/extract_mcap_episode.py",
-      "source_location": "L516",
+      "source_location": "L526",
       "id": "scripts_extract_mcap_episode_main",
       "community": 20,
       "norm_label": "main()"
@@ -15444,7 +15444,7 @@
       "source_file": "audio/record_usb_audio.py",
       "source_location": "L1",
       "id": "audio_record_usb_audio_py",
-      "community": 29,
+      "community": 175,
       "norm_label": "record_usb_audio.py"
     },
     {
@@ -15462,7 +15462,7 @@
       "source_file": "audio/audio_play.py",
       "source_location": "L1",
       "id": "audio_audio_play_py",
-      "community": 287,
+      "community": 204,
       "norm_label": "audio_play.py"
     },
     {
@@ -15489,7 +15489,7 @@
       "source_file": "test/src/utils/test_time_utils.cc",
       "source_location": "L1",
       "id": "test_src_utils_test_time_utils_cc",
-      "community": 330,
+      "community": 14,
       "norm_label": "test_time_utils.cc"
     },
     {
@@ -15498,7 +15498,7 @@
       "source_file": "test/src/utils/test_time_utils.cc",
       "source_location": "L7",
       "id": "utils_test_time_utils_test",
-      "community": 330,
+      "community": 14,
       "norm_label": "test()"
     },
     {
@@ -15507,7 +15507,7 @@
       "source_file": "test/src/utils/test_env_utils.cc",
       "source_location": "L1",
       "id": "test_src_utils_test_env_utils_cc",
-      "community": 267,
+      "community": 14,
       "norm_label": "test_env_utils.cc"
     },
     {
@@ -15516,7 +15516,7 @@
       "source_file": "test/src/utils/test_env_utils.cc",
       "source_location": "L11",
       "id": "utils_test_env_utils_envutilstest",
-      "community": 267,
+      "community": 14,
       "norm_label": "envutilstest"
     },
     {
@@ -15525,7 +15525,7 @@
       "source_file": "test/src/utils/test_env_utils.cc",
       "source_location": "L39",
       "id": "utils_test_env_utils_test_f",
-      "community": 267,
+      "community": 14,
       "norm_label": "test_f()"
     },
     {
@@ -15534,7 +15534,7 @@
       "source_file": "test/src/utils/test_file_utils.cc",
       "source_location": "L1",
       "id": "test_src_utils_test_file_utils_cc",
-      "community": 342,
+      "community": 14,
       "norm_label": "test_file_utils.cc"
     },
     {
@@ -15543,7 +15543,7 @@
       "source_file": "test/src/utils/test_file_utils.cc",
       "source_location": "L10",
       "id": "utils_test_file_utils_fileutilstest",
-      "community": 342,
+      "community": 14,
       "norm_label": "fileutilstest"
     },
     {
@@ -15552,7 +15552,7 @@
       "source_file": "test/src/utils/test_file_utils.cc",
       "source_location": "L34",
       "id": "utils_test_file_utils_test_f",
-      "community": 342,
+      "community": 14,
       "norm_label": "test_f()"
     },
     {
@@ -16119,7 +16119,7 @@
       "source_file": "test/src/record_runtime/test_runtime_health.cc",
       "source_location": "L1",
       "id": "test_src_record_runtime_test_runtime_health_cc",
-      "community": 29,
+      "community": 266,
       "norm_label": "test_runtime_health.cc"
     },
     {
@@ -16128,7 +16128,7 @@
       "source_file": "test/src/record_runtime/test_runtime_health.cc",
       "source_location": "L17",
       "id": "record_runtime_test_runtime_health_fakenowms",
-      "community": 29,
+      "community": 266,
       "norm_label": "fakenowms()"
     },
     {
@@ -16137,7 +16137,7 @@
       "source_file": "test/src/record_runtime/test_runtime_health.cc",
       "source_location": "L22",
       "id": "record_runtime_test_runtime_health_maketempdir",
-      "community": 29,
+      "community": 266,
       "norm_label": "maketempdir()"
     },
     {
@@ -16146,7 +16146,7 @@
       "source_file": "test/src/record_runtime/test_runtime_health.cc",
       "source_location": "L41",
       "id": "record_runtime_test_runtime_health_test",
-      "community": 29,
+      "community": 266,
       "norm_label": "test()"
     },
     {
@@ -16420,19 +16420,28 @@
       "norm_label": "compare_encoder_mcap_size.py"
     },
     {
-      "label": "encoder_cdr()",
+      "label": "encoder_direct_stamp_cdr()",
       "file_type": "code",
       "source_file": "test/scripts/compare_encoder_mcap_size.py",
-      "source_location": "L22",
-      "id": "scripts_compare_encoder_mcap_size_encoder_cdr",
+      "source_location": "L33",
+      "id": "scripts_compare_encoder_mcap_size_encoder_direct_stamp_cdr",
       "community": 265,
-      "norm_label": "encoder_cdr()"
+      "norm_label": "encoder_direct_stamp_cdr()"
+    },
+    {
+      "label": "encoder_header_cdr()",
+      "file_type": "code",
+      "source_file": "test/scripts/compare_encoder_mcap_size.py",
+      "source_location": "L38",
+      "id": "scripts_compare_encoder_mcap_size_encoder_header_cdr",
+      "community": 265,
+      "norm_label": "encoder_header_cdr()"
     },
     {
       "label": "write_sample()",
       "file_type": "code",
       "source_file": "test/scripts/compare_encoder_mcap_size.py",
-      "source_location": "L27",
+      "source_location": "L48",
       "id": "scripts_compare_encoder_mcap_size_write_sample",
       "community": 265,
       "norm_label": "write_sample()"
@@ -16441,7 +16450,7 @@
       "label": "compare()",
       "file_type": "code",
       "source_file": "test/scripts/compare_encoder_mcap_size.py",
-      "source_location": "L53",
+      "source_location": "L86",
       "id": "scripts_compare_encoder_mcap_size_compare",
       "community": 265,
       "norm_label": "compare()"
@@ -16450,7 +16459,7 @@
       "label": "main()",
       "file_type": "code",
       "source_file": "test/scripts/compare_encoder_mcap_size.py",
-      "source_location": "L76",
+      "source_location": "L118",
       "id": "scripts_compare_encoder_mcap_size_main",
       "community": 265,
       "norm_label": "main()"
@@ -16564,28 +16573,46 @@
       "norm_label": "encodermcapcompatibilitytest"
     },
     {
+      "label": "encoder_header_cdr()",
+      "file_type": "code",
+      "source_file": "test/scripts/test_encoder_mcap_compat.py",
+      "source_location": "L29",
+      "id": "scripts_test_encoder_mcap_compat_encoder_header_cdr",
+      "community": 236,
+      "norm_label": "encoder_header_cdr()"
+    },
+    {
       "label": ".test_legacy_binary()",
       "file_type": "code",
       "source_file": "test/scripts/test_encoder_mcap_compat.py",
-      "source_location": "L28",
+      "source_location": "L37",
       "id": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_legacy_binary",
       "community": 236,
       "norm_label": ".test_legacy_binary()"
     },
     {
-      "label": ".test_ros2_cdr()",
+      "label": ".test_ros2_direct_stamp_cdr_compatibility()",
       "file_type": "code",
       "source_file": "test/scripts/test_encoder_mcap_compat.py",
-      "source_location": "L40",
-      "id": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_cdr",
+      "source_location": "L49",
+      "id": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_direct_stamp_cdr_compatibility",
       "community": 236,
-      "norm_label": ".test_ros2_cdr()"
+      "norm_label": ".test_ros2_direct_stamp_cdr_compatibility()"
+    },
+    {
+      "label": ".test_ros2_header_cdr()",
+      "file_type": "code",
+      "source_file": "test/scripts/test_encoder_mcap_compat.py",
+      "source_location": "L64",
+      "id": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_header_cdr",
+      "community": 236,
+      "norm_label": ".test_ros2_header_cdr()"
     },
     {
       "label": ".test_unified_topic_with_leading_slash()",
       "file_type": "code",
       "source_file": "test/scripts/test_encoder_mcap_compat.py",
-      "source_location": "L55",
+      "source_location": "L81",
       "id": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_unified_topic_with_leading_slash",
       "community": 236,
       "norm_label": ".test_unified_topic_with_leading_slash()"
@@ -16594,7 +16621,7 @@
       "label": ".test_ros2_string_cdr_json()",
       "file_type": "code",
       "source_file": "test/scripts/test_encoder_mcap_compat.py",
-      "source_location": "L66",
+      "source_location": "L93",
       "id": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_string_cdr_json",
       "community": 236,
       "norm_label": ".test_ros2_string_cdr_json()"
@@ -16855,7 +16882,7 @@
       "label": "main()",
       "file_type": "code",
       "source_file": "test/scripts/verify_ros2_encoder_mcap.py",
-      "source_location": "L161",
+      "source_location": "L165",
       "id": "scripts_verify_ros2_encoder_mcap_main",
       "community": 341,
       "norm_label": "main()"
@@ -20398,13 +20425,13 @@
       "norm_label": "\u4f20\u611f\u5668 topics"
     },
     {
-      "label": "code:text (builtin_interfaces/Time stamp)",
+      "label": "code:text (std_msgs/Header header)",
       "file_type": "document",
       "source_file": "docs/episode_mcap_format.md",
       "source_location": "L76",
       "id": "docs_episode_mcap_format_codeblock_1",
       "community": 63,
-      "norm_label": "code:text (builtin_interfaces/time stamp)"
+      "norm_label": "code:text (std_msgs/header header)"
     },
     {
       "label": "\u65f6\u95f4\u8bed\u4e49",
@@ -29164,19 +29191,19 @@
       "norm_label": "ugripper_msgs"
     },
     {
-      "label": "code:text (builtin_interfaces/Time stamp)",
+      "label": "code:text (std_msgs/Header header)",
       "file_type": "document",
       "source_file": "ros2/ugripper_msgs/README.md",
       "source_location": "L8",
       "id": "ugripper_msgs_readme_codeblock_1",
       "community": 268,
-      "norm_label": "code:text (builtin_interfaces/time stamp)"
+      "norm_label": "code:text (std_msgs/header header)"
     },
     {
       "label": "code:bash (mkdir -p ~/ugripper_ros_ws/src)",
       "file_type": "document",
       "source_file": "ros2/ugripper_msgs/README.md",
-      "source_location": "L16",
+      "source_location": "L19",
       "id": "ugripper_msgs_readme_codeblock_2",
       "community": 268,
       "norm_label": "code:bash (mkdir -p ~/ugripper_ros_ws/src)"
@@ -29731,6 +29758,24 @@
       "norm_label": "12. \u6700\u5c11\u53ea\u8bb0\u4ec0\u4e48"
     },
     {
+      "label": "encoder_cdr()",
+      "file_type": "code",
+      "source_file": "test/scripts/compare_encoder_mcap_size.py",
+      "source_location": "L22",
+      "community": 265,
+      "norm_label": "encoder_cdr()",
+      "id": "scripts_compare_encoder_mcap_size_encoder_cdr"
+    },
+    {
+      "label": ".test_ros2_cdr()",
+      "file_type": "code",
+      "source_file": "test/scripts/test_encoder_mcap_compat.py",
+      "source_location": "L40",
+      "community": 236,
+      "norm_label": ".test_ros2_cdr()",
+      "id": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_cdr"
+    },
+    {
       "label": "Pick the most relevant encoding hint for the current message.",
       "file_type": "rationale",
       "source_file": "py_script/mcap_viewer.py",
@@ -29834,7 +29879,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L491",
-      "community": 186,
+      "community": 179,
       "norm_label": "buildextrinsicsjsonpayload()",
       "id": "camerarecorder_camera_recorder_buildextrinsicsjsonpayload"
     },
@@ -31256,7 +31301,7 @@
       "file_type": "code",
       "source_file": "py_script/hmi_sn_batch_writer.py",
       "source_location": "L347",
-      "community": 140,
+      "community": 3,
       "norm_label": "helper_write_sn()",
       "id": "hmi_sn_batch_writer_helper_write_sn"
     },
@@ -31274,7 +31319,7 @@
       "file_type": "code",
       "source_file": "py_script/hmi_sn_batch_writer.py",
       "source_location": "L358",
-      "community": 3,
+      "community": 140,
       "norm_label": "helper_read_calibration_dump()",
       "id": "hmi_sn_batch_writer_helper_read_calibration_dump"
     },
@@ -31760,7 +31805,7 @@
       "file_type": "code",
       "source_file": "py_script/hmi_calibration_backfill.py",
       "source_location": "L10",
-      "community": 3,
+      "community": 313,
       "norm_label": "parse_args()",
       "id": "hmi_calibration_backfill_parse_args"
     },
@@ -31868,7 +31913,7 @@
       "file_type": "code",
       "source_file": "py_script/usb_audio_play_test.py",
       "source_location": "L18",
-      "community": 250,
+      "community": 175,
       "norm_label": "generate_tone_wav()",
       "id": "usb_audio_play_test_generate_tone_wav"
     },
@@ -31877,7 +31922,7 @@
       "file_type": "code",
       "source_file": "py_script/usb_audio_play_test.py",
       "source_location": "L32",
-      "community": 250,
+      "community": 175,
       "norm_label": "main()",
       "id": "usb_audio_play_test_main"
     },
@@ -32183,7 +32228,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L46",
-      "community": 172,
+      "community": 33,
       "norm_label": "parse_args()",
       "id": "fix_video_pts_v2_parse_args"
     },
@@ -32192,7 +32237,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L141",
-      "community": 179,
+      "community": 33,
       "norm_label": "_safe_float()",
       "id": "fix_video_pts_v2_safe_float"
     },
@@ -32201,7 +32246,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L150",
-      "community": 179,
+      "community": 33,
       "norm_label": "_parse_fraction()",
       "id": "fix_video_pts_v2_parse_fraction"
     },
@@ -32210,7 +32255,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L164",
-      "community": 172,
+      "community": 33,
       "norm_label": "_format_float()",
       "id": "fix_video_pts_v2_format_float"
     },
@@ -32219,7 +32264,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L170",
-      "community": 266,
+      "community": 33,
       "norm_label": "_format_number()",
       "id": "fix_video_pts_v2_format_number"
     },
@@ -32237,7 +32282,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L184",
-      "community": 172,
+      "community": 33,
       "norm_label": "_safe_source_tag()",
       "id": "fix_video_pts_v2_safe_source_tag"
     },
@@ -32246,7 +32291,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L195",
-      "community": 172,
+      "community": 33,
       "norm_label": "resolve_root_dir()",
       "id": "fix_video_pts_v2_resolve_root_dir"
     },
@@ -32255,7 +32300,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L205",
-      "community": 172,
+      "community": 33,
       "norm_label": "resolve_runtime_root()",
       "id": "fix_video_pts_v2_resolve_runtime_root"
     },
@@ -32264,7 +32309,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L215",
-      "community": 172,
+      "community": 33,
       "norm_label": "_iter_all_files()",
       "id": "fix_video_pts_v2_iter_all_files"
     },
@@ -32273,7 +32318,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L227",
-      "community": 172,
+      "community": 33,
       "norm_label": "list_video_files()",
       "id": "fix_video_pts_v2_list_video_files"
     },
@@ -32282,7 +32327,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L236",
-      "community": 179,
+      "community": 33,
       "norm_label": "_run_ffprobe_json()",
       "id": "fix_video_pts_v2_run_ffprobe_json"
     },
@@ -32291,7 +32336,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L254",
-      "community": 179,
+      "community": 33,
       "norm_label": "probe_stream()",
       "id": "fix_video_pts_v2_probe_stream"
     },
@@ -32300,7 +32345,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L274",
-      "community": 179,
+      "community": 33,
       "norm_label": "probe_frames()",
       "id": "fix_video_pts_v2_probe_frames"
     },
@@ -32309,7 +32354,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L294",
-      "community": 179,
+      "community": 33,
       "norm_label": "infer_header_fps()",
       "id": "fix_video_pts_v2_infer_header_fps"
     },
@@ -32318,7 +32363,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L304",
-      "community": 179,
+      "community": 33,
       "norm_label": "_median()",
       "id": "fix_video_pts_v2_median"
     },
@@ -32327,7 +32372,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L314",
-      "community": 179,
+      "community": 33,
       "norm_label": "_estimate_effective_fps()",
       "id": "fix_video_pts_v2_estimate_effective_fps"
     },
@@ -32336,7 +32381,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L324",
-      "community": 179,
+      "community": 33,
       "norm_label": "_collect_frame_stats()",
       "id": "fix_video_pts_v2_collect_frame_stats"
     },
@@ -32345,7 +32390,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L368",
-      "community": 179,
+      "community": 33,
       "norm_label": "_build_issue_tags()",
       "id": "fix_video_pts_v2_build_issue_tags"
     },
@@ -32354,7 +32399,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L404",
-      "community": 179,
+      "community": 33,
       "norm_label": "analyze_video()",
       "id": "fix_video_pts_v2_analyze_video"
     },
@@ -32363,7 +32408,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L527",
-      "community": 172,
+      "community": 33,
       "norm_label": "summarize_reports()",
       "id": "fix_video_pts_v2_summarize_reports"
     },
@@ -32372,7 +32417,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L565",
-      "community": 172,
+      "community": 33,
       "norm_label": "print_summary()",
       "id": "fix_video_pts_v2_print_summary"
     },
@@ -32381,7 +32426,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L587",
-      "community": 172,
+      "community": 33,
       "norm_label": "_build_default_run_dir()",
       "id": "fix_video_pts_v2_build_default_run_dir"
     },
@@ -32390,7 +32435,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L594",
-      "community": 172,
+      "community": 33,
       "norm_label": "build_report_paths()",
       "id": "fix_video_pts_v2_build_report_paths"
     },
@@ -32399,7 +32444,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L611",
-      "community": 172,
+      "community": 33,
       "norm_label": "write_reports()",
       "id": "fix_video_pts_v2_write_reports"
     },
@@ -32408,7 +32453,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L692",
-      "community": 172,
+      "community": 33,
       "norm_label": "_is_relative_to()",
       "id": "fix_video_pts_v2_is_relative_to"
     },
@@ -32417,7 +32462,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L700",
-      "community": 172,
+      "community": 33,
       "norm_label": "resolve_output_root()",
       "id": "fix_video_pts_v2_resolve_output_root"
     },
@@ -32426,7 +32471,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L721",
-      "community": 266,
+      "community": 33,
       "norm_label": "_remove_path_if_exists()",
       "id": "fix_video_pts_v2_remove_path_if_exists"
     },
@@ -32435,7 +32480,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L728",
-      "community": 266,
+      "community": 33,
       "norm_label": "_copy_file()",
       "id": "fix_video_pts_v2_copy_file"
     },
@@ -32444,7 +32489,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L738",
-      "community": 266,
+      "community": 33,
       "norm_label": "_run_ffmpeg_repair()",
       "id": "fix_video_pts_v2_run_ffmpeg_repair"
     },
@@ -32453,7 +32498,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L770",
-      "community": 266,
+      "community": 33,
       "norm_label": "repair_video_to_output()",
       "id": "fix_video_pts_v2_repair_video_to_output"
     },
@@ -32462,7 +32507,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L787",
-      "community": 266,
+      "community": 33,
       "norm_label": "repair_video_in_place()",
       "id": "fix_video_pts_v2_repair_video_in_place"
     },
@@ -32471,7 +32516,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L807",
-      "community": 172,
+      "community": 33,
       "norm_label": "scan_videos()",
       "id": "fix_video_pts_v2_scan_videos"
     },
@@ -32480,7 +32525,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L829",
-      "community": 266,
+      "community": 33,
       "norm_label": "perform_repairs()",
       "id": "fix_video_pts_v2_perform_repairs"
     },
@@ -32489,7 +32534,7 @@
       "file_type": "code",
       "source_file": "py_script/fix_video_pts_v2.py",
       "source_location": "L903",
-      "community": 172,
+      "community": 33,
       "norm_label": "main()",
       "id": "fix_video_pts_v2_main"
     },
@@ -32957,7 +33002,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_domain.cc",
       "source_location": "L78",
-      "community": 133,
+      "community": 29,
       "norm_label": "writeepisodemcapsocketmarker()",
       "id": "runtime_domain_writeepisodemcapsocketmarker"
     },
@@ -33182,7 +33227,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_domain.cc",
       "source_location": "L549",
-      "community": 29,
+      "community": 132,
       "norm_label": "poll()",
       "id": "runtime_domain_poll"
     },
@@ -33263,7 +33308,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L180",
-      "community": 133,
+      "community": 0,
       "norm_label": "makediskhealthfault()",
       "id": "record_runtime_makediskhealthfault"
     },
@@ -33272,7 +33317,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L191",
-      "community": 133,
+      "community": 0,
       "norm_label": "ismounteddiskroot()",
       "id": "record_runtime_ismounteddiskroot"
     },
@@ -33281,7 +33326,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L222",
-      "community": 133,
+      "community": 0,
       "norm_label": "detectdiskhealthfault()",
       "id": "record_runtime_detectdiskhealthfault"
     },
@@ -33623,7 +33668,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1261",
-      "community": 175,
+      "community": 130,
       "norm_label": "makeruntimetactilecalibrationentry()",
       "id": "record_runtime_makeruntimetactilecalibrationentry"
     },
@@ -33641,7 +33686,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1333",
-      "community": 133,
+      "community": 130,
       "norm_label": "findjsonpathconst()",
       "id": "record_runtime_findjsonpathconst"
     },
@@ -33650,7 +33695,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1362",
-      "community": 133,
+      "community": 130,
       "norm_label": "loadjsonfile()",
       "id": "record_runtime_loadjsonfile"
     },
@@ -33659,7 +33704,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1389",
-      "community": 133,
+      "community": 130,
       "norm_label": "loadcalibrationjsonfile()",
       "id": "record_runtime_loadcalibrationjsonfile"
     },
@@ -33704,7 +33749,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1431",
-      "community": 133,
+      "community": 130,
       "norm_label": "makemaincameracalibrationentryfrompayload()",
       "id": "record_runtime_makemaincameracalibrationentryfrompayload"
     },
@@ -33713,7 +33758,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1464",
-      "community": 175,
+      "community": 130,
       "norm_label": "makedefaultmaincameracalibrationentry()",
       "id": "record_runtime_makedefaultmaincameracalibrationentry"
     },
@@ -33722,7 +33767,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1486",
-      "community": 133,
+      "community": 130,
       "norm_label": "loadfayscalibrationfromstatus()",
       "id": "record_runtime_loadfayscalibrationfromstatus"
     },
@@ -33731,7 +33776,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1585",
-      "community": 175,
+      "community": 130,
       "norm_label": "makefayscameracalibrationentry()",
       "id": "record_runtime_makefayscameracalibrationentry"
     },
@@ -33740,7 +33785,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1626",
-      "community": 175,
+      "community": 130,
       "norm_label": "makefaysstereocalibrationentry()",
       "id": "record_runtime_makefaysstereocalibrationentry"
     },
@@ -33749,7 +33794,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1670",
-      "community": 175,
+      "community": 130,
       "norm_label": "makedefaultstereocalibrationentry()",
       "id": "record_runtime_makedefaultstereocalibrationentry"
     },
@@ -33758,7 +33803,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1713",
-      "community": 175,
+      "community": 130,
       "norm_label": "makefaysimucalibrationentry()",
       "id": "record_runtime_makefaysimucalibrationentry"
     },
@@ -33767,7 +33812,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1751",
-      "community": 175,
+      "community": 130,
       "norm_label": "makedefaultfaysimucalibrationentry()",
       "id": "record_runtime_makedefaultfaysimucalibrationentry"
     },
@@ -33776,7 +33821,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1768",
-      "community": 175,
+      "community": 130,
       "norm_label": "makelockedcalibrationinfo()",
       "id": "record_runtime_makelockedcalibrationinfo"
     },
@@ -33965,7 +34010,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2330",
-      "community": 136,
+      "community": 0,
       "norm_label": "hasadbusbinterface()",
       "id": "record_runtime_hasadbusbinterface"
     },
@@ -34055,7 +34100,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2676",
-      "community": 175,
+      "community": 130,
       "norm_label": "isyuzhoumaincamerasn()",
       "id": "record_runtime_isyuzhoumaincamerasn"
     },
@@ -34064,7 +34109,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2697",
-      "community": 175,
+      "community": 130,
       "norm_label": "readyuzhouxuchunk()",
       "id": "record_runtime_readyuzhouxuchunk"
     },
@@ -34073,7 +34118,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2748",
-      "community": 175,
+      "community": 130,
       "norm_label": "validateyuzhoumaincameracalibrationpayload()",
       "id": "record_runtime_validateyuzhoumaincameracalibrationpayload"
     },
@@ -34082,7 +34127,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2817",
-      "community": 175,
+      "community": 130,
       "norm_label": "readyuzhoumaincameraidentity()",
       "id": "record_runtime_readyuzhoumaincameraidentity"
     },
@@ -34091,7 +34136,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2890",
-      "community": 175,
+      "community": 130,
       "norm_label": "probemaincameraserialfordevicenode()",
       "id": "record_runtime_probemaincameraserialfordevicenode"
     },
@@ -34145,7 +34190,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3145",
-      "community": 133,
+      "community": 130,
       "norm_label": "validatemetadatavideodetails()",
       "id": "record_runtime_validatemetadatavideodetails"
     },
@@ -34190,7 +34235,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3708",
-      "community": 130,
+      "community": 287,
       "norm_label": "makeledeffect()",
       "id": "record_runtime_makeledeffect"
     },
@@ -34226,7 +34271,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3834",
-      "community": 344,
+      "community": 132,
       "norm_label": "recordruntime()",
       "id": "record_runtime_recordruntime"
     },
@@ -34253,7 +34298,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4355",
-      "community": 12,
+      "community": 132,
       "norm_label": "requeststop()",
       "id": "record_runtime_requeststop"
     },
@@ -34271,7 +34316,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4381",
-      "community": 344,
+      "community": 132,
       "norm_label": "stopaudioplayer()",
       "id": "record_runtime_stopaudioplayer"
     },
@@ -34307,7 +34352,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4429",
-      "community": 136,
+      "community": 132,
       "norm_label": "stopstereodaemon()",
       "id": "record_runtime_stopstereodaemon"
     },
@@ -34334,7 +34379,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4473",
-      "community": 136,
+      "community": 132,
       "norm_label": "suspendstereodaemonforrestoreusb()",
       "id": "record_runtime_suspendstereodaemonforrestoreusb"
     },
@@ -34352,7 +34397,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4507",
-      "community": 200,
+      "community": 132,
       "norm_label": "writestereocontrol()",
       "id": "record_runtime_writestereocontrol"
     },
@@ -34361,7 +34406,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4532",
-      "community": 313,
+      "community": 132,
       "norm_label": "waitforstereofinalize()",
       "id": "record_runtime_waitforstereofinalize"
     },
@@ -34541,7 +34586,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5743",
-      "community": 344,
+      "community": 132,
       "norm_label": "waitformaincamerarefreshes()",
       "id": "record_runtime_waitformaincamerarefreshes"
     },
@@ -34586,7 +34631,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5892",
-      "community": 344,
+      "community": 132,
       "norm_label": "requeststopbackgroundtactilevalidation()",
       "id": "record_runtime_requeststopbackgroundtactilevalidation"
     },
@@ -34649,7 +34694,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6056",
-      "community": 175,
+      "community": 130,
       "norm_label": "maincamerarestoretargetshealthy()",
       "id": "record_runtime_maincamerarestoretargetshealthy"
     },
@@ -34658,7 +34703,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6076",
-      "community": 175,
+      "community": 130,
       "norm_label": "restoreusbtargetrecovered()",
       "id": "record_runtime_restoreusbtargetrecovered"
     },
@@ -34676,7 +34721,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6129",
-      "community": 136,
+      "community": 0,
       "norm_label": "sidehasanyrestoreusbdevice()",
       "id": "record_runtime_sidehasanyrestoreusbdevice"
     },
@@ -34685,7 +34730,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6150",
-      "community": 136,
+      "community": 0,
       "norm_label": "shoulddeferrestoreusbforside()",
       "id": "record_runtime_shoulddeferrestoreusbforside"
     },
@@ -34946,7 +34991,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7296",
-      "community": 0,
+      "community": 132,
       "norm_label": "closerecordcontrolpipe()",
       "id": "record_runtime_closerecordcontrolpipe"
     },
@@ -35099,7 +35144,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7767",
-      "community": 133,
+      "community": 0,
       "norm_label": "fileexistsandnotempty()",
       "id": "record_runtime_fileexistsandnotempty"
     },
@@ -35279,7 +35324,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8299",
-      "community": 130,
+      "community": 287,
       "norm_label": "gripperpanelmanager::setledeffect()",
       "id": "record_runtime_gripperpanelmanager_setledeffect"
     },
@@ -35297,7 +35342,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8335",
-      "community": 130,
+      "community": 287,
       "norm_label": "gripperpanelmanager::setledeffectforside()",
       "id": "record_runtime_gripperpanelmanager_setledeffectforside"
     },
@@ -35315,7 +35360,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8361",
-      "community": 344,
+      "community": 132,
       "norm_label": "hmiledcontroller::hmiledcontroller()",
       "id": "record_runtime_hmiledcontroller_hmiledcontroller"
     },
@@ -35342,7 +35387,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8387",
-      "community": 130,
+      "community": 287,
       "norm_label": "hmiledcontroller::setstate()",
       "id": "record_runtime_hmiledcontroller_setstate"
     },
@@ -35549,7 +35594,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9392",
-      "community": 133,
+      "community": 130,
       "norm_label": "jsonstringpath()",
       "id": "record_runtime_jsonstringpath"
     },
@@ -35576,7 +35621,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9595",
-      "community": 175,
+      "community": 130,
       "norm_label": "episodemanager::writefilteredcalibration()",
       "id": "record_runtime_episodemanager_writefilteredcalibration"
     },
@@ -35594,7 +35639,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L40",
-      "community": 313,
+      "community": 132,
       "norm_label": "polluntilready()",
       "id": "runtime_process_polluntilready"
     },
@@ -35612,7 +35657,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L59",
-      "community": 313,
+      "community": 132,
       "norm_label": "fileexistsandnotempty()",
       "id": "runtime_process_fileexistsandnotempty"
     },
@@ -35621,7 +35666,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L65",
-      "community": 313,
+      "community": 132,
       "norm_label": "mcapfilecomplete()",
       "id": "runtime_process_mcapfilecomplete"
     },
@@ -35630,7 +35675,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L96",
-      "community": 313,
+      "community": 16,
       "norm_label": "buildstereosessionjson()",
       "id": "runtime_process_buildstereosessionjson"
     },
@@ -35657,7 +35702,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L175",
-      "community": 16,
+      "community": 367,
       "norm_label": "fifostereosessionport",
       "id": "runtime_process_fifostereosessionport"
     },
@@ -35666,7 +35711,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L178",
-      "community": 16,
+      "community": 367,
       "norm_label": ".fifostereosessionport()",
       "id": "runtime_process_fifostereosessionport_fifostereosessionport"
     },
@@ -35693,7 +35738,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L480",
-      "community": 132,
+      "community": 16,
       "norm_label": "joinarguments()",
       "id": "runtime_process_joinarguments"
     },
@@ -35738,7 +35783,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L575",
-      "community": 344,
+      "community": 16,
       "norm_label": "subprocesshandle()",
       "id": "runtime_process_subprocesshandle"
     },
@@ -35765,7 +35810,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L664",
-      "community": 344,
+      "community": 132,
       "norm_label": "wait()",
       "id": "runtime_process_wait"
     },
@@ -35774,7 +35819,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L677",
-      "community": 344,
+      "community": 16,
       "norm_label": "sendsignal()",
       "id": "runtime_process_sendsignal"
     },
@@ -35783,7 +35828,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L687",
-      "community": 344,
+      "community": 132,
       "norm_label": "stop()",
       "id": "runtime_process_stop"
     },
@@ -35819,7 +35864,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L752",
-      "community": 344,
+      "community": 16,
       "norm_label": "signaltarget()",
       "id": "runtime_process_signaltarget"
     },
@@ -35882,7 +35927,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L971",
-      "community": 133,
+      "community": 132,
       "norm_label": "startaudioplayer()",
       "id": "runtime_process_startaudioplayer"
     },
@@ -35891,7 +35936,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1040",
-      "community": 209,
+      "community": 132,
       "norm_label": "stopaudioplayer()",
       "id": "runtime_process_stopaudioplayer"
     },
@@ -35900,7 +35945,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1051",
-      "community": 133,
+      "community": 132,
       "norm_label": "maintainaudioplayer()",
       "id": "runtime_process_maintainaudioplayer"
     },
@@ -35909,7 +35954,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1107",
-      "community": 209,
+      "community": 132,
       "norm_label": "sendcommand()",
       "id": "runtime_process_sendcommand"
     },
@@ -35927,7 +35972,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1130",
-      "community": 209,
+      "community": 16,
       "norm_label": "audio_player_started()",
       "id": "runtime_process_audio_player_started"
     },
@@ -35954,7 +35999,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1182",
-      "community": 200,
+      "community": 132,
       "norm_label": "stopdaemon()",
       "id": "runtime_process_stopdaemon"
     },
@@ -35972,7 +36017,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1214",
-      "community": 200,
+      "community": 132,
       "norm_label": "startsession()",
       "id": "runtime_process_startsession"
     },
@@ -35981,7 +36026,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1229",
-      "community": 200,
+      "community": 132,
       "norm_label": "stopsession()",
       "id": "runtime_process_stopsession"
     },
@@ -35990,7 +36035,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1237",
-      "community": 313,
+      "community": 132,
       "norm_label": "waitforfinalize()",
       "id": "runtime_process_waitforfinalize"
     },
@@ -36026,7 +36071,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1463",
-      "community": 200,
+      "community": 132,
       "norm_label": "writecontrol()",
       "id": "runtime_process_writecontrol"
     },
@@ -36512,7 +36557,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/ego/ego_recording_worker.py",
       "source_location": "L449",
-      "community": 22,
+      "community": 133,
       "norm_label": "sync_one_file()",
       "id": "ego_recording_worker_sync_one_file"
     },
@@ -36593,7 +36638,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/ego/ego_recording_worker.py",
       "source_location": "L665",
-      "community": 22,
+      "community": 133,
       "norm_label": "repair_mp4_mdat_largesize()",
       "id": "ego_recording_worker_repair_mp4_mdat_largesize"
     },
@@ -36863,7 +36908,7 @@
       "file_type": "code",
       "source_file": "audio/pulse_audio_utils.py",
       "source_location": "L339",
-      "community": 10,
+      "community": 171,
       "norm_label": "probe_forced_usb_audio_target()",
       "id": "pulse_audio_utils_probe_forced_usb_audio_target"
     },
@@ -36890,7 +36935,7 @@
       "file_type": "code",
       "source_file": "audio/pulse_audio_utils.py",
       "source_location": "L388",
-      "community": 250,
+      "community": 10,
       "norm_label": "pulse_audio_env()",
       "id": "pulse_audio_utils_pulse_audio_env"
     },
@@ -36899,7 +36944,7 @@
       "file_type": "code",
       "source_file": "audio/record_usb_audio.py",
       "source_location": "L18",
-      "community": 29,
+      "community": 175,
       "norm_label": "forward_signal()",
       "id": "record_usb_audio_forward_signal"
     },
@@ -36908,7 +36953,7 @@
       "file_type": "code",
       "source_file": "audio/record_usb_audio.py",
       "source_location": "L25",
-      "community": 29,
+      "community": 175,
       "norm_label": "main()",
       "id": "record_usb_audio_main"
     },
@@ -37007,7 +37052,7 @@
       "file_type": "code",
       "source_file": "audio/audio_play.py",
       "source_location": "L45",
-      "community": 287,
+      "community": 171,
       "norm_label": "setup_audio_device()",
       "id": "audio_play_setup_audio_device"
     },
@@ -37016,7 +37061,7 @@
       "file_type": "code",
       "source_file": "audio/audio_play.py",
       "source_location": "L50",
-      "community": 287,
+      "community": 133,
       "norm_label": "_find_event_device()",
       "id": "audio_play_find_event_device"
     },
@@ -37025,7 +37070,7 @@
       "file_type": "code",
       "source_file": "audio/audio_play.py",
       "source_location": "L80",
-      "community": 287,
+      "community": 204,
       "norm_label": "_run_pactl()",
       "id": "audio_play_run_pactl"
     },
@@ -37034,7 +37079,7 @@
       "file_type": "code",
       "source_file": "audio/audio_play.py",
       "source_location": "L85",
-      "community": 287,
+      "community": 204,
       "norm_label": "_handle_volume_key()",
       "id": "audio_play_handle_volume_key"
     },
@@ -37088,7 +37133,7 @@
       "file_type": "code",
       "source_file": "audio/audio_play.py",
       "source_location": "L183",
-      "community": 171,
+      "community": 133,
       "norm_label": ".init_mixer()",
       "id": "audio_play_audioplayer_init_mixer"
     },
@@ -37214,7 +37259,7 @@
       "file_type": "code",
       "source_file": "audio/audio_play.py",
       "source_location": "L444",
-      "community": 287,
+      "community": 133,
       "norm_label": ".volume_key_loop()",
       "id": "audio_play_audioplayer_volume_key_loop"
     },
@@ -37232,7 +37277,7 @@
       "file_type": "code",
       "source_file": "audio/audio_play.py",
       "source_location": "L533",
-      "community": 287,
+      "community": 204,
       "norm_label": "main()",
       "id": "audio_play_main"
     },
@@ -37466,7 +37511,7 @@
       "file_type": "code",
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L206",
-      "community": 261,
+      "community": 133,
       "norm_label": "resolveserialportpath()",
       "id": "gripper_hmi_driver_resolveserialportpath"
     },
@@ -37520,7 +37565,7 @@
       "file_type": "code",
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L300",
-      "community": 261,
+      "community": 133,
       "norm_label": "resetconnectfailureloglocked()",
       "id": "gripper_hmi_driver_resetconnectfailureloglocked"
     },
@@ -37529,7 +37574,7 @@
       "file_type": "code",
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L325",
-      "community": 261,
+      "community": 133,
       "norm_label": "connect()",
       "id": "gripper_hmi_driver_connect"
     },
@@ -37592,7 +37637,7 @@
       "file_type": "code",
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L518",
-      "community": 130,
+      "community": 287,
       "norm_label": "setledeffect()",
       "id": "gripper_hmi_driver_setledeffect"
     },
@@ -37628,7 +37673,7 @@
       "file_type": "code",
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L567",
-      "community": 195,
+      "community": 261,
       "norm_label": "pauseiothreadforexclusivecommand()",
       "id": "gripper_hmi_driver_pauseiothreadforexclusivecommand"
     },
@@ -37655,7 +37700,7 @@
       "file_type": "code",
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L681",
-      "community": 195,
+      "community": 180,
       "norm_label": "readsizedframelocked()",
       "id": "gripper_hmi_driver_readsizedframelocked"
     },
@@ -37700,7 +37745,7 @@
       "file_type": "code",
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L798",
-      "community": 195,
+      "community": 180,
       "norm_label": "readdataframelocked()",
       "id": "gripper_hmi_driver_readdataframelocked"
     },
@@ -37709,7 +37754,7 @@
       "file_type": "code",
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L819",
-      "community": 195,
+      "community": 180,
       "norm_label": "readrawdataframelocked()",
       "id": "gripper_hmi_driver_readrawdataframelocked"
     },
@@ -38438,7 +38483,7 @@
       "file_type": "code",
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L54",
-      "community": 168,
+      "community": 192,
       "norm_label": "tolowercopy()",
       "id": "record_tolowercopy"
     },
@@ -38447,7 +38492,7 @@
       "file_type": "code",
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L61",
-      "community": 345,
+      "community": 192,
       "norm_label": "faysreadabletimestamp()",
       "id": "record_faysreadabletimestamp"
     },
@@ -38456,7 +38501,7 @@
       "file_type": "code",
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L74",
-      "community": 345,
+      "community": 192,
       "norm_label": "fayseventlog()",
       "id": "record_fayseventlog"
     },
@@ -38654,7 +38699,7 @@
       "file_type": "code",
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L780",
-      "community": 168,
+      "community": 192,
       "norm_label": "readcameracodecfromenvironmentfile()",
       "id": "record_readcameracodecfromenvironmentfile"
     },
@@ -38798,7 +38843,7 @@
       "file_type": "code",
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L2632",
-      "community": 345,
+      "community": 168,
       "norm_label": "consumestoprequested()",
       "id": "record_consumestoprequested"
     },
@@ -38807,7 +38852,7 @@
       "file_type": "code",
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L2640",
-      "community": 345,
+      "community": 168,
       "norm_label": "trim()",
       "id": "record_trim"
     },
@@ -38816,7 +38861,7 @@
       "file_type": "code",
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L2650",
-      "community": 345,
+      "community": 14,
       "norm_label": "ensurecontrolfifo()",
       "id": "record_ensurecontrolfifo"
     },
@@ -38825,7 +38870,7 @@
       "file_type": "code",
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L2659",
-      "community": 345,
+      "community": 132,
       "norm_label": "runcontrolloop()",
       "id": "record_runcontrolloop"
     },
@@ -38834,7 +38879,7 @@
       "file_type": "code",
       "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
       "source_location": "L2727",
-      "community": 345,
+      "community": 132,
       "norm_label": "main()",
       "id": "record_main"
     },
@@ -38906,7 +38951,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L17",
-      "community": 235,
+      "community": 249,
       "norm_label": "resolveserialportpath()",
       "id": "encoder_driver_resolveserialportpath"
     },
@@ -38924,7 +38969,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L45",
-      "community": 162,
+      "community": 267,
       "norm_label": "markdisconnected()",
       "id": "encoder_driver_markdisconnected"
     },
@@ -38933,7 +38978,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L63",
-      "community": 235,
+      "community": 249,
       "norm_label": "connect()",
       "id": "encoder_driver_connect"
     },
@@ -38969,7 +39014,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L162",
-      "community": 162,
+      "community": 182,
       "norm_label": "sendconfigtoencoder()",
       "id": "encoder_driver_sendconfigtoencoder"
     },
@@ -38978,7 +39023,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L186",
-      "community": 162,
+      "community": 267,
       "norm_label": "readdatanonblocking()",
       "id": "encoder_driver_readdatanonblocking"
     },
@@ -38987,7 +39032,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L214",
-      "community": 191,
+      "community": 267,
       "norm_label": "parsereceiveddata()",
       "id": "encoder_driver_parsereceiveddata"
     },
@@ -39041,7 +39086,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L406",
-      "community": 162,
+      "community": 182,
       "norm_label": "calculatecrc16()",
       "id": "encoder_driver_calculatecrc16"
     },
@@ -39059,7 +39104,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L422",
-      "community": 162,
+      "community": 182,
       "norm_label": "setdeviceaddress()",
       "id": "encoder_driver_setdeviceaddress"
     },
@@ -39068,7 +39113,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L441",
-      "community": 162,
+      "community": 182,
       "norm_label": "setbaudrate()",
       "id": "encoder_driver_setbaudrate"
     },
@@ -39077,7 +39122,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L487",
-      "community": 162,
+      "community": 182,
       "norm_label": "setcurrentasmiddle()",
       "id": "encoder_driver_setcurrentasmiddle"
     },
@@ -39086,7 +39131,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L505",
-      "community": 162,
+      "community": 182,
       "norm_label": "setcurrentaszero()",
       "id": "encoder_driver_setcurrentaszero"
     },
@@ -39095,7 +39140,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L523",
-      "community": 162,
+      "community": 182,
       "norm_label": "setrotationdirection()",
       "id": "encoder_driver_setrotationdirection"
     },
@@ -39104,7 +39149,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L540",
-      "community": 162,
+      "community": 182,
       "norm_label": "setconfigstore()",
       "id": "encoder_driver_setconfigstore"
     },
@@ -39113,7 +39158,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L557",
-      "community": 162,
+      "community": 182,
       "norm_label": "setrestart()",
       "id": "encoder_driver_setrestart"
     },
@@ -39122,7 +39167,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L574",
-      "community": 162,
+      "community": 182,
       "norm_label": "setrefactory()",
       "id": "encoder_driver_setrefactory"
     },
@@ -39140,7 +39185,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L596",
-      "community": 191,
+      "community": 267,
       "norm_label": "updateactivestatus()",
       "id": "encoder_driver_updateactivestatus"
     },
@@ -39185,7 +39230,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L198",
-      "community": 191,
+      "community": 267,
       "norm_label": "encoderreadthreadfunc()",
       "id": "main_encoderreadthreadfunc"
     },
@@ -39293,7 +39338,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/zeroing.cc",
       "source_location": "L38",
-      "community": 191,
+      "community": 267,
       "norm_label": "encoderreadthreadfunc()",
       "id": "zeroing_encoderreadthreadfunc"
     },
@@ -39716,7 +39761,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/third_party/mcap/include/mcap/intervaltree.hpp",
       "source_location": "L43",
-      "community": 0,
+      "community": 58,
       "norm_label": "intervaltree",
       "id": "intervaltree_intervaltree"
     },
@@ -39725,7 +39770,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/third_party/mcap/include/mcap/intervaltree.hpp",
       "source_location": "L60",
-      "community": 0,
+      "community": 133,
       "norm_label": ".intervaltree()",
       "id": "intervaltree_intervaltree_intervaltree"
     },
@@ -40445,7 +40490,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/main.cc",
       "source_location": "L13",
-      "community": 210,
+      "community": 133,
       "norm_label": "resolveconfigyamlpath()",
       "id": "main_resolveconfigyamlpath"
     },
@@ -40535,7 +40580,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L219",
-      "community": 266,
+      "community": 13,
       "norm_label": "listsortedfiles()",
       "id": "camera_recorder_listsortedfiles"
     },
@@ -40733,7 +40778,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L658",
-      "community": 266,
+      "community": 0,
       "norm_label": "exists()",
       "id": "camera_recorder_exists"
     },
@@ -40742,7 +40787,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L663",
-      "community": 266,
+      "community": 13,
       "norm_label": "waitfordevicenode()",
       "id": "camera_recorder_waitfordevicenode"
     },
@@ -40859,7 +40904,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L851",
-      "community": 13,
+      "community": 346,
       "norm_label": "shellcamerarecorder",
       "id": "camera_recorder_shellcamerarecorder"
     },
@@ -40868,7 +40913,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L853",
-      "community": 13,
+      "community": 346,
       "norm_label": ".shellcamerarecorder()",
       "id": "camera_recorder_shellcamerarecorder_shellcamerarecorder"
     },
@@ -40922,7 +40967,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L2596",
-      "community": 344,
+      "community": 13,
       "norm_label": "episodemcaphybridcamerarecorder",
       "id": "camera_recorder_episodemcaphybridcamerarecorder"
     },
@@ -40931,7 +40976,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L2598",
-      "community": 344,
+      "community": 13,
       "norm_label": ".episodemcaphybridcamerarecorder()",
       "id": "camera_recorder_episodemcaphybridcamerarecorder_episodemcaphybridcamerarecorder"
     },
@@ -40967,7 +41012,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L2935",
-      "community": 344,
+      "community": 362,
       "norm_label": "stereowarmupcapture",
       "id": "camera_recorder_stereowarmupcapture"
     },
@@ -40976,7 +41021,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L2939",
-      "community": 344,
+      "community": 362,
       "norm_label": ".stereowarmupcapture()",
       "id": "camera_recorder_stereowarmupcapture_stereowarmupcapture"
     },
@@ -40985,7 +41030,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L3251",
-      "community": 344,
+      "community": 359,
       "norm_label": "stereosessionrecorder",
       "id": "camera_recorder_stereosessionrecorder"
     },
@@ -40994,7 +41039,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L3253",
-      "community": 344,
+      "community": 359,
       "norm_label": ".stereosessionrecorder()",
       "id": "camera_recorder_stereosessionrecorder_stereosessionrecorder"
     },
@@ -41021,7 +41066,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L4178",
-      "community": 13,
+      "community": 350,
       "norm_label": "stereodaemonrunner",
       "id": "camera_recorder_stereodaemonrunner"
     },
@@ -41030,7 +41075,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L4180",
-      "community": 13,
+      "community": 350,
       "norm_label": ".stereodaemonrunner()",
       "id": "camera_recorder_stereodaemonrunner_stereodaemonrunner"
     },
@@ -41057,7 +41102,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L4389",
-      "community": 132,
+      "community": 12,
       "norm_label": "startall()",
       "id": "camera_recorder_startall"
     },
@@ -41075,7 +41120,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/camera_recorder.cc",
       "source_location": "L4432",
-      "community": 29,
+      "community": 132,
       "norm_label": "stopall()",
       "id": "camera_recorder_stopall"
     },
@@ -41345,7 +41390,7 @@
       "file_type": "code",
       "source_file": "src/utils/include/utils/file_utils.hpp",
       "source_location": "L9",
-      "community": 342,
+      "community": 14,
       "norm_label": "fileexistsandnotempty()",
       "id": "file_utils_fileexistsandnotempty"
     },
@@ -41363,7 +41408,7 @@
       "file_type": "code",
       "source_file": "src/utils/src/utils_smoke_test.cc",
       "source_location": "L17",
-      "community": 133,
+      "community": 14,
       "norm_label": "writeall()",
       "id": "utils_smoke_test_writeall"
     },
@@ -41372,7 +41417,7 @@
       "file_type": "code",
       "source_file": "src/utils/src/utils_smoke_test.cc",
       "source_location": "L34",
-      "community": 133,
+      "community": 14,
       "norm_label": "main()",
       "id": "utils_smoke_test_main"
     },
@@ -41480,7 +41525,7 @@
       "file_type": "code",
       "source_file": "src/utils/src/fifo_utils.cc",
       "source_location": "L159",
-      "community": 0,
+      "community": 14,
       "norm_label": "isopen()",
       "id": "fifo_utils_isopen"
     },
@@ -41516,7 +41561,7 @@
       "file_type": "code",
       "source_file": "src/utils/src/time_utils.cc",
       "source_location": "L7",
-      "community": 330,
+      "community": 14,
       "norm_label": "currentsteadyms()",
       "id": "time_utils_currentsteadyms"
     },
@@ -41525,7 +41570,7 @@
       "file_type": "code",
       "source_file": "src/utils/src/time_utils.cc",
       "source_location": "L14",
-      "community": 330,
+      "community": 14,
       "norm_label": "currentepochms()",
       "id": "time_utils_currentepochms"
     },
@@ -41534,7 +41579,7 @@
       "file_type": "code",
       "source_file": "src/utils/src/time_utils.cc",
       "source_location": "L21",
-      "community": 330,
+      "community": 14,
       "norm_label": "currentepochus()",
       "id": "time_utils_currentepochus"
     },
@@ -41597,7 +41642,7 @@
       "file_type": "code",
       "source_file": "src/utils/src/env_utils.cc",
       "source_location": "L11",
-      "community": 267,
+      "community": 14,
       "norm_label": "trimwhitespace()",
       "id": "env_utils_trimwhitespace"
     },
@@ -41606,7 +41651,7 @@
       "file_type": "code",
       "source_file": "src/utils/src/env_utils.cc",
       "source_location": "L28",
-      "community": 267,
+      "community": 14,
       "norm_label": "readenvvalue()",
       "id": "env_utils_readenvvalue"
     },
@@ -42029,7 +42074,7 @@
       "file_type": "code",
       "source_file": "scripts/lib/gripper_hmi_toolkit.py",
       "source_location": "L110",
-      "community": 140,
+      "community": 134,
       "norm_label": "required_calibration_chunk_count()",
       "id": "gripper_hmi_toolkit_required_calibration_chunk_count"
     },
@@ -42074,7 +42119,7 @@
       "file_type": "code",
       "source_file": "scripts/lib/gripper_hmi_toolkit.py",
       "source_location": "L160",
-      "community": 140,
+      "community": 134,
       "norm_label": "decode_serial_number()",
       "id": "gripper_hmi_toolkit_decode_serial_number"
     },
@@ -42083,7 +42128,7 @@
       "file_type": "code",
       "source_file": "scripts/lib/gripper_hmi_toolkit.py",
       "source_location": "L167",
-      "community": 134,
+      "community": 140,
       "norm_label": "build_write_sn_frame()",
       "id": "gripper_hmi_toolkit_build_write_sn_frame"
     },
@@ -42092,7 +42137,7 @@
       "file_type": "code",
       "source_file": "scripts/lib/gripper_hmi_toolkit.py",
       "source_location": "L172",
-      "community": 134,
+      "community": 140,
       "norm_label": "build_read_calibration_chunk_command()",
       "id": "gripper_hmi_toolkit_build_read_calibration_chunk_command"
     },
@@ -42344,7 +42389,7 @@
       "file_type": "code",
       "source_file": "scripts/lib/gripper_hmi_toolkit.py",
       "source_location": "L939",
-      "community": 140,
+      "community": 134,
       "norm_label": "_build_log_callback()",
       "id": "gripper_hmi_toolkit_build_log_callback"
     },
@@ -42749,7 +42794,7 @@
       "file_type": "code",
       "source_file": "ASR/micASR.py",
       "source_location": "L66",
-      "community": 29,
+      "community": 132,
       "norm_label": "stop_process()",
       "id": "micasr_stop_process"
     },
@@ -42803,7 +42848,7 @@
       "file_type": "code",
       "source_file": "test/src/utils/test_time_utils.cc",
       "source_location": "L7",
-      "community": 330,
+      "community": 14,
       "norm_label": "test()",
       "id": "test_time_utils_test"
     },
@@ -42812,7 +42857,7 @@
       "file_type": "code",
       "source_file": "test/src/utils/test_env_utils.cc",
       "source_location": "L11",
-      "community": 267,
+      "community": 14,
       "norm_label": "envutilstest",
       "id": "test_env_utils_envutilstest"
     },
@@ -42821,7 +42866,7 @@
       "file_type": "code",
       "source_file": "test/src/utils/test_env_utils.cc",
       "source_location": "L39",
-      "community": 267,
+      "community": 14,
       "norm_label": "test_f()",
       "id": "test_env_utils_test_f"
     },
@@ -42830,7 +42875,7 @@
       "file_type": "code",
       "source_file": "test/src/utils/test_file_utils.cc",
       "source_location": "L10",
-      "community": 342,
+      "community": 14,
       "norm_label": "fileutilstest",
       "id": "test_file_utils_fileutilstest"
     },
@@ -42839,7 +42884,7 @@
       "file_type": "code",
       "source_file": "test/src/utils/test_file_utils.cc",
       "source_location": "L34",
-      "community": 342,
+      "community": 14,
       "norm_label": "test_f()",
       "id": "test_file_utils_test_f"
     },
@@ -43100,7 +43145,7 @@
       "file_type": "code",
       "source_file": "test/src/record_runtime/test_runtime_health.cc",
       "source_location": "L17",
-      "community": 29,
+      "community": 266,
       "norm_label": "fakenowms()",
       "id": "test_runtime_health_fakenowms"
     },
@@ -43109,7 +43154,7 @@
       "file_type": "code",
       "source_file": "test/src/record_runtime/test_runtime_health.cc",
       "source_location": "L22",
-      "community": 29,
+      "community": 266,
       "norm_label": "maketempdir()",
       "id": "test_runtime_health_maketempdir"
     },
@@ -43118,7 +43163,7 @@
       "file_type": "code",
       "source_file": "test/src/record_runtime/test_runtime_health.cc",
       "source_location": "L41",
-      "community": 29,
+      "community": 266,
       "norm_label": "test()",
       "id": "test_runtime_health_test"
     },
@@ -43163,7 +43208,7 @@
       "file_type": "code",
       "source_file": "test/src/record_runtime/test_stereo_session_client.cc",
       "source_location": "L108",
-      "community": 200,
+      "community": 132,
       "norm_label": "test()",
       "id": "test_stereo_session_client_test"
     },
@@ -43253,7 +43298,7 @@
       "file_type": "code",
       "source_file": "test/src/record_runtime/test_audio_coordinator.cc",
       "source_location": "L67",
-      "community": 209,
+      "community": 132,
       "norm_label": "test()",
       "id": "test_audio_coordinator_test"
     },
@@ -43766,7 +43811,7 @@
       "file_type": "code",
       "source_file": "test/scripts/scan_main_camera_mkv_issues.py",
       "source_location": "L82",
-      "community": 135,
+      "community": 175,
       "norm_label": "build_parser()",
       "id": "scan_main_camera_mkv_issues_build_parser"
     },
@@ -43784,7 +43829,7 @@
       "file_type": "code",
       "source_file": "test/scripts/scan_main_camera_mkv_issues.py",
       "source_location": "L152",
-      "community": 140,
+      "community": 175,
       "norm_label": "parse_args()",
       "id": "scan_main_camera_mkv_issues_parse_args"
     },
@@ -46283,7 +46328,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 205,
+      "community": 212,
       "norm_label": "ppmain and ugripper camera refactor reference",
       "id": "ppmain_ugripper_camera_refactor_reference_document"
     },
@@ -46296,7 +46341,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 205,
+      "community": 212,
       "norm_label": "camerabase",
       "id": "ppmain_ugripper_camera_refactor_reference_ppmain_camera_base"
     },
@@ -46309,7 +46354,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 205,
+      "community": 212,
       "norm_label": "camera_types",
       "id": "ppmain_ugripper_camera_refactor_reference_ppmain_camera_types"
     },
@@ -46322,7 +46367,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 205,
+      "community": 212,
       "norm_label": "v4l2camera",
       "id": "ppmain_ugripper_camera_refactor_reference_v4l2camera"
     },
@@ -46478,7 +46523,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 221,
+      "community": 205,
       "norm_label": "docs/naming-yaml-contract.md",
       "id": "ugripper_refactor_plan_naming_yaml_contract_md"
     },
@@ -46517,7 +46562,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 221,
+      "community": 205,
       "norm_label": "repo architecture draft",
       "id": "repo_architecture_document"
     },
@@ -46530,7 +46575,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 221,
+      "community": 205,
       "norm_label": "manifest",
       "id": "repo_architecture_manifest"
     },
@@ -46582,7 +46627,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 221,
+      "community": 205,
       "norm_label": "docs/repo-architecture.md",
       "id": "ugripper_refactor_plan_repo_architecture_md"
     },
@@ -46595,7 +46640,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 221,
+      "community": 205,
       "norm_label": "ugripper refactor plan",
       "id": "ugripper_refactor_plan_document"
     },
@@ -46621,7 +46666,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 221,
+      "community": 205,
       "norm_label": "docs/repo-migration-map.md",
       "id": "ugripper_refactor_plan_repo_migration_map_md"
     },
@@ -46634,7 +46679,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 221,
+      "community": 205,
       "norm_label": "repo migration map",
       "id": "repo_migration_map_document"
     },
@@ -46647,7 +46692,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 221,
+      "community": 205,
       "norm_label": "package contents baseline",
       "id": "package_contents_document"
     },
@@ -46881,7 +46926,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 221,
+      "community": 205,
       "norm_label": "control-channel-ledger.md",
       "id": "ugripper_refactor_plan_control_channel_ledger_md"
     },
@@ -49764,9 +49809,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/exceptions/Exception.h",
       "source_location": "L20",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_exceptions_exception_h",
-      "target": "exception",
-      "confidence_score": 1.0
+      "target": "exception"
     },
     {
       "relation": "imports",
@@ -49775,9 +49820,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/exceptions/BadParamException.h",
       "source_location": "L18",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_exceptions_badparamexception_h",
-      "target": "exception",
-      "confidence_score": 1.0
+      "target": "exception"
     },
     {
       "relation": "imports",
@@ -49786,9 +49831,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/exceptions/NotEnoughMemoryException.h",
       "source_location": "L18",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_exceptions_notenoughmemoryexception_h",
-      "target": "exception",
-      "confidence_score": 1.0
+      "target": "exception"
     },
     {
       "relation": "imports",
@@ -49797,9 +49842,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/exceptions/Exception.cpp",
       "source_location": "L15",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_exceptions_exception_cpp",
-      "target": "exception",
-      "confidence_score": 1.0
+      "target": "exception"
     },
     {
       "relation": "imports",
@@ -55129,9 +55174,9 @@
       "source_file": "py_script/mcap_viewer.py",
       "source_location": "L40",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "py_script_mcap_viewer_rationale_40",
-      "target": "py_script_mcap_viewer_resolve_message_encoding",
-      "confidence_score": 1.0
+      "target": "py_script_mcap_viewer_resolve_message_encoding"
     },
     {
       "relation": "rationale_for",
@@ -55170,9 +55215,9 @@
       "source_file": "py_script/mcap_viewer.py",
       "source_location": "L47",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "py_script_mcap_viewer_rationale_47",
-      "target": "py_script_mcap_viewer_is_json_like_encoding",
-      "confidence_score": 1.0
+      "target": "py_script_mcap_viewer_is_json_like_encoding"
     },
     {
       "relation": "rationale_for",
@@ -55223,9 +55268,9 @@
       "source_file": "py_script/mcap_viewer.py",
       "source_location": "L129",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "py_script_mcap_viewer_format_binary_payload",
-      "target": "py_script_mcap_viewer_format_payload",
-      "confidence_score": 1.0
+      "target": "py_script_mcap_viewer_format_payload"
     },
     {
       "relation": "calls",
@@ -55244,9 +55289,9 @@
       "source_file": "py_script/mcap_viewer.py",
       "source_location": "L62",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "py_script_mcap_viewer_rationale_62",
-      "target": "py_script_mcap_viewer_format_payload",
-      "confidence_score": 1.0
+      "target": "py_script_mcap_viewer_format_payload"
     },
     {
       "relation": "rationale_for",
@@ -57397,9 +57442,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/Cdr.h",
       "source_location": "L91",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_cdr_h",
-      "target": "fastcdr_cdr_cdr_dllapi",
-      "confidence_score": 1.0
+      "target": "fastcdr_cdr_cdr_dllapi"
     },
     {
       "relation": "contains",
@@ -57407,9 +57452,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/Cdr.h",
       "source_location": "L161",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_cdr_h",
-      "target": "fastcdr_cdr_getddscdrplflag",
-      "confidence_score": 1.0
+      "target": "fastcdr_cdr_getddscdrplflag"
     },
     {
       "relation": "contains",
@@ -57417,9 +57462,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/Cdr.h",
       "source_location": "L3492",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_cdr_h",
-      "target": "fastcdr_cdr_alignment",
-      "confidence_score": 1.0
+      "target": "fastcdr_cdr_alignment"
     },
     {
       "relation": "contains",
@@ -57427,9 +57472,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/Cdr.h",
       "source_location": "L270",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_cdr_h",
-      "target": "fastcdr_cdr_resetalignment",
-      "confidence_score": 1.0
+      "target": "fastcdr_cdr_resetalignment"
     },
     {
       "relation": "contains",
@@ -57437,9 +57482,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/Cdr.h",
       "source_location": "L1238",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_cdr_h",
-      "target": "fastcdr_cdr_serialize",
-      "confidence_score": 1.0
+      "target": "fastcdr_cdr_serialize"
     },
     {
       "relation": "contains",
@@ -57447,9 +57492,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/Cdr.h",
       "source_location": "L1876",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_cdr_h",
-      "target": "fastcdr_cdr_serializearray",
-      "confidence_score": 1.0
+      "target": "fastcdr_cdr_serializearray"
     },
     {
       "relation": "contains",
@@ -57457,9 +57502,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/Cdr.h",
       "source_location": "L2495",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_cdr_h",
-      "target": "fastcdr_cdr_deserialize",
-      "confidence_score": 1.0
+      "target": "fastcdr_cdr_deserialize"
     },
     {
       "relation": "contains",
@@ -57467,9 +57512,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/Cdr.h",
       "source_location": "L3163",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_cdr_h",
-      "target": "fastcdr_cdr_deserializearray",
-      "confidence_score": 1.0
+      "target": "fastcdr_cdr_deserializearray"
     },
     {
       "relation": "contains",
@@ -57477,9 +57522,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/Cdr.h",
       "source_location": "L3504",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_cdr_h",
-      "target": "fastcdr_cdr_makealign",
-      "confidence_score": 1.0
+      "target": "fastcdr_cdr_makealign"
     },
     {
       "relation": "calls",
@@ -57488,9 +57533,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/Cdr.h",
       "source_location": "L1813",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "fastcdr_cdr_serializearray",
-      "target": "fastcdr_cdr_serialize",
-      "confidence_score": 1.0
+      "target": "fastcdr_cdr_serialize"
     },
     {
       "relation": "calls",
@@ -57499,9 +57544,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/Cdr.h",
       "source_location": "L3100",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "fastcdr_cdr_deserializearray",
-      "target": "fastcdr_cdr_deserialize",
-      "confidence_score": 1.0
+      "target": "fastcdr_cdr_deserialize"
     },
     {
       "relation": "contains",
@@ -57509,9 +57554,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/FastCdr.h",
       "source_location": "L35",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_fastcdr_h",
-      "target": "fastcdr_fastcdr_eprosima",
-      "confidence_score": 1.0
+      "target": "fastcdr_fastcdr_eprosima"
     },
     {
       "relation": "contains",
@@ -57519,9 +57564,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/FastCdr.h",
       "source_location": "L908",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_fastcdr_h",
-      "target": "fastcdr_fastcdr_serialize",
-      "confidence_score": 1.0
+      "target": "fastcdr_fastcdr_serialize"
     },
     {
       "relation": "contains",
@@ -57529,9 +57574,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/FastCdr.h",
       "source_location": "L1204",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_fastcdr_h",
-      "target": "fastcdr_fastcdr_serializearray",
-      "confidence_score": 1.0
+      "target": "fastcdr_fastcdr_serializearray"
     },
     {
       "relation": "contains",
@@ -57539,9 +57584,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/FastCdr.h",
       "source_location": "L1568",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_fastcdr_h",
-      "target": "fastcdr_fastcdr_deserialize",
-      "confidence_score": 1.0
+      "target": "fastcdr_fastcdr_deserialize"
     },
     {
       "relation": "contains",
@@ -57549,9 +57594,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/FastCdr.h",
       "source_location": "L1868",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_fastcdr_h",
-      "target": "fastcdr_fastcdr_deserializearray",
-      "confidence_score": 1.0
+      "target": "fastcdr_fastcdr_deserializearray"
     },
     {
       "relation": "calls",
@@ -57560,9 +57605,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/FastCdr.h",
       "source_location": "L158",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "fastcdr_fastcdr_eprosima",
-      "target": "fastcdr_fastcdr_serialize",
-      "confidence_score": 1.0
+      "target": "fastcdr_fastcdr_serialize"
     },
     {
       "relation": "calls",
@@ -57571,9 +57616,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/FastCdr.h",
       "source_location": "L1192",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "fastcdr_fastcdr_serializearray",
-      "target": "fastcdr_fastcdr_serialize",
-      "confidence_score": 1.0
+      "target": "fastcdr_fastcdr_serialize"
     },
     {
       "relation": "calls",
@@ -57582,9 +57627,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/FastCdr.h",
       "source_location": "L1856",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "fastcdr_fastcdr_deserializearray",
-      "target": "fastcdr_fastcdr_deserialize",
-      "confidence_score": 1.0
+      "target": "fastcdr_fastcdr_deserialize"
     },
     {
       "relation": "contains",
@@ -57592,9 +57637,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/FastBuffer.h",
       "source_location": "L25",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_fastbuffer_h",
-      "target": "fastcdr_fastbuffer_size_to_uint32",
-      "confidence_score": 1.0
+      "target": "fastcdr_fastbuffer_size_to_uint32"
     },
     {
       "relation": "contains",
@@ -57602,9 +57647,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/FastBuffer.h",
       "source_location": "L37",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_fastbuffer_h",
-      "target": "fastcdr_fastbuffer_eprosima",
-      "confidence_score": 1.0
+      "target": "fastcdr_fastbuffer_eprosima"
     },
     {
       "relation": "contains",
@@ -57612,9 +57657,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/exceptions/Exception.h",
       "source_location": "L22",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_exceptions_exception_h",
-      "target": "exceptions_exception_eprosima",
-      "confidence_score": 1.0
+      "target": "exceptions_exception_eprosima"
     },
     {
       "relation": "contains",
@@ -57622,9 +57667,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/exceptions/BadParamException.h",
       "source_location": "L20",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_exceptions_badparamexception_h",
-      "target": "exceptions_badparamexception_eprosima",
-      "confidence_score": 1.0
+      "target": "exceptions_badparamexception_eprosima"
     },
     {
       "relation": "contains",
@@ -57632,9 +57677,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/include/fastcdr/exceptions/NotEnoughMemoryException.h",
       "source_location": "L20",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_include_fastcdr_exceptions_notenoughmemoryexception_h",
-      "target": "exceptions_notenoughmemoryexception_eprosima",
-      "confidence_score": 1.0
+      "target": "exceptions_notenoughmemoryexception_eprosima"
     },
     {
       "relation": "contains",
@@ -57642,9 +57687,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastBuffer.cpp",
       "source_location": "L43",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastbuffer_cpp",
-      "target": "src_fastbuffer_fastbuffer",
-      "confidence_score": 1.0
+      "target": "src_fastbuffer_fastbuffer"
     },
     {
       "relation": "contains",
@@ -57652,9 +57697,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastBuffer.cpp",
       "source_location": "L51",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastbuffer_cpp",
-      "target": "src_fastbuffer_reserve",
-      "confidence_score": 1.0
+      "target": "src_fastbuffer_reserve"
     },
     {
       "relation": "contains",
@@ -57662,9 +57707,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastBuffer.cpp",
       "source_location": "L66",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastbuffer_cpp",
-      "target": "src_fastbuffer_resize",
-      "confidence_score": 1.0
+      "target": "src_fastbuffer_resize"
     },
     {
       "relation": "contains",
@@ -57672,9 +57717,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L28",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastcdr_cpp",
-      "target": "src_fastcdr_state_state",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_state_state"
     },
     {
       "relation": "contains",
@@ -57682,9 +57727,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L34",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastcdr_cpp",
-      "target": "src_fastcdr_fastcdr",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_fastcdr"
     },
     {
       "relation": "contains",
@@ -57692,9 +57737,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L42",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastcdr_cpp",
-      "target": "src_fastcdr_jump",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_jump"
     },
     {
       "relation": "contains",
@@ -57702,9 +57747,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L56",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastcdr_cpp",
-      "target": "src_fastcdr_getcurrentposition",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_getcurrentposition"
     },
     {
       "relation": "contains",
@@ -57712,9 +57757,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L61",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastcdr_cpp",
-      "target": "src_fastcdr_getstate",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_getstate"
     },
     {
       "relation": "contains",
@@ -57722,9 +57767,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L66",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastcdr_cpp",
-      "target": "src_fastcdr_setstate",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_setstate"
     },
     {
       "relation": "contains",
@@ -57732,9 +57777,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L72",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastcdr_cpp",
-      "target": "src_fastcdr_reset",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_reset"
     },
     {
       "relation": "contains",
@@ -57742,9 +57787,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L77",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastcdr_cpp",
-      "target": "src_fastcdr_resize",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_resize"
     },
     {
       "relation": "contains",
@@ -57752,9 +57797,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L452",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastcdr_cpp",
-      "target": "src_fastcdr_readstring",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_readstring"
     },
     {
       "relation": "contains",
@@ -57762,9 +57807,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L480",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_fastcdr_cpp",
-      "target": "src_fastcdr_readwstring",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_readwstring"
     },
     {
       "relation": "calls",
@@ -57773,9 +57818,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L47",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_fastcdr_jump",
-      "target": "src_fastcdr_resize",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_resize"
     },
     {
       "relation": "calls",
@@ -57784,9 +57829,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L475",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_fastcdr_readstring",
-      "target": "src_fastcdr_setstate",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_setstate"
     },
     {
       "relation": "calls",
@@ -57795,9 +57840,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L506",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_fastcdr_readwstring",
-      "target": "src_fastcdr_setstate",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_setstate"
     },
     {
       "relation": "calls",
@@ -57806,9 +57851,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/FastCdr.cpp",
       "source_location": "L496",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_fastcdr_readwstring",
-      "target": "src_fastcdr_resize",
-      "confidence_score": 1.0
+      "target": "src_fastcdr_resize"
     },
     {
       "relation": "contains",
@@ -57816,9 +57861,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L38",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_state_state",
-      "confidence_score": 1.0
+      "target": "src_cdr_state_state"
     },
     {
       "relation": "contains",
@@ -57826,9 +57871,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L47",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_cdr",
-      "confidence_score": 1.0
+      "target": "src_cdr_cdr"
     },
     {
       "relation": "contains",
@@ -57836,9 +57881,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L167",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_getddscdrplflag",
-      "confidence_score": 1.0
+      "target": "src_cdr_getddscdrplflag"
     },
     {
       "relation": "contains",
@@ -57846,9 +57891,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L172",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_setddscdrplflag",
-      "confidence_score": 1.0
+      "target": "src_cdr_setddscdrplflag"
     },
     {
       "relation": "contains",
@@ -57856,9 +57901,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L178",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_getddscdroptions",
-      "confidence_score": 1.0
+      "target": "src_cdr_getddscdroptions"
     },
     {
       "relation": "contains",
@@ -57866,9 +57911,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L183",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_setddscdroptions",
-      "confidence_score": 1.0
+      "target": "src_cdr_setddscdroptions"
     },
     {
       "relation": "contains",
@@ -57876,9 +57921,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L189",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_changeendianness",
-      "confidence_score": 1.0
+      "target": "src_cdr_changeendianness"
     },
     {
       "relation": "contains",
@@ -57886,9 +57931,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L199",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_jump",
-      "confidence_score": 1.0
+      "target": "src_cdr_jump"
     },
     {
       "relation": "contains",
@@ -57896,9 +57941,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L213",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_getbufferpointer",
-      "confidence_score": 1.0
+      "target": "src_cdr_getbufferpointer"
     },
     {
       "relation": "contains",
@@ -57906,9 +57951,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L218",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_getcurrentposition",
-      "confidence_score": 1.0
+      "target": "src_cdr_getcurrentposition"
     },
     {
       "relation": "contains",
@@ -57916,9 +57961,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L223",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_getstate",
-      "confidence_score": 1.0
+      "target": "src_cdr_getstate"
     },
     {
       "relation": "contains",
@@ -57926,9 +57971,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L228",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_setstate",
-      "confidence_score": 1.0
+      "target": "src_cdr_setstate"
     },
     {
       "relation": "contains",
@@ -57936,9 +57981,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L237",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_reset",
-      "confidence_score": 1.0
+      "target": "src_cdr_reset"
     },
     {
       "relation": "contains",
@@ -57946,9 +57991,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L245",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_movealignmentforward",
-      "confidence_score": 1.0
+      "target": "src_cdr_movealignmentforward"
     },
     {
       "relation": "contains",
@@ -57956,9 +58001,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L259",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_resize",
-      "confidence_score": 1.0
+      "target": "src_cdr_resize"
     },
     {
       "relation": "contains",
@@ -57966,9 +58011,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L1964",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_readstring",
-      "confidence_score": 1.0
+      "target": "src_cdr_readstring"
     },
     {
       "relation": "contains",
@@ -57976,9 +58021,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L1995",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_cdr_cpp",
-      "target": "src_cdr_readwstring",
-      "confidence_score": 1.0
+      "target": "src_cdr_readwstring"
     },
     {
       "relation": "calls",
@@ -57987,9 +58032,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L204",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_cdr_jump",
-      "target": "src_cdr_resize",
-      "confidence_score": 1.0
+      "target": "src_cdr_resize"
     },
     {
       "relation": "calls",
@@ -57998,9 +58043,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L1990",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_cdr_readstring",
-      "target": "src_cdr_setstate",
-      "confidence_score": 1.0
+      "target": "src_cdr_setstate"
     },
     {
       "relation": "calls",
@@ -58009,9 +58054,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L2023",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_cdr_readwstring",
-      "target": "src_cdr_setstate",
-      "confidence_score": 1.0
+      "target": "src_cdr_setstate"
     },
     {
       "relation": "calls",
@@ -58020,9 +58065,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L250",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_cdr_movealignmentforward",
-      "target": "src_cdr_resize",
-      "confidence_score": 1.0
+      "target": "src_cdr_resize"
     },
     {
       "relation": "calls",
@@ -58031,9 +58076,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/Cdr.cpp",
       "source_location": "L2013",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "src_cdr_readwstring",
-      "target": "src_cdr_resize",
-      "confidence_score": 1.0
+      "target": "src_cdr_resize"
     },
     {
       "relation": "contains",
@@ -58041,9 +58086,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/exceptions/BadParamException.cpp",
       "source_location": "L69",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_exceptions_badparamexception_cpp",
-      "target": "exceptions_badparamexception_badparamexception",
-      "confidence_score": 1.0
+      "target": "exceptions_badparamexception_badparamexception"
     },
     {
       "relation": "contains",
@@ -58051,9 +58096,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/exceptions/BadParamException.cpp",
       "source_location": "L73",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_exceptions_badparamexception_cpp",
-      "target": "exceptions_badparamexception_raise",
-      "confidence_score": 1.0
+      "target": "exceptions_badparamexception_raise"
     },
     {
       "relation": "contains",
@@ -58061,9 +58106,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/exceptions/Exception.cpp",
       "source_location": "L57",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_exceptions_exception_cpp",
-      "target": "exceptions_exception_exception",
-      "confidence_score": 1.0
+      "target": "exceptions_exception_exception"
     },
     {
       "relation": "contains",
@@ -58071,9 +58116,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/exceptions/Exception.cpp",
       "source_location": "L61",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_exceptions_exception_cpp",
-      "target": "exceptions_exception_what",
-      "confidence_score": 1.0
+      "target": "exceptions_exception_what"
     },
     {
       "relation": "contains",
@@ -58081,9 +58126,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/exceptions/NotEnoughMemoryException.cpp",
       "source_location": "L70",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_exceptions_notenoughmemoryexception_cpp",
-      "target": "exceptions_notenoughmemoryexception_notenoughmemoryexception",
-      "confidence_score": 1.0
+      "target": "exceptions_notenoughmemoryexception_notenoughmemoryexception"
     },
     {
       "relation": "contains",
@@ -58091,9 +58136,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/src/exceptions/NotEnoughMemoryException.cpp",
       "source_location": "L74",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_src_exceptions_notenoughmemoryexception_cpp",
-      "target": "exceptions_notenoughmemoryexception_raise",
-      "confidence_score": 1.0
+      "target": "exceptions_notenoughmemoryexception_raise"
     },
     {
       "relation": "contains",
@@ -58296,9 +58341,9 @@
       "source_file": "standalone/EpisodeMcap/src/ros2_cdr_writer.cc",
       "source_location": "L203",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_src_ros2_cdr_writer_cc",
-      "target": "src_ros2_cdr_writer_encodestring",
-      "confidence_score": 1.0
+      "target": "src_ros2_cdr_writer_encodestring"
     },
     {
       "relation": "contains",
@@ -58346,9 +58391,9 @@
       "source_file": "standalone/EpisodeMcap/src/ros2_cdr_writer.cc",
       "source_location": "L301",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_src_ros2_cdr_writer_cc",
-      "target": "src_ros2_cdr_writer_stringschema",
-      "confidence_score": 1.0
+      "target": "src_ros2_cdr_writer_stringschema"
     },
     {
       "relation": "contains",
@@ -92927,9 +92972,9 @@
       "source_file": "scripts/extract_mcap_episode.py",
       "source_location": "L202",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_extract_mcap_episode_py",
-      "target": "scripts_extract_mcap_episode_parse_string_cdr",
-      "confidence_score": 1.0
+      "target": "scripts_extract_mcap_episode_parse_string_cdr"
     },
     {
       "relation": "contains",
@@ -93230,6 +93275,17 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "scripts/extract_mcap_episode.py",
+      "source_location": "L193",
+      "weight": 1.0,
+      "source": "scripts_extract_mcap_episode_parse_encoder",
+      "target": "scripts_extract_mcap_episode_align",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/extract_mcap_episode.py",
       "source_location": "L55",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -93318,6 +93374,17 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "scripts/extract_mcap_episode.py",
+      "source_location": "L192",
+      "weight": 1.0,
+      "source": "scripts_extract_mcap_episode_parse_encoder",
+      "target": "scripts_extract_mcap_episode_read_i32",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/extract_mcap_episode.py",
       "source_location": "L94",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -93384,6 +93451,17 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "scripts/extract_mcap_episode.py",
+      "source_location": "L191",
+      "weight": 1.0,
+      "source": "scripts_extract_mcap_episode_parse_encoder",
+      "target": "scripts_extract_mcap_episode_read_string",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "scripts/extract_mcap_episode.py",
       "source_location": "L74",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -93441,9 +93519,9 @@
       "source_file": "scripts/extract_mcap_episode.py",
       "source_location": "L404",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_extract_mcap_episode_extract_episode",
-      "target": "scripts_extract_mcap_episode_parse_string_cdr",
-      "confidence_score": 1.0
+      "target": "scripts_extract_mcap_episode_parse_string_cdr"
     },
     {
       "relation": "calls",
@@ -98990,11 +99068,21 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "test/scripts/compare_encoder_mcap_size.py",
-      "source_location": "L22",
+      "source_location": "L33",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "test_scripts_compare_encoder_mcap_size_py",
-      "target": "scripts_compare_encoder_mcap_size_encoder_cdr"
+      "target": "scripts_compare_encoder_mcap_size_encoder_direct_stamp_cdr",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "test/scripts/compare_encoder_mcap_size.py",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "test_scripts_compare_encoder_mcap_size_py",
+      "target": "scripts_compare_encoder_mcap_size_encoder_header_cdr",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -99027,15 +99115,36 @@
       "target": "scripts_compare_encoder_mcap_size_main"
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "test/scripts/compare_encoder_mcap_size.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "test_scripts_compare_encoder_mcap_size_py",
+      "target": "scripts_compare_encoder_mcap_size_encoder_cdr"
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "test/scripts/compare_encoder_mcap_size.py",
-      "source_location": "L47",
+      "source_location": "L78",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "scripts_compare_encoder_mcap_size_write_sample",
-      "target": "scripts_compare_encoder_mcap_size_encoder_cdr"
+      "target": "scripts_compare_encoder_mcap_size_encoder_direct_stamp_cdr",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "test/scripts/compare_encoder_mcap_size.py",
+      "source_location": "L76",
+      "weight": 1.0,
+      "source": "scripts_compare_encoder_mcap_size_write_sample",
+      "target": "scripts_compare_encoder_mcap_size_encoder_header_cdr",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -99047,6 +99156,17 @@
       "confidence_score": 1.0,
       "source": "scripts_compare_encoder_mcap_size_compare",
       "target": "scripts_compare_encoder_mcap_size_write_sample"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "test/scripts/compare_encoder_mcap_size.py",
+      "source_location": "L47",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "scripts_compare_encoder_mcap_size_write_sample",
+      "target": "scripts_compare_encoder_mcap_size_encoder_cdr"
     },
     {
       "relation": "calls",
@@ -99295,6 +99415,16 @@
       "target": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest"
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "test/scripts/test_encoder_mcap_compat.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "test_scripts_test_encoder_mcap_compat_py",
+      "target": "scripts_test_encoder_mcap_compat_encoder_header_cdr",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "test/scripts/test_encoder_mcap_compat.py",
@@ -99308,11 +99438,21 @@
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "test/scripts/test_encoder_mcap_compat.py",
-      "source_location": "L40",
+      "source_location": "L49",
       "weight": 1.0,
-      "confidence_score": 1.0,
       "source": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest",
-      "target": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_cdr"
+      "target": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_direct_stamp_cdr_compatibility",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "test/scripts/test_encoder_mcap_compat.py",
+      "source_location": "L64",
+      "weight": 1.0,
+      "source": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest",
+      "target": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_header_cdr",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -99330,8 +99470,40 @@
       "source_file": "test/scripts/test_encoder_mcap_compat.py",
       "source_location": "L66",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest",
-      "target": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_string_cdr_json",
+      "target": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_string_cdr_json"
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "test/scripts/test_encoder_mcap_compat.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest",
+      "target": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_cdr"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "test/scripts/test_encoder_mcap_compat.py",
+      "source_location": "L66",
+      "weight": 1.0,
+      "source": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_ros2_header_cdr",
+      "target": "scripts_test_encoder_mcap_compat_encoder_header_cdr",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "test/scripts/test_encoder_mcap_compat.py",
+      "source_location": "L82",
+      "weight": 1.0,
+      "source": "scripts_test_encoder_mcap_compat_encodermcapcompatibilitytest_test_unified_topic_with_leading_slash",
+      "target": "scripts_test_encoder_mcap_compat_encoder_header_cdr",
       "confidence_score": 1.0
     },
     {
@@ -102064,9 +102236,9 @@
       "source_file": "standalone/EpisodeMcap/third_party/fastcdr/README.md",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "standalone_episodemcap_third_party_fastcdr_readme_md",
-      "target": "fastcdr_readme_fast_cdr_1_0_23",
-      "confidence_score": 1.0
+      "target": "fastcdr_readme_fast_cdr_1_0_23"
     },
     {
       "relation": "contains",
@@ -153130,5 +153302,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "201dd07fe95e2ffa391a2b4dc00d94b57f0ed336"
+  "built_at_commit": "29874b81a8dbf40898f92aabc752057a321a6753"
 }

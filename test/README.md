@@ -51,9 +51,9 @@
 - `test/scripts/board_encoder_cmd_ack_latency.sh`
   - 临时停止服务后左右并行发送生产 encoder 位置读取命令，统计合法 Modbus 应答的 `cmd -> ack` 延迟、超时和 CRC 错误，退出时自动恢复服务。
 - `test/scripts/test_encoder_mcap_compat.py`
-  - 回归旧 8-byte encoder binary 与新 20-byte `ugripper_msgs/msg/Encoder` CDR 的解析兼容性。
+  - 回归旧 8-byte encoder binary、20-byte direct-stamp 试录 CDR 与正式 28-byte Header CDR 的解析兼容性。
 - `test/scripts/compare_encoder_mcap_size.py`
-  - 用相同 topic、消息数和时间戳生成新旧 encoder-only MCAP，隔离比较 payload 与文件大小变化。
+  - 用相同 topic、消息数和时间戳生成三种 encoder-only MCAP，隔离比较 payload 与文件大小变化。
 - `test/scripts/verify_ros2_encoder_mcap.py`
   - 在已 source `ugripper_msgs` 的 ROS 2 环境中，用真实消息类型反序列化统一 MCAP 的两路 encoder；可选输出 encoder-only MCAP 做定向播放检查。
 

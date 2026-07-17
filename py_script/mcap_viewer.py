@@ -117,7 +117,16 @@ def format_binary_payload(topic, payload_bytes, log_time_ns, publish_time_ns, sc
         )
 
     if schema_name == ENCODER_SCHEMA and encoding.lower() == "cdr" and len(payload_bytes) >= 20:
-        sec, nanosec, raw, rad = struct.unpack_from("<iIif", payload_bytes, 4)
+        sec, nanosec = struct.unpack_from("<iI", payload_bytes, 4)
+        if len(payload_bytes) == 20:
+            raw, rad = struct.unpack_from("<if", payload_bytes, 12)
+        else:
+            (frame_size,) = struct.unpack_from("<I", payload_bytes, 12)
+            value_offset = 16 + frame_size
+            value_offset += (-(value_offset - 4)) % 4
+            if frame_size == 0 or value_offset + 8 > len(payload_bytes):
+                return f"<Invalid Encoder CDR ({len(payload_bytes)} bytes){time_delta_suffix}>"
+            raw, rad = struct.unpack_from("<if", payload_bytes, value_offset)
         stamp_ns = sec * 1_000_000_000 + nanosec
         return f"StampNs: {stamp_ns} PosRaw: {raw:<8} PosRad: {rad:.6f}{time_delta_suffix}"
 

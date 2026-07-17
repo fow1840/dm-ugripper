@@ -23,19 +23,22 @@ TEST(EncoderCdrWriter, EncodesRos2CdrLayoutAndValues) {
 
     const auto data = ugripper::episode_mcap::EncodeEncoder(kStampNs, kRaw, kRad);
 
-    ASSERT_EQ(data.size(), 20U);
+    ASSERT_EQ(data.size(), 28U);
     EXPECT_EQ(data[0], std::byte{0x00});
     EXPECT_EQ(data[1], std::byte{0x01});
     EXPECT_EQ(data[2], std::byte{0x00});
     EXPECT_EQ(data[3], std::byte{0x00});
     EXPECT_EQ(ReadAt<int32_t>(data, 4), 1700000000);
     EXPECT_EQ(ReadAt<uint32_t>(data, 8), 123456789U);
-    EXPECT_EQ(ReadAt<int32_t>(data, 12), kRaw);
-    EXPECT_FLOAT_EQ(ReadAt<float>(data, 16), kRad);
+    EXPECT_EQ(ReadAt<uint32_t>(data, 12), 1U);
+    EXPECT_EQ(data[16], std::byte{0x00});
+    EXPECT_EQ(ReadAt<int32_t>(data, 20), kRaw);
+    EXPECT_FLOAT_EQ(ReadAt<float>(data, 24), kRad);
 }
 
 TEST(EncoderCdrWriter, PublishesRos2MessageDefinition) {
     const std::string schema = ugripper::episode_mcap::EncoderSchema();
+    EXPECT_NE(schema.find("std_msgs/Header header"), std::string::npos);
     EXPECT_NE(schema.find("builtin_interfaces/Time stamp"), std::string::npos);
     EXPECT_NE(schema.find("int32 raw"), std::string::npos);
     EXPECT_NE(schema.find("float32 rad"), std::string::npos);

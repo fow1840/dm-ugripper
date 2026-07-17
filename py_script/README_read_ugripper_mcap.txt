@@ -82,10 +82,10 @@ MCAP 读取说明
   topic: /encoder_left / /encoder_right
   schema: ugripper_msgs/msg/Encoder
   encoding: ROS 2 CDR
-  fields: builtin_interfaces/Time stamp, int32 raw, float32 rad
-  payload: 固定 20 bytes
+  fields: std_msgs/Header header, int32 raw, float32 rad
+  payload: 空 frame_id 时固定 28 bytes
 
-ugripper_msgs 源码随主包放在 /opt/ugripper/ros2/ugripper_msgs。播放前需要在 ROS 2 workspace 中执行 colcon build，并 source install/setup.bash。
+header.stamp 与 MCAP logTime 一致，header.frame_id 为空。ugripper_msgs 源码随主包放在 /opt/ugripper/ros2/ugripper_msgs。播放前需要在 ROS 2 workspace 中执行 colcon build，并 source install/setup.bash。离线脚本仍兼容正式发布前的 20-byte direct-stamp CDR 和旧 8-byte binary；新版 ROS 2 消息包只直接反序列化正式 Header CDR。
 
   topic: /calibration / 条件生成的 /metadata
   schema: std_msgs/msg/String
@@ -115,6 +115,6 @@ fays_data_left.mcap / fays_data_right.mcap：
   sudo apt install ros-<distro>-rosbag2-storage-mcap
   ros2 bag info /path/to/episode.mcap
 
-当前 `3.2_mcap` 的图像、CameraInfo、IMU、encoder、calibration 和条件 metadata topic 全部使用 ROS 2 CDR。encoder 是自定义 `ugripper_msgs/msg/Encoder`，需要先安装对应消息类型；`/calibration` 与 `/metadata` 使用标准 `std_msgs/msg/String`，其 `data` 字段继续承载 JSON。完成消息包安装后，Humble 可直接播放完整 episode。
+当前 `3.2_mcap` 的图像、CameraInfo、IMU、encoder、calibration 和条件 metadata topic 全部使用 ROS 2 CDR。encoder 是带标准 `header.stamp` 的自定义 `ugripper_msgs/msg/Encoder`，需要先安装对应消息类型；`/calibration` 与 `/metadata` 使用标准 `std_msgs/msg/String`，其 `data` 字段继续承载 JSON。完成消息包安装后，Humble 可直接播放完整 episode。
 
 旧拆分 sensor/Fays MCAP 保留自定义 profile 和紧凑二进制 payload，只建议用本脚本读取。

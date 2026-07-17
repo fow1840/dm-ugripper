@@ -147,12 +147,31 @@ def decode_encoder_payload(
             raise ValueError(f"encoder CDR payload too short: {len(payload)}")
         if payload[:4] != b"\x00\x01\x00\x00":
             raise ValueError(f"unsupported encoder CDR encapsulation: {payload[:4].hex()}")
-        sec, nanosec, raw, rad = struct.unpack_from("<iIif", payload, 4)
-        return {
+        sec, nanosec = struct.unpack_from("<iI", payload, 4)
+        frame_id = None
+        if len(payload) == 20:
+            raw, rad = struct.unpack_from("<if", payload, 12)
+        else:
+            (frame_size,) = struct.unpack_from("<I", payload, 12)
+            if frame_size == 0 or 16 + frame_size > len(payload):
+                raise ValueError(f"invalid encoder frame_id length: {frame_size}")
+            frame_raw = payload[16 : 16 + frame_size]
+            if frame_raw[-1] != 0:
+                raise ValueError("encoder frame_id is missing the null terminator")
+            frame_id = frame_raw[:-1].decode("utf-8")
+            value_offset = 16 + frame_size
+            value_offset += (-(value_offset - 4)) % 4
+            if value_offset + 8 > len(payload):
+                raise ValueError(f"encoder Header CDR payload too short: {len(payload)}")
+            raw, rad = struct.unpack_from("<if", payload, value_offset)
+        result = {
             "stamp_ns": sec * 1_000_000_000 + nanosec,
             "raw": int(raw),
             "rad": finite_float(float(rad)),
         }
+        if frame_id is not None:
+            result["frame_id"] = frame_id
+        return result
 
     if len(payload) < 8:
         raise ValueError(f"legacy encoder payload too short: {len(payload)}")

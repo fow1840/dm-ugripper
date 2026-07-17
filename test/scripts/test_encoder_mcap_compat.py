@@ -25,6 +25,15 @@ extractor = load_module("extract_mcap_episode", REPO_ROOT / "scripts/extract_mca
 
 
 class EncoderMcapCompatibilityTest(unittest.TestCase):
+    @staticmethod
+    def encoder_header_cdr(sec, nanosec, raw, rad):
+        return (
+            b"\x00\x01\x00\x00"
+            + struct.pack("<iII", sec, nanosec, 1)
+            + b"\x00\x00\x00\x00"
+            + struct.pack("<if", raw, rad)
+        )
+
     def test_legacy_binary(self):
         payload = struct.pack("<if", -17, 0.625)
 
@@ -37,7 +46,7 @@ class EncoderMcapCompatibilityTest(unittest.TestCase):
         self.assertAlmostEqual(extracted["rad"], 0.625)
         self.assertNotIn("stamp_ns", decoded)
 
-    def test_ros2_cdr(self):
+    def test_ros2_direct_stamp_cdr_compatibility(self):
         stamp_ns = 1_700_000_000_123_456_789
         payload = b"\x00\x01\x00\x00" + struct.pack(
             "<iIif", 1_700_000_000, 123_456_789, 42, -1.5
@@ -52,8 +61,25 @@ class EncoderMcapCompatibilityTest(unittest.TestCase):
         self.assertAlmostEqual(decoded["rad"], -1.5)
         self.assertEqual(extracted, {"stamp_ns": stamp_ns, "raw": 42, "rad": -1.5})
 
+    def test_ros2_header_cdr(self):
+        stamp_ns = 1_700_000_000_123_456_789
+        payload = self.encoder_header_cdr(1_700_000_000, 123_456_789, 42, -1.5)
+
+        decoded = reader.decode_encoder_payload(payload, "cdr", reader.ENCODER_SCHEMA)
+        extracted = extractor.parse_encoder(payload, cdr=True)
+
+        self.assertEqual(len(payload), 28)
+        self.assertEqual(decoded["stamp_ns"], stamp_ns)
+        self.assertEqual(decoded["frame_id"], "")
+        self.assertEqual(decoded["raw"], 42)
+        self.assertAlmostEqual(decoded["rad"], -1.5)
+        self.assertEqual(
+            extracted,
+            {"stamp_ns": stamp_ns, "frame_id": "", "raw": 42, "rad": -1.5},
+        )
+
     def test_unified_topic_with_leading_slash(self):
-        payload = b"\x00\x01\x00\x00" + struct.pack("<iIif", 10, 20, 30, 0.25)
+        payload = self.encoder_header_cdr(10, 20, 30, 0.25)
 
         kind, decoded = reader.decode_payload(
             "/encoder_left", payload, "cdr", reader.ENCODER_SCHEMA
@@ -61,6 +87,7 @@ class EncoderMcapCompatibilityTest(unittest.TestCase):
 
         self.assertEqual(kind, "ugripper.encoder_cdr")
         self.assertEqual(decoded["stamp_ns"], 10_000_000_020)
+        self.assertEqual(decoded["frame_id"], "")
         self.assertEqual(decoded["raw"], 30)
 
     def test_ros2_string_cdr_json(self):

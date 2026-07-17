@@ -74,12 +74,12 @@ String CDR 由静态 vendoring 的 eProsima Fast-CDR 1.0.23 生成；板端不�
 Encoder topic 使用 ROS2 CDR `ugripper_msgs/msg/Encoder`：
 
 ```text
-builtin_interfaces/Time stamp
+std_msgs/Header header
 int32 raw
 float32 rad
 ```
 
-`stamp` 与 MCAP `logTime` 一致，`raw` 是编码器原始计数，`rad` 是换算后的弧度值。CDR payload 固定为 20 bytes；旧版紧凑 binary payload 为 8 bytes。消息包源码随 ugripper 主包安装到 `/opt/ugripper/ros2/ugripper_msgs`，ROS 2 主机需先在 colcon workspace 中构建并 source 该包，之后才能发布或解码 encoder topic。
+`header.stamp` 与 MCAP `logTime` 一致，`header.frame_id` 为空，左右侧由 topic 名表达；`raw` 是编码器原始计数，`rad` 是换算后的弧度值。空 `frame_id` 时 CDR payload 固定为 28 bytes；3.2 正式发布前的 direct-stamp 试录 payload 为 20 bytes，旧版紧凑 binary payload 为 8 bytes。消息包源码随 ugripper 主包安装到 `/opt/ugripper/ros2/ugripper_msgs`，ROS 2 主机需先在 colcon workspace 中构建并 source 该包，之后才能发布或解码 encoder topic。离线解析脚本兼容三种 payload；ROS 2 消息包只保证直接反序列化正式 Header 格式。
 
 从 `data_version=3.2_mcap` 开始，完整 MCAP 的所有 channel 都使用 ROS 2 CDR。安装并 source `ugripper_msgs` 后，Humble 可直接执行 `ros2 bag info` 和 `ros2 bag play`；`/calibration` 与条件生成的 `/metadata` 可按 `std_msgs/msg/String` 订阅，再解析 `data` 内的 JSON。
 

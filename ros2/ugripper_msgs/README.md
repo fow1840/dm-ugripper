@@ -6,10 +6,13 @@ The `Encoder` message matches `/encoder_left` and `/encoder_right` in data
 format `3.2_mcap`:
 
 ```text
-builtin_interfaces/Time stamp
+std_msgs/Header header
 int32 raw
 float32 rad
 ```
+
+`header.stamp` is identical to the MCAP message `logTime`. `header.frame_id`
+is empty because the left/right identity is already carried by the topic name.
 
 Build it in a ROS 2 workspace before playing or decoding an episode:
 

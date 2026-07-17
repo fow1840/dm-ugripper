@@ -183,12 +183,22 @@ def parse_encoder(data: bytes, *, cdr: bool = False) -> dict:
             raise ValueError(f"encoder CDR payload too short: {len(data)}")
         if data[:4] != b"\x00\x01\x00\x00":
             raise ValueError(f"unsupported encoder CDR encapsulation: {data[:4].hex()}")
-        sec, nanosec, raw, rad = struct.unpack_from("<iIif", data, 4)
-        return {
+        sec, nanosec = struct.unpack_from("<iI", data, 4)
+        frame_id = None
+        if len(data) == 20:
+            raw, rad = struct.unpack_from("<if", data, 12)
+        else:
+            frame_id, offset = read_string(data, 12)
+            raw, offset = read_i32(data, offset)
+            rad = struct.unpack_from("<f", data, align(offset, 4))[0]
+        result = {
             "stamp_ns": sec * 1_000_000_000 + nanosec,
             "raw": raw,
             "rad": rad,
         }
+        if frame_id is not None:
+            result["frame_id"] = frame_id
+        return result
 
     if len(data) < 8:
         raise ValueError(f"legacy encoder payload too short: {len(data)}")

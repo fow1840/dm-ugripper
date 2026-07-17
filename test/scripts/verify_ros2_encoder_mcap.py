@@ -18,7 +18,7 @@ JSON_STRING_TOPICS = {"/calibration", "/metadata"}
 
 
 def stamp_ns(message: Encoder) -> int:
-    return message.stamp.sec * 1_000_000_000 + message.stamp.nanosec
+    return message.header.stamp.sec * 1_000_000_000 + message.header.stamp.nanosec
 
 
 def verify(input_path: Path, filtered_output: Path | None) -> dict:
@@ -69,6 +69,10 @@ def verify(input_path: Path, filtered_output: Path | None) -> dict:
                 decoded_stamp_ns = stamp_ns(decoded)
                 if not math.isfinite(decoded.rad):
                     raise ValueError(f"{channel.topic}: non-finite rad value")
+                if decoded.header.frame_id:
+                    raise ValueError(
+                        f"{channel.topic}: expected empty frame_id, got {decoded.header.frame_id!r}"
+                    )
 
                 topic_stats = stats[channel.topic]
                 previous = topic_stats["last_log_time_ns"]

@@ -192,9 +192,7 @@ std::vector<std::byte> EncodeEncoder(uint64_t stamp_ns,
                                      int32_t raw,
                                      float rad) {
     CdrWriter writer;
-    const RosTime time = RosTimeFromUnixNs(stamp_ns);
-    writer.I32(time.sec);
-    writer.U32(time.nanosec);
+    writer.Header(stamp_ns, "");
     writer.I32(raw);
     writer.F32(rad);
     return writer.Take();
@@ -289,9 +287,13 @@ float64 z)";
 }
 
 const char* EncoderSchema() {
-    return R"(builtin_interfaces/Time stamp
+    return R"(std_msgs/Header header
 int32 raw
 float32 rad
+================================================================================
+MSG: std_msgs/Header
+builtin_interfaces/Time stamp
+string frame_id
 ================================================================================
 MSG: builtin_interfaces/Time
 int32 sec

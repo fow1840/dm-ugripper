@@ -211,7 +211,7 @@
 停录收尾阶段、关闭统一 MCAP recorder 前，`record_runtime` 将最终 metadata 写到 episode 目录的 `metadata.json`；当前顶层字段固定为：
 `device_sn / device_type / device_mode / camera_codec / hardware_version / software_version / das_usb_updater_version / data_version / hardware_list / episode_name / data_uuid / audio_uuid / quality_check_status / quality_check_err_type / collection_duration_s / require_files / video_details`。
 
-- `device_sn` 使用主控 `DEVICE_SN`，写出前统一转大写；`device_type=ugripper`，`device_mode=dual`，统一 MCAP episode 使用 `data_version=3.2_mcap`。该版本在 `3.1_mcap` Encoder CDR 基础上，将 `/calibration` 和条件生成的 `/metadata` 从 raw JSON channel 升级为 `std_msgs/msg/String` ROS 2 CDR，使完整 MCAP 的 serialization format 统一为 `cdr`。
+- `device_sn` 使用主控 `DEVICE_SN`，写出前统一转大写；`device_type=ugripper`，`device_mode=dual`，统一 MCAP episode 使用 `data_version=3.2_mcap`。该版本的 encoder 使用带标准 `std_msgs/Header` 的 `ugripper_msgs/msg/Encoder` CDR，`header.stamp` 与 MCAP `logTime` 一致；`/calibration` 和条件生成的 `/metadata` 使用 `std_msgs/msg/String` ROS 2 CDR，使完整 MCAP 的 serialization format 统一为 `cdr`。
 - `metadata.json` 使用范本顺序写出顶层字段、`hardware_list` 字段和 `video_details[]` 字段；校验脚本会把 key 顺序漂移作为格式错误。
 - `data_uuid` 使用系统随机 UUID；若 `/proc/sys/kernel/random/uuid` 不可用则回退 `libuuid` 的 `uuid_generate/uuid_unparse`。无音频文件时 `audio_uuid` 允许为空字符串。
 - `hardware_version` 默认 `v2.5`，可通过 `UGRIPPER_HARDWARE_VERSION` 覆盖；`software_version` 来自 ugripper 主包版本并带 `v` 前缀；`das_usb_updater_version` 优先读取 `das-usb-updater` 包版本。
@@ -496,7 +496,7 @@ PY
 - 建议从仓库根目录显式执行 `bash test/scripts/<script>.sh`；详细参数与注意事项见 `test/README.md`。
 - `scripts/extract_mcap_episode.py` 可直接输入单个 MCAP 或完整 episode 目录，将图像 topic 还原为 MKV，并把 `/calibration`、CameraInfo、IMU、encoder 等非图像 topic 拆到 `raw/`，便于对比文件大小和抽检内容。
   `python3 py_script/read_ugripper_mcap.txt /mnt/data_disk/<device_sn_lower>/data/episode_<date>_<index> --json-out /tmp/ugripper_mcap_report.json`。
-- 当前 UGripper MCAP Header 使用 `ros2` profile，所有 channel 都使用 ROS 2 CDR。安装 `rosbag2_storage_mcap` 并构建、source `/opt/ugripper/ros2/ugripper_msgs` 后，Humble 可直接执行完整 MCAP 的 `ros2 bag info` 与 `ros2 bag play`；`/calibration` 和条件生成的 `/metadata` 类型为 `std_msgs/msg/String`，应用层继续解析 `data` 内的 JSON。
+- 当前 UGripper MCAP Header 使用 `ros2` profile，所有 channel 都使用 ROS 2 CDR。安装 `rosbag2_storage_mcap` 并构建、source `/opt/ugripper/ros2/ugripper_msgs` 后，Humble 可直接执行完整 MCAP 的 `ros2 bag info` 与 `ros2 bag play`；encoder 提供标准 `header.stamp`，`/calibration` 和条件生成的 `/metadata` 类型为 `std_msgs/msg/String`，应用层继续解析 `data` 内的 JSON。
 - 若现场需要脱离主服务、单独向夹爪 HMI 写入 SN / 标定，可使用 `py_script/hmi_sn_batch_writer.py`：脚本直接读取一个或多个 `.xlsx` 的多 sheet `SN码` 列，支持操作员输入 SN 后 4 位或任意连续片段做唯一匹配，自动扫描 CH9344 相关串口确认可用 HMI 口，并在匹配到目标 SN 后写入 SN 与可选 `1024-byte` 标定 payload。
 - `py_script/hmi_sn_batch_writer.py` 默认会在启动时把自身和本次使用的 `.xlsx` 同步复制到 `/mnt/data_disk/hmi_sn_writer/`；标定源目录可通过 `--calib-root` 指向包含 `.bin`、summary `.md` 或 `rgb_video_ros-camchain.yaml + output-results-imucam.txt` 的目录。若未找到目标 SN 对应标定文件，脚本会只写 SN，并在控制台用黄色提示“未写标定”。
 
