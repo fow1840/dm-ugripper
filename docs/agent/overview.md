@@ -1,4 +1,4 @@
-# Ugripper V2 Overview
+# Ugripper V2/V3 Overview
 
 本文档是当前仓库在交付、开发、排障和验收时的**唯一主说明**。
 它只描述当前仍成立的系统实现、运行方式、部署入口和运维口径；不再拆分独立的运维文档、差异文档或遗留清单文档。
@@ -21,6 +21,11 @@
 - 运行日志镜像目录：`/mnt/data_disk/logs`
 - 终端硬件检查：`/usr/local/bin/hws`
 - U 盘升级入口：`auto_update/usb_auto_update.sh`
+
+### USB 硬件拓扑补充
+- V3 RK3588 设备的左右 USB2 手部链路分别为 `5-1 -> 5-1.2`（右）和 `9-1 -> 9-1.2`（左）；嵌套 7-port hub 的 `3/5/7` 端口依次承载 tactile L/R 与主相机。
+- V3 的 USB3 Fays 链路仍为 `6-1.4`（右）和 `10-1.4`（左），沿用现有 `stereo_*` / `*_fays_imu` 规则。
+- `config/99-fixed-usb-map.rules` 同时保留 V2/V2.5 的旧 hub 路径和 V3 路径，按父链路精确建立 `/dev/cam_*`、`/dev/tcam_*` symlink。
 
 ## 3. 模块总览
 | 模块 | 入口 | 当前职责 | 关键输入/输出 |

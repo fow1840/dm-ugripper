@@ -42,6 +42,8 @@ KERNEL=="video*", KERNELS=="[15]-1.4.4", ATTRS{idVendor}=="27c2", ATTRS{idProduc
 KERNEL=="video*", KERNELS=="[15]-1.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_right"
 KERNEL=="video*", KERNELS=="[15]-1.2.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_right"
 KERNEL=="video*", KERNELS=="[15]-1.7", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_right"
+# V3 RK3588 hand hubs: the downstream 7-port hub is behind USB2 port 2.
+KERNEL=="video*", KERNELS=="5-1.2.7", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_right"
 KERNEL=="video*", KERNELS=="9-1.4.[24]", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
 KERNEL=="video*", KERNELS=="11-1.4.[24]", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
 KERNEL=="video*", KERNELS=="9-1.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
@@ -50,6 +52,8 @@ KERNEL=="video*", KERNELS=="9-1.2.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=
 KERNEL=="video*", KERNELS=="11-1.2.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
 KERNEL=="video*", KERNELS=="9-1.7", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
 KERNEL=="video*", KERNELS=="11-1.7", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
+# V3 RK3588 hand hubs: left side uses the matching USB2 port 2 path.
+KERNEL=="video*", KERNELS=="9-1.2.7", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
 
 # Taobao commercial hub compatibility
 KERNEL=="video*", KERNELS=="9-1.4", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
@@ -76,10 +80,15 @@ KERNEL=="video*", KERNELS=="11-1.4:1.0", ENV{ID_VENDOR_ID}=="0bda", ENV{ID_MODEL
 KERNEL=="video*", KERNELS=="9-1.5", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
 KERNEL=="video*", KERNELS=="11-1.5", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
 
+# V3 RK3588 hand hubs: tactile cameras are on ports 3 and 5 of the nested hub.
+KERNEL=="video*", KERNELS=="5-1.2.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_l"
+KERNEL=="video*", KERNELS=="5-1.2.5", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_r"
+KERNEL=="video*", KERNELS=="9-1.2.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_l"
+KERNEL=="video*", KERNELS=="9-1.2.5", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
+
 # Taobao commercial hub compatibility
 KERNEL=="video*", KERNELS=="1-1.2.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_l"
 KERNEL=="video*", KERNELS=="1-1.2.4", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_r"
-KERNEL=="video*", KERNELS=="9-1.2.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_l"
 KERNEL=="video*", KERNELS=="9-1.2.4", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
 GOTO="ugripper_fixed_end"
 

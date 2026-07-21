@@ -34,6 +34,58 @@
 
 ## Entries
 
+### 2026-07-21 - v3-board-smoke-after-hmi-sn-write
+
+- 阶段：`T15 / L2-L3 board smoke`
+- 范围：`V3 rules / HMI SN / service episode / deep validator`
+- 类型：`板端重跑 / 数据质量边界回填`
+- 已执行验证：
+  - 在 SN 写入并由 runtime 回读后，通过软件 FIFO 录制约 12 秒，生成 `episode_20260721_0003`。
+  - runtime 强校验为 `success`；8 路视频、2 路 sensor MCAP、2 路 Fays MCAP 均非空。
+  - 左右 encoder 在 1Mbps 快速验证通过，分别写出 `12127/12123` 条消息，无超过 `30ms` 的 gap。
+  - 主摄 packet 扫描和 full decode 通过，无 DTS 回退、缺参考帧或解码错误。
+  - 标准 episode validator 为 `FAIL`；结果目录 `tmp/board_results/v3_rules_smoke_after_sn_20260721/`，汇总 `summary.json`。
+- 结论边界：
+  - 当前已证明 V3 rules 可支持完整录制，前一轮 HMI SN/encoder 初始化阻塞已关闭。
+  - 深度门禁仍因首帧错峰失败：stereo 到主摄最大范围 `984.074ms`；这是起录边界问题，不是中途掉流。
+  - metadata 仍为 `hardware_version=v2.5`；本轮只记录，不修改设备配置。
+
+### 2026-07-21 - v3-usb-rules-board-smoke
+
+- 阶段：`T15 / L2-L3 board smoke`
+- 范围：`V3 udev rules / data disk / service recording / HMI / SensorRecorder`
+- 类型：`板端安装后验证 / 失败证据回填`
+- 已执行验证：
+  - 确认 240 安装 `ugripper 2.1.7 arm64`，`/dev/sda1` 读写挂载，`hws=15/15`，六路 V3 camera symlink 与 Fays 节点在线。
+  - 通过软件 FIFO发送一次 `START`；因 `hmi_input_inactive` 未建立录制锁，未重复触发。
+  - 重启一次服务并等待 stereo ready；HMI 故障持续，自动 restore 期间观察到左侧 `9-1.2.4` CH9344 断开并重新枚举。
+  - 停服务后分别执行左右 `GripperHmiTool --read-sn`：右侧超时且 `rx_frames=0`，左侧返回无效 payload。
+  - 检查并复制 `episode_20260721_0002`；板端 `ffprobe` 可读 8 路短视频，但左右 sensor MCAP 均为 0 byte。
+  - 标准 episode validator 结果为 `FAIL`；结果目录 `tmp/board_results/v3_rules_smoke_20260721/`，汇总 `summary.json`。
+- 结论边界：
+  - 已验证 V3 camera udev 规则和数据盘挂载链路，不等同于完整 episode 通过。
+  - 当前直接阻塞为 HMI 输入失活与 encoder 切回 1Mbps 后双侧初始化失败；需恢复通信后再重跑短录和同步校验。
+  - 本地主机 ffprobe 被 `/opt/openrobots/lib/libxcb.so.1` 环境问题阻塞，视频可读性以板端 ffprobe 结果为准。
+
+### 2026-07-20 - hmi-encoder-open-interference-board-stress
+
+- 阶段：`T15 / L4 board stress`
+- 范围：`test/scripts/board_hmi_record_start_matrix.py`、`tmp/board_results/20260720_hmi_encoder_stress_240`
+- 类型：`板端诊断增强 / CH9344 跨通道压力验证`
+- 主要改动：
+  - 为录制启动矩阵补充每轮 HMI 合法帧年龄、原始字节年龄、timeout/recover 事件及恢复时长，并新增 `summary.json`。
+  - 在 240 的左 HMI 长连接条件下，反复启动真实 `SensorRecorder`，覆盖同颗 CH9344 左 encoder 的 `open + 1Mbps termios + 持续采样`。
+- 已执行验证：
+  - 本地 `/usr/bin/python3 -m py_compile test/scripts/board_hmi_record_start_matrix.py`、`bash -n test/scripts/board_hmi_record_start_matrix.sh`、`git diff --check` 通过。
+  - 板端 `HSD-RB1021 / ugripper 2.1.6` 经 WLAN `10.30.120.23` 执行 `timing offset=0` 共 200 轮：左右 `timeout_events=0`、`recover_events=0`、`invalid_xor=0`、`discarded_bytes=0`；左/右最大合法帧年龄分别为 `1015ms/1014ms`。
+  - 左右 encoder 每轮均持续产出，样本范围分别为 `6929..6945` 和 `6931..6945`。
+  - 补充反向干扰矩阵：左 encoder 各执行 10000 次 open/close、1Mbps termios、flush，左右 HMI 均无 inactive 或 I/O failure，左 HMI 最大回复年龄 `41ms`。
+  - 最终 `ugripper.service` 为 active，`hws` 为 `15/15 online`。
+- 结论边界：
+  - 本轮未复现现场约 `6s` 的左 HMI 无合法帧，说明 encoder `open + 1Mbps termios` 在本轮条件下不是充分触发条件，但不能排除更低概率时序或其他并发因素。
+  - 反向矩阵的 `encoder_query` 阶段虽然退出为 0，但记录到 `received_bytes=0`，不能单独作为真实请求应答证据；真实 encoder 流量由 200 轮 `SensorRecorder` 样本覆盖。
+  - 两次测试恢复主服务后，stereo warmup 未在健康门限内 ready，触发一次软件 USB restore，随后恢复 `15/15`；该恢复事件发生在 HMI 压测窗口之外。
+
 ### 2026-06-24 - restore-and-fays-log-noise-cleanup
 
 - 阶段：`Post-A3 Step 9 / Scripts And Field-Test Boundary Cleanup`

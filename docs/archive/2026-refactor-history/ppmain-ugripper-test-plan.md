@@ -2215,6 +2215,52 @@ test/scripts/board_gripper_hmi_active_check.sh \
   - 适合配合人工按键进行 start/stop 循环
   - 可对每轮新 episode 调用 `board_service_integration_check.sh`
 
+### 9.9 2026-07-20 CH9344 encoder-to-HMI 定向压力结果
+
+- 设备：`HSD-RB1021 / ugripper 2.1.6`，WLAN `10.30.120.23`。
+- 结果目录：`tmp/board_results/20260720_hmi_encoder_stress_240/`。
+- 汇总 JSON：`tmp/board_results/20260720_hmi_encoder_stress_240/summary.json`。
+- 真实录制启动矩阵：
+  - 左右 HMI 全程长连接，以生产节奏执行 `1Hz` 状态查询和 `250ms` 灯效重发。
+  - `SensorRecorder` 在 `offset=0` 下反复启动 200 轮，覆盖 encoder `open + 1Mbps termios + 持续采样`。
+  - 结果为 `ok=true`，左右均无 timeout、recover、I/O error、XOR 错误或丢弃字节；左/右最大合法帧年龄为 `1015ms/1014ms`。
+- 反向干扰矩阵：
+  - 左 encoder 分别执行 10000 次 open/close、1Mbps termios 和 flush，阶段均通过；左 HMI 最大回复年龄 `41ms`。
+  - `encoder_query` 阶段未收到应答字节，因此该阶段不作为真实 encoder 请求链路证据。
+- 当前结论：本轮未复现约 `6s` 左 HMI 无合法帧，encoder open/config 不是已证实的充分触发条件；仍需结合生产 runtime 并发因素或在下一次现场故障中补齐 raw RX 计数。
+- 恢复边界：测试结束恢复主服务后，stereo warmup 超过健康门限触发软件 USB restore，最终服务 active 且 `hws 15/15 online`。这属于测试恢复阶段，不计入 HMI 压测窗口结果。
+
+### 9.10 2026-07-21 V3 USB rules 板端 smoke
+
+- 设备：`HSD-RB1021 / ugripper 2.1.7`，目标 `ubuntu@192.168.2.240`。
+- 结果目录：`tmp/board_results/v3_rules_smoke_20260721/`。
+- 汇总 JSON：`tmp/board_results/v3_rules_smoke_20260721/summary.json`。
+- 结论：`ok=false`，`validation_reason=hmi_input_inactive_and_encoder_init_failed`。
+- 已证明：
+  - V3 六路新增主摄/触觉 symlink 全部在线；数据盘 `/dev/sda1` 读写挂载，`hws=15/15`。
+  - 失败 episode 的 8 路短视频均可由板端 `ffprobe` 打开，说明 V3 camera udev 映射已进入实际打开链路。
+- 失败证据：
+  - runtime 因右 HMI 长时间无有效输入进入 `ERROR_2 / hmi_input_inactive`，受控 `START` 未建立录制锁。
+  - HMI 直连探测中，右侧读 SN 超时且 `rx_frames=0`；左侧返回无效 SN payload。
+  - 既有 `episode_20260721_0002` 为 `quality_check_status=fail / runtime_error`；左右 encoder 在 `115200` 可应答，但切回 `1Mbps` 后均验证失败，`SensorRecorder` 以 `134` 退出，两个 `sensor_*.mcap` 均为 `0 byte`。
+- 边界：本轮证明 V3 camera rules 生效，但不能证明完整录制、sensor 连续性、视频/sensor 同步或 release gate；需先恢复 HMI/encoder 通信后重新录制。
+
+### 9.11 2026-07-21 V3 写入 HMI SN 后重跑
+
+- 设备：`HSD-RB1021 / ugripper 2.1.7`。
+- 结果目录：`tmp/board_results/v3_rules_smoke_after_sn_20260721/`。
+- 汇总 JSON：`tmp/board_results/v3_rules_smoke_after_sn_20260721/summary.json`。
+- episode：`episode_20260721_0003`，运行时 `quality_check_status=success`，时长 `12.2s`。
+- 深度结论：`ok=false`，`validation_reason=first_frame_sync_range_984ms`。
+- 已证明：
+  - 左右 HMI SN 已进入最终 metadata，左右 encoder 在 1Mbps 初始化并分别产出 `12127/12123` 条连续消息。
+  - 8 路视频均可读且没有 large gap、重复/回退时间戳；左右主摄全量解码无缺参考帧或解码错误。
+  - 左右 Fays 各有 `305` 个 camera sample，覆盖约 `12.217s`。
+- 未通过项：
+  - stereo 起始偏移为 `0ms`，触觉晚约 `734-867ms`，主摄晚约 `968-984ms`，全视频首帧范围 `984.074ms`，超过深度门禁。
+  - metadata 仍写 `hardware_version=v2.5`，尚未完成 V3 元数据配置。
+- 边界：本轮已关闭“V3 rules 无法完整录制”和“encoder 无数据”阻塞，但不能据此判定同步质量或 release gate 通过。
+
 ## 10. 推荐执行顺序
 
 建议把测试执行顺序固定成下面这样。

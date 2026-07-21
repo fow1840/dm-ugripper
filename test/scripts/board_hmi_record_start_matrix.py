@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import csv
+import json
 import math
 import os
 import re
@@ -110,8 +111,12 @@ class HmiPort:
         self.invalid_xor = 0
         self.discarded_bytes = 0
         self.timeout_events = 0
+        self.recover_events = 0
         self.timeout_active = False
+        self.timeout_started_at = None
+        self.max_timeout_duration_ms = 0
         self.max_age_ms = 0
+        self.max_raw_age_ms = 0
 
     def counters(self):
         return {
@@ -123,6 +128,7 @@ class HmiPort:
             "invalid_xor": self.invalid_xor,
             "discarded_bytes": self.discarded_bytes,
             "timeout_events": self.timeout_events,
+            "recover_events": self.recover_events,
         }
 
     def write(self, frame, kind):
@@ -193,20 +199,42 @@ class HmiPort:
     def observe_age(self, now, label):
         base = self.last_valid_at if self.last_valid_at is not None else self.opened_at
         age_ms = int((now - base) * 1000)
+        raw_base = self.last_raw_at if self.last_raw_at is not None else self.opened_at
+        raw_age_ms = int((now - raw_base) * 1000)
         self.max_age_ms = max(self.max_age_ms, age_ms)
+        self.max_raw_age_ms = max(self.max_raw_age_ms, raw_age_ms)
         if age_ms >= INACTIVE_MS and not self.timeout_active:
             self.timeout_active = True
+            self.timeout_started_at = now
             self.timeout_events += 1
             print(
-                f"TIMEOUT label={label} side={self.side} age_ms={age_ms} "
+                f"TIMEOUT label={label} side={self.side} steady={now:.6f} "
+                f"age_ms={age_ms} raw_age_ms={raw_age_ms} "
                 f"tx_state={self.tx_state} tx_led={self.tx_led} rx_bytes={self.rx_bytes} "
-                f"valid_frames={self.valid_frames} invalid_xor={self.invalid_xor}",
+                f"valid_frames={self.valid_frames} invalid_xor={self.invalid_xor} "
+                f"discarded_bytes={self.discarded_bytes} partial_bytes={len(self.buffer)}",
                 flush=True,
             )
         elif age_ms < INACTIVE_MS and self.timeout_active:
             self.timeout_active = False
-            print(f"RECOVER label={label} side={self.side} age_ms={age_ms}", flush=True)
-        return age_ms
+            self.recover_events += 1
+            duration_ms = 0
+            if self.timeout_started_at is not None:
+                duration_ms = int((now - self.timeout_started_at) * 1000)
+            self.max_timeout_duration_ms = max(self.max_timeout_duration_ms, duration_ms)
+            self.timeout_started_at = None
+            print(
+                f"RECOVER label={label} side={self.side} steady={now:.6f} "
+                f"age_ms={age_ms} raw_age_ms={raw_age_ms} timeout_duration_ms={duration_ms}",
+                flush=True,
+            )
+        return age_ms, raw_age_ms
+
+    def timeout_duration_ms(self):
+        duration_ms = self.max_timeout_duration_ms
+        if self.timeout_active and self.timeout_started_at is not None:
+            duration_ms = max(duration_ms, int((time.monotonic() - self.timeout_started_at) * 1000))
+        return duration_ms
 
     def close(self):
         os.close(self.fd)
@@ -266,7 +294,7 @@ for port in ports:
     selector.register(port.fd, selectors.EVENT_READ, port)
 
 
-def service_until(deadline, state, label, pending_sensor=None, sensor_at=None):
+def service_until(deadline, state, label, pending_sensor=None, sensor_at=None, cycle_peaks=None):
     sensor = pending_sensor
     while time.monotonic() < deadline:
         now = time.monotonic()
@@ -280,7 +308,11 @@ def service_until(deadline, state, label, pending_sensor=None, sensor_at=None):
         now = time.monotonic()
         for port in ports:
             port.read(now)
-            port.observe_age(now, label)
+            valid_age_ms, raw_age_ms = port.observe_age(now, label)
+            if cycle_peaks is not None:
+                peaks = cycle_peaks[port.side]
+                peaks["valid_age_ms"] = max(peaks["valid_age_ms"], valid_age_ms)
+                peaks["raw_age_ms"] = max(peaks["raw_age_ms"], raw_age_ms)
     return sensor
 
 
@@ -302,7 +334,10 @@ try:
             cycle_dir = OUTPUT_DIR / "sensor_cycles" / f"offset_{offset_ms}" / f"cycle_{cycle:04d}"
             sensor = persistent_sensor if MODE == "led-only" else SensorSession(cycle_dir)
             before = {port.side: port.counters() for port in ports}
-            cycle_max_age = {port.side: 0 for port in ports}
+            cycle_peaks = {
+                port.side: {"valid_age_ms": 0, "raw_age_ms": 0}
+                for port in ports
+            }
 
             transition_at = time.monotonic() + PRE_SEC
             sensor_at = transition_at + offset_ms / 1000.0
@@ -311,18 +346,18 @@ try:
             elif sensor_at < time.monotonic():
                 sensor_at = time.monotonic()
 
-            service_until(transition_at, "pre", label, sensor, sensor_at)
+            service_until(transition_at, "pre", label, sensor, sensor_at, cycle_peaks)
             actual_transition = time.monotonic()
             print(
                 f"RECORDING_TRANSITION label={label} steady={actual_transition:.6f} "
                 f"sensor_target={sensor_at if sensor_at is not None else 0:.6f}",
                 flush=True,
             )
-            service_until(actual_transition + RECORD_SEC, "recording", label, sensor, sensor_at)
+            service_until(actual_transition + RECORD_SEC, "recording", label, sensor, sensor_at, cycle_peaks)
 
             if MODE != "led-only":
                 sensor.stop()
-            service_until(time.monotonic() + POST_SEC, "pre", label)
+            service_until(time.monotonic() + POST_SEC, "pre", label, cycle_peaks=cycle_peaks)
 
             row = {
                 "mode": MODE,
@@ -342,7 +377,8 @@ try:
                     row[f"{side}_{key}"] = current[key] - prior[key]
                 base = port.last_valid_at if port.last_valid_at is not None else port.opened_at
                 row[f"{side}_end_age_ms"] = int((time.monotonic() - base) * 1000)
-                row[f"{side}_max_age_ms_total"] = port.max_age_ms
+                row[f"{side}_max_valid_age_ms"] = cycle_peaks[side]["valid_age_ms"]
+                row[f"{side}_max_raw_age_ms"] = cycle_peaks[side]["raw_age_ms"]
             if MODE != "led-only":
                 row.update(sensor.stats())
             else:
@@ -382,8 +418,29 @@ with (OUTPUT_DIR / "cycle_report.tsv").open("w", newline="") as output:
 
 with (OUTPUT_DIR / "hmi_report.tsv").open("w", newline="") as output:
     writer = csv.writer(output, delimiter="\t")
-    writer.writerow(("side", "tx_state", "tx_led", "tx_errors", "rx_bytes", "valid_frames", "invalid_xor", "discarded_bytes", "timeout_events", "max_age_ms", "partial_bytes"))
+    writer.writerow(("side", "tx_state", "tx_led", "tx_errors", "rx_bytes", "valid_frames", "invalid_xor", "discarded_bytes", "timeout_events", "recover_events", "max_valid_age_ms", "max_raw_age_ms", "max_timeout_duration_ms", "partial_bytes"))
     for port in ports:
-        writer.writerow((port.side, port.tx_state, port.tx_led, port.tx_errors, port.rx_bytes, port.valid_frames, port.invalid_xor, port.discarded_bytes, port.timeout_events, port.max_age_ms, len(port.buffer)))
+        writer.writerow((port.side, port.tx_state, port.tx_led, port.tx_errors, port.rx_bytes, port.valid_frames, port.invalid_xor, port.discarded_bytes, port.timeout_events, port.recover_events, port.max_age_ms, port.max_raw_age_ms, port.timeout_duration_ms(), len(port.buffer)))
+
+summary = {
+    "ok": not failed,
+    "validation_reason": "ok" if not failed else "hmi_timeout_or_sensor_cycle_failure",
+    "mode": MODE,
+    "cycles": CYCLES,
+    "offsets_ms": offsets,
+    "hmi_inactive_ms": INACTIVE_MS,
+    "sides": {},
+}
+for port in ports:
+    summary["sides"][port.side] = {
+        **port.counters(),
+        "max_valid_age_ms": port.max_age_ms,
+        "max_raw_age_ms": port.max_raw_age_ms,
+        "max_timeout_duration_ms": port.timeout_duration_ms(),
+        "partial_bytes": len(port.buffer),
+    }
+with (OUTPUT_DIR / "summary.json").open("w") as output:
+    json.dump(summary, output, indent=2, sort_keys=True)
+    output.write("\n")
 
 raise SystemExit(1 if failed else 0)
