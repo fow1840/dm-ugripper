@@ -6,7 +6,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEFAULT_HMI_HELPER_BIN="$PROJECT_ROOT/bin/GripperHmiTool/GripperHmiTool"
 HMI_HELPER_BIN="${HMI_HELPER_BIN_OVERRIDE:-$DEFAULT_HMI_HELPER_BIN}"
-GRIPPER_CALIB_GENERATOR="${GRIPPER_CALIB_GENERATOR_OVERRIDE:-$PROJECT_ROOT/auto_calibration/generate_gripper_calibration_bin.py}"
 HMI_RUN_USER="${HMI_RUN_USER_OVERRIDE:-ubuntu}"
 HMI_LOCK_FILE="${HMI_LOCK_FILE_OVERRIDE:-/run/ugripper_hmi_operation.lock}"
 HMI_LOCK_TIMEOUT_SEC="${HMI_LOCK_TIMEOUT_SEC_OVERRIDE:-30}"
@@ -220,58 +219,6 @@ print(resolved)
 PY
 }
 
-prepare_gripper_payload_bin() {
-    local source_path="$1"
-    local output_bin="$2"
-
-    if [ -d "$source_path" ]; then
-        if [ ! -f "$GRIPPER_CALIB_GENERATOR" ]; then
-            log "夹爪 payload 生成脚本不存在：$GRIPPER_CALIB_GENERATOR"
-            return 1
-        fi
-        python3 "$GRIPPER_CALIB_GENERATOR" --input "$source_path" --output-bin "$output_bin"
-        return $?
-    fi
-
-    case "${source_path##*.}" in
-        bin|BIN)
-            local size=""
-            size="$(stat -c '%s' "$source_path")"
-            if [ "$size" != "1024" ]; then
-                log "夹爪 payload 二进制大小非法：$source_path size=$size expected=1024"
-                return 1
-            fi
-            cp -f "$source_path" "$output_bin"
-            return 0
-            ;;
-        md|MD)
-            if [ ! -f "$GRIPPER_CALIB_GENERATOR" ]; then
-                log "夹爪 payload 生成脚本不存在：$GRIPPER_CALIB_GENERATOR"
-                return 1
-            fi
-            python3 "$GRIPPER_CALIB_GENERATOR" --input "$source_path" --output-bin "$output_bin"
-            return $?
-            ;;
-    esac
-
-    log "不支持的夹爪标定源文件类型：$source_path"
-    return 1
-}
-
-write_gripper_calibration() {
-    local port="$1"
-    local payload_bin="$2"
-    local output=""
-
-    if ! output="$(run_hmi_helper --port "$port" --write-calib-bin "$payload_bin" 2>&1)"; then
-        log "写入夹爪标定失败：port=$port payload=$payload_bin output=$(printf '%s' "$output" | tr '\n' ' ')"
-        return 1
-    fi
-
-    log "写入夹爪标定成功：port=$port payload=$payload_bin"
-    return 0
-}
-
 if [ -z "$USB_ROOT" ] || [ ! -d "$USB_ROOT" ]; then
     log "USB root invalid: $USB_ROOT"
     exit 1
@@ -339,7 +286,6 @@ declare -A SIDE_GRIPPER_PORTS=(
 declare -A SIDE_TARGETED=()
 declare -A SIDE_GRIPPER_SN=()
 declare -A SIDE_GRIPPER_SOURCE=()
-declare -A SIDE_GRIPPER_BIN=()
 declare -A SIDE_CAMCHAIN_FILES=()
 declare -A SIDE_IMUCAM_FILES=()
 
@@ -944,37 +890,7 @@ out_path.parent.mkdir(parents=True, exist_ok=True)
 out_path.write_text(json.dumps(data, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")
 PY
 
-for side in "${IMPORT_SIDES[@]}"; do
-    if [ -z "${SIDE_TARGETED[$side]:-}" ]; then
-        continue
-    fi
-
-    port="${SIDE_GRIPPER_PORTS[$side]}"
-    gripper_sn="${SIDE_GRIPPER_SN[$side]}"
-    source_path="${SIDE_GRIPPER_SOURCE[$side]}"
-    payload_bin="$TMP_STAGE_DIR/gripper_${side}_${gripper_sn}.bin"
-    if ! prepare_gripper_payload_bin "$source_path" "$payload_bin"; then
-        log "生成夹爪 payload 失败：side=$side source=$source_path"
-        exit 1
-    fi
-    chmod 644 "$payload_bin"
-
-    SIDE_GRIPPER_SN[$side]="$gripper_sn"
-    SIDE_GRIPPER_SOURCE[$side]="$source_path"
-    SIDE_GRIPPER_BIN[$side]="$payload_bin"
-    log "夹爪标定匹配成功：side=$side port=$port gripper_sn=$gripper_sn source=$(basename "$source_path")"
-done
-
-for side in "${IMPORT_SIDES[@]}"; do
-    if [ -z "${SIDE_GRIPPER_BIN[$side]:-}" ]; then
-        continue
-    fi
-
-    port="${SIDE_GRIPPER_PORTS[$side]}"
-    if ! write_gripper_calibration "$port" "${SIDE_GRIPPER_BIN[$side]}"; then
-        exit 1
-    fi
-done
+log "Camera/IMU calibration stays in camera modules; HMI force calibration payload is not modified"
 
 mv -f "$TEMP_CALIB_JSON" "$PERSIST_CALIB_FILE"
 if id "$HMI_RUN_USER" >/dev/null 2>&1; then
@@ -999,12 +915,10 @@ for side in "${IMPORT_SIDES[@]}"; do
         cp -f "${SIDE_CAMCHAIN_FILES[$side]}" "$IMPORT_SAVE_DIR/"
         printf 'camchain_%s_file=%s\n' "$side" "$(basename "${SIDE_CAMCHAIN_FILES[$side]}")" >> "$IMPORT_SAVE_DIR/import_meta.txt"
     fi
-    if [ -n "${SIDE_TARGETED[$side]:-}" ] && [ -n "${SIDE_GRIPPER_BIN[$side]:-}" ]; then
-        cp -f "${SIDE_GRIPPER_BIN[$side]}" "$IMPORT_SAVE_DIR/"
+    if [ -n "${SIDE_TARGETED[$side]:-}" ]; then
         printf 'gripper_%s_port=%s\n' "$side" "${SIDE_GRIPPER_PORTS[$side]}" >> "$IMPORT_SAVE_DIR/import_meta.txt"
         printf 'gripper_%s_sn=%s\n' "$side" "${SIDE_GRIPPER_SN[$side]}" >> "$IMPORT_SAVE_DIR/import_meta.txt"
         printf 'gripper_%s_calibration_source=%s\n' "$side" "${SIDE_GRIPPER_SOURCE[$side]}" >> "$IMPORT_SAVE_DIR/import_meta.txt"
-        printf 'gripper_%s_payload_bin=%s\n' "$side" "$(basename "${SIDE_GRIPPER_BIN[$side]}")" >> "$IMPORT_SAVE_DIR/import_meta.txt"
     fi
 done
 

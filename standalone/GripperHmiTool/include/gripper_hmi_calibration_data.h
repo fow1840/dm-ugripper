@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 
 namespace gripper_hmi
@@ -12,106 +13,54 @@ namespace gripper_hmi
 constexpr size_t kSerialNumberLength = 16;
 constexpr size_t kSerialNumberFieldLength = 32;
 constexpr size_t kCalibrationPayloadSize = 1024;
-constexpr uint32_t kCalibrationDataFormatVersion1 = 0x00010000u;
+constexpr uint32_t kCalibrationDataFormatVersionLegacy = 0x00010000u;
+constexpr uint32_t kCalibrationDataFormatVersionForceV1 = 0x00020000u;
 
 enum GripperCalibrationValidField : uint32_t
 {
-    kCalibrationValidRgbCamera = 1u << 0,
-    kCalibrationValidStereoCam0 = 1u << 1,
-    kCalibrationValidStereoCam1 = 1u << 2,
-    kCalibrationValidExtrinsics = 1u << 3,
-    kCalibrationValidImu = 1u << 4,
-    kCalibrationValidResiduals = 1u << 5,
+    kCalibrationValidForceSensor = 1u << 0,
+};
+
+enum GripperForceCalibrationFlag : uint32_t
+{
+    kForceCalibrationValid = 1u << 0,
 };
 
 #pragma pack(push, 1)
 
+// Keep this header byte-for-byte compatible with the original UCAL header.
 struct GripperCalibrationHeader
 {
     char magic[4] = {'U', 'C', 'A', 'L'};
-    uint32_t dataFormatVersion = kCalibrationDataFormatVersion1;
+    uint32_t dataFormatVersion = kCalibrationDataFormatVersionForceV1;
     uint16_t payloadSize = static_cast<uint16_t>(sizeof(GripperCalibrationHeader));
     uint16_t headerSize = static_cast<uint16_t>(sizeof(GripperCalibrationHeader));
     uint32_t validFields = 0;
     uint8_t reserved[16] = {};
 };
 
-struct GripperRgbCameraBlock
+// Compact force calibration block. The embedded SN uses exactly the same
+// 32-byte printable-ASCII, NUL-padded representation as the existing HMI SN.
+struct GripperForceCalibrationBlock
 {
-    uint32_t cameraModelEnum = 0;
-    float distortionCoefficients[4] = {};
-    float intrinsics[4] = {};
-    float resolution[2] = {};
-    uint8_t reserved[4] = {};
+    char magic[4] = {'F', 'C', 'A', 'L'};
+    uint16_t blockVersion = 1;
+    uint16_t blockSize = static_cast<uint16_t>(sizeof(GripperForceCalibrationBlock));
+    std::array<char, kSerialNumberFieldLength> serialNumber{};
+    int32_t zeroRaw = 0;
+    int32_t referenceRaw = 0;
+    uint32_t referenceMassMg = 0;
+    uint32_t flags = 0;
+    uint32_t calibratedAtUnixSeconds = 0;
+    uint32_t crc32 = 0;
 };
 
-struct GripperStereoCameraBlock
+struct GripperCalibrationData
 {
-    uint32_t cameraModelEnum = 0;
-    float focalLength[2] = {};
-    float principalPoint[2] = {};
-    float distortionCoefficients[4] = {};
-    float reserved[3] = {};
-};
-
-struct GripperExtrinsicsBlock
-{
-    float tIcCam0ToImu0[16] = {};
-    float timeshiftCam0ToImu0 = 0.0f;
-    float reserved0[3] = {};
-    float tIcCam1ToImu0[16] = {};
-    float timeshiftCam1ToImu0 = 0.0f;
-    float baselineNorm = 0.0f;
-    float reserved1[2] = {};
-};
-
-struct GripperImuBlock
-{
-    float updateRate = 0.0f;
-    float accelerometerNoiseDensityDiscrete = 0.0f;
-    float accelerometerRandomWalk = 0.0f;
-    float gyroscopeNoiseDensityDiscrete = 0.0f;
-    float gyroscopeRandomWalk = 0.0f;
-    float reserved[3] = {};
-};
-
-struct GripperStatisticsBlock
-{
-    float mean = 0.0f;
-    float median = 0.0f;
-    float stddev = 0.0f;
-    float reserved = 0.0f;
-};
-
-struct GripperResidualsBlock
-{
-    GripperStatisticsBlock reprojectionErrorCam0Px{};
-    GripperStatisticsBlock reprojectionErrorCam1Px{};
-    GripperStatisticsBlock gyroscopeErrorImu0RadS{};
-    GripperStatisticsBlock accelerometerErrorImu0MS2{};
-};
-
-struct GripperCalibrationDataV1
-{
-    // RGB 主相机：model + 畸变 + [fx, fy, cx, cy] + [width, height]
     GripperCalibrationHeader header{};
-    GripperRgbCameraBlock rgbCamera{};
-
-    // 双目 cam0 / cam1：model + [fx, fy] + [cx, cy] + 4 项畸变
-    GripperStereoCameraBlock stereoCam0{};
-    GripperStereoCameraBlock stereoCam1{};
-
-    // cam0/cam1 -> imu0 外参矩阵、时间偏移与 baseline norm
-    GripperExtrinsicsBlock extrinsics{};
-
-    // IMU0：update_rate、acc/gyro discrete noise density、random walk
-    GripperImuBlock imu0{};
-
-    // 残差统计：cam0/cam1 reprojection 与 imu gyro/acc 的 mean/median/stddev
-    GripperResidualsBlock residuals{};
-
-    // 预留扩展：保持 1024-byte 固定对齐，不改变现有块偏移
-    uint8_t reserved[592] = {};
+    GripperForceCalibrationBlock force{};
+    uint8_t reserved[kCalibrationPayloadSize - sizeof(GripperCalibrationHeader) -
+                     sizeof(GripperForceCalibrationBlock)] = {};
 };
 
 #pragma pack(pop)
@@ -119,40 +68,13 @@ struct GripperCalibrationDataV1
 using GripperSerialNumber = std::array<char, kSerialNumberFieldLength>;
 
 static_assert(sizeof(GripperCalibrationHeader) == 32, "GripperCalibrationHeader must be 32 bytes");
-static_assert(sizeof(GripperRgbCameraBlock) == 48, "GripperRgbCameraBlock must be 48 bytes");
-static_assert(sizeof(GripperStereoCameraBlock) == 48, "GripperStereoCameraBlock must be 48 bytes");
-static_assert(sizeof(GripperExtrinsicsBlock) == 160, "GripperExtrinsicsBlock must be 160 bytes");
-static_assert(sizeof(GripperImuBlock) == 32, "GripperImuBlock must be 32 bytes");
-static_assert(sizeof(GripperStatisticsBlock) == 16, "GripperStatisticsBlock must be 16 bytes");
-static_assert(sizeof(GripperResidualsBlock) == 64, "GripperResidualsBlock must be 64 bytes");
-static_assert(sizeof(GripperCalibrationDataV1) == kCalibrationPayloadSize,
-              "GripperCalibrationDataV1 must be exactly 1024 bytes");
-
-constexpr size_t kCalibrationOffsetHeader = 0x000;
-constexpr size_t kCalibrationOffsetRgbCamera = 0x020;
-constexpr size_t kCalibrationOffsetStereoCam0 = 0x050;
-constexpr size_t kCalibrationOffsetStereoCam1 = 0x080;
-constexpr size_t kCalibrationOffsetExtrinsics = 0x0B0;
-constexpr size_t kCalibrationOffsetImu0 = 0x150;
-constexpr size_t kCalibrationOffsetResiduals = 0x170;
-constexpr size_t kCalibrationOffsetReserved = 0x1B0;
-
-static_assert(offsetof(GripperCalibrationDataV1, header) == 0, "header offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, rgbCamera) == 32, "rgbCamera offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, stereoCam0) == 80, "stereoCam0 offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, stereoCam1) == 128, "stereoCam1 offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, extrinsics) == 176, "extrinsics offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, imu0) == 336, "imu0 offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, residuals) == 368, "residuals offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, reserved) == 432, "reserved offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, header) == kCalibrationOffsetHeader, "header const offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, rgbCamera) == kCalibrationOffsetRgbCamera, "rgbCamera const offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, stereoCam0) == kCalibrationOffsetStereoCam0, "stereoCam0 const offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, stereoCam1) == kCalibrationOffsetStereoCam1, "stereoCam1 const offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, extrinsics) == kCalibrationOffsetExtrinsics, "extrinsics const offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, imu0) == kCalibrationOffsetImu0, "imu0 const offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, residuals) == kCalibrationOffsetResiduals, "residuals const offset mismatch");
-static_assert(offsetof(GripperCalibrationDataV1, reserved) == kCalibrationOffsetReserved, "reserved const offset mismatch");
+static_assert(sizeof(GripperForceCalibrationBlock) == 64,
+              "GripperForceCalibrationBlock must be 64 bytes");
+static_assert(sizeof(GripperCalibrationData) == kCalibrationPayloadSize,
+              "GripperCalibrationData must be exactly 1024 bytes");
+static_assert(offsetof(GripperCalibrationData, header) == 0x000, "header offset mismatch");
+static_assert(offsetof(GripperCalibrationData, force) == 0x020, "force offset mismatch");
+static_assert(offsetof(GripperCalibrationData, reserved) == 0x060, "reserved offset mismatch");
 
 inline bool isPrintableSerialChar(char value)
 {
@@ -190,16 +112,97 @@ inline std::string decodeSerialNumber(const GripperSerialNumber &serial)
     return std::string(serial.data(), length);
 }
 
-inline GripperCalibrationDataV1 makeDefaultCalibrationDataV1()
+inline uint32_t calculateCalibrationCrc32(const uint8_t *data, size_t size)
 {
-    GripperCalibrationDataV1 data;
-    data.header.validFields = kCalibrationValidRgbCamera |
-                              kCalibrationValidStereoCam0 |
-                              kCalibrationValidStereoCam1 |
-                              kCalibrationValidExtrinsics |
-                              kCalibrationValidImu |
-                              kCalibrationValidResiduals;
-    return data;
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t index = 0; index < size; ++index)
+    {
+        crc ^= data[index];
+        for (int bit = 0; bit < 8; ++bit)
+        {
+            crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+        }
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
+
+inline uint32_t calculateForceCalibrationCrc32(const GripperForceCalibrationBlock &force)
+{
+    return calculateCalibrationCrc32(
+        reinterpret_cast<const uint8_t *>(&force), offsetof(GripperForceCalibrationBlock, crc32));
+}
+
+inline bool isForceCalibrationPayload(const GripperCalibrationData &data)
+{
+    return std::memcmp(data.header.magic, "UCAL", 4) == 0 &&
+           data.header.dataFormatVersion == kCalibrationDataFormatVersionForceV1 &&
+           data.header.headerSize == sizeof(GripperCalibrationHeader) &&
+           data.header.payloadSize >= sizeof(GripperCalibrationHeader) + sizeof(GripperForceCalibrationBlock) &&
+           (data.header.validFields & kCalibrationValidForceSensor) != 0 &&
+           std::memcmp(data.force.magic, "FCAL", 4) == 0 &&
+           data.force.blockVersion == 1 &&
+           data.force.blockSize == sizeof(GripperForceCalibrationBlock) &&
+           (data.force.flags & kForceCalibrationValid) != 0 &&
+           data.force.referenceMassMg > 0 &&
+           data.force.referenceRaw != data.force.zeroRaw &&
+           data.force.crc32 == calculateForceCalibrationCrc32(data.force);
+}
+
+inline bool forceCalibrationMatchesSerialNumber(const GripperCalibrationData &data,
+                                                const std::string &serialNumber)
+{
+    GripperSerialNumber encoded{};
+    return encodeSerialNumber(serialNumber, &encoded) && data.force.serialNumber == encoded;
+}
+
+inline bool makeForceCalibrationData(const std::string &serialNumber,
+                                     int32_t zeroRaw,
+                                     int32_t referenceRaw,
+                                     uint32_t referenceMassMg,
+                                     uint32_t calibratedAtUnixSeconds,
+                                     GripperCalibrationData *data)
+{
+    if (data == nullptr || referenceRaw == zeroRaw || referenceMassMg == 0)
+    {
+        return false;
+    }
+
+    GripperSerialNumber encoded{};
+    if (!encodeSerialNumber(serialNumber, &encoded))
+    {
+        return false;
+    }
+
+    GripperCalibrationData value{};
+    value.header.dataFormatVersion = kCalibrationDataFormatVersionForceV1;
+    value.header.payloadSize = static_cast<uint16_t>(sizeof(GripperCalibrationHeader) +
+                                                     sizeof(GripperForceCalibrationBlock));
+    value.header.headerSize = static_cast<uint16_t>(sizeof(GripperCalibrationHeader));
+    value.header.validFields = kCalibrationValidForceSensor;
+    value.force.serialNumber = encoded;
+    value.force.zeroRaw = zeroRaw;
+    value.force.referenceRaw = referenceRaw;
+    value.force.referenceMassMg = referenceMassMg;
+    value.force.flags = kForceCalibrationValid;
+    value.force.calibratedAtUnixSeconds = calibratedAtUnixSeconds;
+    value.force.crc32 = calculateForceCalibrationCrc32(value.force);
+    *data = value;
+    return true;
+}
+
+inline bool forceMassMg(const GripperCalibrationData &data, int32_t raw, int64_t *massMg)
+{
+    if (massMg == nullptr || !isForceCalibrationPayload(data))
+    {
+        return false;
+    }
+
+    const int64_t numerator = (static_cast<int64_t>(raw) - static_cast<int64_t>(data.force.zeroRaw)) *
+                              static_cast<int64_t>(data.force.referenceMassMg);
+    const int64_t denominator = static_cast<int64_t>(data.force.referenceRaw) -
+                                static_cast<int64_t>(data.force.zeroRaw);
+    *massMg = numerator / denominator;
+    return true;
 }
 
 }  // namespace gripper_hmi

@@ -5,9 +5,7 @@ import argparse
 import os
 import shutil
 import re
-import subprocess
 import sys
-import tempfile
 import time
 import zipfile
 from dataclasses import dataclass
@@ -18,7 +16,7 @@ from xml.etree import ElementTree as ET
 SCRIPT_DIR = Path(__file__).resolve().parent
 TOOLKIT_DIRS = [
     SCRIPT_DIR,
-    SCRIPT_DIR.parents[0] / "src" / "gripper_hmi" / "test",
+    SCRIPT_DIR.parents[0] / "scripts" / "lib",
 ]
 for toolkit_dir in TOOLKIT_DIRS:
     if str(toolkit_dir) not in sys.path:
@@ -37,15 +35,10 @@ ANSI_RED = "\033[31m"
 ANSI_GREEN = "\033[32m"
 ANSI_YELLOW = "\033[33m"
 ANSI_CYAN = "\033[36m"
-CALIB_PAYLOAD_SIZE = 1024
 HMI_PROBE_ROUNDS = 4
 HMI_PROBE_ROUND_INTERVAL_S = 0.35
 
 XLSX_SN_HEADER_KEYWORDS = ("sn", "sn码", "序列号", "serial")
-CALIB_BIN_SUFFIXES = (".bin",)
-SUMMARY_KEYWORDS = ("summary", "imucam")
-RAW_CAMCHAIN_NAMES = ("rgb_video_ros-camchain.yaml", "rgb_video_ros-camchain.yml")
-RAW_IMUCAM_NAME = "output-results-imucam.txt"
 
 
 def colorize(text: str, color: str) -> str:
@@ -244,95 +237,6 @@ def locate_xlsx_files(paths: list[str], search_root: Path) -> list[Path]:
     return [path.resolve() for path in cwd_candidates]
 
 
-def locate_calibration_source(sn: str, calib_root: Path) -> Path | None:
-    lowered_sn = sn.lower()
-    if not calib_root.exists():
-        return None
-
-    direct_dir = calib_root / lowered_sn
-    if direct_dir.is_dir():
-        direct = locate_calibration_source_inside_dir(direct_dir)
-        if direct is not None:
-            return direct
-
-    for candidate in sorted(calib_root.rglob("*")):
-        if lowered_sn not in candidate.name.lower():
-            continue
-        if candidate.is_file() and candidate.suffix.lower() in CALIB_BIN_SUFFIXES:
-            return candidate
-        if candidate.is_dir():
-            direct = locate_calibration_source_inside_dir(candidate)
-            if direct is not None:
-                return direct
-
-    for candidate in sorted(calib_root.rglob("*")):
-        candidate_text = str(candidate).lower()
-        if lowered_sn not in candidate_text:
-            continue
-        if candidate.is_file() and candidate.suffix.lower() in CALIB_BIN_SUFFIXES:
-            return candidate
-        if candidate.is_file() and candidate.suffix.lower() == ".md":
-            return candidate
-
-    return None
-
-
-def locate_calibration_source_inside_dir(directory: Path) -> Path | None:
-    bins = sorted(path for path in directory.iterdir() if path.is_file() and path.suffix.lower() in CALIB_BIN_SUFFIXES)
-    if bins:
-        return bins[0]
-
-    summaries = sorted(
-        path
-        for path in directory.iterdir()
-        if path.is_file()
-        and path.suffix.lower() == ".md"
-        and all(keyword in path.name.lower() for keyword in SUMMARY_KEYWORDS)
-    )
-    if summaries:
-        return summaries[0]
-
-    camchains = [directory / name for name in RAW_CAMCHAIN_NAMES if (directory / name).is_file()]
-    imucam = directory / RAW_IMUCAM_NAME
-    if camchains and imucam.is_file():
-        return directory
-    return None
-
-
-def build_calibration_bin(source: Path) -> bytes:
-    if source.is_file() and source.suffix.lower() == ".bin":
-        raw = source.read_bytes()
-    else:
-        candidate_generators = [
-            Path(__file__).resolve().with_name("generate_gripper_calibration_bin.py"),
-            Path(__file__).resolve().parents[1] / "auto_calibration" / "generate_gripper_calibration_bin.py",
-        ]
-        generator = next((path for path in candidate_generators if path.is_file()), None)
-        if generator is None:
-            raise RuntimeError("未找到 generate_gripper_calibration_bin.py，请把它放在脚本同目录")
-        with tempfile.TemporaryDirectory(prefix="hmi_sn_writer_") as temp_dir:
-            output_path = Path(temp_dir) / "calibration.bin"
-            command = [
-                sys.executable,
-                str(generator),
-                "--output-bin",
-                str(output_path),
-            ]
-            if source.is_dir():
-                command.extend(["--input", str(source)])
-            else:
-                command.extend(["--input", str(source)])
-            result = subprocess.run(command, capture_output=True, text=True, cwd=generator.parent)
-            if result.returncode != 0:
-                stderr = result.stderr.strip() or result.stdout.strip() or "unknown error"
-                raise RuntimeError(f"生成标定 bin 失败: {stderr}")
-            raw = output_path.read_bytes()
-
-    if len(raw) != CALIB_PAYLOAD_SIZE:
-        raise RuntimeError(f"标定 bin 大小不正确: {len(raw)}，期望 {CALIB_PAYLOAD_SIZE}")
-    return raw
-
-
 def helper_read_sn(port: str) -> str:
     with GripperHmiClient(ClientOptions(port=port)) as client:
         raw_sn = client.read_serial_number()
@@ -350,19 +254,6 @@ def helper_write_sn(port: str, sn: str) -> None:
     print_info(f"SN 写入 ACK: {ack_summary.to_text()}")
 
 
-def helper_write_calibration(port: str, calib_bin_path: Path) -> None:
-    with GripperHmiClient(ClientOptions(port=port)) as client:
-        client.write_calibration(calib_bin_path.read_bytes())
-
-
-def helper_read_calibration_dump(port: str) -> bytes:
-    with GripperHmiClient(ClientOptions(port=port)) as client:
-        raw = client.read_calibration()
-    if len(raw) != CALIB_PAYLOAD_SIZE:
-        raise RuntimeError(f"读回标定大小不正确: {len(raw)}，期望 {CALIB_PAYLOAD_SIZE}")
-    return raw
-
-
 def overwrite_sn_with_verify(port: str, target_sn: str, max_attempts: int = 4) -> str:
     last_error = "unknown"
     for attempt in range(1, max_attempts + 1):
@@ -377,17 +268,6 @@ def overwrite_sn_with_verify(port: str, target_sn: str, max_attempts: int = 4) -
             last_error = str(exc)
             time.sleep(0.25)
     raise RuntimeError(f"SN 覆盖写入失败，重试 {max_attempts} 次后仍未成功: {last_error}")
-
-
-def write_calibration_with_verify(port: str, target_sn: str, calibration_payload: bytes) -> None:
-    with tempfile.TemporaryDirectory(prefix="hmi_sn_writer_apply_") as temp_dir:
-        calib_bin_path = Path(temp_dir) / f"{target_sn}.bin"
-        calib_bin_path.write_bytes(calibration_payload)
-        helper_write_calibration(port, calib_bin_path)
-        time.sleep(0.25)
-        readback = helper_read_calibration_dump(port)
-    if readback != calibration_payload:
-        raise RuntimeError("标定写入后读回校验失败，读回内容与目标 bin 不一致")
 
 
 @dataclass
@@ -497,7 +377,7 @@ def validate_sn_fragment(fragment: str) -> bool:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="连续向夹爪 HMI 写入 SN 和可选标定文件。默认扫描脚本同目录下的 xlsx 和 ./ugripper_calib。"
+        description="连续向夹爪 HMI 写入并校验 SN；力传感器标定由 HMI 监视/标定工具单独完成。"
     )
     parser.add_argument("--xlsx", nargs="*", default=[], help="一个或多个 xlsx 文件路径")
     parser.add_argument(
@@ -508,13 +388,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--calib-root",
         default=None,
-        help="默认使用脚本所在目录下的 ./ugripper_calib；其中以 ./ugripper_calib/<sn>/ 组织标定目录",
+        help="已弃用；相机/IMU 标定不再写入 HMI payload",
     )
     parser.add_argument("--baudrate", type=int, default=115200, help="HMI 串口波特率")
     parser.add_argument(
         "--skip-calibration",
         action="store_true",
-        help="只写 SN，不写标定文件",
+        help="兼容旧命令；当前始终只写 SN",
     )
     parser.add_argument(
         "--force-sn",
@@ -526,7 +406,6 @@ def parse_args() -> argparse.Namespace:
 
 def build_delivery_readme(delivery_dir: Path) -> str:
     script_name = "hmi_sn_batch_writer.py"
-    calib_backfill_script = "hmi_calibration_backfill.py"
     port_scan_text = (
         "- Linux: 遍历 `/dev/ttyCH9344USB*`、`/dev/ttyUSB*`、`/dev/ttyACM*`\n"
         "- Windows: 仅遍历当前系统中识别为 `WCH USB-SERIAL Ch... (COMx)` 的端口"
@@ -535,42 +414,20 @@ def build_delivery_readme(delivery_dir: Path) -> str:
 
 ## 目录约定
 - 将表格 `.xlsx` 与 `{script_name}` 放在同一目录
-- 标定目录固定为 `./ugripper_calib/<sn>/`
 - HMI Python 驱动固定为同目录下的 `gripper_hmi_toolkit.py`
-- 标定 bin 生成器固定为同目录下的 `generate_gripper_calibration_bin.py`
+- 本工具只写入并校验 SN，不读取或改写 HMI 力标定 payload
 
 ## 典型目录
 ```text
 {delivery_dir.name}/
   {script_name}
-  {calib_backfill_script}
   gripper_hmi_toolkit.py
-  generate_gripper_calibration_bin.py
   *.xlsx
-  ugripper_calib/
-    <sn>/
-      rgb_video_ros-camchain.yaml
-      output-results-imucam.txt
 ```
 
 ## 用法
 ```bash
 python3 {script_name}
-```
-
-## 补写标定
-- 若第一次只写了 SN，后续补齐了 `./ugripper_calib/<sn>/` 下的标定文件，可使用：
-```bash
-python3 {calib_backfill_script}
-```
-- 该脚本会遍历串口，读取当前已写 SN，若存在对应标定源则直接补写，并做读回校验。
-- 可选仅处理指定串口：
-```bash
-python3 {calib_backfill_script} --ports /dev/ttyCH9344USB0 /dev/ttyCH9344USB8
-```
-- 可选仅处理特定 SN 前缀：
-```bash
-python3 {calib_backfill_script} --require-sn-prefix DAG911
 ```
 
 ## 交互规则
@@ -579,14 +436,12 @@ python3 {calib_backfill_script} --require-sn-prefix DAG911
 {port_scan_text}
 - 输入任意连续片段，但长度必须 >= 4
 - 若匹配到多个 SN，会报错并要求重新输入
-- 若匹配到唯一 SN 且存在标定源，会直接开始：
+- 若匹配到唯一 SN，会直接开始：
   1. 覆盖 SN
   2. 回读确认 SN
-  3. 写入标定
-  4. 读回标定并与目标 bin 比对
+- 已有 HMI 力标定 payload 保持不变
 
-## 无标定源只写 SN
-- 表格内唯一匹配到目标 SN 时，默认允许只写 SN
+## 特殊指定 SN
 - 若要写入一个表格中不存在的完整 SN，使用：
 ```bash
 python3 {script_name} --force-sn <完整SN>
@@ -603,23 +458,13 @@ def create_delivery_bundle(project_root: Path) -> Path:
 
     copies = [
         (project_root / "py_script" / "hmi_sn_batch_writer.py", delivery_dir / "hmi_sn_batch_writer.py"),
-        (project_root / "py_script" / "hmi_calibration_backfill.py", delivery_dir / "hmi_calibration_backfill.py"),
-        (project_root / "src" / "gripper_hmi" / "test" / "gripper_hmi_toolkit.py", delivery_dir / "gripper_hmi_toolkit.py"),
-        (
-            project_root / "auto_calibration" / "generate_gripper_calibration_bin.py",
-            delivery_dir / "generate_gripper_calibration_bin.py",
-        ),
+        (project_root / "scripts" / "lib" / "gripper_hmi_toolkit.py", delivery_dir / "gripper_hmi_toolkit.py"),
         (project_root / "内部v2爪2026-03-10_19-14_G9_SN码.xlsx", delivery_dir / "内部v2爪2026-03-10_19-14_G9_SN码.xlsx"),
         (project_root / "联想v2爪2026-03-11_13-45_G9_SN码.xlsx", delivery_dir / "联想v2爪2026-03-11_13-45_G9_SN码.xlsx"),
     ]
     for source, target in copies:
         if source.is_file():
             shutil.copy2(source, target)
-
-    calib_source_root = project_root / "tmp" / "ugripper_calib" / "ugripper_calib"
-    calib_target_root = delivery_dir / "ugripper_calib"
-    if calib_source_root.is_dir():
-        shutil.copytree(calib_source_root, calib_target_root, dirs_exist_ok=True)
 
     readme_path = delivery_dir / "README.md"
     readme_path.write_text(build_delivery_readme(delivery_dir), encoding="utf-8")
@@ -630,9 +475,7 @@ def main() -> int:
     args = parse_args()
     script_path = Path(__file__).resolve()
     bundle_root = script_path.parent
-    project_root = script_path.parents[1]
     search_root = Path(args.search_root).expanduser().resolve() if args.search_root else bundle_root
-    calib_root = Path(args.calib_root).expanduser().resolve() if args.calib_root else bundle_root / "ugripper_calib"
     forced_sn = normalize_sn(args.force_sn) if args.force_sn else ""
 
     xlsx_paths = locate_xlsx_files(args.xlsx, search_root)
@@ -651,7 +494,7 @@ def main() -> int:
             print(f"  - {xlsx_path}")
     else:
         print_warn("未加载任何表格，将仅允许通过 --force-sn 指定完整 SN 写入。")
-    print_info(f"标定搜索目录: {calib_root}")
+    print_info("HMI payload 仅保留 SN 绑定的力传感器标定，本工具不会改写该 payload。")
 
     while True:
         first_input = input(
@@ -685,44 +528,16 @@ def main() -> int:
         if not target_sn:
             continue
 
-        calibration_source = None if args.skip_calibration else locate_calibration_source(target_sn, calib_root)
-        calibration_payload = None
-        if calibration_source is not None:
-            try:
-                calibration_payload = build_calibration_bin(calibration_source)
-            except Exception as exc:
-                print_warn(f"找到标定源但生成失败，将只写 SN。原因: {exc}")
-                calibration_source = None
-                calibration_payload = None
-
         print_info(f"唯一匹配到目标 SN: {target_sn}")
         if target is not None:
             print(f"  来源: {target.source_file.name}/{target.sheet_name}#{target.row_index}")
         else:
             print(f"  来源: 特殊指定 SN (--force-sn)")
-        if calibration_source is not None:
-            print(f"  标定源: {calibration_source}")
-        else:
-            print_warn("  未找到对应标定文件。")
-
-        if calibration_source is not None:
-            print_info("检测到匹配标定源，按当前 HMI 驱动逻辑直接开始写入，不再额外确认。")
-        else:
-            if target is None:
-                print_warn("当前为特殊指定 SN，且未找到标定源，将仅覆盖写入 SN。")
-            else:
-                print_warn("未找到标定源，将仅覆盖写入 SN。")
+        print_info("相机/IMU 标定保存在相机模组；本工具不会改写 HMI 力标定 payload。")
 
         try:
             verify_sn = overwrite_sn_with_verify(probe.port, target_sn)
-            if calibration_payload is not None:
-                write_calibration_with_verify(probe.port, target_sn, calibration_payload)
-
-            action_text = f"写入成功 SN={target_sn} SN=已覆盖并校验"
-            if calibration_payload is not None:
-                action_text += " 标定=已写入并读回校验"
-            else:
-                action_text += " 标定=不存在/未写入"
+            action_text = f"写入成功 SN={target_sn} SN=已覆盖并校验 HMI力标定=未改写"
             print_success(action_text)
             print_success(f"回读 SN: {verify_sn}")
         except Exception as exc:

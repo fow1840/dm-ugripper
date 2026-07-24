@@ -7,6 +7,7 @@ import os
 import struct
 import sys
 import time
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
@@ -26,6 +27,11 @@ CALIBRATION_PAYLOAD_SIZE = 1024
 CALIBRATION_CHUNK_SIZE = 16
 CALIBRATION_CHUNK_COUNT = CALIBRATION_PAYLOAD_SIZE // CALIBRATION_CHUNK_SIZE
 CALIBRATION_HEADER_CHUNK_COUNT = 2
+CALIBRATION_HEADER_SIZE = 32
+FORCE_CALIBRATION_BLOCK_SIZE = 64
+FORCE_CALIBRATION_DATA_FORMAT_VERSION = 0x00020000
+FORCE_CALIBRATION_VALID_FIELD = 1 << 0
+FORCE_CALIBRATION_VALID_FLAG = 1 << 0
 STATUS_FRAME_LENGTH = 8
 RAW_DATA_FRAME_HEAD = b"\xA5\xA5"
 SEND_FRAME_HEAD = b"\x5A\x5A"
@@ -162,6 +168,109 @@ def decode_serial_number(encoded: bytes) -> str:
     if len(serial_number) == 32 and serial_number[:16] == serial_number[16:]:
         return serial_number[:16]
     return serial_number
+
+
+@dataclass(frozen=True)
+class ForceCalibrationSummary:
+    serial_number: str
+    zero_raw: int
+    reference_raw: int
+    reference_mass_mg: int
+    flags: int
+    calibrated_at_unix_s: int
+    crc32: int
+    crc32_calculated: int
+
+
+def parse_force_calibration_payload(
+    payload: bytes,
+    expected_serial_number: Optional[str] = None,
+) -> ForceCalibrationSummary:
+    if len(payload) != CALIBRATION_PAYLOAD_SIZE:
+        raise RuntimeError(
+            f"invalid calibration size: {len(payload)}, expected {CALIBRATION_PAYLOAD_SIZE}"
+        )
+
+    magic, version, payload_size, header_size, valid_fields = struct.unpack(
+        "<4sIHHI", payload[:16]
+    )
+    if magic != b"UCAL":
+        raise RuntimeError("calibration payload has invalid UCAL magic")
+    if version != FORCE_CALIBRATION_DATA_FORMAT_VERSION:
+        raise RuntimeError(
+            f"calibration payload is not force V1 format: 0x{version:08x}"
+        )
+    if header_size != CALIBRATION_HEADER_SIZE:
+        raise RuntimeError(f"invalid calibration header size: {header_size}")
+    if payload_size < CALIBRATION_HEADER_SIZE + FORCE_CALIBRATION_BLOCK_SIZE:
+        raise RuntimeError(f"force calibration payload is too short: {payload_size}")
+    if not valid_fields & FORCE_CALIBRATION_VALID_FIELD:
+        raise RuntimeError("force calibration valid field is not set")
+
+    block = payload[CALIBRATION_HEADER_SIZE:CALIBRATION_HEADER_SIZE + FORCE_CALIBRATION_BLOCK_SIZE]
+    (
+        block_magic,
+        block_version,
+        block_size,
+        serial_field,
+        zero_raw,
+        reference_raw,
+        reference_mass_mg,
+        flags,
+        calibrated_at_unix_s,
+        stored_crc32,
+    ) = struct.unpack("<4sHH32siiIIII", block)
+    calculated_crc32 = zlib.crc32(block[:-4]) & 0xFFFFFFFF
+
+    if block_magic != b"FCAL":
+        raise RuntimeError("force calibration block has invalid FCAL magic")
+    if block_version != 1:
+        raise RuntimeError(f"unsupported force calibration block version: {block_version}")
+    if block_size != FORCE_CALIBRATION_BLOCK_SIZE:
+        raise RuntimeError(f"invalid force calibration block size: {block_size}")
+    if not flags & FORCE_CALIBRATION_VALID_FLAG:
+        raise RuntimeError("force calibration valid flag is not set")
+    if reference_mass_mg == 0:
+        raise RuntimeError("force calibration reference mass must be positive")
+    if reference_raw == zero_raw:
+        raise RuntimeError("force calibration reference raw must differ from zero raw")
+    if stored_crc32 != calculated_crc32:
+        raise RuntimeError(
+            f"force calibration CRC mismatch: stored=0x{stored_crc32:08x} "
+            f"calculated=0x{calculated_crc32:08x}"
+        )
+
+    serial_number = decode_serial_number(serial_field)
+    if encode_serial_number(serial_number) != serial_field:
+        raise RuntimeError("force calibration SN is not canonical printable ASCII/NUL padding")
+    if expected_serial_number is not None and serial_field != encode_serial_number(expected_serial_number):
+        raise RuntimeError(
+            f"force calibration SN mismatch: payload={serial_number} gripper={expected_serial_number}"
+        )
+
+    return ForceCalibrationSummary(
+        serial_number=serial_number,
+        zero_raw=zero_raw,
+        reference_raw=reference_raw,
+        reference_mass_mg=reference_mass_mg,
+        flags=flags,
+        calibrated_at_unix_s=calibrated_at_unix_s,
+        crc32=stored_crc32,
+        crc32_calculated=calculated_crc32,
+    )
+
+
+def print_force_calibration_summary(summary: ForceCalibrationSummary) -> None:
+    print("calibration.kind=force_sensor")
+    print("force.valid=yes")
+    print(f"force.serial_number={summary.serial_number}")
+    print(f"force.zero_raw={summary.zero_raw}")
+    print(f"force.reference_raw={summary.reference_raw}")
+    print(f"force.reference_mass_mg={summary.reference_mass_mg}")
+    print(f"force.flags=0x{summary.flags:08x}")
+    print(f"force.calibrated_at_unix_s={summary.calibrated_at_unix_s}")
+    print(f"force.crc32=0x{summary.crc32:08x}")
+    print(f"force.crc32_calculated=0x{summary.crc32_calculated:08x}")
 
 
 def build_write_sn_frame(chunk: bytes) -> bytes:
@@ -1028,12 +1137,20 @@ def main() -> int:
                 print(f"calibration.payload_size={payload_size}")
                 print(f"calibration.header_size={header_size}")
                 print(f"calibration.valid_fields=0x{valid_fields:08x}")
+                if version == FORCE_CALIBRATION_DATA_FORMAT_VERSION:
+                    print_force_calibration_summary(parse_force_calibration_payload(payload))
+                elif version == 0x00010000:
+                    print("calibration.kind=legacy_camera_imu_ignored")
                 if args.dump_calib_bin:
                     Path(args.dump_calib_bin).write_bytes(payload)
                 return 0
             payload = Path(args.write_calib_bin).read_bytes()
+            serial_number = client.read_serial_number()
+            summary = parse_force_calibration_payload(payload, serial_number)
             client.write_calibration(payload)
             print("write-calib ok")
+            print_force_calibration_summary(summary)
+            print("force.sn_match=yes")
             return 0
     except Exception as exc:
         print(str(exc), file=sys.stderr)

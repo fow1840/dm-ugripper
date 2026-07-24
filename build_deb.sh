@@ -435,6 +435,13 @@ copy_first_existing "$TARGET_INSTALL_ROOT/bin/CameraRecorder/main_camera_xu_tool
     "$PACKAGED_BUILD_DIR/standalone/CameraRecorder/main_camera_xu_tool"
 copy_first_existing "$TARGET_INSTALL_ROOT/bin/GripperHmiTool/GripperHmiTool" \
     "$PACKAGED_BUILD_DIR/standalone/GripperHmiTool/GripperHmiTool"
+copy_if_exists "standalone/GripperHmiTool/gripper_hmi_lux_monitor.sh" \
+    "$TARGET_INSTALL_ROOT/bin/GripperHmiTool/gripper_hmi_lux_monitor.sh"
+copy_if_exists "test/scripts/board_gripper_hmi_dashboard.py" \
+    "$TARGET_INSTALL_ROOT/bin/GripperHmiTool/gripper_hmi_dashboard.py"
+if [ -f "$TARGET_INSTALL_ROOT/bin/GripperHmiTool/gripper_hmi_dashboard.py" ]; then
+    chmod 755 "$TARGET_INSTALL_ROOT/bin/GripperHmiTool/gripper_hmi_dashboard.py"
+fi
 copy_first_existing "$TARGET_INSTALL_ROOT/bin/UgripperRuntime/UgripperRuntime" \
     "$PACKAGED_BUILD_DIR/standalone/UgripperRuntime/UgripperRuntime"
 copy_first_existing "$TARGET_INSTALL_ROOT/bin/FaysStereoRecorder/fays_record_example" \

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 扩展夹爪 HMI 协议：支持压力 `0x30` 与环境光 `0x31` 上报，压力按有符号 32 位值解析；运行时增加低频压力强制刷新及起录前超时重试，运行时 lux 保持只消费设备上报；新增补光灯 `0x32/0x01` PWM 控制、压力压测脚本和 `GripperHmiTool --monitor-lux` 实时终端入口，其中监视工具按约 `5Hz` 主动读取 lux 并同步显示最新压力；V3 包的 metadata 默认写入 `hardware_version=V3`。
+- 新增随主包安装的左右 HMI 双列现场仪表盘：按左 `KEY4`、右 `KEY3` 判断 Pogo 闭合状态并汇总相对位姿是否固定；压力支持每侧独立零点与标准重量两点标定，写入夹爪后实时显示等效负载 `kgf` 和力 `N`，lux 保持只监听固件自动上报。
+- HMI 标定 payload 收口为与现有 32-byte SN 绑定的简化力传感器两点标定；保留原 UCAL header、1024-byte 传输和 SN 读写协议，新增 CRC 与读回校验，C++/Python raw 写入口拒绝旧格式、损坏或 SN 不匹配的 payload，并停止相机/双目/IMU 导入流程覆盖 HMI payload。
 - 适配 V3 RK3588 USB 拓扑：补充左右嵌套 USB2 hub 的主相机与触觉相机固定 symlink 规则，保留既有 V2/V2.5 路径兼容。
 - 新增构建期开关 `UGRIPPER_ENABLE_STEREO`，默认 `ON` 并沿用普通版本/包名；显式设为 `OFF` 时生成 `+nostereo` 包变体，运行时不启动 Fays daemon、不检查 stereo/Fays 健康、不执行双目 session/finalize，也不生成或校验 `stereo_left/right.mkv` 与 `fays_data_left/right.mcap`。该开关不提供 `/etc/environment`、`config.txt` 或命令行运行时覆盖。
 - HMI 物理按键在动作状态机前新增按下、松开各 `40ms` 的双向稳定滤波，过滤短暂电平毛刺；原有 `80ms` 短按动作间隔保持不变。

@@ -248,10 +248,15 @@ void GripperHmiDriver::logIoSummaryLocked(const char *reason, uint64_t nowMs)
         << " reason=" << sanitizeDiagValue(reason != nullptr ? reason : "periodic")
         << " tx_led=" << txLedCount_.load()
         << " tx_beep=" << txBeepCount_.load()
+        << " tx_fill_light=" << txFillLightCount_.load()
         << " tx_state_req=" << txStateRequestCount_.load()
+        << " tx_pressure_req=" << txPressureRequestCount_.load()
+        << " tx_ambient_light_req=" << txAmbientLightRequestCount_.load()
         << " rx_frames=" << rxFrameCount_.load()
         << " rx_key_reports=" << rxKeyReportCount_.load()
         << " rx_beep_states=" << rxBeepStateCount_.load()
+        << " rx_pressure_reports=" << rxPressureReportCount_.load()
+        << " rx_ambient_light_reports=" << rxAmbientLightReportCount_.load()
         << " io_failures=" << ioFailureCount_.load()
         << " connect_success=" << connectSuccessCount_.load()
         << " reconnect_success=" << reconnectSuccessCount_.load()
@@ -381,11 +386,15 @@ bool GripperHmiDriver::connect()
 
     rxBuffer_.clear();
     pendingStateRequest_ = true;
+    pendingPressureRequest_ = false;
+    pendingAmbientLightRequest_ = false;
     pendingLedUpdate_ = false;
     pendingBeepUpdate_ = false;
+    pendingFillLightUpdate_ = false;
     pendingLedColor_ = {};
     pendingBeepState_ = {};
     activeBeepState_ = {};
+    pendingFillLightPwm_ = 0;
     ledEffectEnabled_ = false;
     ledEffectDirty_ = false;
     ledEffect_ = {};
@@ -401,6 +410,10 @@ bool GripperHmiDriver::connect()
         keyPressed_.fill(false);
         beepState_ = {};
         lastKeyReport_.reset();
+        lastPressureReport_.reset();
+        lastAmbientLightReport_.reset();
+        lastPressureReportTimeMs_ = 0;
+        lastAmbientLightReportTimeMs_ = 0;
         lastReceiveTimeMs_ = 0;
         stateGeneration_ = 0;
     }
@@ -411,6 +424,7 @@ bool GripperHmiDriver::connect()
         ++reconnectSuccessCount_;
     }
     resetConnectFailureLogLocked(resolvedPort);
+    connected_.store(true);
     ioRunning_ = true;
     ioThread_ = std::thread(&GripperHmiDriver::ioLoop, this);
     return true;
@@ -418,12 +432,17 @@ bool GripperHmiDriver::connect()
 
 void GripperHmiDriver::disconnect()
 {
+    connected_.store(false);
+    stateCv_.notify_all();
     {
         std::lock_guard<std::mutex> ioLock(ioMutex_);
         ioRunning_ = false;
         pendingStateRequest_ = false;
+        pendingPressureRequest_ = false;
+        pendingAmbientLightRequest_ = false;
         pendingLedUpdate_ = false;
         pendingBeepUpdate_ = false;
+        pendingFillLightUpdate_ = false;
     }
     ioCv_.notify_all();
     if (ioThread_.joinable())
@@ -450,8 +469,7 @@ void GripperHmiDriver::disconnect()
 
 bool GripperHmiDriver::isConnected() const
 {
-    std::lock_guard<std::mutex> ioLock(ioMutex_);
-    return serialPort_ != nullptr;
+    return connected_.load();
 }
 
 bool GripperHmiDriver::writeFrameLocked(const uint8_t *data, size_t size)
@@ -478,12 +496,17 @@ bool GripperHmiDriver::writeFrameLocked(const uint8_t *data, size_t size)
 
 void GripperHmiDriver::handleIoFailureLocked(const char *operation)
 {
+    connected_.store(false);
+    stateCv_.notify_all();
     ++ioFailureCount_;
     logIoSummaryLocked(operation != nullptr ? operation : "io_failure", currentSteadyMs());
     DM_LOG_WARN("{}", (::DA::utils::LogString() << name_ << ": " << operation << " failed on " << port_).str());
     pendingStateRequest_ = false;
+    pendingPressureRequest_ = false;
+    pendingAmbientLightRequest_ = false;
     pendingLedUpdate_ = false;
     pendingBeepUpdate_ = false;
+    pendingFillLightUpdate_ = false;
     ioRunning_ = false;
     if (serialPort_ != nullptr)
     {
@@ -504,6 +527,60 @@ bool GripperHmiDriver::requestState()
     pendingStateRequest_ = true;
     ioCv_.notify_one();
     return true;
+}
+
+bool GripperHmiDriver::requestPressure()
+{
+    std::lock_guard<std::mutex> ioLock(ioMutex_);
+    if (serialPort_ == nullptr)
+    {
+        return false;
+    }
+    pendingPressureRequest_ = true;
+    ioCv_.notify_one();
+    return true;
+}
+
+bool GripperHmiDriver::requestAmbientLight()
+{
+    std::lock_guard<std::mutex> ioLock(ioMutex_);
+    if (serialPort_ == nullptr)
+    {
+        return false;
+    }
+    pendingAmbientLightRequest_ = true;
+    ioCv_.notify_one();
+    return true;
+}
+
+bool GripperHmiDriver::refreshPressureReport(int timeoutMs, int maxAttempts)
+{
+    if (timeoutMs <= 0 || maxAttempts <= 0)
+    {
+        return false;
+    }
+
+    for (int attempt = 0; attempt < maxAttempts; ++attempt)
+    {
+        const uint64_t previousCount = rxPressureReportCount_.load();
+        if (!requestPressure())
+        {
+            return false;
+        }
+
+        std::unique_lock<std::mutex> stateLock(stateMutex_);
+        if (stateCv_.wait_for(stateLock, std::chrono::milliseconds(timeoutMs), [this, previousCount]() {
+                return rxPressureReportCount_.load() > previousCount || !connected_.load();
+            }))
+        {
+            if (rxPressureReportCount_.load() > previousCount)
+            {
+                return true;
+            }
+            return false;
+        }
+    }
+    return false;
 }
 
 bool GripperHmiDriver::setLedColor(const GripperLedColor &color)
@@ -571,6 +648,24 @@ bool GripperHmiDriver::setBeepEnabled(bool enabled)
 bool GripperHmiDriver::silenceBeep()
 {
     return setBeepState(GripperBeepState{0, 0});
+}
+
+bool GripperHmiDriver::setFillLightPwm(uint16_t pwm)
+{
+    if (pwm > GripperHmiProtocol::kMaxFillLightPwm)
+    {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> ioLock(ioMutex_);
+    if (serialPort_ == nullptr)
+    {
+        return false;
+    }
+    pendingFillLightPwm_ = pwm;
+    pendingFillLightUpdate_ = true;
+    ioCv_.notify_one();
+    return true;
 }
 
 bool GripperHmiDriver::pauseIoThreadForExclusiveCommand(std::unique_lock<std::mutex> *ioLock)
@@ -1024,7 +1119,7 @@ bool GripperHmiDriver::readSerialNumber(std::string *serialNumber)
 
 bool GripperHmiDriver::readSerialNumberAndCalibration(std::string *serialNumber,
                                                       bool *hasSerialNumber,
-                                                      gripper_hmi::GripperCalibrationDataV1 *calibrationData)
+                                                      gripper_hmi::GripperCalibrationData *calibrationData)
 {
     if (serialNumber == nullptr || hasSerialNumber == nullptr || calibrationData == nullptr)
     {
@@ -1257,7 +1352,7 @@ bool GripperHmiDriver::writeSerialNumber(const std::string &serialNumber)
     });
 }
 
-bool GripperHmiDriver::readCalibrationData(gripper_hmi::GripperCalibrationDataV1 *calibrationData)
+bool GripperHmiDriver::readCalibrationData(gripper_hmi::GripperCalibrationData *calibrationData)
 {
     if (calibrationData == nullptr)
     {
@@ -1361,7 +1456,7 @@ bool GripperHmiDriver::readSerialNumberLocked(std::string *serialNumber)
     return false;
 }
 
-bool GripperHmiDriver::readCalibrationDataLocked(gripper_hmi::GripperCalibrationDataV1 *calibrationData)
+bool GripperHmiDriver::readCalibrationDataLocked(gripper_hmi::GripperCalibrationData *calibrationData)
 {
     if (calibrationData == nullptr)
     {
@@ -1636,14 +1731,22 @@ bool GripperHmiDriver::readCalibrationDataLocked(gripper_hmi::GripperCalibration
     return true;
 }
 
-bool GripperHmiDriver::writeCalibrationData(const gripper_hmi::GripperCalibrationDataV1 &calibrationData)
+bool GripperHmiDriver::writeCalibrationData(const gripper_hmi::GripperCalibrationData &calibrationData)
 {
-    gripper_hmi::GripperCalibrationDataV1 normalized = calibrationData;
+    gripper_hmi::GripperCalibrationData normalized = calibrationData;
     std::memcpy(normalized.header.magic, "UCAL", 4);
     normalized.header.headerSize = static_cast<uint16_t>(sizeof(gripper_hmi::GripperCalibrationHeader));
-    const uint8_t *raw = reinterpret_cast<const uint8_t *>(&normalized);
-    normalized.header.payloadSize = static_cast<uint16_t>(
-        trimTrailingZeroLength(raw, gripper_hmi::kCalibrationPayloadSize));
+    if (normalized.header.dataFormatVersion == gripper_hmi::kCalibrationDataFormatVersionForceV1)
+    {
+        normalized.header.payloadSize = static_cast<uint16_t>(
+            sizeof(gripper_hmi::GripperCalibrationHeader) + sizeof(gripper_hmi::GripperForceCalibrationBlock));
+    }
+    else
+    {
+        const uint8_t *raw = reinterpret_cast<const uint8_t *>(&normalized);
+        normalized.header.payloadSize = static_cast<uint16_t>(
+            trimTrailingZeroLength(raw, gripper_hmi::kCalibrationPayloadSize));
+    }
 
     uint64_t commandId = 0;
     {
@@ -1947,6 +2050,18 @@ void GripperHmiDriver::handleParsedFrame(const GripperParsedFrame &frame)
         ++rxBeepStateCount_;
         beepState_ = frame.beepState;
     }
+    else if (frame.type == GripperFrameType::PressureReport)
+    {
+        ++rxPressureReportCount_;
+        lastPressureReport_ = frame.pressureReport;
+        lastPressureReportTimeMs_ = lastReceiveTimeMs_;
+    }
+    else if (frame.type == GripperFrameType::AmbientLightReport)
+    {
+        ++rxAmbientLightReportCount_;
+        lastAmbientLightReport_ = frame.ambientLightReport;
+        lastAmbientLightReportTimeMs_ = lastReceiveTimeMs_;
+    }
 
     stateCv_.notify_all();
 }
@@ -2072,6 +2187,36 @@ void GripperHmiDriver::ioLoop()
             }
         }
 
+        if (pendingFillLightUpdate_)
+        {
+            const auto frame = GripperHmiProtocol::buildSetFillLightPwmCommand(pendingFillLightPwm_);
+            if (writeFrameLocked(frame.data(), frame.size()))
+            {
+                ++txFillLightCount_;
+                pendingFillLightUpdate_ = false;
+            }
+        }
+
+        if (pendingPressureRequest_)
+        {
+            const auto frame = GripperHmiProtocol::buildPressureRequest();
+            pendingPressureRequest_ = false;
+            if (writeFrameLocked(frame.data(), frame.size()))
+            {
+                ++txPressureRequestCount_;
+            }
+        }
+
+        if (pendingAmbientLightRequest_)
+        {
+            const auto frame = GripperHmiProtocol::buildAmbientLightRequest();
+            pendingAmbientLightRequest_ = false;
+            if (writeFrameLocked(frame.data(), frame.size()))
+            {
+                ++txAmbientLightRequestCount_;
+            }
+        }
+
         if (stateDue && !pendingBeepUpdate_ && !sentBeepUpdate)
         {
             const auto frame = GripperHmiProtocol::buildBeepStateRequest();
@@ -2124,7 +2269,9 @@ void GripperHmiDriver::ioLoop()
         waitMs = std::max<uint64_t>(1, waitMs);
 
         ioCv_.wait_for(ioLock, std::chrono::milliseconds(waitMs), [this]() {
-            return !ioRunning_ || pendingStateRequest_ || pendingLedUpdate_ || pendingBeepUpdate_;
+            return !ioRunning_ || pendingStateRequest_ || pendingPressureRequest_ ||
+                   pendingAmbientLightRequest_ || pendingLedUpdate_ || pendingBeepUpdate_ ||
+                   pendingFillLightUpdate_;
         });
     }
 }
@@ -2195,6 +2342,10 @@ GripperHmiSnapshot GripperHmiDriver::getSnapshot(uint64_t activeTimeoutMs) const
     snapshot.keyPressed = keyPressed_;
     snapshot.beepStateCount = rxBeepStateCount_.load();
     snapshot.beepState = beepState_;
+    snapshot.pressureReportCount = rxPressureReportCount_.load();
+    snapshot.lastPressureReport = lastPressureReport_;
+    snapshot.ambientLightReportCount = rxAmbientLightReportCount_.load();
+    snapshot.lastAmbientLightReport = lastAmbientLightReport_;
     snapshot.lastKeyReport = lastKeyReport_;
     if (lastReceiveTimeMs_ == 0)
     {
@@ -2205,5 +2356,18 @@ GripperHmiSnapshot GripperHmiDriver::getSnapshot(uint64_t activeTimeoutMs) const
 
     snapshot.lastRxAgeMs = currentSteadyMs() - lastReceiveTimeMs_;
     snapshot.active = snapshot.lastRxAgeMs <= activeTimeoutMs;
+    const uint64_t nowMs = currentSteadyMs();
+    if (lastPressureReportTimeMs_ != 0)
+    {
+        snapshot.pressureReportAgeMs = nowMs >= lastPressureReportTimeMs_
+                                           ? nowMs - lastPressureReportTimeMs_
+                                           : 0;
+    }
+    if (lastAmbientLightReportTimeMs_ != 0)
+    {
+        snapshot.ambientLightReportAgeMs = nowMs >= lastAmbientLightReportTimeMs_
+                                               ? nowMs - lastAmbientLightReportTimeMs_
+                                               : 0;
+    }
     return snapshot;
 }

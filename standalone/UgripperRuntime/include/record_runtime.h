@@ -124,6 +124,7 @@ private:
         bool getButtonsForPortToken(const std::string &token, ButtonSnapshot *snapshot) const;
         HealthSnapshot getHealthSnapshot(uint64_t activeTimeoutMs) const;
         bool requestStateForSide(const std::string &side);
+        bool refreshPressureReports(int timeoutMs, int maxAttempts);
         bool readRuntimeIdentityForSide(const std::string &side,
                                         std::string *serialNumber,
                                         bool *hasSerialNumber,
@@ -143,6 +144,7 @@ private:
         static constexpr size_t kBtnUpKeyIndex = 0;
         static constexpr size_t kBtnDownKeyIndex = 1;
         static constexpr uint64_t kReconnectIntervalMs = 1000;
+        static constexpr uint64_t kPressureRefreshIntervalMs = 5000;
 
         static std::string sideForPort(const std::string &port);
         int findDriverIndexForSide(const std::string &side) const;
@@ -151,6 +153,7 @@ private:
         std::vector<std::unique_ptr<GripperHmiDriver>> drivers_;
         std::vector<uint64_t> reconnectAttemptMs_;
         std::vector<uint64_t> delayedStateRequestDueMs_;
+        std::vector<uint64_t> pressureRequestDueMs_;
         std::vector<bool> lastKnownConnectedStates_;
         std::vector<ConnectionEvent> pendingConnectionEvents_;
         std::vector<GripperBeepState> currentDriverBeepStates_;

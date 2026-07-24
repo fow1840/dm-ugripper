@@ -263,6 +263,15 @@ def main() -> int:
     print(f"payload_size={payload_size}")
     print(f"header_size={header_size}")
     print(f"valid_fields=0x{valid_fields:08x}")
+    if version == tk.FORCE_CALIBRATION_DATA_FORMAT_VERSION:
+        try:
+            tk.print_force_calibration_summary(tk.parse_force_calibration_payload(payload))
+        except RuntimeError as exc:
+            print("calibration.kind=force_sensor")
+            print("force.valid=no")
+            print(f"force.error={exc}")
+    elif version == 0x00010000:
+        print("calibration.kind=legacy_camera_imu_ignored")
     print(f"first_{min(args.head_bytes, len(payload))}_bytes:")
     print(format_hex_lines(payload, limit=args.head_bytes))
     return 0

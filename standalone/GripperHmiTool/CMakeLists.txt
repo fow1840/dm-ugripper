@@ -124,3 +124,7 @@ install(TARGETS ${APP_NAME}
     RUNTIME DESTINATION bin/GripperHmiTool
     LIBRARY DESTINATION lib
 )
+
+install(PROGRAMS gripper_hmi_lux_monitor.sh
+    DESTINATION bin/GripperHmiTool
+)

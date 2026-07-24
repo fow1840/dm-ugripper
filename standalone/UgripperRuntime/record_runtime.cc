@@ -4100,7 +4100,7 @@ bool RecordRuntime::initialize()
     hardwareVersion_ = readEnvValue(options_.envFile, "UGRIPPER_HARDWARE_VERSION");
     if (hardwareVersion_.empty())
     {
-        hardwareVersion_ = "v2.5";
+        hardwareVersion_ = "V3";
     }
 
     if (options_.gripperPorts.empty())
@@ -7326,6 +7326,12 @@ bool RecordRuntime::startRecording(bool resetRecording)
         sendAudioCommand("error");
         return false;
     }
+    if (!panelManager_.refreshPressureReports(250, 3))
+    {
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << "recording will continue without a fresh pressure report from every HMI"
+            << std::endl).str());
+    }
     cancelBackgroundTactileValidation();
     tactileTriggeredAudioCommand_.clear();
     activeHardwareFault_.reset();
@@ -8573,6 +8579,7 @@ bool RecordRuntime::GripperPanelManager::connect(const std::vector<std::string> 
     drivers_.clear();
     reconnectAttemptMs_.clear();
     delayedStateRequestDueMs_.clear();
+    pressureRequestDueMs_.clear();
     lastKnownConnectedStates_.clear();
     pendingConnectionEvents_.clear();
     currentDriverBeepStates_.clear();
@@ -8596,6 +8603,7 @@ bool RecordRuntime::GripperPanelManager::connect(const std::vector<std::string> 
         drivers_.push_back(std::move(driver));
         reconnectAttemptMs_.push_back(0);
         delayedStateRequestDueMs_.push_back(0);
+        pressureRequestDueMs_.push_back(RecordRuntime::currentSteadyMs() + kPressureRefreshIntervalMs);
         lastKnownConnectedStates_.push_back(false);
         currentDriverBeepStates_.push_back({});
         recordConnectionEventIfChanged(index, drivers_.back() != nullptr && drivers_.back()->isConnected());
@@ -8609,6 +8617,7 @@ void RecordRuntime::GripperPanelManager::disconnect()
     drivers_.clear();
     reconnectAttemptMs_.clear();
     delayedStateRequestDueMs_.clear();
+    pressureRequestDueMs_.clear();
     lastKnownConnectedStates_.clear();
     pendingConnectionEvents_.clear();
     currentDriverBeepStates_.clear();
@@ -8759,6 +8768,10 @@ void RecordRuntime::GripperPanelManager::maybeReconnectDriver(size_t index)
     {
         delayedStateRequestDueMs_[index] = nowMs + 1000;
     }
+    if (index < pressureRequestDueMs_.size())
+    {
+        pressureRequestDueMs_[index] = nowMs + 1000;
+    }
     if (index < currentDriverBeepStates_.size())
     {
         const auto &beepState = currentDriverBeepStates_[index];
@@ -8813,6 +8826,11 @@ bool RecordRuntime::GripperPanelManager::poll(int timeoutMs, ButtonSnapshot *sna
         {
             driver->requestState();
             delayedStateRequestDueMs_[index] = 0;
+        }
+        if (index < pressureRequestDueMs_.size() && nowMs >= pressureRequestDueMs_[index])
+        {
+            driver->requestPressure();
+            pressureRequestDueMs_[index] = nowMs + kPressureRefreshIntervalMs;
         }
         if (index == inputDriverIndex_)
         {
@@ -8892,6 +8910,35 @@ bool RecordRuntime::GripperPanelManager::requestStateForSide(const std::string &
 
     auto &driver = drivers_[static_cast<size_t>(index)];
     return driver != nullptr && driver->isConnected() && driver->requestState();
+}
+
+bool RecordRuntime::GripperPanelManager::refreshPressureReports(int timeoutMs, int maxAttempts)
+{
+    bool refreshedAll = true;
+    for (size_t index = 0; index < drivers_.size(); ++index)
+    {
+        auto &driver = drivers_[index];
+        if (driver == nullptr || !driver->isConnected())
+        {
+            refreshedAll = false;
+            continue;
+        }
+        if (!driver->refreshPressureReport(timeoutMs, maxAttempts))
+        {
+            DM_LOG_WARN("{}", (::DA::utils::LogString()
+                << "pressure refresh timed out before recording"
+                << " port=" << driver->getPort()
+                << " timeout_ms=" << timeoutMs
+                << " max_attempts=" << maxAttempts
+                << std::endl).str());
+            refreshedAll = false;
+        }
+        if (index < pressureRequestDueMs_.size())
+        {
+            pressureRequestDueMs_[index] = RecordRuntime::currentSteadyMs() + kPressureRefreshIntervalMs;
+        }
+    }
+    return refreshedAll;
 }
 
 bool RecordRuntime::GripperPanelManager::readRuntimeIdentityForSide(

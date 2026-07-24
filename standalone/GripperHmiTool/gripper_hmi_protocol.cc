@@ -119,6 +119,24 @@ std::optional<GripperParsedFrame> GripperHmiProtocol::tryConsumeFrame(std::vecto
             frame.beepState.duty = static_cast<uint16_t>(buffer[3] << 8) | buffer[4];
             frame.beepState.frequency = static_cast<uint16_t>(buffer[5] << 8) | buffer[6];
         }
+        else if (frame.indexWord == kIndexPressureReport)
+        {
+            frame.type = GripperFrameType::PressureReport;
+            frame.pressureReport.raw = {buffer[3], buffer[4], buffer[5], buffer[6]};
+            const uint32_t rawValue = (static_cast<uint32_t>(buffer[3]) << 24) |
+                                      (static_cast<uint32_t>(buffer[4]) << 16) |
+                                      (static_cast<uint32_t>(buffer[5]) << 8) |
+                                      static_cast<uint32_t>(buffer[6]);
+            frame.pressureReport.value =
+                rawValue < 0x80000000U
+                    ? static_cast<int32_t>(rawValue)
+                    : static_cast<int32_t>(static_cast<int64_t>(rawValue) - 0x100000000LL);
+        }
+        else if (frame.indexWord == kIndexAmbientLightReport)
+        {
+            frame.type = GripperFrameType::AmbientLightReport;
+            frame.ambientLightReport.lux = static_cast<uint16_t>(buffer[5] << 8) | buffer[6];
+        }
 
         buffer.erase(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(kFrameLength));
         return frame;
@@ -130,6 +148,16 @@ std::optional<GripperParsedFrame> GripperHmiProtocol::tryConsumeFrame(std::vecto
 std::array<uint8_t, 7> GripperHmiProtocol::buildBeepStateRequest()
 {
     return buildStandardCommand(kIndexBeepBase, kFuncPwmGet, 0x00, 0x00);
+}
+
+std::array<uint8_t, 7> GripperHmiProtocol::buildPressureRequest()
+{
+    return buildStandardCommand(kIndexPressureReport, kFuncPwmGet, 0x00, 0x00);
+}
+
+std::array<uint8_t, 7> GripperHmiProtocol::buildAmbientLightRequest()
+{
+    return buildStandardCommand(kIndexAmbientLightReport, kFuncPwmGet, 0x00, 0x00);
 }
 
 std::array<uint8_t, 7> GripperHmiProtocol::buildSetBeepCommand(const GripperBeepState &state)
@@ -159,6 +187,16 @@ std::array<uint8_t, 8> GripperHmiProtocol::buildSetRgbCommand(const GripperLedCo
     };
     frame[6] = calculateXor(frame.data(), 6);
     return frame;
+}
+
+std::array<uint8_t, 7> GripperHmiProtocol::buildSetFillLightPwmCommand(uint16_t pwm)
+{
+    const uint16_t clampedPwm = std::min<uint16_t>(pwm, kMaxFillLightPwm);
+    return buildStandardCommand(
+        kIndexFillLight,
+        kFuncFillLightPwm,
+        static_cast<uint8_t>((clampedPwm >> 8) & 0xFF),
+        static_cast<uint8_t>(clampedPwm & 0xFF));
 }
 
 std::array<uint8_t, 7> GripperHmiProtocol::buildReadSerialNumberCommand()

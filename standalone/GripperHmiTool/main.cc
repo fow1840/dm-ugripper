@@ -10,8 +10,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -27,21 +29,7 @@ constexpr int kBeepStateProbeDelayMs = 80;
 constexpr int kBeepStateProbeIntervalMs = 100;
 constexpr int kBeepSilenceRetryLimit = 5;
 constexpr int kBeepSilenceConfirmMs = 150;
-
-template <size_t N>
-std::string joinFloatArray(const float (&values)[N])
-{
-    std::ostringstream stream;
-    for (size_t index = 0; index < N; ++index)
-    {
-        if (index != 0)
-        {
-            stream << ",";
-        }
-        stream << values[index];
-    }
-    return stream.str();
-}
+constexpr int kLuxMonitorRequestIntervalMs = 200;
 
 void handleSignal(int signal)
 {
@@ -79,9 +67,20 @@ struct TestOptions
     bool readSerialNumber = false;
     bool readCalibration = false;
     bool hasWriteSerialNumber = false;
+    bool writeForceCalibration = false;
+    bool hasForceZeroRaw = false;
+    bool hasForceReferenceRaw = false;
+    bool hasForceReferenceMassMg = false;
+    bool hasFillLightPwm = false;
+    bool monitorLux = false;
+    bool durationSpecified = false;
     int beepDurationMs = 0;
     int beepDuty = static_cast<int>(GripperHmiDriver::kDefaultBeepDuty);
     int beepFreq = static_cast<int>(GripperHmiDriver::kDefaultBeepFrequency);
+    int fillLightPwm = 0;
+    int32_t forceZeroRaw = 0;
+    int32_t forceReferenceRaw = 0;
+    uint32_t forceReferenceMassMg = 0;
     std::string serialNumberToWrite;
     std::string writeCalibrationBinPath;
     std::string dumpCalibrationBinPath;
@@ -92,7 +91,7 @@ struct TestOptions
 static void printUsage(const char *program)
 {
     std::cout
-        << "Usage: " << program << " [--port PATH]... [--baud N] [--duration SEC] [--poll-ms N] [--rgb R G B] [--beep [--beep-ms N]] [--beep-duty N [--beep-freq N] [--beep-ms N]] [--state NAME] [--led-only]\n"
+        << "Usage: " << program << " [--port PATH]... [--baud N] [--duration SEC] [--poll-ms N] [--monitor-lux] [--rgb R G B] [--fill-light-pwm N] [--beep [--beep-ms N]] [--beep-duty N [--beep-freq N] [--beep-ms N]] [--state NAME] [--led-only]\n"
         << "State examples:\n"
         << "  --state READY\n"
         << "  --state RECORDING\n"
@@ -102,11 +101,16 @@ static void printUsage(const char *program)
         << "  --beep --beep-ms 300\n"
         << "  --beep-duty 50 --beep-freq 1000 --beep-ms 300\n"
         << "  beep uses fixed tested defaults for active buzzer: duty=30 freq=1000\n"
+        << "Fill light example:\n"
+        << "  --fill-light-pwm 500  # valid range: 0-1000\n"
+        << "Sensor monitor example:\n"
+        << "  --monitor-lux --duration 0  # query lux at 5 Hz and display lux + pressure\n"
         << "Protocol commands:\n"
         << "  --read-sn\n"
         << "  --write-sn DAG91126320001D6  # encoded into 32-byte field with trailing zeros\n"
         << "  --read-calib [--dump-calib-bin /tmp/umi_calib.bin]\n"
         << "  --write-calib-bin /tmp/umi_calib.bin\n"
+        << "  --write-force-calib --zero-raw N --reference-raw N --reference-mass-mg N\n"
         << "Defaults:\n"
         << "  --port /dev/right_gripper\n"
         << "  --port /dev/left_gripper\n"
@@ -197,6 +201,39 @@ static bool parseInt(const char *text, int *value)
     return true;
 }
 
+static bool parseInt32(const char *text, int32_t *value)
+{
+    if (text == nullptr || value == nullptr)
+    {
+        return false;
+    }
+    char *end = nullptr;
+    const long long parsed = std::strtoll(text, &end, 10);
+    if (end == text || *end != '\0' ||
+        parsed < std::numeric_limits<int32_t>::min() || parsed > std::numeric_limits<int32_t>::max())
+    {
+        return false;
+    }
+    *value = static_cast<int32_t>(parsed);
+    return true;
+}
+
+static bool parseUint32(const char *text, uint32_t *value)
+{
+    if (text == nullptr || value == nullptr || text[0] == '-')
+    {
+        return false;
+    }
+    char *end = nullptr;
+    const unsigned long long parsed = std::strtoull(text, &end, 10);
+    if (end == text || *end != '\0' || parsed > std::numeric_limits<uint32_t>::max())
+    {
+        return false;
+    }
+    *value = static_cast<uint32_t>(parsed);
+    return true;
+}
+
 static bool parseOptions(int argc, char **argv, TestOptions *options)
 {
     if (options == nullptr)
@@ -245,6 +282,13 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
                 return false;
             }
             options->durationSec = value;
+            options->durationSpecified = true;
+            continue;
+        }
+
+        if (argument == "--monitor-lux")
+        {
+            options->monitorLux = true;
             continue;
         }
 
@@ -288,6 +332,21 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
         if (argument == "--beep")
         {
             options->enableBeep = true;
+            continue;
+        }
+
+        if (argument == "--fill-light-pwm")
+        {
+            int value = 0;
+            if (index + 1 >= argc || !parseInt(argv[++index], &value) ||
+                value < 0 || value > static_cast<int>(GripperHmiProtocol::kMaxFillLightPwm))
+            {
+                std::cerr << "Invalid value for --fill-light-pwm (expected 0-"
+                          << GripperHmiProtocol::kMaxFillLightPwm << ")" << std::endl;
+                return false;
+            }
+            options->hasFillLightPwm = true;
+            options->fillLightPwm = value;
             continue;
         }
 
@@ -388,6 +447,46 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
             continue;
         }
 
+        if (argument == "--write-force-calib")
+        {
+            options->writeForceCalibration = true;
+            continue;
+        }
+
+        if (argument == "--zero-raw")
+        {
+            if (index + 1 >= argc || !parseInt32(argv[++index], &options->forceZeroRaw))
+            {
+                std::cerr << "Invalid value for --zero-raw" << std::endl;
+                return false;
+            }
+            options->hasForceZeroRaw = true;
+            continue;
+        }
+
+        if (argument == "--reference-raw")
+        {
+            if (index + 1 >= argc || !parseInt32(argv[++index], &options->forceReferenceRaw))
+            {
+                std::cerr << "Invalid value for --reference-raw" << std::endl;
+                return false;
+            }
+            options->hasForceReferenceRaw = true;
+            continue;
+        }
+
+        if (argument == "--reference-mass-mg")
+        {
+            if (index + 1 >= argc || !parseUint32(argv[++index], &options->forceReferenceMassMg) ||
+                options->forceReferenceMassMg == 0)
+            {
+                std::cerr << "Invalid value for --reference-mass-mg" << std::endl;
+                return false;
+            }
+            options->hasForceReferenceMassMg = true;
+            continue;
+        }
+
         if (argument == "--dump-calib-bin")
         {
             if (index + 1 >= argc)
@@ -407,6 +506,20 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
     {
         options->ports.emplace_back("/dev/right_gripper");
         options->ports.emplace_back("/dev/left_gripper");
+    }
+    if (options->monitorLux && !options->durationSpecified)
+    {
+        options->durationSec = 0;
+    }
+
+    if (options->writeForceCalibration &&
+        (!options->hasForceZeroRaw || !options->hasForceReferenceRaw ||
+         !options->hasForceReferenceMassMg || options->forceZeroRaw == options->forceReferenceRaw))
+    {
+        std::cerr << "--write-force-calib requires distinct --zero-raw/--reference-raw and positive "
+                     "--reference-mass-mg"
+                  << std::endl;
+        return false;
     }
 
     return true;
@@ -446,7 +559,7 @@ static bool writeBinaryFile(const std::string &path, const uint8_t *data, size_t
     return output.good();
 }
 
-static void printCalibrationSummary(const gripper_hmi::GripperCalibrationDataV1 &data)
+static void printCalibrationSummary(const gripper_hmi::GripperCalibrationData &data)
 {
     const auto &header = data.header;
     std::cout
@@ -454,41 +567,27 @@ static void printCalibrationSummary(const gripper_hmi::GripperCalibrationDataV1 
         << "calibration.data_format_version=0x" << std::hex << header.dataFormatVersion << std::dec << '\n'
         << "calibration.payload_size=" << header.payloadSize << '\n'
         << "calibration.header_size=" << header.headerSize << '\n'
-        << "calibration.valid_fields=0x" << std::hex << header.validFields << std::dec << '\n'
-        << "rgb.camera_model_enum=" << data.rgbCamera.cameraModelEnum << '\n'
-        << "rgb.distortion_coefficients=" << joinFloatArray(data.rgbCamera.distortionCoefficients) << '\n'
-        << "rgb.intrinsics=" << joinFloatArray(data.rgbCamera.intrinsics) << '\n'
-        << "rgb.resolution=" << joinFloatArray(data.rgbCamera.resolution) << '\n'
-        << "stereo.cam0.camera_model_enum=" << data.stereoCam0.cameraModelEnum << '\n'
-        << "stereo.cam0.focal_length=" << joinFloatArray(data.stereoCam0.focalLength) << '\n'
-        << "stereo.cam0.principal_point=" << joinFloatArray(data.stereoCam0.principalPoint) << '\n'
-        << "stereo.cam0.distortion_coefficients=" << joinFloatArray(data.stereoCam0.distortionCoefficients) << '\n'
-        << "stereo.cam1.camera_model_enum=" << data.stereoCam1.cameraModelEnum << '\n'
-        << "stereo.cam1.focal_length=" << joinFloatArray(data.stereoCam1.focalLength) << '\n'
-        << "stereo.cam1.principal_point=" << joinFloatArray(data.stereoCam1.principalPoint) << '\n'
-        << "stereo.cam1.distortion_coefficients=" << joinFloatArray(data.stereoCam1.distortionCoefficients) << '\n'
-        << "extrinsics.t_ic_cam0_to_imu0=" << joinFloatArray(data.extrinsics.tIcCam0ToImu0) << '\n'
-        << "extrinsics.timeshift_cam0_to_imu0=" << data.extrinsics.timeshiftCam0ToImu0 << '\n'
-        << "extrinsics.t_ic_cam1_to_imu0=" << joinFloatArray(data.extrinsics.tIcCam1ToImu0) << '\n'
-        << "extrinsics.timeshift_cam1_to_imu0=" << data.extrinsics.timeshiftCam1ToImu0 << '\n'
-        << "extrinsics.baseline_norm=" << data.extrinsics.baselineNorm << '\n'
-        << "imu0.update_rate=" << data.imu0.updateRate << '\n'
-        << "imu0.accel_noise_density_discrete=" << data.imu0.accelerometerNoiseDensityDiscrete << '\n'
-        << "imu0.accel_random_walk=" << data.imu0.accelerometerRandomWalk << '\n'
-        << "imu0.gyro_noise_density_discrete=" << data.imu0.gyroscopeNoiseDensityDiscrete << '\n'
-        << "imu0.gyro_random_walk=" << data.imu0.gyroscopeRandomWalk << '\n'
-        << "residuals.cam0.mean=" << data.residuals.reprojectionErrorCam0Px.mean << '\n'
-        << "residuals.cam0.median=" << data.residuals.reprojectionErrorCam0Px.median << '\n'
-        << "residuals.cam0.stddev=" << data.residuals.reprojectionErrorCam0Px.stddev << '\n'
-        << "residuals.cam1.mean=" << data.residuals.reprojectionErrorCam1Px.mean << '\n'
-        << "residuals.cam1.median=" << data.residuals.reprojectionErrorCam1Px.median << '\n'
-        << "residuals.cam1.stddev=" << data.residuals.reprojectionErrorCam1Px.stddev << '\n'
-        << "residuals.gyro.mean=" << data.residuals.gyroscopeErrorImu0RadS.mean << '\n'
-        << "residuals.gyro.median=" << data.residuals.gyroscopeErrorImu0RadS.median << '\n'
-        << "residuals.gyro.stddev=" << data.residuals.gyroscopeErrorImu0RadS.stddev << '\n'
-        << "residuals.accel.mean=" << data.residuals.accelerometerErrorImu0MS2.mean << '\n'
-        << "residuals.accel.median=" << data.residuals.accelerometerErrorImu0MS2.median << '\n'
-        << "residuals.accel.stddev=" << data.residuals.accelerometerErrorImu0MS2.stddev << std::endl;
+        << "calibration.valid_fields=0x" << std::hex << header.validFields << std::dec << '\n';
+
+    if (header.dataFormatVersion == gripper_hmi::kCalibrationDataFormatVersionLegacy)
+    {
+        std::cout << "calibration.kind=legacy_camera_imu_ignored" << std::endl;
+        return;
+    }
+
+    const bool valid = gripper_hmi::isForceCalibrationPayload(data);
+    std::cout
+        << "calibration.kind=force_sensor" << '\n'
+        << "force.valid=" << (valid ? "yes" : "no") << '\n'
+        << "force.serial_number=" << gripper_hmi::decodeSerialNumber(data.force.serialNumber) << '\n'
+        << "force.zero_raw=" << data.force.zeroRaw << '\n'
+        << "force.reference_raw=" << data.force.referenceRaw << '\n'
+        << "force.reference_mass_mg=" << data.force.referenceMassMg << '\n'
+        << "force.flags=0x" << std::hex << data.force.flags << std::dec << '\n'
+        << "force.calibrated_at_unix_s=" << data.force.calibratedAtUnixSeconds << '\n'
+        << "force.crc32=0x" << std::hex << data.force.crc32 << std::dec << '\n'
+        << "force.crc32_calculated=0x" << std::hex
+        << gripper_hmi::calculateForceCalibrationCrc32(data.force) << std::dec << std::endl;
 }
 
 int main(int argc, char **argv)
@@ -534,8 +633,31 @@ int main(int argc, char **argv)
 
     std::cout << "Connected " << devices.size() << " gripper HMI device(s)" << std::endl;
 
+    if (options.hasFillLightPwm)
+    {
+        bool allOk = true;
+        for (auto &device : devices)
+        {
+            if (!device->setFillLightPwm(static_cast<uint16_t>(options.fillLightPwm)))
+            {
+                std::cerr << "Failed to set fill light PWM on: " << device->getPort() << std::endl;
+                allOk = false;
+            }
+            else
+            {
+                std::cout << '[' << device->getPort() << "] fill-light-pwm="
+                          << options.fillLightPwm << std::endl;
+            }
+        }
+        if (!allOk)
+        {
+            return 1;
+        }
+    }
+
     if (options.readSerialNumber || options.hasWriteSerialNumber ||
-        options.readCalibration || !options.writeCalibrationBinPath.empty())
+        options.readCalibration || options.writeForceCalibration ||
+        !options.writeCalibrationBinPath.empty())
     {
         bool allOk = true;
 
@@ -587,6 +709,70 @@ int main(int argc, char **argv)
             }
         }
 
+        if (options.writeForceCalibration)
+        {
+            for (auto &device : devices)
+            {
+                std::string serialNumber;
+                if (!device->readSerialNumber(&serialNumber))
+                {
+                    std::cerr << "Failed to read SN before force calibration on: " << device->getPort();
+                    if (!device->getLastCommandError().empty())
+                    {
+                        std::cerr << " reason=" << device->getLastCommandError();
+                    }
+                    std::cerr << std::endl;
+                    allOk = false;
+                    continue;
+                }
+
+                gripper_hmi::GripperCalibrationData calibrationData{};
+                if (!gripper_hmi::makeForceCalibrationData(
+                        serialNumber,
+                        options.forceZeroRaw,
+                        options.forceReferenceRaw,
+                        options.forceReferenceMassMg,
+                        static_cast<uint32_t>(currentEpochMs() / 1000),
+                        &calibrationData))
+                {
+                    std::cerr << "Invalid force calibration values for: " << device->getPort() << std::endl;
+                    allOk = false;
+                    continue;
+                }
+
+                if (!device->writeCalibrationData(calibrationData))
+                {
+                    std::cerr << "Failed to write force calibration on: " << device->getPort();
+                    if (!device->getLastCommandError().empty())
+                    {
+                        std::cerr << " reason=" << device->getLastCommandError();
+                    }
+                    std::cerr << std::endl;
+                    allOk = false;
+                    continue;
+                }
+
+                gripper_hmi::GripperCalibrationData readback{};
+                if (!device->readCalibrationData(&readback) ||
+                    !gripper_hmi::isForceCalibrationPayload(readback) ||
+                    !gripper_hmi::forceCalibrationMatchesSerialNumber(readback, serialNumber) ||
+                    std::memcmp(&readback.force, &calibrationData.force, sizeof(readback.force)) != 0)
+                {
+                    std::cerr << "Force calibration readback verification failed on: "
+                              << device->getPort() << std::endl;
+                    allOk = false;
+                    continue;
+                }
+
+                std::cout << '[' << device->getPort() << "] write-force-calib ok"
+                          << " sn=" << serialNumber
+                          << " zero_raw=" << calibrationData.force.zeroRaw
+                          << " reference_raw=" << calibrationData.force.referenceRaw
+                          << " reference_mass_mg=" << calibrationData.force.referenceMassMg
+                          << std::endl;
+            }
+        }
+
         if (!options.writeCalibrationBinPath.empty())
         {
             std::vector<uint8_t> raw;
@@ -602,10 +788,24 @@ int main(int argc, char **argv)
                 return 1;
             }
 
-            gripper_hmi::GripperCalibrationDataV1 calibrationData{};
+            gripper_hmi::GripperCalibrationData calibrationData{};
             std::memcpy(&calibrationData, raw.data(), sizeof(calibrationData));
+            if (!gripper_hmi::isForceCalibrationPayload(calibrationData))
+            {
+                std::cerr << "Calibration binary is not a valid force-sensor UCAL payload" << std::endl;
+                return 1;
+            }
             for (auto &device : devices)
             {
+                std::string serialNumber;
+                if (!device->readSerialNumber(&serialNumber) ||
+                    !gripper_hmi::forceCalibrationMatchesSerialNumber(calibrationData, serialNumber))
+                {
+                    std::cerr << "Calibration SN does not match gripper on: " << device->getPort()
+                              << std::endl;
+                    allOk = false;
+                    continue;
+                }
                 if (!device->writeCalibrationData(calibrationData))
                 {
                     std::cerr << "Failed to write calibration on: " << device->getPort();
@@ -627,7 +827,7 @@ int main(int argc, char **argv)
         {
             for (auto &device : devices)
             {
-                gripper_hmi::GripperCalibrationDataV1 calibrationData{};
+                gripper_hmi::GripperCalibrationData calibrationData{};
                 if (!device->readCalibrationData(&calibrationData))
                 {
                     std::cerr << "Failed to read calibration on: " << device->getPort();
@@ -642,6 +842,18 @@ int main(int argc, char **argv)
 
                 std::cout << '[' << device->getPort() << "] calibration summary" << std::endl;
                 printCalibrationSummary(calibrationData);
+                if (calibrationData.header.dataFormatVersion ==
+                    gripper_hmi::kCalibrationDataFormatVersionForceV1)
+                {
+                    std::string serialNumber;
+                    const bool snRead = device->readSerialNumber(&serialNumber);
+                    std::cout << "force.sn_match="
+                              << (snRead && gripper_hmi::forceCalibrationMatchesSerialNumber(
+                                                calibrationData, serialNumber)
+                                      ? "yes"
+                                      : "no")
+                              << std::endl;
+                }
 
                 if (!options.dumpCalibrationBinPath.empty())
                 {
@@ -683,12 +895,19 @@ int main(int argc, char **argv)
 
     const auto startedAt = std::chrono::steady_clock::now();
     auto lastStatePrint = startedAt;
+    std::vector<uint64_t> lastLuxCounts(devices.size(), 0);
+    std::vector<uint64_t> lastLuxEventAtMs(devices.size(), 0);
     std::array<uint8_t, 3> lastColor{255, 255, 255};
     GripperLedEffectRenderer renderer;
     bool beepApplied = false;
     bool beepSilenced = false;
     auto beepStartedAt = startedAt;
     auto lastBeepStateRequestAt = startedAt - std::chrono::milliseconds(kBeepStateProbeIntervalMs);
+    auto lastLuxRequestAt = startedAt - std::chrono::milliseconds(kLuxMonitorRequestIntervalMs);
+    if (options.monitorLux)
+    {
+        std::cout << "Polling lux at 5 Hz and displaying pressure; press Ctrl+C to stop" << std::endl;
+    }
 
     while (!g_stop_requested.load())
     {
@@ -768,10 +987,22 @@ int main(int argc, char **argv)
 
         if (!options.ledOnly)
         {
+            if (options.monitorLux &&
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - lastLuxRequestAt).count() >=
+                    kLuxMonitorRequestIntervalMs)
+            {
+                for (auto &device : devices)
+                {
+                    device->requestAmbientLight();
+                }
+                lastLuxRequestAt = now;
+            }
+
             bool requestedBeepStateThisLoop = false;
+            size_t deviceIndex = 0;
             for (auto &device : devices)
             {
-                bool shouldRequestState = true;
+                bool shouldRequestState = false;
                 if (options.enableBeep)
                 {
                     const auto elapsedSinceBeepMs =
@@ -792,7 +1023,7 @@ int main(int argc, char **argv)
                     }
                 }
                 GripperKeyReport report;
-                if (device->waitForKeyChange(options.pollMs, &report))
+                if (!options.monitorLux && device->waitForKeyChange(options.pollMs, &report))
                 {
                     std::cout
                         << '[' << device->getPort() << "] key=" << keyName(report.keyIndex) << "(" << report.keyIndex << ")"
@@ -802,8 +1033,55 @@ int main(int argc, char **argv)
                 }
                 else
                 {
-                    device->pollOnce(0);
+                    device->pollOnce(options.monitorLux ? options.pollMs : 0);
                 }
+
+                if (options.monitorLux)
+                {
+                    const auto snapshot = device->getSnapshot();
+                    if (snapshot.lastAmbientLightReport.has_value() &&
+                        snapshot.ambientLightReportCount > lastLuxCounts[deviceIndex])
+                    {
+                        const uint64_t nowMs = currentSteadyMs();
+                        const uint64_t newFrames = snapshot.ambientLightReportCount - lastLuxCounts[deviceIndex];
+                        const uint64_t intervalMs = lastLuxEventAtMs[deviceIndex] == 0
+                                                        ? 0
+                                                        : nowMs - lastLuxEventAtMs[deviceIndex];
+                        const double eventHz = intervalMs == 0
+                                                   ? 0.0
+                                                   : static_cast<double>(newFrames) * 1000.0 /
+                                                         static_cast<double>(intervalMs);
+                        std::cout << '[' << device->getPort() << "] lux="
+                                  << snapshot.lastAmbientLightReport->lux
+                                  << "(age_ms=" << snapshot.ambientLightReportAgeMs
+                                  << ",count=" << snapshot.ambientLightReportCount << ')'
+                                  << " pressure=";
+                        if (snapshot.lastPressureReport.has_value())
+                        {
+                            const auto &pressure = snapshot.lastPressureReport.value();
+                            std::cout << pressure.value << "(raw=0x"
+                                      << std::hex << std::uppercase << std::setw(8)
+                                      << std::setfill('0') << static_cast<uint32_t>(pressure.value) << std::dec
+                                      << std::setfill(' ') << ",age_ms=" << snapshot.pressureReportAgeMs
+                                      << ",count=" << snapshot.pressureReportCount << ')';
+                        }
+                        else
+                        {
+                            std::cout << "none";
+                        }
+                        std::cout << " new_lux_frames=" << newFrames;
+                        if (intervalMs != 0)
+                        {
+                            std::cout << " lux_interval_ms=" << intervalMs
+                                      << " lux_hz=" << std::fixed << std::setprecision(2) << eventHz
+                                      << std::defaultfloat;
+                        }
+                        std::cout << std::endl;
+                        lastLuxCounts[deviceIndex] = snapshot.ambientLightReportCount;
+                        lastLuxEventAtMs[deviceIndex] = nowMs;
+                    }
+                }
+                ++deviceIndex;
             }
 
             if (options.enableBeep && requestedBeepStateThisLoop)
@@ -812,7 +1090,8 @@ int main(int argc, char **argv)
             }
 
             const int statePrintIntervalMs = options.enableBeep ? 100 : 1000;
-            if (std::chrono::duration_cast<std::chrono::milliseconds>(now - lastStatePrint).count() >= statePrintIntervalMs)
+            if (!options.monitorLux &&
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - lastStatePrint).count() >= statePrintIntervalMs)
             {
                 lastStatePrint = now;
                 for (auto &device : devices)
@@ -823,6 +1102,30 @@ int main(int argc, char **argv)
                         << " age_ms=" << snapshot.lastRxAgeMs
                         << " beep_duty=" << snapshot.beepState.duty
                         << " beep_freq=" << snapshot.beepState.frequency
+                        << " pressure=";
+                    if (snapshot.lastPressureReport.has_value())
+                    {
+                        const auto &pressure = snapshot.lastPressureReport.value();
+                        std::cout << pressure.value << "(raw=0x"
+                                  << std::hex << std::uppercase << std::setw(8)
+                                  << std::setfill('0') << static_cast<uint32_t>(pressure.value) << std::dec
+                                  << std::setfill(' ') << ",age_ms=" << snapshot.pressureReportAgeMs << ')';
+                    }
+                    else
+                    {
+                        std::cout << "none";
+                    }
+                    std::cout << " lux=";
+                    if (snapshot.lastAmbientLightReport.has_value())
+                    {
+                        std::cout << snapshot.lastAmbientLightReport->lux
+                                  << "(age_ms=" << snapshot.ambientLightReportAgeMs << ')';
+                    }
+                    else
+                    {
+                        std::cout << "none";
+                    }
+                    std::cout
                         << " btn_up=" << (snapshot.keyPressed[kBtnUpKeyIndex] ? 1 : 0)
                         << " btn_down=" << (snapshot.keyPressed[kBtnDownKeyIndex] ? 1 : 0)
                         << " extra=";

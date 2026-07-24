@@ -88,6 +88,51 @@ python3 -m py_compile audio/*.py
 python3 audio/record_usb_audio.py --help
 ```
 
+HMI 压力、环境光与补光灯可通过随包 `GripperHmiTool` 定向验证。压力按有符号 32 位值显示；现场固件不会自动发送 lux，`--monitor-lux` 因此按约 `5Hz` 主动查询 `0x31`，每行同步显示 lux 与最新压力；补光灯 PWM 范围为 `0..1000`：
+
+```bash
+sudo /opt/ugripper/bin/GripperHmiTool/GripperHmiTool \
+  --port /dev/right_gripper --fill-light-pwm 500 --duration 10
+
+sudo /opt/ugripper/bin/GripperHmiTool/GripperHmiTool \
+  --port /dev/right_gripper --fill-light-pwm 0 --duration 1 --led-only
+
+sudo /opt/ugripper/bin/GripperHmiTool/gripper_hmi_lux_monitor.sh
+```
+
+仓库侧还提供压力主动查询压测和补光灯定时测试；压力脚本默认先测 `5s` 被动基线，再按 `100Hz` 查询 `10s` 并输出直接/基线修正丢包率，补光灯脚本退出时自动恢复 `PWM=0`：
+
+```bash
+sudo python3 test/scripts/board_gripper_hmi_pressure_stress.py --query-hz 100 --duration-sec 10
+sudo bash test/scripts/board_gripper_hmi_fill_light_test.sh --side both --pwm 500 --duration-sec 10
+sudo bash test/scripts/board_gripper_hmi_lux_monitor.sh --side both
+```
+
+`board_gripper_hmi_dashboard.py` 提供左右双列原位刷新的现场仪表盘，压力默认按每侧 `100Hz` 主动查询，lux 只监听固件自动上报，并显示全部 `KEY1..KEY6`。Pogo 状态使用现场确认映射：左爪看 `KEY4`，右爪看 `KEY3`；两侧均为 `1` 时顶部显示 `RELATIVE POSE: FIXED`，任一侧为 `0` 时显示 `NOT FIXED`。脚本会自动停止并恢复原本运行中的 `ugripper.service`：
+
+```bash
+sudo python3 test/scripts/board_gripper_hmi_dashboard.py
+```
+
+安装 deb 后可直接运行：
+
+```bash
+sudo /opt/ugripper/bin/GripperHmiTool/gripper_hmi_dashboard.py
+```
+
+压力物理量使用每侧独立两点标定。先在无外加载荷时采集零点，再施加已知标准重量采集参考点；默认每个点采集 `2s` 并取中位数。零点暂存到 `/var/lib/ugripper/hmi_pressure_calibration.json`，完成标准重量点后会读取当前夹爪 SN，把相同的 32-byte SN 和两点标定写入夹爪 UCAL force payload并读回校验。例如使用 `1kg` 标准重量：
+
+```bash
+sudo python3 test/scripts/board_gripper_hmi_dashboard.py --calibrate-zero both
+sudo python3 test/scripts/board_gripper_hmi_dashboard.py --calibrate-load left --known-kg 1.0
+sudo python3 test/scripts/board_gripper_hmi_dashboard.py --calibrate-load right --known-kg 1.0
+sudo python3 test/scripts/board_gripper_hmi_dashboard.py
+```
+
+仪表盘正常启动时优先从夹爪读取标定，并要求 payload SN 与独立 SN 读取结果一致。按 `load_kg=(raw-zero_raw)*reference_kg/(reference_raw-zero_raw)`、`force_N=load_kg*9.80665` 显示等效负载 `kgf` 与力 `N`；signed reference delta 自带方向，不额外翻转符号。没有接触面积参数时不换算 `Pa/kPa`。
+
+除 `board_gripper_hmi_dashboard.py` 会自动停止并恢复服务外，其余工具运行前应先停止 `ugripper.service`，避免两个进程同时独占同一个 HMI 串口；验证完成后恢复服务。这些功能不包含自动 lux 调光，Pogo 与力数据当前也不写入 episode。
+
 可按需通过环境变量覆盖输出目录和测试参数，例如：
 
 ```bash

@@ -8,6 +8,7 @@
 #include <libserialport.h>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -26,6 +27,12 @@ struct GripperHmiSnapshot
     uint64_t beepStateCount = 0;
     GripperBeepState beepState{};
     std::optional<GripperKeyReport> lastKeyReport;
+    uint64_t pressureReportCount = 0;
+    uint64_t pressureReportAgeMs = 0;
+    std::optional<GripperPressureReport> lastPressureReport;
+    uint64_t ambientLightReportCount = 0;
+    uint64_t ambientLightReportAgeMs = 0;
+    std::optional<GripperAmbientLightReport> lastAmbientLightReport;
 };
 
 class GripperHmiDriver
@@ -42,19 +49,23 @@ public:
     bool isConnected() const;
 
     bool requestState();
+    bool requestPressure();
+    bool requestAmbientLight();
+    bool refreshPressureReport(int timeoutMs, int maxAttempts);
     bool setLedColor(const GripperLedColor &color);
     bool setLedColor(uint8_t red, uint8_t green, uint8_t blue);
     bool setLedEffect(const GripperLedEffect &effect);
     bool setBeepState(const GripperBeepState &state);
     bool setBeepEnabled(bool enabled);
     bool silenceBeep();
+    bool setFillLightPwm(uint16_t pwm);
     bool readSerialNumber(std::string *serialNumber);
     bool writeSerialNumber(const std::string &serialNumber);
-    bool readCalibrationData(gripper_hmi::GripperCalibrationDataV1 *calibrationData);
+    bool readCalibrationData(gripper_hmi::GripperCalibrationData *calibrationData);
     bool readSerialNumberAndCalibration(std::string *serialNumber,
                                         bool *hasSerialNumber,
-                                        gripper_hmi::GripperCalibrationDataV1 *calibrationData);
-    bool writeCalibrationData(const gripper_hmi::GripperCalibrationDataV1 &calibrationData);
+                                        gripper_hmi::GripperCalibrationData *calibrationData);
+    bool writeCalibrationData(const gripper_hmi::GripperCalibrationData &calibrationData);
 
     bool pollOnce(int timeoutMs = 20);
     bool waitForKeyChange(int timeoutMs, GripperKeyReport *report);
@@ -91,7 +102,7 @@ private:
     bool readCalibrationFrameLocked(uint8_t expectedToken, std::vector<uint8_t> *payload, int timeoutMs);
     bool abortCalibrationWriteStateLocked(const std::string &reason);
     bool readSerialNumberLocked(std::string *serialNumber);
-    bool readCalibrationDataLocked(gripper_hmi::GripperCalibrationDataV1 *calibrationData);
+    bool readCalibrationDataLocked(gripper_hmi::GripperCalibrationData *calibrationData);
     ExclusiveFrameReadResult readRawDataOrStatusFrameLocked(size_t dataLength,
                                                             std::vector<uint8_t> *payload,
                                                             uint8_t *token,
@@ -121,13 +132,18 @@ private:
     mutable std::mutex ioMutex_;
     std::condition_variable ioCv_;
     std::thread ioThread_;
+    std::atomic<bool> connected_{false};
     bool ioRunning_ = false;
     bool pendingStateRequest_ = false;
+    bool pendingPressureRequest_ = false;
+    bool pendingAmbientLightRequest_ = false;
     bool pendingLedUpdate_ = false;
     GripperLedColor pendingLedColor_{};
     bool pendingBeepUpdate_ = false;
     GripperBeepState pendingBeepState_{};
     GripperBeepState activeBeepState_{};
+    bool pendingFillLightUpdate_ = false;
+    uint16_t pendingFillLightPwm_ = 0;
     uint64_t lastBeepWriteAtMs_ = 0;
     bool ledEffectEnabled_ = false;
     bool ledEffectDirty_ = false;
@@ -144,6 +160,10 @@ private:
     std::array<bool, 6> keyPressed_{};
     GripperBeepState beepState_{};
     std::optional<GripperKeyReport> lastKeyReport_;
+    std::optional<GripperPressureReport> lastPressureReport_;
+    std::optional<GripperAmbientLightReport> lastAmbientLightReport_;
+    uint64_t lastPressureReportTimeMs_ = 0;
+    uint64_t lastAmbientLightReportTimeMs_ = 0;
     uint64_t lastReceiveTimeMs_ = 0;
     uint64_t stateGeneration_ = 0;
     std::string lastCommandError_;
@@ -156,9 +176,14 @@ private:
     std::atomic<uint64_t> txLedCount_{0};
     std::atomic<uint64_t> txBeepCount_{0};
     std::atomic<uint64_t> txStateRequestCount_{0};
+    std::atomic<uint64_t> txPressureRequestCount_{0};
+    std::atomic<uint64_t> txAmbientLightRequestCount_{0};
     std::atomic<uint64_t> rxFrameCount_{0};
     std::atomic<uint64_t> rxKeyReportCount_{0};
     std::atomic<uint64_t> rxBeepStateCount_{0};
+    std::atomic<uint64_t> txFillLightCount_{0};
+    std::atomic<uint64_t> rxPressureReportCount_{0};
+    std::atomic<uint64_t> rxAmbientLightReportCount_{0};
     std::atomic<uint64_t> ioFailureCount_{0};
     std::atomic<uint64_t> connectSuccessCount_{0};
     std::atomic<uint64_t> reconnectSuccessCount_{0};

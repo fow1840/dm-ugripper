@@ -30,10 +30,23 @@ struct GripperBeepState
     uint16_t frequency = 0;
 };
 
+struct GripperPressureReport
+{
+    std::array<uint8_t, 4> raw{};
+    int32_t value = 0;
+};
+
+struct GripperAmbientLightReport
+{
+    uint16_t lux = 0;
+};
+
 enum class GripperFrameType
 {
     KeyReport,
     BeepState,
+    PressureReport,
+    AmbientLightReport,
     Unknown,
 };
 
@@ -43,6 +56,8 @@ struct GripperParsedFrame
     uint8_t indexWord = 0;
     GripperKeyReport keyReport{};
     GripperBeepState beepState{};
+    GripperPressureReport pressureReport{};
+    GripperAmbientLightReport ambientLightReport{};
 };
 
 class GripperHmiProtocol
@@ -65,6 +80,11 @@ public:
     static constexpr uint8_t kIndexBeepBase = 0x04;
     static constexpr uint8_t kIndexBeepFree = 0x0E;
     static constexpr uint8_t kIndexRgbLight = 0x0F;
+    static constexpr uint8_t kIndexPressureReport = 0x30;
+    static constexpr uint8_t kIndexAmbientLightReport = 0x31;
+    static constexpr uint8_t kIndexFillLight = 0x32;
+    static constexpr uint8_t kFuncFillLightPwm = 0x01;
+    static constexpr uint16_t kMaxFillLightPwm = 1000;
     static constexpr uint8_t kIndexReadCalibrationData = 0x52;
     static constexpr uint8_t kIndexSerialNumber = 0x53;
     static constexpr uint8_t kIndexWriteCalibrationData = 0x57;
@@ -83,8 +103,11 @@ public:
     static bool validateXor(const uint8_t *data, size_t length, uint8_t expected);
     static std::optional<GripperParsedFrame> tryConsumeFrame(std::vector<uint8_t> &buffer);
     static std::array<uint8_t, 7> buildBeepStateRequest();
+    static std::array<uint8_t, 7> buildPressureRequest();
+    static std::array<uint8_t, 7> buildAmbientLightRequest();
     static std::array<uint8_t, 7> buildSetBeepCommand(const GripperBeepState &state);
     static std::array<uint8_t, 8> buildSetRgbCommand(const GripperLedColor &color);
+    static std::array<uint8_t, 7> buildSetFillLightPwmCommand(uint16_t pwm);
     static std::array<uint8_t, 7> buildReadSerialNumberCommand();
     static std::array<uint8_t, 7> buildWriteSerialNumberCommand();
     static std::array<uint8_t, kSerialNumberFrameLength> buildWriteSerialNumberFrame(

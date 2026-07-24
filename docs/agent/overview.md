@@ -37,12 +37,12 @@
 | 相机录制 | `bin/CameraRecorder/CameraRecorder` | 负责主摄/触觉会话录制；默认同时启动 Fays 双目链路，`+nostereo` 变体不启动 Fays | 默认 8 路基础 `mkv`；`+nostereo` 为 6 路 |
 | 传感器录制 | `bin/SensorRecorder/SensorRecorder` | 录制左右 IMU/encoder，按“采样入队 + 每侧独立 MCAP 写线程”分别输出 MCAP；收到 `SIGINT` / `SIGTERM` 时信号处理函数只设置停止标志，退出主循环后先等待编码器读写线程停止，再关闭串口、排空队列并关闭 MCAP，避免信号上下文日志死锁或串口释放竞态造成 Footer 缺失；encoder zeroing 使用相同的信号安全约束 | `sensor_left.mcap`、`sensor_right.mcap` |
 | Ego 联动采集 | `bin/UgripperRuntime/ego/ego_recording_worker.py` + `bin/UgripperRuntime/adb/adb` | 录制起停阶段通过内置 ADB 联动 SXR ego app，起录前同步 ego 系统时间并按增量方式同步 ego episode 到当前 UGripper episode；当前不主动启动 app、不参与强校验 | `ego/`、`ego/ego_sync.json` |
-| HMI 类库 | `standalone/GripperHmiTool` | 读取夹爪按键，并在驱动内部以单线程 owner 线程完成状态查询、灯效生成与 RGB 指令发送；默认由状态机切灯效，必要时仍可直接下发 RGB；当前也提供 SN 与 1024-byte 标定参数读写 API | 按键快照、RGB 指令、SN/标定参数读写 |
+| HMI 类库 | `standalone/GripperHmiTool` | 读取夹爪按键、压力与环境光上报，并在驱动内部以单线程 owner 线程完成状态查询、灯效生成、RGB、蜂鸣器与补光灯 PWM 指令发送；默认由状态机切灯效，必要时仍可直接下发 RGB 或补光灯 PWM；当前也提供原 32-byte SN 读写和与 SN 绑定的 1024-byte 力标定 payload API | 按键/压力/lux 快照、RGB/蜂鸣器/补光灯指令、SN/力标定读写 |
 | 音频播放 | `bin/UgripperRuntime/audio/audio_play.py` | 优先绑定受支持 USB 耳机、无耳机时回退系统默认声卡；播放提示音并处理耳机 HID 音量键；初始化阶段受控处理 idle suspend | `/dev/shm/ugripper/umi_audio_pipe` |
 | 音频采集 | `audio/record_usb_audio.py` | 优先从受支持 USB 耳机麦克风录音，无耳机时回退系统默认 source，供 pre/post 处理链路使用 | 临时 wav 文件 |
 | 数据盘挂载 | `config/99-fixed-usb-map.rules` | 限定允许物理 USB 口，使用独立 mount helper 将数据盘挂到 `/mnt/data_disk`；主包只负责挂载/卸载，不再直接拉起 updater | `/mnt/data_disk` |
 | 硬件健康检查 | `scripts/hws` / `/usr/local/bin/hws` | 一行命令列出左右手全部传感器、胸部相机与数据盘 symlink 的在线状态，便于现场快速确认是否全部在线 | 终端状态表 |
-| USB 导入/升级 | `auto_update/usb_auto_update.sh` | 处理 `deb` 升级/重装、配置导入、标定数据导入、encoder 校准触发；当前会按固定名单自动安装 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint`、`device-ota-mender`，只要 U 盘根目录存在名单内包就执行安装，同版本也会强制重装；deb 安装窗口会显示 `CALIB_RUN` 黄灯快闪且至少保持 `3s`，任一包失败显示 `ERROR_1` 红灯 `3s`，全部包处理成功显示 `CALIB_DONE` 绿灯 `3s`；全部安装完成后再通过 PulseAudio 播放 `upgrade_completed.wav`；其中标定导入会同时刷新主机侧主相机参数和夹爪侧 RGB/stereo/IMU payload。该脚本及其 `/usr/local/bin` + systemd unit 触发链归属可选独立包 `das-usb-updater` | `/etc/environment`、`calibration.json`、夹爪 HMI |
+| USB 导入/升级 | `auto_update/usb_auto_update.sh` | 处理 `deb` 升级/重装、配置导入、相机标定数据导入、encoder 校准触发；相机/双目/IMU 标定保存在相机模组或主机缓存，导入流程不再覆盖 HMI 的力标定 payload；当前会按固定名单自动安装 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint`、`device-ota-mender` | `/etc/environment`、`calibration.json` |
 | 校准执行 | `auto_calibration/run_calibration.sh` | 在 `calibration.txt` 存在时停止业务、复用 `/mnt/data_disk` 触发左右编码器并行 zeroing、恢复服务 | `bin/SensorRecorder/zeroing` |
 
 ## 4. 启动链路
@@ -60,7 +60,9 @@
    - `UGRIPPER_LANG`：决定提示音语言。
 10. 运行时连接左右夹爪 HMI、启动 LED 渲染线程、尝试拉起音频守护进程。
 - HMI 状态查询与 LED RGB 下发会在单个 gripper 串口内由驱动 owner 线程统一调度；`record_runtime` 只切换灯效模式，不再跨线程推送录制态的 500ms 亮灭边沿。当前驱动参考旧版 `driver_origin/led_manager` 的职责分离思路做了收敛：按键输入仍以 HMI 主动上报 `KeyReport` 为主，串口主动查询已降为约 `1s` 一次的低频探活/状态刷新；LED 仅在颜色变化、状态切换或低频补发时下发，避免高频状态查询与 RGB 指令互相抢占；若有专项诊断或直控需求，仍可走 direct RGB 通道覆盖当前效果。
-- `standalone/GripperHmiTool` 当前新增了 UMI SN / 标定参数协议封装：SN 固定为 32-byte 字段（当前现场 SN 文本示例为 16-char，尾部补 `0x00`），标定参数固定为 `1024 byte` 严格对齐结构；当前 payload 已覆盖 RGB 主相机、双目 `cam0/cam1`、`cam->imu` 外参、IMU 离散噪声/随机游走与残差统计，其中 header 会保留内部有效数据长度，但当前 `V1.1` 固件写入时仍必须补满 `64 x 16B` 数据包，具体协议见 `docs/umi_calibration_protocol.md`。
+- HMI 新增传感器与补光灯协议适配：压力按 `A5 A5 30 + 4-byte data + XOR` 接收，驱动保留原始 4 字节并按大端有符号 `int32` 解析；运行时约每 `5s` 发送一次低频 `5A 5A 30 02 00 00 32` 强制刷新，并在起录前按每次 `250ms`、最多 `3` 次重试取得新压力帧，失败只告警而不阻断录制。环境光按 `A5 A5 31 00 00 + 2-byte lux + XOR` 接收，lux 按大端 `uint16` 解析；运行时不周期查询 lux，只消费固件上报，诊断工具 `--monitor-lux` 则根据现场固件实际行为约每 `200ms` 发送一次 `5A 5A 31 02 00 00 33`，并同步显示 lux 与最新压力。补光灯按 `5A 5A 32 01 + 2-byte PWM + XOR` 发送，PWM 接口范围为 `0..1000`。这些上报进入线程安全 HMI snapshot，当前只供运行时/诊断读取，不自动按 lux 调光，也不写入 episode。
+- 仓库现场工具 `test/scripts/board_gripper_hmi_dashboard.py` 会随包安装为 `/opt/ugripper/bin/GripperHmiTool/gripper_hmi_dashboard.py`，以左右双列稳定刷新压力、被动 lux 与 `KEY1..KEY6`。V3 Pogo 现场映射为左爪 `KEY4`、右爪 `KEY3`。工具支持每侧独立采集无载零点和已知标准重量点；零点阶段暂存到 `/var/lib/ugripper/hmi_pressure_calibration.json`，完成标准重量点后通过现有 SN 读取链路取得夹爪 SN，把相同的 32-byte SN、zero raw、reference raw 和 reference mass 写入夹爪 UCAL force payload 并读回校验。正常监视优先从夹爪读取标定，按 signed delta 两点模型换算 `kgf` 与 `N`。
+- `standalone/GripperHmiTool` 保持原 UMI SN 命令和 32-byte ASCII/NUL 编码不变。HMI calibration payload 使用原 32-byte UCAL header，`0x00020000` 格式只包含一个 64-byte `FCAL` 块：再次保存完全相同的 SN，并记录 zero raw、reference raw、reference mass、时间和 CRC32；有效内容为 96 bytes，但当前固件写入仍补满 `64 x 16B`。C++ 与纯 Python 的 raw bin 写入口都会在写入前校验 V2/FCAL/CRC，并读取目标夹爪 SN 检查 32-byte 编码一致；旧 `0x00010000` 相机/双目/IMU payload 只识别为 legacy，不再生成或写入，具体见 `docs/umi_calibration_protocol.md`。
 - UMI 标定写入当前增加了异常恢复口径：若写入阶段收到 `0xFE`（当前 chunk 零数据校验错误），驱动会优先重发当前 chunk；若连续出现 `0xFE`，或后续读 SN / 读标定返回 `0xF3/0xFE`，则会发送一次 `AbortWriteInData` 清理固件残留写入状态后再重试。
 11. 初始化成功后进入空闲状态机；默认包要求数据盘和 Fays recorder ready 才进入 `READY`。`+nostereo` 变体只要求数据盘与非双目关键设备 ready，不等待 Fays。
    - `UGRIPPER_ENABLE_STEREO` 是构建期开关，默认 `ON`；编译结果通过 `PACKAGE_STEREO_ENABLED=true/false` 日志体现。
@@ -231,7 +233,7 @@
 - `device_sn` 使用主控 `DEVICE_SN`，写出前统一转大写；`device_type=ugripper`，`device_mode=dual`，`data_version=3.0`。
 - `metadata.json` 使用范本顺序写出顶层字段、`hardware_list` 字段和 `video_details[]` 字段；校验脚本会把 key 顺序漂移作为格式错误。
 - `data_uuid` 使用系统随机 UUID；若 `/proc/sys/kernel/random/uuid` 不可用则回退 `libuuid` 的 `uuid_generate/uuid_unparse`。无音频文件时 `audio_uuid` 允许为空字符串。
-- `hardware_version` 默认 `v2.5`，可通过 `UGRIPPER_HARDWARE_VERSION` 覆盖；`software_version` 来自 ugripper 主包版本并带 `v` 前缀；`das_usb_updater_version` 优先读取 `das-usb-updater` 包版本。
+- `hardware_version` 默认 `V3`，可通过 `UGRIPPER_HARDWARE_VERSION` 覆盖；`software_version` 来自 ugripper 主包版本并带 `v` 前缀；`das_usb_updater_version` 优先读取 `das-usb-updater` 包版本。
 - `hardware_list` 保持固定 schema：左右 gripper、左右主摄、可选胸部主摄、四路 tactile 与左右 stereo 字段始终存在；默认包从 Fays 状态写 stereo SN，`+nostereo` 变体写空字符串。
 - `quality_check_status` 取值为 `success` / `fail` / 空字符串；`quality_check_err_type` 保持单字段兼容，只写本次失败的主 `error_type`。常见取值包括 `missing_file`、`collection_duration_too_short`、`frame_loss`、`finalize_error`、`stereo_control_failed`、`calibration_error`、`runtime_error`、`device_disconnected`、人工补标的 `operator_marked_failed`，以及健康监控直接上报的 `disk_mount_lost`、`disk_not_writable`、`disk_full`、`critical_devices_missing`、`stereo_not_ready`、`hmi_*` 等 fault key；无法归类时写 `unknown`。
 - `collection_duration_s` 取有效视频时长最大值；默认包包含 stereo，`+nostereo` 只统计主摄/触觉。`video_details` 时长优先复用停录校验缓存。
@@ -271,7 +273,7 @@
 
 ### 8.2 关键持久化与临时路径
 - 持久化标定：`/etc/ugripper/config/calibration/calibration.json`
-- USB 标定导入阶段会在 `/etc/ugripper/config/calibration/.import_stage.*` 下生成临时 `calibration.json` 与夹爪 `payload bin`；由于 HMI helper 当前会以 `ubuntu` 用户运行，stage 目录需保持可遍历、payload bin 需保持可读，否则会出现“bin 已生成但 helper 无法读取”的写入失败。
+- USB 相机标定导入阶段只生成主机侧临时 `calibration.json` 并更新相机相关数据，不再生成或写入 HMI payload，因此不会覆盖夹爪内的力传感器标定。
 - 运行时音频 FIFO：`/dev/shm/ugripper/umi_audio_pipe`
 - 运行时软件录制控制 FIFO：`/dev/shm/ugripper/umi_record_control.pipe`
 - 音频临时目录：`/tmp/umi_audio`
@@ -369,7 +371,7 @@
 - updater 自升级：根目录放置 `das-usb-updater*.deb`；若本次先装的是新版 updater，安装后的新脚本会在同一次插盘流程里继续按最新名单扫描剩余 `.deb`。
 - 主包升级：根目录放置 `ugripper_*_arm64*.deb`。
 - 配置导入：根目录 `config.txt`。
-- 标定数据导入：`ugripper_calib/<DEVICE_SN>/`，通过文件名后缀 `_left` / `_right` 区分左右主相机 `camchain`；对应夹爪侧 RGB/stereo/IMU payload 则按现场读出的 gripper SN 文本在该目录下递归匹配，优先 `.bin`，其次包含 `summary/imucam` 关键词的 `.md` 或当前 raw 目录（`rgb_video_ros-camchain.yaml + output-results-imucam.txt`），并按 `rgb_video_ros_imucam_parameter_summary.md` 口径生成 `1024-byte` 对齐数据结构；当前固件写入时固定补满 `64 x 16B` 传输窗口。
+- 标定数据导入：`ugripper_calib/<DEVICE_SN>/` 继续用于匹配主相机、双目和 IMU 标定源；这些参数进入相机模组或主机侧 `calibration.json`，不再生成旧 HMI RGB/stereo/IMU payload。HMI 的 `1024-byte` 存储区只用于与当前 SN 绑定的力传感器两点标定。
 - encoder 零位校准触发：根目录 `calibration.txt`。
 - deb 安装灯效：当本次 U 盘里实际存在目标软件包并进入安装窗口后，`usb_auto_update.sh` 会停止业务栈并通过 HMI helper 显示 `CALIB_RUN` 黄灯快闪；安装中灯效至少保持 `3s`，避免短安装或主包资源替换导致肉眼不可见；任一包安装或安装后置处理失败时显示 `ERROR_1` 红灯 `3s` 并退出；全部目标包处理成功后显示 `CALIB_DONE` 绿灯 `3s`，随后先恢复业务服务，确认服务恢复后再继续升级完成提示音。
 - 安装完成提示音：当本次 U 盘里实际出现的目标软件包全部安装/重装完成后，`usb_auto_update.sh` 会直接从新安装的 `/opt/ugripper/audio*/upgrade_completed.wav` 里选取对应语言资源，并以 `paplay` + PulseAudio 播放升级完成提示音；当前不要求自动安装名单里的包必须全部同时出现在 U 盘。若现场没有可用 PulseAudio sink，则只记日志，不把安装流程判失败。
@@ -377,9 +379,9 @@
 ### 9.4 U 盘同次插入顺序
 当同一次 U 盘插入同时包含 `config.txt`、`ugripper_calib/` 和 `calibration.txt` 时，当前顺序是：
 1. 导入 `config.txt`
-2. 按 `_left` / `_right` 文件后缀识别需要导入的左右标定目标，并逐侧读取现场 gripper SN、匹配对应夹爪标定 payload
-3. 只有当本次目标侧都完成 gripper SN 匹配后，才开始写入对应夹爪的整套 RGB/stereo/IMU 标定；任一侧匹配失败或写入失败时，本次不会把旧 persist calibration 当作成功结果继续保留
-4. U 盘导入当前负责“匹配并写入夹爪标定 + 保存导入归档”；主机侧持久化 `calibration.json` 由 `record_runtime` 在 gripper 后续插入/重连时按实际读回的 SN 与 calibration payload 刷新
+2. 按 `_left` / `_right` 文件后缀识别需要导入的左右相机标定目标，并逐侧读取现场 gripper SN 完成标定源匹配
+3. 导入相机模组/主机侧参数并保存归档，不读写 HMI 力标定 payload
+4. HMI 力标定由独立的两点标定流程写入，并以 payload SN 与独立 SN 完全一致作为有效条件
 5. 若存在 `calibration.txt`，则跳过中间重启，直接进入左右编码器并行校准流程
 6. 若未触发 `calibration.txt`，则开始按固定名单依次处理 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint`、`device-ota-mender` 的 `.deb`；每个包都会先按 Debian 包名读取版本，U 盘内若存在多个候选文件则取最高版本；只要名单内包在 U 盘根目录存在，就执行安装，同版本也会强制重装；进入 deb 安装窗口后显示 `CALIB_RUN` 黄灯快闪且至少保持 `3s`，任一包失败显示 `ERROR_1` 红灯 `3s` 并退出
 7. 若 updater 在第 6 步先完成自升级，则安装后的新脚本会在同一次插盘流程里继续执行剩余自动安装名单，避免必须二次插盘才能让新名单生效
@@ -518,7 +520,7 @@ PY
 - `py_script/read_ugripper_mcap.txt` 是给数据使用者参考的通用 MCAP 读取示例；文件后缀使用 `.txt`，方便在会拦截或加密 `.py` 的环境中发送，但内容仍是 Python 代码。它可直接输入单个 `.mcap` 或完整 episode 目录；episode 模式会自动读取 `sensor_left/right.mcap`、`fays_data_left/right.mcap` 与可选 `ego/sensor.mcap`，并解码当前 UGripper encoder 与 Fays `i/c` 二进制 payload。配套说明见 `py_script/README_read_ugripper_mcap.txt`。示例：
   `python3 py_script/read_ugripper_mcap.txt /mnt/data_disk/<device_sn_lower>/data/episode_<date>_<index> --json-out /tmp/ugripper_mcap_report.json`。
 - 当前 UGripper MCAP 是通用 MCAP 容器，不是 ROS 2 bag；不要用 `ros2 bag info` 或 Foxglove 的 ROS bag 可视化入口作为数据是否正常的判断依据。若要可视化，需要按脚本里的 payload 定义转换成 Foxglove/ROS 可识别 schema 后再导入。
-- 若现场需要脱离主服务、单独向夹爪 HMI 写入 SN / 标定，可使用 `py_script/hmi_sn_batch_writer.py`：脚本直接读取一个或多个 `.xlsx` 的多 sheet `SN码` 列，支持操作员输入 SN 后 4 位或任意连续片段做唯一匹配，自动扫描 CH9344 相关串口确认可用 HMI 口，并在匹配到目标 SN 后写入 SN 与可选 `1024-byte` 标定 payload。
+- 若现场需要脱离主服务单独写入夹爪 SN，可使用 `py_script/hmi_sn_batch_writer.py`；脚本保持原 32-byte SN 编码与读回校验，不再写入旧相机/IMU payload，也不会覆盖已有 HMI 力标定。力标定使用 `board_gripper_hmi_dashboard.py` 或 `GripperHmiTool --write-force-calib`。
 - `py_script/hmi_sn_batch_writer.py` 默认会在启动时把自身和本次使用的 `.xlsx` 同步复制到 `/mnt/data_disk/hmi_sn_writer/`；标定源目录可通过 `--calib-root` 指向包含 `.bin`、summary `.md` 或 `rgb_video_ros-camchain.yaml + output-results-imucam.txt` 的目录。若未找到目标 SN 对应标定文件，脚本会只写 SN，并在控制台用黄色提示“未写标定”。
 
 ## 11. 当前使用注意点
