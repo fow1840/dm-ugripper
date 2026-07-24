@@ -211,6 +211,11 @@
   - `.packaged_venv_download`
   - `.packaged_venv_extract`
   - `.auto_release_ugripper.manifest`
+- auto-release 源码基线独立保存在 `temp_build_state/`，不再放入 `temp_build_deb/` 或 updater staging：
+  - 主包：`temp_build_state/.auto_release_ugripper.manifest`
+  - updater：`temp_build_state/.auto_release_updater.manifest`
+  - manifest 候选集来自 Git 已跟踪文件与未忽略的新文件，并排除文档、Codex、graphify 和本地构建内容。
+  - 哈希使用 NUL 分隔批处理；打包完成后的刷新默认限时 `30s`，失败时保留上一份基线并明确告警，不影响已生成的 DEB。
 
 #### 7.2.3 `build_deb.sh` 的两种运行方式
 - 标准模式：`./build_deb.sh`
