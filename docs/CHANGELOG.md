@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fays VIKit SDK 从 `3.5.1` 更新到上游 `main` 的 `3.8.0`（`b1d74499`），同步 aarch64/x86_64 运行库与公开 API/版本头；FT602 `1.0.17` 运行库保持不变。主包版本同步提升到 `2.1.8`。
 - 扩展夹爪 HMI 协议：支持压力 `0x30` 与环境光 `0x31` 上报，压力按有符号 32 位值解析；运行时增加低频压力强制刷新及起录前超时重试，运行时 lux 保持只消费设备上报；新增补光灯 `0x32/0x01` PWM 控制、压力压测脚本和 `GripperHmiTool --monitor-lux` 实时终端入口，其中监视工具按约 `5Hz` 主动读取 lux 并同步显示最新压力；V3 包的 metadata 默认写入 `hardware_version=V3`。
 - 新增随主包安装的左右 HMI 双列现场仪表盘：按左 `KEY4`、右 `KEY3` 判断 Pogo 闭合状态并汇总相对位姿是否固定；压力支持每侧独立零点与标准重量两点标定，写入夹爪后实时显示等效负载 `kgf` 和力 `N`，lux 保持只监听固件自动上报。
 - HMI 标定 payload 收口为与现有 32-byte SN 绑定的简化力传感器两点标定；保留原 UCAL header、1024-byte 传输和 SN 读写协议，新增 CRC 与读回校验，C++/Python raw 写入口拒绝旧格式、损坏或 SN 不匹配的 payload，并停止相机/双目/IMU 导入流程覆盖 HMI payload。
