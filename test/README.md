@@ -133,7 +133,9 @@ sudo python3 test/scripts/board_gripper_hmi_dashboard.py
 
 仪表盘正常启动时优先从夹爪读取标定，并要求 payload SN 与独立 SN 读取结果一致。按 `load_kg=(raw-zero_raw)*reference_kg/(reference_raw-zero_raw)`、`force_N=load_kg*9.80665` 显示等效负载 `kgf` 与力 `N`；signed reference delta 自带方向，不额外翻转符号。没有接触面积参数时不换算 `Pa/kPa`。
 
-除 `board_gripper_hmi_dashboard.py` 会自动停止并恢复服务外，其余工具运行前应先停止 `ugripper.service`，避免两个进程同时独占同一个 HMI 串口；验证完成后恢复服务。这些功能不包含自动 lux 调光，lux 和 Pogo 状态当前不写入 episode；力数据按 N 写入 sensor MCAP。
+除 `board_gripper_hmi_dashboard.py` 会自动停止并恢复服务外，其余工具运行前应先停止 `ugripper.service`，避免两个进程同时独占同一个 HMI 串口；验证完成后恢复服务。正式运行时不主动查询 lux，也不使用 lux 调节补光 PWM；补光默认关闭，等待后续相机 gain 控制源接入。`UGRIPPER_AUTO_FILL_LIGHT` 保留为全局开关，但当前启用不会点亮补光灯。lux 和 Pogo 状态均不写入 episode。
+
+板端当前只需确认初始化、录制启停和退出后补光 PWM 都保持为零。独立验证 lux/PWM 协议时不要同时运行主服务、HMI dashboard 或 lux monitor，避免多个进程争用串口。
 
 可按需通过环境变量覆盖输出目录和测试参数，例如：
 

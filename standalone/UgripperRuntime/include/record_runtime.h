@@ -131,6 +131,8 @@ private:
         bool getButtonsForPortToken(const std::string &token, ButtonSnapshot *snapshot) const;
         HealthSnapshot getHealthSnapshot(uint64_t activeTimeoutMs) const;
         std::vector<PressureSample> consumePressureSamples();
+        bool setFillLightPwmForSide(const std::string &side, uint16_t pwm);
+        void turnOffFillLights();
         void setRecordingActive(bool active);
         bool requestStateForSide(const std::string &side);
         bool refreshPressureReports(int timeoutMs, int maxAttempts);
@@ -168,6 +170,7 @@ private:
         std::vector<bool> lastKnownConnectedStates_;
         std::vector<ConnectionEvent> pendingConnectionEvents_;
         std::vector<GripperBeepState> currentDriverBeepStates_;
+        std::vector<uint16_t> currentDriverFillLightPwms_;
         size_t inputDriverIndex_ = 0;
         bool hasDedicatedRightInput_ = false;
         bool hasLedEffect_ = false;
@@ -461,6 +464,7 @@ private:
     bool chestCameraEnabled_ = true;
     bool stereoEnabled_ = true;
     bool perfLogEnabled_ = false;
+    bool autoFillLightEnabled_ = false;
     std::string hardwareVersion_;
     std::string packageVersion_;
     std::string updaterVersion_;

@@ -73,6 +73,7 @@ void CloseChildFileDescriptors(int fdLimit)
 }
 
 constexpr const char *kChestCameraEnvKey = "ENABLE_CHEST_CAM_MAIN";
+constexpr const char *kAutoFillLightEnvKey = "UGRIPPER_AUTO_FILL_LIGHT";
 #ifndef UGRIPPER_ENABLE_STEREO
 #define UGRIPPER_ENABLE_STEREO 1
 #endif
@@ -4069,6 +4070,7 @@ RecordRuntime::~RecordRuntime()
 {
     requestStop();
     stopRecording(false, "shutdown");
+    panelManager_.turnOffFillLights();
     closeRecordControlPipe();
     requestStopBackgroundTactileValidation();
     waitForMainCameraRefreshes();
@@ -4109,6 +4111,21 @@ bool RecordRuntime::initialize()
     chestCameraEnabled_ = !isFalseLikeValue(readEnvValue(options_.envFile, kChestCameraEnvKey));
     DM_LOG_INFO("{}", (::DA::utils::LogString() << kChestCameraEnvKey << "="
                          << (chestCameraEnabled_ ? "true" : "false") << std::endl).str());
+
+    const std::string fillLightSwitch = readEnvValue(options_.envFile, kAutoFillLightEnvKey);
+    autoFillLightEnabled_ = !fillLightSwitch.empty() && !isFalseLikeValue(fillLightSwitch);
+    if (autoFillLightEnabled_)
+    {
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << kAutoFillLightEnvKey
+            << " requested, but camera gain control is not connected; fill light remains off"
+            << std::endl).str());
+    }
+    DM_LOG_INFO("{}", (::DA::utils::LogString()
+        << kAutoFillLightEnvKey << "=" << (autoFillLightEnabled_ ? "true" : "false")
+        << " control_source=camera_gain"
+        << " status=inactive"
+        << std::endl).str());
 
     stereoEnabled_ = kPackageStereoEnabled;
     DM_LOG_INFO("{}", (::DA::utils::LogString() << kPackageStereoBuildMarker
@@ -4168,6 +4185,7 @@ bool RecordRuntime::initialize()
         DM_LOG_ERROR("{}", (::DA::utils::LogString() << "failed to connect any gripper HMI port" << std::endl).str());
         return false;
     }
+    panelManager_.turnOffFillLights();
 
     ledController_ = std::make_unique<HmiLedController>(&panelManager_);
     ledController_->start();
@@ -7509,6 +7527,7 @@ bool RecordRuntime::startRecording(bool resetRecording)
     if (!started)
     {
         panelManager_.setRecordingActive(false);
+        panelManager_.turnOffFillLights();
     }
     return started;
 }
@@ -7521,6 +7540,7 @@ bool RecordRuntime::stopRecording(bool dueToError, const std::string &reason, co
         return false;
     }
     panelManager_.setRecordingActive(false);
+    panelManager_.turnOffFillLights();
     closeForceSensorChannel();
     const bool ok = recordingOrchestrator_->StopRecording(dueToError, reason, errorType, nullptr);
     const std::string completedEpisodeDir = lastEpisodeDir();
@@ -8760,6 +8780,7 @@ bool RecordRuntime::GripperPanelManager::connect(const std::vector<std::string> 
     lastKnownConnectedStates_.clear();
     pendingConnectionEvents_.clear();
     currentDriverBeepStates_.clear();
+    currentDriverFillLightPwms_.clear();
     inputDriverIndex_ = 0;
     hasDedicatedRightInput_ = false;
     hasLedEffect_ = false;
@@ -8783,6 +8804,7 @@ bool RecordRuntime::GripperPanelManager::connect(const std::vector<std::string> 
         pressureRequestDueMs_.push_back(RecordRuntime::currentSteadyMs() + kPressureRefreshIntervalMs);
         lastKnownConnectedStates_.push_back(false);
         currentDriverBeepStates_.push_back({});
+        currentDriverFillLightPwms_.push_back(0);
         recordConnectionEventIfChanged(index, drivers_.back() != nullptr && drivers_.back()->isConnected());
     }
 
@@ -8798,6 +8820,7 @@ void RecordRuntime::GripperPanelManager::disconnect()
     lastKnownConnectedStates_.clear();
     pendingConnectionEvents_.clear();
     currentDriverBeepStates_.clear();
+    currentDriverFillLightPwms_.clear();
 }
 
 bool RecordRuntime::GripperPanelManager::hasConnectedDevice() const
@@ -8961,6 +8984,10 @@ void RecordRuntime::GripperPanelManager::maybeReconnectDriver(size_t index)
             drivers_[index]->setBeepState(beepState);
         }
     }
+    if (index < currentDriverFillLightPwms_.size())
+    {
+        drivers_[index]->setFillLightPwm(currentDriverFillLightPwms_[index]);
+    }
     if (hasDirectLedColor_)
     {
         drivers_[index]->setLedColor(currentLedColor_);
@@ -9055,6 +9082,38 @@ RecordRuntime::GripperPanelManager::consumePressureSamples()
         }
     }
     return samples;
+}
+
+bool RecordRuntime::GripperPanelManager::setFillLightPwmForSide(const std::string &side, uint16_t pwm)
+{
+    const int index = findDriverIndexForSide(side);
+    if (index < 0)
+    {
+        return false;
+    }
+    const size_t driverIndex = static_cast<size_t>(index);
+    if (driverIndex < currentDriverFillLightPwms_.size())
+    {
+        currentDriverFillLightPwms_[driverIndex] = pwm;
+    }
+    const auto &driver = drivers_[driverIndex];
+    return driver != nullptr && driver->isConnected() && driver->setFillLightPwm(pwm);
+}
+
+void RecordRuntime::GripperPanelManager::turnOffFillLights()
+{
+    for (size_t index = 0; index < drivers_.size(); ++index)
+    {
+        if (index < currentDriverFillLightPwms_.size())
+        {
+            currentDriverFillLightPwms_[index] = 0;
+        }
+        auto &driver = drivers_[index];
+        if (driver != nullptr && driver->isConnected())
+        {
+            driver->setFillLightPwm(0);
+        }
+    }
 }
 
 void RecordRuntime::GripperPanelManager::setRecordingActive(bool active)
