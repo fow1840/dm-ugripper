@@ -1,5 +1,6 @@
 #include "record_runtime.h"
 #include "main_camera_calibration_data.h"
+#include "sensor_recorder/force_protocol.h"
 #include "utils/logger.h"
 #include "record_runtime/gripper_refresh_logic.h"
 #include "utils/env_utils.h"
@@ -36,6 +37,7 @@
 #include <sstream>
 #include <sys/file.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
@@ -565,6 +567,15 @@ bool isCriticalDeviceMissingEvidence(const std::string &detail)
     return detail.find("Critical device nodes missing:") != std::string::npos;
 }
 
+bool isV3Hardware(const std::string &hardwareVersion)
+{
+    std::string normalized = hardwareVersion;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char value) {
+        return static_cast<char>(std::toupper(value));
+    });
+    return normalized == "V3";
+}
+
 struct VideoProbeResult
 {
     std::string cameraName;
@@ -598,6 +609,18 @@ constexpr std::array<EncoderTailCheckTarget, 2> kEncoderTailCheckTargets = {{
      "sensor_right.mcap",
      "encoder_right",
      {"right_cam_main", "right_stereo", "right_tcam_l", "right_tcam_r"}},
+}};
+
+struct ForceTailCheckTarget
+{
+    const char *side;
+    const char *mcapFileName;
+    const char *forceTopic;
+};
+
+constexpr std::array<ForceTailCheckTarget, 2> kForceTailCheckTargets = {{
+    {"left", "sensor_left.mcap", "force_left"},
+    {"right", "sensor_right.mcap", "force_right"},
 }};
 
 struct FaysTailCheckTarget
@@ -4288,8 +4311,14 @@ bool RecordRuntime::initialize()
                     }
                     return episodeManager_->validateEpisode(episode_dir, error_message, error_types, nullptr);
                 },
-            .prepare_sensor_start = nullptr,
-            .finalize_sensor_start = nullptr,
+            .prepare_sensor_start =
+                [this](std::vector<std::string> *arguments, std::vector<int> *inherited_fds) {
+                    prepareSensorStart(arguments, inherited_fds);
+                },
+            .finalize_sensor_start =
+                [this]() {
+                    finalizeSensorStart();
+                },
             .attach_pending_pre_audio =
                 [this](const std::string& episode_dir) {
                     return attachPendingPreAudio(episode_dir);
@@ -4532,6 +4561,7 @@ int RecordRuntime::run()
 
         ButtonSnapshot buttons;
         panelManager_.poll(options_.pollMs, &buttons);
+        forwardForceSamples();
         handleGripperConnectionEvents();
         processPendingGripperRefreshes();
         const bool recordControlAccepted = pollRecordControlPipe();
@@ -5614,6 +5644,7 @@ void RecordRuntime::clearGripperRuntimeStateForSide(const std::string &side,
     state.hasSerialNumber = false;
     state.serialNumber.clear();
     state.lastError = errorMessage;
+    forceCalibrationStates_[gripperStateIndexForSide(side)] = {};
 }
 
 void RecordRuntime::refreshGripperRuntimeStateForSide(const std::string &side,
@@ -5624,8 +5655,10 @@ void RecordRuntime::refreshGripperRuntimeStateForSide(const std::string &side,
 
     std::string serialNumber;
     bool hasSerialNumber = false;
+    gripper_hmi::GripperCalibrationData calibrationData{};
     std::string runtimeReadError;
-    if (!panelManager_.readRuntimeIdentityForSide(side, &serialNumber, &hasSerialNumber, &runtimeReadError))
+    if (!panelManager_.readRuntimeIdentityForSide(
+            side, &serialNumber, &hasSerialNumber, &calibrationData, &runtimeReadError))
     {
         if (!runtimeReadError.empty())
         {
@@ -5642,6 +5675,19 @@ void RecordRuntime::refreshGripperRuntimeStateForSide(const std::string &side,
     state.hasSerialNumber = hasSerialNumber;
     state.serialNumber = hasSerialNumber ? serialNumber : "";
     state.lastError.clear();
+    auto &forceCalibration = forceCalibrationStates_[gripperStateIndexForSide(side)];
+    forceCalibration.data = calibrationData;
+    forceCalibration.valid =
+        hasSerialNumber &&
+        gripper_hmi::isForceCalibrationPayload(calibrationData) &&
+        gripper_hmi::forceCalibrationMatchesSerialNumber(calibrationData, serialNumber);
+    if (!forceCalibration.valid)
+    {
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << "force calibration invalid: side=" << side
+            << " sn=" << serialNumber
+            << std::endl).str());
+    }
     DM_LOG_INFO("{}", (::DA::utils::LogString()
         << "gripper runtime cache refreshed: side=" << side
         << " has_sn=" << boolText(hasSerialNumber)
@@ -7292,6 +7338,108 @@ void RecordRuntime::removeRecordingLock()
     }
 }
 
+void RecordRuntime::prepareSensorStart(std::vector<std::string> *arguments,
+                                        std::vector<int> *inheritedFds)
+{
+    closeForceSensorChannel();
+    if (arguments == nullptr || inheritedFds == nullptr)
+    {
+        return;
+    }
+
+    int sockets[2] = {-1, -1};
+    if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sockets) != 0)
+    {
+        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+            << "failed to create force sensor IPC channel: " << std::strerror(errno)
+            << std::endl).str());
+        return;
+    }
+
+    forceSensorWriteFd_ = sockets[0];
+    forceSensorChildFd_ = sockets[1];
+    int flags = fcntl(forceSensorWriteFd_, F_GETFL, 0);
+    if (flags >= 0)
+    {
+        fcntl(forceSensorWriteFd_, F_SETFL, flags | O_NONBLOCK);
+    }
+    int sendBufferSize = 1024 * 1024;
+    setsockopt(forceSensorWriteFd_, SOL_SOCKET, SO_SNDBUF, &sendBufferSize, sizeof(sendBufferSize));
+
+    arguments->push_back("--force-fd");
+    arguments->push_back(std::to_string(forceSensorChildFd_));
+    inheritedFds->push_back(forceSensorChildFd_);
+}
+
+void RecordRuntime::finalizeSensorStart()
+{
+    if (forceSensorChildFd_ >= 0)
+    {
+        close(forceSensorChildFd_);
+        forceSensorChildFd_ = -1;
+    }
+}
+
+void RecordRuntime::closeForceSensorChannel()
+{
+    if (forceSensorWriteFd_ >= 0)
+    {
+        close(forceSensorWriteFd_);
+        forceSensorWriteFd_ = -1;
+    }
+    if (forceSensorChildFd_ >= 0)
+    {
+        close(forceSensorChildFd_);
+        forceSensorChildFd_ = -1;
+    }
+}
+
+void RecordRuntime::forwardForceSamples()
+{
+    const auto samples = panelManager_.consumePressureSamples();
+    if (!isRecordingActive() || forceSensorWriteFd_ < 0)
+    {
+        return;
+    }
+
+    for (const auto &sample : samples)
+    {
+        if (sample.side != "left" && sample.side != "right")
+        {
+            continue;
+        }
+        const auto &calibration = forceCalibrationStates_[gripperStateIndexForSide(sample.side)];
+        double forceNewtons = 0.0;
+        if (!calibration.valid || !gripper_hmi::forceNewtons(calibration.data, sample.rawValue, &forceNewtons))
+        {
+            DM_LOG_WARN("{}", (::DA::utils::LogString()
+                << "drop force sample without valid calibration"
+                << " side=" << sample.side
+                << " raw=" << sample.rawValue
+                << std::endl).str());
+            continue;
+        }
+
+        ugripper::sensor::ForceIpcSample ipcSample;
+        ipcSample.side = sample.side == "left"
+                              ? static_cast<uint8_t>(ugripper::sensor::ForceSide::Left)
+                              : static_cast<uint8_t>(ugripper::sensor::ForceSide::Right);
+        ipcSample.timestamp_ns = sample.timestampNs;
+        ipcSample.force_newtons = forceNewtons;
+        const ssize_t sent = send(
+            forceSensorWriteFd_, &ipcSample, sizeof(ipcSample), MSG_DONTWAIT | MSG_NOSIGNAL);
+        if (sent != static_cast<ssize_t>(sizeof(ipcSample)))
+        {
+            DM_LOG_WARN("{}", (::DA::utils::LogString()
+                << "failed to forward force sample"
+                << " side=" << sample.side
+                << " sent=" << sent
+                << " error=" << (sent < 0 ? std::strerror(errno) : "partial write")
+                << std::endl).str());
+        }
+    }
+}
+
 bool RecordRuntime::startRecording(bool resetRecording)
 {
     if (recordingOrchestrator_ == nullptr)
@@ -7326,17 +7474,43 @@ bool RecordRuntime::startRecording(bool resetRecording)
         sendAudioCommand("error");
         return false;
     }
+    if (isV3Hardware(hardwareVersion_))
+    {
+        for (const std::string side : {"left", "right"})
+        {
+            const auto &calibration = forceCalibrationStates_[gripperStateIndexForSide(side)];
+            if (!calibration.valid)
+            {
+                DM_LOG_ERROR("{}", (::DA::utils::LogString()
+                    << "ignore start recording while force calibration is invalid"
+                    << " side=" << side
+                    << std::endl).str());
+                setLedState(LedState::Error2);
+                sendAudioCommand("error");
+                return false;
+            }
+        }
+    }
     if (!panelManager_.refreshPressureReports(250, 3))
     {
         DM_LOG_WARN("{}", (::DA::utils::LogString()
             << "recording will continue without a fresh pressure report from every HMI"
             << std::endl).str());
     }
+    // The pre-record refresh is only a readiness probe; do not attach its sample
+    // to the next episode's force timeline.
+    (void)panelManager_.consumePressureSamples();
     cancelBackgroundTactileValidation();
     tactileTriggeredAudioCommand_.clear();
     activeHardwareFault_.reset();
     resetRestoreUsbErrorWindow();
-    return recordingOrchestrator_->StartRecording(resetRecording, nullptr);
+    panelManager_.setRecordingActive(true);
+    const bool started = recordingOrchestrator_->StartRecording(resetRecording, nullptr);
+    if (!started)
+    {
+        panelManager_.setRecordingActive(false);
+    }
+    return started;
 }
 
 bool RecordRuntime::stopRecording(bool dueToError, const std::string &reason, const std::string &errorType)
@@ -7346,6 +7520,8 @@ bool RecordRuntime::stopRecording(bool dueToError, const std::string &reason, co
         DM_LOG_ERROR("{}", (::DA::utils::LogString() << "recording orchestrator not initialized" << std::endl).str());
         return false;
     }
+    panelManager_.setRecordingActive(false);
+    closeForceSensorChannel();
     const bool ok = recordingOrchestrator_->StopRecording(dueToError, reason, errorType, nullptr);
     const std::string completedEpisodeDir = lastEpisodeDir();
     if (!dueToError && activeHardwareFault_.has_value() && IsCameraRecorderMainCameraFault(*activeHardwareFault_))
@@ -8576,6 +8752,7 @@ bool RecordRuntime::runCommandSync(const std::vector<std::string> &arguments)
 bool RecordRuntime::GripperPanelManager::connect(const std::vector<std::string> &ports)
 {
     disconnect();
+    recordingActive_ = false;
     drivers_.clear();
     reconnectAttemptMs_.clear();
     delayedStateRequestDueMs_.clear();
@@ -8830,7 +9007,8 @@ bool RecordRuntime::GripperPanelManager::poll(int timeoutMs, ButtonSnapshot *sna
         if (index < pressureRequestDueMs_.size() && nowMs >= pressureRequestDueMs_[index])
         {
             driver->requestPressure();
-            pressureRequestDueMs_[index] = nowMs + kPressureRefreshIntervalMs;
+            pressureRequestDueMs_[index] = nowMs +
+                (recordingActive_ ? kPressureRecordingIntervalMs : kPressureRefreshIntervalMs);
         }
         if (index == inputDriverIndex_)
         {
@@ -8858,6 +9036,35 @@ bool RecordRuntime::GripperPanelManager::poll(int timeoutMs, ButtonSnapshot *sna
         *snapshot = current;
     }
     return received;
+}
+
+std::vector<RecordRuntime::GripperPanelManager::PressureSample>
+RecordRuntime::GripperPanelManager::consumePressureSamples()
+{
+    std::vector<PressureSample> samples;
+    for (const auto &driver : drivers_)
+    {
+        if (driver == nullptr)
+        {
+            continue;
+        }
+        const std::string side = sideForPort(driver->getPort());
+        for (const auto &sample : driver->consumePressureSamples())
+        {
+            samples.push_back(PressureSample{side, sample.rawValue, sample.timestampNs});
+        }
+    }
+    return samples;
+}
+
+void RecordRuntime::GripperPanelManager::setRecordingActive(bool active)
+{
+    recordingActive_ = active;
+    const uint64_t nowMs = RecordRuntime::currentSteadyMs();
+    for (auto &dueMs : pressureRequestDueMs_)
+    {
+        dueMs = nowMs;
+    }
 }
 
 bool RecordRuntime::GripperPanelManager::getButtonsForPortToken(const std::string &token,
@@ -8945,6 +9152,7 @@ bool RecordRuntime::GripperPanelManager::readRuntimeIdentityForSide(
     const std::string &side,
     std::string *serialNumber,
     bool *hasSerialNumber,
+    gripper_hmi::GripperCalibrationData *calibrationData,
     std::string *errorMessage)
 {
     if (serialNumber != nullptr)
@@ -8975,12 +9183,13 @@ bool RecordRuntime::GripperPanelManager::readRuntimeIdentityForSide(
         return false;
     }
 
-    const bool serialOk = driver->readSerialNumber(serialNumber);
+    gripper_hmi::GripperCalibrationData readCalibration{};
+    const bool serialOk = driver->readSerialNumberAndCalibration(serialNumber, hasSerialNumber, &readCalibration);
     if (serialOk)
     {
-        if (hasSerialNumber != nullptr)
+        if (calibrationData != nullptr)
         {
-            *hasSerialNumber = true;
+            *calibrationData = readCalibration;
         }
     }
     else
@@ -9703,7 +9912,9 @@ bool RecordRuntime::EpisodeManager::validateEpisode(const std::string &episodeDi
     const int64_t tailCheckStartMs = steadyNowMs();
     std::vector<std::future<TailCheckTaskResult>> tailCheckFutures;
     tailCheckFutures.reserve(
-        kEncoderTailCheckTargets.size() + (stereoEnabled_ ? kFaysTailCheckTargets.size() : 0));
+        kEncoderTailCheckTargets.size() +
+        (isV3Hardware(hardwareVersion_) ? kForceTailCheckTargets.size() : 0) +
+        (stereoEnabled_ ? kFaysTailCheckTargets.size() : 0));
 
     for (const auto &target : kEncoderTailCheckTargets)
     {
@@ -9734,6 +9945,44 @@ bool RecordRuntime::EpisodeManager::validateEpisode(const std::string &episodeDi
                                  << "}").str();
                 return result;
             }));
+    }
+
+    if (isV3Hardware(hardwareVersion_))
+    {
+        for (const auto &target : kForceTailCheckTargets)
+        {
+            tailCheckFutures.push_back(std::async(
+                std::launch::async,
+                [episodeDir, target]() {
+                    TailCheckTaskResult result;
+                    uint64_t lastForceLogTimeNs = 0;
+                    uint64_t forceMessageCount = 0;
+                    std::string forceTailError;
+                    if (!loadLastTopicLogTimeFromTailChunks(
+                            episodeDir + "/" + target.mcapFileName,
+                            target.forceTopic,
+                            &lastForceLogTimeNs,
+                            &forceMessageCount,
+                            &forceTailError))
+                    {
+                        result.errorMessage = std::string("force tail check failed for side=") + target.side +
+                                              ": " + forceTailError;
+                        return result;
+                    }
+                    if (forceMessageCount == 0)
+                    {
+                        result.errorMessage = std::string("force topic has no messages for side=") + target.side;
+                        return result;
+                    }
+                    result.ok = true;
+                    result.detail = (::DA::utils::LogString()
+                                     << "force_" << target.side
+                                     << "{count=" << forceMessageCount
+                                     << ", last_ns=" << lastForceLogTimeNs
+                                     << "}").str();
+                    return result;
+                }));
+        }
     }
 
     if (stereoEnabled_)

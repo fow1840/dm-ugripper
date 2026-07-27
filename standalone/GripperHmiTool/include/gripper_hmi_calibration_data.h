@@ -205,6 +205,23 @@ inline bool forceMassMg(const GripperCalibrationData &data, int32_t raw, int64_t
     return true;
 }
 
+inline bool forceNewtons(const GripperCalibrationData &data, int32_t raw, double *newtons)
+{
+    if (newtons == nullptr || !isForceCalibrationPayload(data))
+    {
+        return false;
+    }
+
+    constexpr double kStandardGravityMps2 = 9.80665;
+    constexpr double kMilligramsPerKilogram = 1'000'000.0;
+    const double rawDelta = static_cast<double>(raw) - static_cast<double>(data.force.zeroRaw);
+    const double calibrationDelta = static_cast<double>(data.force.referenceRaw) -
+                                    static_cast<double>(data.force.zeroRaw);
+    const double massMg = rawDelta * static_cast<double>(data.force.referenceMassMg) / calibrationDelta;
+    *newtons = (massMg / kMilligramsPerKilogram) * kStandardGravityMps2;
+    return true;
+}
+
 }  // namespace gripper_hmi
 
 #endif

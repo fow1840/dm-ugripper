@@ -26,11 +26,14 @@ PRESSURE_QUERY = bytes.fromhex("5A 5A 30 02 00 00 32")
 KEY_LABELS = ("UP", "DOWN", "POGO3", "POGO4", "KEY5", "KEY6")
 POGO_KEY_INDEX = {"left": 3, "right": 2}
 STANDARD_GRAVITY = 9.80665
-DEFAULT_CALIBRATION_FILE = "/var/lib/ugripper/hmi_pressure_calibration.json"
+# FCAL is persisted in the gripper HMI. This file is only a short-lived bridge
+# between the zero and reference-load commands when the HMI has no FCAL yet.
+DEFAULT_CALIBRATION_FILE = "/run/ugripper/hmi_force_calibration_staging.json"
 DEFAULT_HMI_TOOL = "/opt/ugripper/bin/GripperHmiTool/GripperHmiTool"
 CALIBRATION_VERSION = 1
 MIN_CALIBRATION_SAMPLES = 20
 MIN_CALIBRATION_DELTA_RAW = 10.0
+CALIBRATION_READ_ATTEMPTS = 2
 ANSI_RESET = "\033[0m"
 ANSI_TITLE = "\033[1;7m"
 ANSI_HEADER = "\033[1;36m"
@@ -118,6 +121,7 @@ class PortState:
     key_at: Optional[float] = None
     key_times: Deque[float] = field(default_factory=collections.deque)
     last_key_text: str = "none"
+    calibration_status: str = "NOT READ"
 
     def open(self, baudrate: int) -> None:
         self.resolved_path = os.path.realpath(self.path)
@@ -248,6 +252,12 @@ class PressureCalibration:
         return calibration
 
 
+@dataclass
+class CalibrationReadResult:
+    calibration: Optional[PressureCalibration] = None
+    status: str = "READ FAILED"
+
+
 def service_is_active() -> bool:
     result = subprocess.run(
         ["systemctl", "is-active", "--quiet", "ugripper.service"],
@@ -315,6 +325,19 @@ def save_calibrations(path: str, calibrations: dict[str, PressureCalibration]) -
             pass
 
 
+def clear_calibration_staging(path: str, target_sides: List[str]) -> None:
+    calibrations = load_calibrations(path)
+    for side in target_sides:
+        calibrations[side] = PressureCalibration()
+    if any(calibration.zero_raw is not None for calibration in calibrations.values()):
+        save_calibrations(path, calibrations)
+        return
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+
+
 def resolve_hmi_tool(explicit_path: str) -> Optional[str]:
     candidates = [
         explicit_path,
@@ -337,42 +360,67 @@ def parse_key_value_output(output: str) -> dict[str, str]:
     return values
 
 
-def read_force_calibration_from_hmi(tool: str, port: str) -> Optional[PressureCalibration]:
-    result = subprocess.run(
-        [tool, "--port", port, "--read-sn", "--read-calib"],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=20,
-    )
-    if result.returncode != 0:
-        return None
-    values = parse_key_value_output(result.stdout)
-    if values.get("force.valid") != "yes" or values.get("force.sn_match") != "yes":
-        return None
+def parse_force_calibration_output(output: str) -> CalibrationReadResult:
+    values = parse_key_value_output(output)
+    if values.get("force.valid") != "yes":
+        return CalibrationReadResult(status="INVALID FCAL")
+    if values.get("force.sn_match") != "yes":
+        return CalibrationReadResult(status="SN MISMATCH")
     try:
         zero_raw = float(values["force.zero_raw"])
         reference_raw = float(values["force.reference_raw"])
         reference_mass_mg = float(values["force.reference_mass_mg"])
         calibrated_at = int(values.get("force.calibrated_at_unix_s", "0"))
     except (KeyError, TypeError, ValueError):
-        return None
+        return CalibrationReadResult(status="INVALID VALUES")
     delta_raw = reference_raw - zero_raw
     if delta_raw == 0.0 or reference_mass_mg <= 0.0:
-        return None
+        return CalibrationReadResult(status="INVALID VALUES")
     reference_kg = reference_mass_mg / 1_000_000.0
     updated_at = (
         datetime.fromtimestamp(calibrated_at, timezone.utc).isoformat()
         if calibrated_at > 0
         else ""
     )
-    return PressureCalibration(
-        zero_raw=zero_raw,
-        scale_kg_per_raw=reference_kg / delta_raw,
-        reference_raw=reference_raw,
-        reference_kg=reference_kg,
-        updated_at=updated_at,
+    return CalibrationReadResult(
+        calibration=PressureCalibration(
+            zero_raw=zero_raw,
+            scale_kg_per_raw=reference_kg / delta_raw,
+            reference_raw=reference_raw,
+            reference_kg=reference_kg,
+            updated_at=updated_at,
+        ),
+        status="OK",
     )
+
+
+def read_force_calibration_from_hmi(
+    tool: str,
+    port: str,
+    runner=subprocess.run,
+) -> CalibrationReadResult:
+    last_result = CalibrationReadResult()
+    for attempt in range(CALIBRATION_READ_ATTEMPTS):
+        try:
+            result = runner(
+                [tool, "--port", port, "--read-calib"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            last_result = CalibrationReadResult(status="READ FAILED")
+        else:
+            parsed = parse_force_calibration_output(result.stdout)
+            if parsed.calibration is not None:
+                return parsed
+            last_result = parsed
+            if result.returncode != 0 and "force.valid" not in result.stdout:
+                last_result = CalibrationReadResult(status="READ FAILED")
+        if attempt + 1 < CALIBRATION_READ_ATTEMPTS:
+            time.sleep(0.15)
+    return last_result
 
 
 def write_force_calibrations_to_hmi(
@@ -582,7 +630,7 @@ def run_calibration(
 
     if operation == "zero":
         save_calibrations(args.calibration_file, calibrations)
-        print(f"zero point saved locally until the load point is written: {args.calibration_file}")
+        print(f"zero point staged until the load point is written: {args.calibration_file}")
 
 
 def run_selftest() -> int:
@@ -592,6 +640,34 @@ def run_selftest() -> int:
         raise RuntimeError("calibration selftest failed")
     if abs(load_kg * STANDARD_GRAVITY - 9.80665) > 1e-9:
         raise RuntimeError("force conversion selftest failed")
+
+    valid_output = """calibration.kind=force_sensor
+force.valid=yes
+force.serial_number=DAGZ1226760000TT
+force.zero_raw=100
+force.reference_raw=1100
+force.reference_mass_mg=1000000
+force.calibrated_at_unix_s=1784800000
+force.sn_match=yes
+"""
+    parsed = parse_force_calibration_output(valid_output)
+    if parsed.calibration is None or parsed.status != "OK":
+        raise RuntimeError("FCAL output parsing selftest failed")
+    mismatch = parse_force_calibration_output(valid_output.replace("force.sn_match=yes", "force.sn_match=no"))
+    if mismatch.calibration is not None or mismatch.status != "SN MISMATCH":
+        raise RuntimeError("FCAL SN mismatch selftest failed")
+
+    commands: List[List[str]] = []
+
+    def fake_runner(command: List[str], **_kwargs) -> subprocess.CompletedProcess:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 1, stdout=valid_output, stderr="transient read error")
+
+    helper_result = read_force_calibration_from_hmi("GripperHmiTool", "/dev/left_gripper", fake_runner)
+    if helper_result.calibration is None or commands != [[
+        "GripperHmiTool", "--port", "/dev/left_gripper", "--read-calib"
+    ]]:
+        raise RuntimeError("FCAL helper invocation selftest failed")
 
     left = PortState("left", "/dev/left_gripper")
     right = PortState("right", "/dev/right_gripper")
@@ -616,7 +692,7 @@ def column_lines(
     if state.pressure_value is not None and state.pressure_raw is not None:
         load_kg = calibration.load_kg(state.pressure_value)
         if load_kg is None:
-            force_text = "UNCALIBRATED"
+            force_text = f"UNCALIBRATED ({state.calibration_status})"
         else:
             force_text = f"{load_kg * STANDARD_GRAVITY:9.3f} N    LOAD {load_kg:8.4f} kgf"
         raw_text = f"RAW {state.pressure_value}  hex=0x{state.pressure_raw:08X}"
@@ -710,7 +786,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--calibration-file",
         default=DEFAULT_CALIBRATION_FILE,
-        help="local zero-point staging and legacy fallback JSON path",
+        help="temporary zero-point staging path used only before the first HMI FCAL reference point",
     )
     parser.add_argument(
         "--hmi-tool",
@@ -762,7 +838,14 @@ def main() -> int:
 
     service_was_active = False
     service_stopped_by_us = False
-    calibrations = load_calibrations(args.calibration_file)
+    staged_calibrations = load_calibrations(args.calibration_file)
+    calibrating = bool(args.calibrate_zero or args.calibrate_load)
+    # A completed calibration must always come from the HMI FCAL payload;
+    # staged host data is only relevant while running the two-step procedure.
+    calibrations = staged_calibrations if calibrating else {
+        "left": PressureCalibration(),
+        "right": PressureCalibration(),
+    }
     states = [
         PortState("left", args.left_port),
         PortState("right", args.right_port),
@@ -795,10 +878,17 @@ def main() -> int:
 
     try:
         hmi_tool = resolve_hmi_tool(args.hmi_tool)
-        if not (args.calibrate_zero or args.calibrate_load) and hmi_tool is not None:
+        hmi_calibrations: dict[str, PressureCalibration] = {}
+        if hmi_tool is not None:
             for state in states:
-                calibration = read_force_calibration_from_hmi(hmi_tool, state.path)
-                calibrations[state.side] = calibration or PressureCalibration()
+                calibration_result = read_force_calibration_from_hmi(hmi_tool, state.path)
+                state.calibration_status = calibration_result.status
+                if calibration_result.calibration is not None:
+                    hmi_calibrations[state.side] = calibration_result.calibration
+                    calibrations[state.side] = calibration_result.calibration
+        else:
+            for state in states:
+                state.calibration_status = "TOOL MISSING"
 
         for state in states:
             state.open(args.baud)
@@ -815,6 +905,39 @@ def main() -> int:
                 query_interval,
                 lambda: stop_requested,
             )
+            target_sides = selected_sides(args.calibrate_zero or args.calibrate_load)
+            if args.calibrate_zero:
+                # If FCAL already has a reference point, update its zero in
+                # place. Otherwise retain only the zero in the staging file
+                # until --calibrate-load supplies the reference.
+                writable_sides = [
+                    side
+                    for side in target_sides
+                    if side in hmi_calibrations
+                    and hmi_calibrations[side].reference_raw is not None
+                    and hmi_calibrations[side].reference_kg is not None
+                ]
+                if writable_sides:
+                    if hmi_tool is None:
+                        raise RuntimeError(
+                            "GripperHmiTool not found; pass --hmi-tool to update force calibration"
+                        )
+                    for state in states:
+                        state.close()
+                    write_force_calibrations_to_hmi(
+                        hmi_tool,
+                        states,
+                        calibrations,
+                        writable_sides,
+                    )
+                    remaining_sides = [side for side in target_sides if side not in writable_sides]
+                    if remaining_sides:
+                        save_calibrations(args.calibration_file, calibrations)
+                    clear_calibration_staging(args.calibration_file, writable_sides)
+                    print("zero point updated in HMI FCAL")
+                else:
+                    save_calibrations(args.calibration_file, calibrations)
+                    print(f"zero point staged until the load point is written: {args.calibration_file}")
             if args.calibrate_load:
                 if hmi_tool is None:
                     raise RuntimeError(
@@ -822,15 +945,14 @@ def main() -> int:
                     )
                 for state in states:
                     state.close()
-                target_sides = selected_sides(args.calibrate_load)
                 write_force_calibrations_to_hmi(
                     hmi_tool,
                     states,
                     calibrations,
                     target_sides,
                 )
-                save_calibrations(args.calibration_file, calibrations)
-                print(f"calibration cache updated: {args.calibration_file}")
+                clear_calibration_staging(args.calibration_file, target_sides)
+                print("force calibration persisted in HMI FCAL")
         else:
             next_render = started_at
             render_interval = 1.0 / args.refresh_hz

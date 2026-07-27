@@ -38,6 +38,24 @@ constexpr int kCalibrationAbortRetryLimit = 2;
 constexpr int kSerialNumberCommandRetryLimit = 3;
 constexpr int kExclusiveCommandDrainIdleMs = 40;
 constexpr int kExclusiveCommandDrainMaxMs = 120;
+constexpr size_t kMaxQueuedPressureSamples = 4096;
+#if UGRIPPER_ENABLE_TEMP_FORCE_DIAG
+// TEMP_FORCE_DIAG_BEGIN: remove this block and the matching guarded call sites
+// after pressure request/RX diagnosis is complete.
+constexpr uint64_t kTemporaryForceDiagGapMs = 80;
+constexpr uint64_t kTemporaryForceDiagMaxGapMs = 1000;
+
+bool isTemporaryForceDiagGap(uint64_t gapMs)
+{
+    return gapMs >= kTemporaryForceDiagGapMs && gapMs <= kTemporaryForceDiagMaxGapMs;
+}
+
+bool isTemporarySuspiciousPressureRaw(const GripperPressureReport &report)
+{
+    return report.raw[2] == 0xFF && report.raw[3] == 0xFF;
+}
+// TEMP_FORCE_DIAG_END
+#endif
 struct CommandDiagStats
 {
     uint64_t sends = 0;
@@ -412,6 +430,7 @@ bool GripperHmiDriver::connect()
         lastKeyReport_.reset();
         lastPressureReport_.reset();
         lastAmbientLightReport_.reset();
+        pressureSamples_.clear();
         lastPressureReportTimeMs_ = 0;
         lastAmbientLightReportTimeMs_ = 0;
         lastReceiveTimeMs_ = 0;
@@ -536,6 +555,30 @@ bool GripperHmiDriver::requestPressure()
     {
         return false;
     }
+#if UGRIPPER_ENABLE_TEMP_FORCE_DIAG
+    // TEMP_FORCE_DIAG_BEGIN
+    const uint64_t nowMs = currentSteadyMs();
+    const uint64_t queueGapMs = temporaryPressureRequestQueuedAtMs_ == 0
+                                    ? 0
+                                    : nowMs - temporaryPressureRequestQueuedAtMs_;
+    ++temporaryPressureRequestQueueCount_;
+    temporaryPressureRequestQueuedAtMs_ = nowMs;
+    if (queueGapMs > 0 && queueGapMs < kTemporaryForceDiagGapMs)
+    {
+        temporaryPressureHighRateUntilMs_ = nowMs + kTemporaryForceDiagMaxGapMs;
+    }
+    if (isTemporaryForceDiagGap(queueGapMs))
+    {
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << "[TEMP_FORCE_DIAG] stage=request_queued"
+            << " port=" << port_
+            << " gap_ms=" << queueGapMs
+            << " queued=" << temporaryPressureRequestQueueCount_
+            << " sent=" << txPressureRequestCount_.load()
+            << std::endl).str());
+    }
+    // TEMP_FORCE_DIAG_END
+#endif
     pendingPressureRequest_ = true;
     ioCv_.notify_one();
     return true;
@@ -2052,9 +2095,45 @@ void GripperHmiDriver::handleParsedFrame(const GripperParsedFrame &frame)
     }
     else if (frame.type == GripperFrameType::PressureReport)
     {
+#if UGRIPPER_ENABLE_TEMP_FORCE_DIAG
+        // TEMP_FORCE_DIAG_BEGIN
+        const uint64_t pressureGapMs = lastPressureReportTimeMs_ == 0
+                                           ? 0
+                                           : lastReceiveTimeMs_ - lastPressureReportTimeMs_;
+        const bool suspiciousRaw = isTemporarySuspiciousPressureRaw(frame.pressureReport);
+        const bool highRateRequestsActive = lastReceiveTimeMs_ <= temporaryPressureHighRateUntilMs_;
+        if (suspiciousRaw || (highRateRequestsActive && isTemporaryForceDiagGap(pressureGapMs)))
+        {
+            DM_LOG_WARN("{}", (::DA::utils::LogString()
+                << "[TEMP_FORCE_DIAG] stage=pressure_rx"
+                << " port=" << port_
+                << " gap_ms=" << pressureGapMs
+                << " high_rate_requests=" << (highRateRequestsActive ? "yes" : "no")
+                << " suspicious_raw=" << (suspiciousRaw ? "yes" : "no")
+                << " raw_bytes="
+                << formatHexByte(frame.pressureReport.raw[0]) << ','
+                << formatHexByte(frame.pressureReport.raw[1]) << ','
+                << formatHexByte(frame.pressureReport.raw[2]) << ','
+                << formatHexByte(frame.pressureReport.raw[3])
+                << " raw_value=" << frame.pressureReport.value
+                << " rx_pressure=" << rxPressureReportCount_.load()
+                << " tx_pressure=" << txPressureRequestCount_.load()
+                << std::endl).str());
+        }
+        // TEMP_FORCE_DIAG_END
+#endif
         ++rxPressureReportCount_;
         lastPressureReport_ = frame.pressureReport;
         lastPressureReportTimeMs_ = lastReceiveTimeMs_;
+        pressureSamples_.push_back(GripperPressureSample{
+            frame.pressureReport.value,
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count()),
+        });
+        while (pressureSamples_.size() > kMaxQueuedPressureSamples)
+        {
+            pressureSamples_.pop_front();
+        }
     }
     else if (frame.type == GripperFrameType::AmbientLightReport)
     {
@@ -2204,6 +2283,28 @@ void GripperHmiDriver::ioLoop()
             if (writeFrameLocked(frame.data(), frame.size()))
             {
                 ++txPressureRequestCount_;
+#if UGRIPPER_ENABLE_TEMP_FORCE_DIAG
+                // TEMP_FORCE_DIAG_BEGIN
+                const uint64_t sendGapMs = temporaryPressureRequestSentAtMs_ == 0
+                                               ? 0
+                                               : nowMs - temporaryPressureRequestSentAtMs_;
+                const uint64_t collapsedRequests =
+                    temporaryPressureRequestQueueCount_ - temporaryPressureRequestQueueCountAtLastSend_;
+                temporaryPressureRequestSentAtMs_ = nowMs;
+                temporaryPressureRequestQueueCountAtLastSend_ = temporaryPressureRequestQueueCount_;
+                if (isTemporaryForceDiagGap(sendGapMs) || collapsedRequests > 1)
+                {
+                    DM_LOG_WARN("{}", (::DA::utils::LogString()
+                        << "[TEMP_FORCE_DIAG] stage=request_sent"
+                        << " port=" << port_
+                        << " gap_ms=" << sendGapMs
+                        << " collapsed_requests=" << collapsedRequests
+                        << " queued=" << temporaryPressureRequestQueueCount_
+                        << " sent=" << txPressureRequestCount_.load()
+                        << std::endl).str());
+                }
+                // TEMP_FORCE_DIAG_END
+#endif
             }
         }
 
@@ -2370,4 +2471,17 @@ GripperHmiSnapshot GripperHmiDriver::getSnapshot(uint64_t activeTimeoutMs) const
                                                : 0;
     }
     return snapshot;
+}
+
+std::vector<GripperPressureSample> GripperHmiDriver::consumePressureSamples()
+{
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    std::vector<GripperPressureSample> samples;
+    samples.reserve(pressureSamples_.size());
+    while (!pressureSamples_.empty())
+    {
+        samples.push_back(pressureSamples_.front());
+        pressureSamples_.pop_front();
+    }
+    return samples;
 }

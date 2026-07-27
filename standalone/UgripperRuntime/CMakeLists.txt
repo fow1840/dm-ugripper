@@ -121,6 +121,7 @@ target_include_directories(${APP_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../CameraRecorder/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../GripperHmiTool/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../SensorRecorder/include
 )
 target_link_libraries(${APP_NAME}
     PRIVATE

@@ -78,6 +78,12 @@ sensor_left.mcap / sensor_right.mcap：
   topic: encoder_left / encoder_right
   payload: little-endian int32 raw + float32 rad
 
+  topic: force_left / force_right
+  payload: little-endian float64 force_newtons
+
+力传感器值已经由运行时按夹爪 HMI 内的 force calibration payload 转换为 N；
+MCAP 中保存的是换算后的 `force_newtons`，不是原始压力值。
+
 fays_data_left.mcap / fays_data_right.mcap：
 
   topic: i

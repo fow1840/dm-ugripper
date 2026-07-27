@@ -41,11 +41,12 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
 - 容器 `duration` 与包级 `span` 是否自洽。
 - 左右 main / stereo 成对视频的起止时间是否对齐。
 - 首帧同步误差是否超阈值，并列出所有 `mkv` 相对参考时刻的首帧偏移量。
-- 左右 sensor topic 的首样本是否彼此对齐，并列出 `encoder_left` / `encoder_right` 相对同一参考时刻的首帧偏移量。
-- 八路 `mkv` 与左右 sensor topic 是否应放到同一张首帧对齐表里统一比较；若视频与 sensor 整体错位，必须显式给出全部 10 路流的首帧偏移量、最大范围和高概率归因。
+- 左右 sensor topic 的首样本是否彼此对齐；V3 明确覆盖 `encoder_left/right` 与必需的 `force_left/right` 四个 topic。
+- 八路 `mkv` 与四个 sensor topic 只有在 episode 提供共享绝对时间锚点时才放入同一张 12 路首帧表；当前 `video_details[].start_offset_us` 是视频内部相对偏移，不能和 MCAP Unix ns 直接相减，缺少锚点时必须明确报告“不可比较”，不得伪造对齐结论。
 - `stereo_session` 中的首帧 / 结束时间与顶层 offset 语义是否自洽。
-- 左右 `sensor_*.mcap` 是否可读，topic 是否齐全。
+- 左右 `sensor_*.mcap` 是否可读，V3 是否分别包含 encoder 和 force 必需 topic；V2 不强制 force。
 - encoder topic 是否存在 gap、长时间中断、样本数异常。
+- force payload 是否严格为 little-endian 8-byte `float64 N`，是否存在 NaN/Inf、大绝对值、异常 gap、长 gap 时间占比过高或左右首尾不同步。
 - 左右 sensor 同类型 topic 是否明显不同步。
 - sensor 覆盖时长是否明显短于视频。
 - 每侧 sensor 的覆盖窗口与该侧视频窗口是否明显错位。
@@ -78,7 +79,7 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
    - 文件或 topic
    - 时间点
    - gap / 偏差 / 时长差
-   - 若涉及首帧对齐，默认同时给出 8 路 `mkv` + 左右 sensor topic 的首帧偏移列表，而不是只列视频
+   - 若存在共享绝对时间锚点，给出 8 路 `mkv` + 4 个 sensor topic 的首帧偏移；否则分别给出视频内部偏移和 sensor 内部偏移，并说明不可跨时间域直接比较
 4. 若能判断模式，明确写出高概率归因：
    - 单路掉流
    - 多路同时卡顿

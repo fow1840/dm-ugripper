@@ -12,12 +12,17 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <optional>
 #include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
+
+#ifndef UGRIPPER_ENABLE_TEMP_FORCE_DIAG
+#define UGRIPPER_ENABLE_TEMP_FORCE_DIAG 1
+#endif
 
 struct GripperHmiSnapshot
 {
@@ -33,6 +38,12 @@ struct GripperHmiSnapshot
     uint64_t ambientLightReportCount = 0;
     uint64_t ambientLightReportAgeMs = 0;
     std::optional<GripperAmbientLightReport> lastAmbientLightReport;
+};
+
+struct GripperPressureSample
+{
+    int32_t rawValue = 0;
+    uint64_t timestampNs = 0;
 };
 
 class GripperHmiDriver
@@ -73,6 +84,7 @@ public:
     bool isKeyPressed(size_t keyIndex) const;
     bool isActive(uint64_t timeoutMs = 2000) const;
     GripperHmiSnapshot getSnapshot(uint64_t activeTimeoutMs = 2000) const;
+    std::vector<GripperPressureSample> consumePressureSamples();
 
     const std::string &getName() const { return name_; }
     const std::string &getPort() const { return port_; }
@@ -155,6 +167,16 @@ private:
     uint64_t lastStateRequestAtMs_ = 0;
     uint64_t lastLedWriteAtMs_ = 0;
 
+#if UGRIPPER_ENABLE_TEMP_FORCE_DIAG
+    // TEMP_FORCE_DIAG_BEGIN: remove this block after pressure request/RX diagnosis.
+    uint64_t temporaryPressureRequestQueuedAtMs_ = 0;
+    uint64_t temporaryPressureRequestSentAtMs_ = 0;
+    uint64_t temporaryPressureRequestQueueCount_ = 0;
+    uint64_t temporaryPressureRequestQueueCountAtLastSend_ = 0;
+    uint64_t temporaryPressureHighRateUntilMs_ = 0;
+    // TEMP_FORCE_DIAG_END
+#endif
+
     mutable std::mutex stateMutex_;
     std::condition_variable stateCv_;
     std::array<bool, 6> keyPressed_{};
@@ -162,6 +184,7 @@ private:
     std::optional<GripperKeyReport> lastKeyReport_;
     std::optional<GripperPressureReport> lastPressureReport_;
     std::optional<GripperAmbientLightReport> lastAmbientLightReport_;
+    std::deque<GripperPressureSample> pressureSamples_;
     uint64_t lastPressureReportTimeMs_ = 0;
     uint64_t lastAmbientLightReportTimeMs_ = 0;
     uint64_t lastReceiveTimeMs_ = 0;

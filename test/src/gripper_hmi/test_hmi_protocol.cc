@@ -172,6 +172,17 @@ TEST(GripperHmiProtocolTest, ForceCalibrationUsesSignedReferenceDelta)
     EXPECT_EQ(massMg, 500000);
 }
 
+TEST(GripperHmiProtocolTest, ForceCalibrationConvertsRawValueToNewtons)
+{
+    gripper_hmi::GripperCalibrationData data{};
+    ASSERT_TRUE(gripper_hmi::makeForceCalibrationData(
+        "DAGZ12267600016B", 1000, -499000, 1000000, 1784800000, &data));
+
+    double newtons = 0.0;
+    ASSERT_TRUE(gripper_hmi::forceNewtons(data, -249000, &newtons));
+    EXPECT_NEAR(newtons, 4.903325, 1e-9);
+}
+
 TEST(GripperHmiProtocolTest, ForceCalibrationCrcRejectsMutatedPayload)
 {
     gripper_hmi::GripperCalibrationData data{};

@@ -8,6 +8,7 @@ files are generic MCAP containers with compact binary payloads:
 
 - sensor_left.mcap / sensor_right.mcap:
   topic encoder_left / encoder_right, payload little-endian int32 raw + float32 rad
+  topic force_left / force_right, payload little-endian float64 force_newtons
 - fays_data_left.mcap / fays_data_right.mcap:
   topic i, payload little-endian float64[6] gx,gy,gz,ax,ay,az
   topic c, payload little-endian uint32 frame_index
@@ -138,6 +139,12 @@ def decode_payload(topic: str, payload: bytes, message_encoding: str, schema_nam
         return "ugripper.encoder", {
             "raw": int(raw),
             "rad": finite_float(float(rad)),
+        }
+
+    if topic.startswith("force_") and len(payload) >= 8:
+        (force_newtons,) = struct.unpack("<d", payload[:8])
+        return "ugripper.force", {
+            "force_newtons": finite_float(float(force_newtons)),
         }
 
     if topic == "i" and len(payload) >= 48:

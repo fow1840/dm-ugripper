@@ -35,7 +35,7 @@
 | 主运行时 | `bin/UgripperRuntime/UgripperRuntime` | HMI 按键状态机、软件录制控制、LED 灯效、提示音、pre/post 音频、camera/sensor 子进程管理、停录校验、关机请求；SIGINT/SIGTERM handler 只设置原子停止标志，ego 与其他子进程统一由主循环退出后的正常收尾路径停止 | episode 目录、`/dev/shm/ugripper/umi_record_control.pipe`、`/tmp/umi_shutdown_request` |
 | 安全 NTP 同步 | `time_sync/safe_ntp_sync.sh` / `ugripper-ntp-sync.service` | 开机或安装后只在非录制态执行一次性时间同步，优先使用板端现有 `sntp -S`，再 fallback 到 `ntpd -q -g` / `timedatectl`；同步完成、超时或录制开始后停止常驻 NTP 服务 | `/tmp/umi_recording.lock`、`sntp`/`ntp` |
 | 相机录制 | `bin/CameraRecorder/CameraRecorder` | 负责主摄/触觉会话录制；默认同时启动 Fays 双目链路，`+nostereo` 变体不启动 Fays | 默认 8 路基础 `mkv`；`+nostereo` 为 6 路 |
-| 传感器录制 | `bin/SensorRecorder/SensorRecorder` | 录制左右 IMU/encoder，按“采样入队 + 每侧独立 MCAP 写线程”分别输出 MCAP；收到 `SIGINT` / `SIGTERM` 时信号处理函数只设置停止标志，退出主循环后先等待编码器读写线程停止，再关闭串口、排空队列并关闭 MCAP，避免信号上下文日志死锁或串口释放竞态造成 Footer 缺失；encoder zeroing 使用相同的信号安全约束 | `sensor_left.mcap`、`sensor_right.mcap` |
+| 传感器录制 | `bin/SensorRecorder/SensorRecorder` | 录制左右 encoder 和经 HMI FCAL 标定换算后的力值；encoder/force 都按“采样入队 + 每侧独立 MCAP 写线程”输出；force 数据由 `record_runtime` 通过继承的 Unix socket 传入，SensorRecorder 不重复打开 HMI 串口；收到 `SIGINT` / `SIGTERM` 时信号处理函数只设置停止标志，退出主循环后先等待采样和写线程停止，再关闭串口、排空队列并关闭 MCAP | `sensor_left.mcap`、`sensor_right.mcap`，topic 为 `encoder_left/right` 和 V3 必需的 `force_left/right` |
 | Ego 联动采集 | `bin/UgripperRuntime/ego/ego_recording_worker.py` + `bin/UgripperRuntime/adb/adb` | 录制起停阶段通过内置 ADB 联动 SXR ego app，起录前同步 ego 系统时间并按增量方式同步 ego episode 到当前 UGripper episode；当前不主动启动 app、不参与强校验 | `ego/`、`ego/ego_sync.json` |
 | HMI 类库 | `standalone/GripperHmiTool` | 读取夹爪按键、压力与环境光上报，并在驱动内部以单线程 owner 线程完成状态查询、灯效生成、RGB、蜂鸣器与补光灯 PWM 指令发送；默认由状态机切灯效，必要时仍可直接下发 RGB 或补光灯 PWM；当前也提供原 32-byte SN 读写和与 SN 绑定的 1024-byte 力标定 payload API | 按键/压力/lux 快照、RGB/蜂鸣器/补光灯指令、SN/力标定读写 |
 | 音频播放 | `bin/UgripperRuntime/audio/audio_play.py` | 优先绑定受支持 USB 耳机、无耳机时回退系统默认声卡；播放提示音并处理耳机 HID 音量键；初始化阶段受控处理 idle suspend | `/dev/shm/ugripper/umi_audio_pipe` |
@@ -61,7 +61,8 @@
 10. 运行时连接左右夹爪 HMI、启动 LED 渲染线程、尝试拉起音频守护进程。
 - HMI 状态查询与 LED RGB 下发会在单个 gripper 串口内由驱动 owner 线程统一调度；`record_runtime` 只切换灯效模式，不再跨线程推送录制态的 500ms 亮灭边沿。当前驱动参考旧版 `driver_origin/led_manager` 的职责分离思路做了收敛：按键输入仍以 HMI 主动上报 `KeyReport` 为主，串口主动查询已降为约 `1s` 一次的低频探活/状态刷新；LED 仅在颜色变化、状态切换或低频补发时下发，避免高频状态查询与 RGB 指令互相抢占；若有专项诊断或直控需求，仍可走 direct RGB 通道覆盖当前效果。
 - HMI 新增传感器与补光灯协议适配：压力按 `A5 A5 30 + 4-byte data + XOR` 接收，驱动保留原始 4 字节并按大端有符号 `int32` 解析；运行时约每 `5s` 发送一次低频 `5A 5A 30 02 00 00 32` 强制刷新，并在起录前按每次 `250ms`、最多 `3` 次重试取得新压力帧，失败只告警而不阻断录制。环境光按 `A5 A5 31 00 00 + 2-byte lux + XOR` 接收，lux 按大端 `uint16` 解析；运行时不周期查询 lux，只消费固件上报，诊断工具 `--monitor-lux` 则根据现场固件实际行为约每 `200ms` 发送一次 `5A 5A 31 02 00 00 33`，并同步显示 lux 与最新压力。补光灯按 `5A 5A 32 01 + 2-byte PWM + XOR` 发送，PWM 接口范围为 `0..1000`。这些上报进入线程安全 HMI snapshot，当前只供运行时/诊断读取，不自动按 lux 调光，也不写入 episode。
-- 仓库现场工具 `test/scripts/board_gripper_hmi_dashboard.py` 会随包安装为 `/opt/ugripper/bin/GripperHmiTool/gripper_hmi_dashboard.py`，以左右双列稳定刷新压力、被动 lux 与 `KEY1..KEY6`。V3 Pogo 现场映射为左爪 `KEY4`、右爪 `KEY3`。工具支持每侧独立采集无载零点和已知标准重量点；零点阶段暂存到 `/var/lib/ugripper/hmi_pressure_calibration.json`，完成标准重量点后通过现有 SN 读取链路取得夹爪 SN，把相同的 32-byte SN、zero raw、reference raw 和 reference mass 写入夹爪 UCAL force payload 并读回校验。正常监视优先从夹爪读取标定，按 signed delta 两点模型换算 `kgf` 与 `N`。
+- HMI 驱动当前临时启用 `UGRIPPER_ENABLE_TEMP_FORCE_DIAG=1`：检测到连续高频压力请求后，当请求排队、实际发送或回包间隔处于 `80–1000ms`，或任意压力原始值低两字节为 `FF FF` 时，输出统一的 `[TEMP_FORCE_DIAG] stage=request_queued|request_sent|pressure_rx` 日志；高频门控与上限共同排除待机态固件主动上报和约 `5s` 低频刷新。该诊断只记录事实，不丢弃或修改样本；代码块均以 `TEMP_FORCE_DIAG_BEGIN/END` 标记，定位完成后可集中关闭或删除。
+- 仓库现场工具 `test/scripts/board_gripper_hmi_dashboard.py` 会随包安装为 `/opt/ugripper/bin/GripperHmiTool/gripper_hmi_dashboard.py`，以左右双列稳定刷新压力、被动 lux 与 `KEY1..KEY6`。V3 Pogo 现场映射为左爪 `KEY4`、右爪 `KEY3`。工具支持每侧独立采集无载零点和已知标准重量点；完整标定持久化在当前夹爪的 UCAL/FCAL force payload，首次标定尚未有参考点时，零点阶段仅暂存到 `/run/ugripper/hmi_force_calibration_staging.json`，完成标准重量点后通过现有 SN 读取链路取得夹爪 SN，把相同的 32-byte SN、zero raw、reference raw 和 reference mass 写入夹爪 UCAL force payload 并读回校验。正常监视只通过 `GripperHmiTool --read-calib` 读取夹爪标定并执行一次短重试；helper 在同一独占事务内先读独立 SN、再读 calibration，并用该 SN 完成 FCAL 匹配，避免标定读尾帧干扰后置 SN 查询。即使 helper 总返回码非零，只要输出中的 FCAL 与 SN 校验完整通过仍接受该标定。界面会把失败原因区分为 `READ FAILED`、`INVALID FCAL`、`SN MISMATCH` 或 `INVALID VALUES`，合法标定按 signed delta 两点模型换算 `kgf` 与 `N`。
 - `standalone/GripperHmiTool` 保持原 UMI SN 命令和 32-byte ASCII/NUL 编码不变。HMI calibration payload 使用原 32-byte UCAL header，`0x00020000` 格式只包含一个 64-byte `FCAL` 块：再次保存完全相同的 SN，并记录 zero raw、reference raw、reference mass、时间和 CRC32；有效内容为 96 bytes，但当前固件写入仍补满 `64 x 16B`。C++ 与纯 Python 的 raw bin 写入口都会在写入前校验 V2/FCAL/CRC，并读取目标夹爪 SN 检查 32-byte 编码一致；旧 `0x00010000` 相机/双目/IMU payload 只识别为 legacy，不再生成或写入，具体见 `docs/umi_calibration_protocol.md`。
 - UMI 标定写入当前增加了异常恢复口径：若写入阶段收到 `0xFE`（当前 chunk 零数据校验错误），驱动会优先重发当前 chunk；若连续出现 `0xFE`，或后续读 SN / 读标定返回 `0xF3/0xFE`，则会发送一次 `AbortWriteInData` 清理固件残留写入状态后再重试。
 11. 初始化成功后进入空闲状态机；默认包要求数据盘和 Fays recorder ready 才进入 `READY`。`+nostereo` 变体只要求数据盘与非双目关键设备 ready，不等待 Fays。
@@ -182,6 +183,8 @@
   - 右手：`/dev/right_encoder`
   - 左手：`/dev/left_encoder`
 - 新版不再接板载 IM648，因此 `sensor_recorder` 不再打开 `/dev/left_imu` / `/dev/right_imu`，也不再写 `imu_left` / `imu_right` topic。
+- 力值由运行时按夹爪 FCAL 标定转换为 `N` 后传入 SensorRecorder；左右 sensor 文件分别写 `force_left` / `force_right`。
+- FCAL 缓存模式与主摄标定缓存一致：服务初始化读取一次，夹爪断开时清空，设备重连并稳定后刷新；每次起录仅要求 V3 两侧缓存合法，不在起录路径同步读取 1024-byte 标定 payload。
 - encoder 当前按“解析/读取后入本地队列 -> 主循环批量消费 -> 每侧写线程落 MCAP”的方式输出；主循环不再直接同步阻塞 `McapWriter::write`。
 - 左右 `sensor_*.mcap` 现各自由单独写线程落盘，降低 chunk 压缩或磁盘抖动对采样节奏的反压影响；若写队列持续堆积，日志会输出 backlog warning 便于现场判断是否存在写盘瓶颈。
 - 录制态的 IMU 超阈值检测当前直接下沉在 `sensor_recorder`：复用其现有 IMU 消费路径完成左右手独立的 `gyro`/`accel` 阈值、去抖、cooldown 与最短保持时长判定，不再把原始 IMU 样本转发给 `record_runtime`。
@@ -246,7 +249,7 @@
 停录后当前按以下层次校验：
 - 默认包执行 stereo session/finalize 和 Fays tail 检查；`+nostereo` 变体完全跳过这些检查。
 - 在线主摄、胸部主摄必须已有合法运行时缓存：SN 必须为 Yuzhou XU 中的 `FE...` 字段，标定必须为合法 `MCAL` V1 payload。缺任一项即校验失败，并写 `quality_check_err_type=calibration_error`。
-- 文件存在性按构建变体决定：默认包额外要求左右 stereo 与 Fays MCAP，`+nostereo` 不要求；其他主摄、触觉、sensor、calibration 和 metadata 均必须存在且非空。
+- 文件存在性按构建变体决定：默认包额外要求左右 stereo 与 Fays MCAP，`+nostereo` 不要求；其他主摄、触觉、sensor、calibration 和 metadata 均必须存在且非空。V3 还要求 `sensor_left.mcap` 含有 `force_left`、`sensor_right.mcap` 含有 `force_right` 且各 topic 至少有一条消息；V2 兼容模式不强制这两个 force topic。
 - 内部 timing 缓存：停录收尾期间由 `/dev/shm/ugripper_recording_timing_*.json` 暂存 `boot_time_offset`、`boot_time_offset_us`、各路 `<camera>_record_time_offset_us` 和 `video_probes`，只用于生成最终 metadata；该文件不落到 episode，不作为硬校验对象，完成后清理。若 `mergeEpisodeInfo()` 提示 timing 打开失败，应优先结合 `camera_recorder` 的“wrote timing file / missing_record_time_offset_us / flush-close failed”日志一起判断根因。
 - metadata 与视频可读性：最终 `metadata.json` 必须包含当前变体全部视频的 `start_offset_us/duration_s`；默认包包含 stereo，`+nostereo` 不包含。
 - 时长合理性：每路启用视频都必须满足跨度阈值；默认包执行 Fays MCAP tail 检查，`+nostereo` 跳过。

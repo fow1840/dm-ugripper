@@ -105,6 +105,7 @@ python3 auto_calibration/generate_gripper_calibration_bin.py \
 `GripperHmiTool --write-calib-bin` 与纯 Python `gripper_hmi_toolkit.py --write-calib-bin`
 均只接受合法的 `0x00020000` FCAL payload。写入前会读取目标夹爪 SN，并要求 payload
 中的 32-byte SN、CRC 和两点参数全部有效，旧格式或 SN 不匹配时拒绝写入。
+写入力标定不会改变独立 HMI SN；工具会在写入后再次读取并核验 SN，若固件写入过程意外清空或改写 SN，会用写入前读取到的 SN 恢复并再次校验。
 
 ## 6. 遗留格式
 

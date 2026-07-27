@@ -5,12 +5,13 @@ import argparse
 import json
 import math
 import shutil
+import struct
 import subprocess
 import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from statistics import median
+from statistics import fmean, median, pstdev
 from typing import Any
 
 
@@ -34,8 +35,8 @@ MAIN_CAMERA_NAMES = {"cam_left_main", "cam_right_main", "cam_chest_main"}
 STEREO_CAMERA_NAMES = {"stereo_left", "stereo_right"}
 TACTILE_CAMERA_NAMES = {"tcam_left_l", "tcam_left_r", "tcam_right_l", "tcam_right_r"}
 SENSOR_FILES = [
-    ("left", "sensor_left.mcap", ["encoder_left"]),
-    ("right", "sensor_right.mcap", ["encoder_right"]),
+    ("left", "sensor_left.mcap", "encoder_left", "force_left"),
+    ("right", "sensor_right.mcap", "encoder_right", "force_right"),
 ]
 FAYS_MCAP_FILES = [
     ("left", "fays_data_left.mcap", "left_stereo"),
@@ -151,7 +152,7 @@ REQUIRED_FILES = [
     "metadata.json",
     "calibration.json",
     *(file_name for _, file_name, _ in BASE_VIDEO_FILES),
-    *(file_name for _, file_name, _ in SENSOR_FILES),
+    *(file_name for _, file_name, _, _ in SENSOR_FILES),
     "fays_data_left.mcap",
     "fays_data_right.mcap",
 ]
@@ -351,6 +352,19 @@ class SensorTopicStats:
     max_gap_ms: float = 0.0
     large_gap_count: int = 0
     gap_threshold_ms: float = 0.0
+    gap_time_ratio: float = 0.0
+    sample_rate_hz: float = 0.0
+    payload_sizes: list[int] = field(default_factory=list)
+    malformed_payload_count: int = 0
+    nonfinite_value_count: int = 0
+    force_min_n: float | None = None
+    force_max_n: float | None = None
+    force_mean_n: float | None = None
+    force_median_n: float | None = None
+    force_stddev_n: float | None = None
+    force_first_5s_median_n: float | None = None
+    force_last_5s_median_n: float | None = None
+    force_abs_outlier_count: int = 0
 
 
 @dataclass
@@ -380,7 +394,11 @@ def list_episode_dirs(root: Path) -> list[Path]:
     if not root.exists() or not root.is_dir():
         return []
     return sorted(
-        [path for path in root.iterdir() if path.is_dir() and path.name.startswith("episode_")],
+        [
+            path
+            for path in root.iterdir()
+            if path.is_dir() and path.name.startswith("episode_") and not path.name.endswith("-temp")
+        ],
         key=lambda path: (path.name, path.stat().st_mtime_ns),
     )
 
@@ -1272,6 +1290,28 @@ class EpisodeValidator:
                 data_size = len(getattr(record, "data", b"") or b"")
                 yield str(channel.topic), int(record.log_time), data_size
 
+    def iter_sensor_message_records(self, mcap_path: Path):
+        if StreamReader is None:
+            raise RuntimeError(
+                "python mcap package is unavailable; prefer running this script via `uv run python ...`"
+            )
+        with mcap_path.open("rb") as handle:
+            channels: dict[int, Any] = {}
+            for record in StreamReader(handle).records:
+                record_name = type(record).__name__
+                if record_name == "Channel":
+                    channels[record.id] = record
+                    continue
+                if record_name != "Message":
+                    continue
+                channel = channels.get(record.channel_id)
+                if channel is None:
+                    continue
+                yield str(channel.topic), int(record.log_time), bytes(getattr(record, "data", b"") or b"")
+
+    def is_v3_episode(self) -> bool:
+        return str(self.metadata.get("hardware_version") or "").strip().upper().startswith("V3")
+
     def scan_sensors(self) -> None:
         if StreamReader is None:
             self.add_finding(
@@ -1282,29 +1322,36 @@ class EpisodeValidator:
             )
             return
 
-        topic_times: dict[str, list[int]] = defaultdict(list)
+        topic_records: dict[str, list[tuple[int, bytes]]] = defaultdict(list)
         topic_sources: dict[str, str] = {}
-        for _, file_name, expected_topics in SENSOR_FILES:
+        for _, file_name, encoder_topic, force_topic in SENSOR_FILES:
             path = self.episode_dir / file_name
             if not path.exists() or path.stat().st_size <= 0:
                 continue
+            file_topics: set[str] = set()
             try:
-                for topic, log_time_ns in self.iter_mcap_messages(path):
-                    topic_times[topic].append(log_time_ns)
+                for topic, log_time_ns, payload in self.iter_sensor_message_records(path):
+                    topic_records[topic].append((log_time_ns, payload))
                     topic_sources[topic] = str(path)
+                    file_topics.add(topic)
             except Exception as exc:
                 self.add_finding("FAIL", "mcap_read_error", f"读取 {file_name} 失败", error=str(exc))
                 continue
 
+            expected_topics = [encoder_topic]
+            if self.is_v3_episode():
+                expected_topics.append(force_topic)
             for topic in expected_topics:
-                if topic not in topic_times:
+                if topic not in file_topics:
                     self.add_finding("FAIL", "missing_sensor_topic", f"{file_name} 缺少 topic: {topic}", path=str(path))
 
-        for topic, timestamps in sorted(topic_times.items()):
-            timestamps.sort()
+        for topic, records in sorted(topic_records.items()):
+            records.sort(key=lambda item: item[0])
+            timestamps = [item[0] for item in records]
             stats = SensorTopicStats(topic=topic, source_file=topic_sources.get(topic, ""))
             self.sensor_stats[topic] = stats
             stats.count = len(timestamps)
+            stats.payload_sizes = sorted({len(item[1]) for item in records})
             stats.first_log_time_ns = timestamps[0]
             stats.last_log_time_ns = timestamps[-1]
             if len(timestamps) <= 1:
@@ -1324,12 +1371,26 @@ class EpisodeValidator:
             stats.median_gap_ms = median(sorted_gaps)
             stats.p99_gap_ms = percentile(sorted_gaps, 0.99)
             stats.max_gap_ms = max(sorted_gaps)
-            min_gap_floor = self.args.imu_gap_min_ms if topic.startswith("imu_") else self.args.encoder_gap_min_ms
+            duration_sec = (timestamps[-1] - timestamps[0]) / 1_000_000_000.0
+            stats.sample_rate_hz = (len(timestamps) - 1) / duration_sec if duration_sec > 0 else 0.0
+            if topic.startswith("force_"):
+                min_gap_floor = self.args.force_gap_min_ms
+            elif topic.startswith("imu_"):
+                min_gap_floor = self.args.imu_gap_min_ms
+            else:
+                min_gap_floor = self.args.encoder_gap_min_ms
             stats.gap_threshold_ms = max(min_gap_floor, stats.median_gap_ms * self.args.sensor_gap_factor)
             stats.large_gap_count = sum(1 for value in gaps_ms if value > stats.gap_threshold_ms)
+            total_gap_ms = sum(gaps_ms)
+            stats.gap_time_ratio = (
+                sum(value for value in gaps_ms if value > stats.gap_threshold_ms) / total_gap_ms
+                if total_gap_ms > 0
+                else 0.0
+            )
 
             if stats.max_gap_ms > stats.gap_threshold_ms:
-                severity = "FAIL" if stats.max_gap_ms >= self.args.sensor_gap_fail_ms else "WARN"
+                fail_ms = self.args.force_gap_fail_ms if topic.startswith("force_") else self.args.sensor_gap_fail_ms
+                severity = "FAIL" if stats.max_gap_ms >= fail_ms else "WARN"
                 self.add_finding(
                     severity,
                     "sensor_gap",
@@ -1339,6 +1400,76 @@ class EpisodeValidator:
                     median_gap_ms=round(stats.median_gap_ms, 3),
                     large_gap_count=stats.large_gap_count,
                 )
+
+            if topic.startswith("force_"):
+                if stats.gap_time_ratio >= self.args.force_gap_time_warn_ratio:
+                    severity = (
+                        "FAIL"
+                        if stats.gap_time_ratio >= self.args.force_gap_time_fail_ratio
+                        else "WARN"
+                    )
+                    self.add_finding(
+                        severity,
+                        "force_gap_time_ratio",
+                        f"{topic} 长 gap 占用时间比例过高",
+                        gap_time_ratio=round(stats.gap_time_ratio, 4),
+                        threshold_ms=round(stats.gap_threshold_ms, 3),
+                        large_gap_count=stats.large_gap_count,
+                    )
+
+                finite_values: list[float] = []
+                finite_samples: list[tuple[int, float]] = []
+                for log_time_ns, payload in records:
+                    if len(payload) != 8:
+                        stats.malformed_payload_count += 1
+                        continue
+                    (value,) = struct.unpack("<d", payload)
+                    if not math.isfinite(value):
+                        stats.nonfinite_value_count += 1
+                        continue
+                    finite_values.append(value)
+                    finite_samples.append((log_time_ns, value))
+
+                if stats.malformed_payload_count > 0:
+                    self.add_finding(
+                        "FAIL",
+                        "force_malformed_payload",
+                        f"{topic} 存在非 8-byte float64 payload",
+                        malformed_payload_count=stats.malformed_payload_count,
+                        payload_sizes=stats.payload_sizes,
+                    )
+                if stats.nonfinite_value_count > 0:
+                    self.add_finding(
+                        "FAIL",
+                        "force_nonfinite_value",
+                        f"{topic} 存在 NaN/Inf",
+                        nonfinite_value_count=stats.nonfinite_value_count,
+                    )
+                if finite_values:
+                    stats.force_min_n = min(finite_values)
+                    stats.force_max_n = max(finite_values)
+                    stats.force_mean_n = fmean(finite_values)
+                    stats.force_median_n = median(finite_values)
+                    stats.force_stddev_n = pstdev(finite_values)
+                    first_ns = finite_samples[0][0]
+                    last_ns = finite_samples[-1][0]
+                    first_values = [value for timestamp, value in finite_samples if timestamp - first_ns <= 5_000_000_000]
+                    last_values = [value for timestamp, value in finite_samples if last_ns - timestamp <= 5_000_000_000]
+                    stats.force_first_5s_median_n = median(first_values) if first_values else None
+                    stats.force_last_5s_median_n = median(last_values) if last_values else None
+                    stats.force_abs_outlier_count = sum(
+                        1 for value in finite_values if abs(value) > self.args.force_abs_warn_n
+                    )
+                    if stats.force_abs_outlier_count > 0:
+                        self.add_finding(
+                            "WARN",
+                            "force_value_outlier",
+                            f"{topic} 存在大绝对值样本，需结合原始压力帧诊断",
+                            threshold_n=self.args.force_abs_warn_n,
+                            outlier_count=stats.force_abs_outlier_count,
+                            min_n=round(stats.force_min_n, 6),
+                            max_n=round(stats.force_max_n, 6),
+                        )
 
     def scan_fays_mcaps(self) -> None:
         if StreamReader is None:
@@ -1558,7 +1689,7 @@ class EpisodeValidator:
         return
 
     def check_sensor_alignment(self) -> None:
-        for topic_prefix in ("imu", "encoder"):
+        for topic_prefix in ("imu", "encoder", "force"):
             left = self.sensor_stats.get(f"{topic_prefix}_left")
             right = self.sensor_stats.get(f"{topic_prefix}_right")
             if left is None or right is None:
@@ -1620,13 +1751,25 @@ class EpisodeValidator:
         return (min(starts) if starts else None, max(ends) if ends else None)
 
     def side_sensor_window_ns(self, side: str) -> tuple[int | None, int | None]:
-        topics = [self.sensor_stats.get(f"imu_{side}"), self.sensor_stats.get(f"encoder_{side}")]
+        topics = [
+            self.sensor_stats.get(f"imu_{side}"),
+            self.sensor_stats.get(f"encoder_{side}"),
+            self.sensor_stats.get(f"force_{side}"),
+        ]
         starts = [topic.first_log_time_ns for topic in topics if topic and topic.first_log_time_ns is not None]
         ends = [topic.last_log_time_ns for topic in topics if topic and topic.last_log_time_ns is not None]
         return (min(starts) if starts else None, max(ends) if ends else None)
 
     def check_video_sensor_alignment(self) -> None:
-        return
+        if not self.video_stats or not self.sensor_stats:
+            return
+        self.add_finding(
+            "INFO",
+            "video_sensor_alignment_unavailable",
+            "当前 episode 未保存视频与 MCAP 的共享绝对时间锚点，不能直接计算跨时间域起始偏差",
+            video_time_domain="relative start_offset_us",
+            sensor_time_domain="unix log_time_ns",
+        )
 
     def check_video_sensor_overlap(self) -> None:
         return
@@ -1683,6 +1826,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--imu-gap-min-ms", type=float, default=20.0)
     parser.add_argument("--encoder-gap-min-ms", type=float, default=30.0)
     parser.add_argument("--sensor-gap-fail-ms", type=float, default=120.0)
+    parser.add_argument("--force-gap-min-ms", type=float, default=50.0)
+    parser.add_argument("--force-gap-fail-ms", type=float, default=120.0)
+    parser.add_argument("--force-gap-time-warn-ratio", type=float, default=0.05)
+    parser.add_argument("--force-gap-time-fail-ratio", type=float, default=0.20)
+    parser.add_argument("--force-abs-warn-n", type=float, default=50.0)
     parser.add_argument("--video-start-warn-ms", type=float, default=500.0)
     parser.add_argument("--video-start-fail-ms", type=float, default=1000.0)
     parser.add_argument("--video-end-warn-ms", type=float, default=1000.0)
@@ -1756,9 +1904,19 @@ def print_text_report(report: Report) -> None:
         for name in sorted(report.sensors):
             item = report.sensors[name]
             print(
-                f"- {name}: count={item.count} median_gap_ms={round(item.median_gap_ms, 3)} "
-                f"max_gap_ms={round(item.max_gap_ms, 3)} large_gap_count={item.large_gap_count}"
+                f"- {name}: count={item.count} hz={round(item.sample_rate_hz, 3)} "
+                f"median_gap_ms={round(item.median_gap_ms, 3)} "
+                f"max_gap_ms={round(item.max_gap_ms, 3)} large_gap_count={item.large_gap_count} "
+                f"gap_time_ratio={round(item.gap_time_ratio, 4)}"
             )
+            if name.startswith("force_"):
+                print(
+                    f"  force_n=min:{item.force_min_n} median:{item.force_median_n} "
+                    f"mean:{item.force_mean_n} max:{item.force_max_n} "
+                    f"first_5s_median:{item.force_first_5s_median_n} "
+                    f"last_5s_median:{item.force_last_5s_median_n} "
+                    f"nonfinite:{item.nonfinite_value_count} malformed:{item.malformed_payload_count}"
+                )
     if report.fays_mcaps:
         print()
         print("Fays MCAPs:")

@@ -29,7 +29,9 @@
 - `calibration.json.observation.images` 是否覆盖 8 路图像
 - Fays 侧 `fays_data_left.mcap` / `fays_data_right.mcap` 是否头尾 magic 完整、可解析、包含 `i/c` 数据，且覆盖时长接近对应 stereo 视频
 - 主摄专项扫描是否发现 `backward_dts` / `decode_non_monotonic_dts` / `decode_error`
-- 是否输出统一的首帧对齐表，覆盖 8 路 `mkv` 和左右 sensor topic
+- V3 的 `sensor_left/right.mcap` 是否分别包含 `encoder_left/right` 与 `force_left/right`；V2 不强制 force
+- force payload 是否严格为 little-endian 8-byte `float64 N`，且不存在 NaN/Inf
+- 是否输出 8 路 `mkv` 的视频内部首帧表和 4 个 sensor topic 的 sensor 内部首帧表；只有存在共享绝对时间锚点时才合并为统一 12 路表
 
 ## 2. 默认阈值建议
 
@@ -45,6 +47,9 @@
 - 容器 duration 与包级 span 偏差 warn/fail：`80ms / 150ms`
 - 单 IMU topic gap 告警：`max(3 x 中位间隔, 20ms)`
 - 单 encoder topic gap 告警：`max(3 x 中位间隔, 30ms)`
+- 单 force topic gap 告警：`max(3 x 中位间隔, 50ms)`，单 gap 达 `120ms` 为 fail
+- force 长 gap 时间占比 warn/fail：`0.05 / 0.20`
+- force 大绝对值样本默认在 `|N| > 50` 时告警并要求结合原始压力帧诊断，不单凭该阈值判定硬件量程故障
 - 左右同类 sensor 起始同步 warn/fail：`30ms / 80ms`
 - 左右同类 sensor 结束同步 warn/fail：`50ms / 120ms`
 - sensor 覆盖率相对最长视频 warn/fail：`0.90 / 0.75`
@@ -65,6 +70,10 @@
   - 更像起录边界没对齐，而不是中途掉流。
 - `四个 sensor topic 内部首帧对齐正常，但统一首帧表里 sensor 整体相对视频偏移很大`
   - 更像视频与 sensor 使用了不同时间基准，或某一侧时间戳换算错误。
+- `force 长 gap 时间占比高，但左右 gap 并不同步`
+  - 更像单侧 HMI 请求发送或压力回包链路异常，而不是 record_runtime 主循环整体卡顿。
+- `force 出现大绝对值，反推原始压力值低字节呈 FF FF`
+  - 优先检查 HMI 原始压力回包与临时 `TEMP_FORCE_DIAG`，不要直接按牛顿值裁剪。
 - `sensor 起始时间整体晚于视频`
   - 更像 sensor_recorder 启动滞后。
 - `sensor 结束时间整体早于视频`

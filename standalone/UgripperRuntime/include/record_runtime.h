@@ -117,17 +117,27 @@ private:
             std::vector<std::string> portActivity;
         };
 
+        struct PressureSample
+        {
+            std::string side;
+            int32_t rawValue = 0;
+            uint64_t timestampNs = 0;
+        };
+
         bool connect(const std::vector<std::string> &ports);
         void disconnect();
         bool hasConnectedDevice() const;
         bool poll(int timeoutMs, ButtonSnapshot *snapshot);
         bool getButtonsForPortToken(const std::string &token, ButtonSnapshot *snapshot) const;
         HealthSnapshot getHealthSnapshot(uint64_t activeTimeoutMs) const;
+        std::vector<PressureSample> consumePressureSamples();
+        void setRecordingActive(bool active);
         bool requestStateForSide(const std::string &side);
         bool refreshPressureReports(int timeoutMs, int maxAttempts);
         bool readRuntimeIdentityForSide(const std::string &side,
                                         std::string *serialNumber,
                                         bool *hasSerialNumber,
+                                        gripper_hmi::GripperCalibrationData *calibrationData,
                                         std::string *errorMessage);
         std::vector<ConnectionEvent> consumeConnectionEvents();
         bool isSideReadyForRefresh(const std::string &side, uint64_t activeTimeoutMs) const;
@@ -145,6 +155,7 @@ private:
         static constexpr size_t kBtnDownKeyIndex = 1;
         static constexpr uint64_t kReconnectIntervalMs = 1000;
         static constexpr uint64_t kPressureRefreshIntervalMs = 5000;
+        static constexpr uint64_t kPressureRecordingIntervalMs = 10;
 
         static std::string sideForPort(const std::string &port);
         int findDriverIndexForSide(const std::string &side) const;
@@ -173,6 +184,7 @@ private:
         };
         std::vector<PerSideLedState> perSideLedStates_;
         GripperBeepState currentBeepState_{};
+        bool recordingActive_ = false;
     };
 
     class HmiLedController
@@ -326,6 +338,10 @@ private:
                                          const std::string &status,
                                          const std::string &errorMessage);
     bool persistGripperCalibrationCache(std::string *errorMessage);
+    void prepareSensorStart(std::vector<std::string> *arguments, std::vector<int> *inheritedFds);
+    void finalizeSensorStart();
+    void closeForceSensorChannel();
+    void forwardForceSamples();
     bool areSideCriticalDevicesReady(const std::string &side) const;
     void initializeMainCameraRuntimeStates();
     void maintainMainCameraRuntimeStates();
@@ -521,6 +537,14 @@ private:
     ugripper::runtime::HealthState healthState_{};
     std::unique_ptr<EpisodeManager> episodeManager_;
     std::array<EpisodeManager::GripperRuntimeState, 2> gripperRuntimeStates_{};
+    struct ForceCalibrationState
+    {
+        bool valid = false;
+        gripper_hmi::GripperCalibrationData data{};
+    };
+    std::array<ForceCalibrationState, 2> forceCalibrationStates_{};
+    int forceSensorWriteFd_ = -1;
+    int forceSensorChildFd_ = -1;
     std::array<bool, 2> pendingGripperRefresh_{};
     struct MainCameraRefreshResult
     {

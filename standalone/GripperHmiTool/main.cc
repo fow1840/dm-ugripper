@@ -234,6 +234,31 @@ static bool parseUint32(const char *text, uint32_t *value)
     return true;
 }
 
+static bool verifyAndRestoreSerialNumber(GripperHmiDriver *device,
+                                         const std::string &expectedSerialNumber)
+{
+    if (device == nullptr)
+    {
+        return false;
+    }
+
+    std::string actualSerialNumber;
+    if (device->readSerialNumber(&actualSerialNumber) && actualSerialNumber == expectedSerialNumber)
+    {
+        return true;
+    }
+
+    std::cerr << "Calibration write changed gripper SN on: " << device->getPort()
+              << "; restoring " << expectedSerialNumber << std::endl;
+    if (!device->writeSerialNumber(expectedSerialNumber))
+    {
+        return false;
+    }
+
+    actualSerialNumber.clear();
+    return device->readSerialNumber(&actualSerialNumber) && actualSerialNumber == expectedSerialNumber;
+}
+
 static bool parseOptions(int argc, char **argv, TestOptions *options)
 {
     if (options == nullptr)
@@ -763,6 +788,13 @@ int main(int argc, char **argv)
                     allOk = false;
                     continue;
                 }
+                if (!verifyAndRestoreSerialNumber(device.get(), serialNumber))
+                {
+                    std::cerr << "Force calibration write did not preserve SN on: "
+                              << device->getPort() << std::endl;
+                    allOk = false;
+                    continue;
+                }
 
                 std::cout << '[' << device->getPort() << "] write-force-calib ok"
                           << " sn=" << serialNumber
@@ -816,9 +848,16 @@ int main(int argc, char **argv)
                     std::cerr << std::endl;
                     allOk = false;
                 }
+                else if (!verifyAndRestoreSerialNumber(device.get(), serialNumber))
+                {
+                    std::cerr << "Calibration write did not preserve SN on: "
+                              << device->getPort() << std::endl;
+                    allOk = false;
+                }
                 else
                 {
-                    std::cout << '[' << device->getPort() << "] write-calibration ok" << std::endl;
+                    std::cout << '[' << device->getPort() << "] write-calibration ok"
+                              << " sn=" << serialNumber << std::endl;
                 }
             }
         }
@@ -827,8 +866,11 @@ int main(int argc, char **argv)
         {
             for (auto &device : devices)
             {
+                std::string serialNumber;
+                bool hasSerialNumber = false;
                 gripper_hmi::GripperCalibrationData calibrationData{};
-                if (!device->readCalibrationData(&calibrationData))
+                if (!device->readSerialNumberAndCalibration(
+                        &serialNumber, &hasSerialNumber, &calibrationData))
                 {
                     std::cerr << "Failed to read calibration on: " << device->getPort();
                     if (!device->getLastCommandError().empty())
@@ -840,16 +882,18 @@ int main(int argc, char **argv)
                     continue;
                 }
 
+                if (hasSerialNumber)
+                {
+                    std::cout << "gripper.serial_number=" << serialNumber << std::endl;
+                }
                 std::cout << '[' << device->getPort() << "] calibration summary" << std::endl;
                 printCalibrationSummary(calibrationData);
                 if (calibrationData.header.dataFormatVersion ==
                     gripper_hmi::kCalibrationDataFormatVersionForceV1)
                 {
-                    std::string serialNumber;
-                    const bool snRead = device->readSerialNumber(&serialNumber);
                     std::cout << "force.sn_match="
-                              << (snRead && gripper_hmi::forceCalibrationMatchesSerialNumber(
-                                                calibrationData, serialNumber)
+                              << (hasSerialNumber && gripper_hmi::forceCalibrationMatchesSerialNumber(
+                                                        calibrationData, serialNumber)
                                       ? "yes"
                                       : "no")
                               << std::endl;

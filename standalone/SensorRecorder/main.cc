@@ -1,5 +1,6 @@
 #include "encoder_driver.h"
 #include "utils/logger.h"
+#include "sensor_recorder/force_protocol.h"
 #include "sensor_recorder/sensor_domain.h"
 
 #include <mcap/writer.hpp>
@@ -16,7 +17,9 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <poll.h>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -42,6 +45,7 @@ struct SideWriter {
     fs::path outputFile;
     mcap::McapWriter writer;
     mcap::Schema encoderSchema;
+    mcap::Schema forceSchema;
     std::atomic<uint64_t> writtenMessageCount{0};
     std::atomic<uint64_t> writeFailureCount{0};
     std::atomic<uint32_t> lastWrittenSequence{0};
@@ -191,6 +195,105 @@ void sideWriterThreadFunc(SideWriter *sideWriter, PendingWriteQueue *pendingQueu
     }
 }
 
+void forceReadThreadFunc(int forceFd,
+                         PendingWriteQueue *leftPendingWrites,
+                         PendingWriteQueue *rightPendingWrites,
+                         uint16_t leftChannelId,
+                         uint16_t rightChannelId)
+{
+    if (forceFd < 0 || leftPendingWrites == nullptr || rightPendingWrites == nullptr)
+    {
+        return;
+    }
+
+    uint32_t leftSequence = 0;
+    uint32_t rightSequence = 0;
+    while (!g_stopFlag.load(std::memory_order_relaxed))
+    {
+        pollfd descriptor{forceFd, POLLIN | POLLHUP | POLLERR, 0};
+        const int pollStatus = poll(&descriptor, 1, 100);
+        if (pollStatus < 0)
+        {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            DM_LOG_WARN("{}", (::DA::utils::LogString()
+                << "force sensor IPC poll failed: " << std::strerror(errno)).str());
+            break;
+        }
+        if (pollStatus == 0)
+        {
+            continue;
+        }
+        if ((descriptor.revents & POLLIN) == 0)
+        {
+            if ((descriptor.revents & (POLLHUP | POLLERR)) != 0)
+            {
+                DM_LOG_WARN("force sensor IPC channel closed");
+                break;
+            }
+            continue;
+        }
+
+        ugripper::sensor::ForceIpcSample ipcSample{};
+        const ssize_t received = recv(forceFd, &ipcSample, sizeof(ipcSample), 0);
+        if (received == 0)
+        {
+            DM_LOG_INFO("force sensor IPC channel reached EOF");
+            break;
+        }
+        if (received < 0)
+        {
+            if (errno == EINTR || errno == EAGAIN)
+            {
+                continue;
+            }
+            DM_LOG_WARN("{}", (::DA::utils::LogString()
+                << "force sensor IPC read failed: " << std::strerror(errno)).str());
+            break;
+        }
+        if (received != static_cast<ssize_t>(sizeof(ipcSample)))
+        {
+            DM_LOG_WARN("{}", (::DA::utils::LogString()
+                << "ignore malformed force sensor IPC packet: bytes=" << received).str());
+            continue;
+        }
+
+        auto *queue = static_cast<PendingWriteQueue *>(nullptr);
+        uint16_t channelId = 0;
+        uint32_t sequence = 0;
+        if (ipcSample.side == static_cast<uint8_t>(ugripper::sensor::ForceSide::Left))
+        {
+            queue = leftPendingWrites;
+            channelId = leftChannelId;
+            sequence = leftSequence++;
+        }
+        else if (ipcSample.side == static_cast<uint8_t>(ugripper::sensor::ForceSide::Right))
+        {
+            queue = rightPendingWrites;
+            channelId = rightChannelId;
+            sequence = rightSequence++;
+        }
+        else
+        {
+            DM_LOG_WARN("{}", (::DA::utils::LogString()
+                << "ignore force sensor IPC packet with unknown side="
+                << static_cast<unsigned int>(ipcSample.side)).str());
+            continue;
+        }
+
+        const ugripper::sensor::ForceFrame frame{ipcSample.force_newtons};
+        const auto *payload = reinterpret_cast<const std::byte *>(&frame);
+        queue->push(buildQueuedMessage(
+            channelId,
+            sequence,
+            ipcSample.timestamp_ns == 0 ? CurrentSystemTimeNs() : ipcSample.timestamp_ns,
+            payload,
+            sizeof(frame)));
+    }
+}
+
 void encoderReadThreadFunc(EncoderDriver *encoder, const std::string &label) {
     uint8_t readBuf[256];
     while (!g_stopFlag.load()) {
@@ -237,6 +340,14 @@ mcap::Schema buildEncoderSchema() {
     })");
 }
 
+mcap::Schema buildForceSchema() {
+    return mcap::Schema("ForceFrame", "json", R"({
+        "type": "object",
+        "title": "ForceSampleBinary",
+        "description": "little-endian: float64 force_newtons"
+    })");
+}
+
 bool openSideWriter(const fs::path &outputDir, const SensorSideConfig &config, SideWriter *sideWriter) {
     if (sideWriter == nullptr) {
         return false;
@@ -245,6 +356,7 @@ bool openSideWriter(const fs::path &outputDir, const SensorSideConfig &config, S
     sideWriter->config = config;
     sideWriter->outputFile = outputDir / ("sensor_" + config.label + ".mcap");
     sideWriter->encoderSchema = buildEncoderSchema();
+    sideWriter->forceSchema = buildForceSchema();
 
     mcap::McapWriterOptions options("sensor_recorder_" + config.label);
     options.noChunking = false;
@@ -265,6 +377,7 @@ bool openSideWriter(const fs::path &outputDir, const SensorSideConfig &config, S
     }
 
     sideWriter->writer.addSchema(sideWriter->encoderSchema);
+    sideWriter->writer.addSchema(sideWriter->forceSchema);
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "Recording " << config.label << " sensor data to " << sideWriter->outputFile).str());
     return true;
 }
@@ -330,6 +443,7 @@ int main(int argc, char *argv[]) {
 
     fs::path outputDir = ".";
     bool outputDirSet = false;
+    int forceFd = -1;
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
         if (!outputDirSet && !argument.empty() && argument[0] != '-') {
@@ -339,9 +453,27 @@ int main(int argc, char *argv[]) {
         }
         if (argument == "-h" || argument == "--help") {
             std::cout
-                << "Usage: SensorRecorder [OUTPUT_DIR]\n"
-                << "Records left/right encoder streams into MCAP files.\n";
+                << "Usage: SensorRecorder [OUTPUT_DIR] [--force-fd FD]\n"
+                << "Records left/right encoder and calibrated force streams into MCAP files.\n";
             return 0;
+        }
+        if (argument == "--force-fd")
+        {
+            if (index + 1 >= argc)
+            {
+                DM_LOG_ERROR("--force-fd requires a file descriptor");
+                return -1;
+            }
+            try
+            {
+                forceFd = std::stoi(argv[++index]);
+            }
+            catch (const std::exception &)
+            {
+                DM_LOG_ERROR("--force-fd must be an integer");
+                return -1;
+            }
+            continue;
         }
         DM_LOG_ERROR("{}", (::DA::utils::LogString() << "Unknown argument: " << argument).str());
         return -1;
@@ -366,6 +498,8 @@ int main(int argc, char *argv[]) {
 
     EncoderRuntime rightEncoder{rightConfig, nullptr, mcap::Channel("encoder_right", "binary", rightWriter.encoderSchema.id)};
     EncoderRuntime leftEncoder{leftConfig, nullptr, mcap::Channel("encoder_left", "binary", leftWriter.encoderSchema.id)};
+    mcap::Channel rightForceChannel("force_right", "binary", rightWriter.forceSchema.id);
+    mcap::Channel leftForceChannel("force_left", "binary", leftWriter.forceSchema.id);
     rightEncoder.timestampSmoothing = CreateBatchTimestampSmoothingState("encoder_right", kEncoderNominalPeriodNs);
     leftEncoder.timestampSmoothing = CreateBatchTimestampSmoothingState("encoder_left", kEncoderNominalPeriodNs);
     PendingWriteQueue rightPendingWrites{rightConfig.label};
@@ -373,9 +507,28 @@ int main(int argc, char *argv[]) {
 
     rightWriter.writer.addChannel(rightEncoder.channel);
     leftWriter.writer.addChannel(leftEncoder.channel);
+    rightWriter.writer.addChannel(rightForceChannel);
+    leftWriter.writer.addChannel(leftForceChannel);
 
     std::thread rightWriterThread(sideWriterThreadFunc, &rightWriter, &rightPendingWrites);
     std::thread leftWriterThread(sideWriterThreadFunc, &leftWriter, &leftPendingWrites);
+    std::thread forceReadThread;
+    if (forceFd >= 0)
+    {
+        forceReadThread = std::thread(
+            forceReadThreadFunc,
+            forceFd,
+            &leftPendingWrites,
+            &rightPendingWrites,
+            leftForceChannel.id,
+            rightForceChannel.id);
+        DM_LOG_INFO("{}", (::DA::utils::LogString()
+            << "Recording calibrated force data from inherited fd=" << forceFd).str());
+    }
+    else
+    {
+        DM_LOG_WARN("SensorRecorder started without force sensor IPC input");
+    }
 
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "Opening dual-arm sensors: "
                          << "right(encoder=" << rightConfig.encoderPort << ") "
@@ -483,6 +636,13 @@ int main(int argc, char *argv[]) {
 
     g_stopFlag = true;
     DM_LOG_INFO("Stopping sensors...");
+
+    if (forceReadThread.joinable()) {
+        forceReadThread.join();
+    }
+    if (forceFd >= 0) {
+        close(forceFd);
+    }
 
     if (rightEncoder.readThread.joinable()) {
         rightEncoder.readThread.join();
