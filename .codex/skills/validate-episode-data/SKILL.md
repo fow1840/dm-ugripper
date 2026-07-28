@@ -1,13 +1,13 @@
 ---
 name: validate-episode-data
-description: 为 ugripper 项目执行 episode 数据深度校验。用于用户在录完一条新数据后，指定“校验 episode / 检查这条录制数据 / 验证视频和 sensor 是否同步 / 看有没有 gap 或异常 / 校验最新一条数据”等请求时：先阅读 docs/agent/overview.md 理解当前 episode 结构与时间语义，再对指定 episode 目录执行只读分析；若用户说“校验最新一条数据”，默认对用户给出的数据父目录执行 `--latest` 选择最新 `episode_*`；重点检查关键文件完整性、metadata/calibration/info 结构、视频时间对齐、逐帧 gap、主摄时间戳异常、8 路视频与 4 个 sensor topic 的首帧同步误差、左右 sensor 同步、sensor 覆盖率、视频与 sensor 对齐与重叠比例、session 边界和其他可疑异常，并给出结论、证据和建议。
+description: 为 ugripper 项目执行 episode 数据深度校验。用于用户在录完一条新数据后，指定“校验 episode / 检查这条录制数据 / 验证视频和 sensor 是否同步 / 看有没有 gap 或异常 / 校验最新一条数据”等请求时：先阅读 docs/agent/overview.md 理解当前 episode 结构与时间语义，再对指定 episode 目录执行只读分析；若用户说“校验最新一条数据”，默认对用户给出的数据父目录执行 `--latest` 选择最新 `episode_*`；按 metadata 的普通或 `+nostereo` profile 检查关键文件、3.1/历史 3.0 schema、可选任务标记、视频时间对齐、逐帧 gap、主摄时间戳异常、sensor 同步与覆盖率，并给出结论、证据和建议。
 ---
 
 # validate-episode-data
 
 ## 固定执行顺序
 
-1. 先阅读 `docs/agent/overview.md`，确认当前 episode 产物、`info.json` 时间字段语义、`metadata.json` 3.0 结构，以及默认视频 / sensor / Fays 输出结构。
+1. 先阅读 `docs/agent/overview.md`，确认当前 episode 产物、`metadata.json` 3.1 时间字段语义，以及普通或 `+nostereo` profile 的视频 / sensor / Fays 输出结构。
 2. 找到用户指定的 episode 目录；如果用户只给了父目录，可在其中定位最近一条 `episode_*`。
    - 若用户直接说“校验最新一条数据”，默认将这句话解释为“对指定数据父目录下最新的 `episode_*` 做校验”。
 3. 无需等待确认，直接执行只读分析脚本：
@@ -29,7 +29,9 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
 
 默认至少覆盖以下项目：
 
-- episode 关键文件是否存在、非空、可读。
+- 按 `software_version` 的 `+nostereo` 构建标记检查 episode 关键文件是否存在、非空、可读，并用 `require_files` / `video_details` 交叉验证 profile 一致性。
+- `data_version=3.1` 为当前 schema；`3.0` 作为历史兼容版本允许分析，未知版本告警。
+- `task_start_s/task_stop_s` 允许同时缺失或为 `0.0`；只有开始标记时按无回环数据处理，有结束无开始或结束不晚于开始时判失败。
 - `info.json` / `metadata.json` 结构与关键时间字段是否完整，是否发生 schema 漂移；`metadata.json` 应为停录校验后写出的最终结构，使用 `collection_duration_s`、`video_details[].duration_s` 和 `video_details[].start_offset_us`。
 - `calibration.json` 结构是否完整，是否覆盖 8 路图像与左右 IMU 标定项。
 - `metadata.json` / `info.json` / `calibration.json` 是否出现未登记字段、缺失字段或字段类型变化，防止 JSON 格式被偷偷改动。
@@ -45,6 +47,7 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
 - 八路 `mkv` 与四个 sensor topic 只有在 episode 提供共享绝对时间锚点时才放入同一张 12 路首帧表；当前 `video_details[].start_offset_us` 是视频内部相对偏移，不能和 MCAP Unix ns 直接相减，缺少锚点时必须明确报告“不可比较”，不得伪造对齐结论。
 - `stereo_session` 中的首帧 / 结束时间与顶层 offset 语义是否自洽。
 - 左右 `sensor_*.mcap` 是否可读，V3 是否分别包含 encoder 和 force 必需 topic；V2 不强制 force。
+- Fays camera `publishTime` 首末跨度、真实 gap/回退、frameIndex、MCAP camera count 与 stereo MKV packet count 是否一致；stereo 对齐使用 `publishTime`，设备侧 gap 使用 `logTime`，不得用压紧后的 MKV PTS 替代真实采集时间。
 - encoder topic 是否存在 gap、长时间中断、样本数异常。
 - force payload 是否严格为 little-endian 8-byte `float64 N`，是否存在 NaN/Inf、大绝对值、异常 gap、长 gap 时间占比过高或左右首尾不同步。
 - 左右 sensor 同类型 topic 是否明显不同步。

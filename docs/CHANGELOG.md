@@ -10,6 +10,7 @@
 - 新增随主包安装的左右 HMI 双列现场仪表盘：按左 `KEY4`、右 `KEY3` 判断 Pogo 闭合状态并汇总相对位姿是否固定；压力支持每侧独立零点与标准重量两点标定，写入夹爪后实时显示等效负载 `kgf` 和力 `N`，lux 保持只监听固件自动上报。
 - HMI 标定 payload 收口为与现有 32-byte SN 绑定的简化力传感器两点标定；保留原 UCAL header、1024-byte 传输和 SN 读写协议，新增 CRC 与读回校验，C++/Python raw 写入口拒绝旧格式、损坏或 SN 不匹配的 payload，并停止相机/双目/IMU 导入流程覆盖 HMI payload。
 - 适配 V3 RK3588 USB 拓扑：补充左右嵌套 USB2 hub 的主相机与触觉相机固定 symlink 规则，并覆盖四口 hub 的 `.1=主摄/.2=tactile_r/.3=tactile_l/.4=CH9344` 映射，由 `.4` 自动生成左右 gripper/encoder symlink，保留既有 V2/V2.5 路径兼容。
+- Episode 深度校验器按 `software_version` 的 `+nostereo` 构建标记动态选择产物清单，当前 schema 同步到 `data_version=3.1`，并兼容历史 `3.0` 以及缺少可选 `task_start_s/task_stop_s` 的数据；仅有开始标记时按无回环数据处理。
 - 新增构建期开关 `UGRIPPER_ENABLE_STEREO`，默认 `ON` 并沿用普通版本/包名；显式设为 `OFF` 时生成 `+nostereo` 包变体，运行时不启动 Fays daemon、不检查 stereo/Fays 健康、不执行双目 session/finalize，也不生成或校验 `stereo_left/right.mkv` 与 `fays_data_left/right.mcap`。该开关不提供 `/etc/environment`、`config.txt` 或命令行运行时覆盖。
 - HMI 物理按键在动作状态机前新增按下、松开各 `40ms` 的双向稳定滤波，过滤短暂电平毛刺；原有 `80ms` 短按动作间隔保持不变。
 - UgripperRuntime、SensorRecorder 与 encoder zeroing 的信号处理路径只设置停止标志，不再在信号上下文执行日志、子进程等待或复杂对象清理；SensorRecorder 退出时先等待编码器读写线程停止，再关闭串口，避免服务停止或停录时发生死锁、资源竞态及 sensor MCAP Footer 未封口。
