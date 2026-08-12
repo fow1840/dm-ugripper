@@ -509,6 +509,8 @@ baseline 文档里的每个条目都必须写明事实来源：
 - 不删除已有排障语义
 - 不顺手迁移 helper
 - 不顺手修业务逻辑
+- `PP::utils` 必须来自不可修改的 `PP_MAIN_ROOT/src/utils` logger 真源；本仓不得通过修改 `spd_logger.cc` 或 `log_fmtter.cc` 承载 UGripper 特有合同
+- UGripper 特有的错误码、逐物理行提交和初始化失败兜底放在本仓 wrapper；ANSI、等级及外部输出归一化放在主日志 writer
 
 ### 测试策略
 

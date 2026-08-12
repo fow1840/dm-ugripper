@@ -538,4 +538,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        audio_log("ERROR", f"audio runtime failed: {exc}", "UGR-50-01")
+        raise SystemExit(1)

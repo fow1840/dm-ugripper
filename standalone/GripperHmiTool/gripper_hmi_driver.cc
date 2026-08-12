@@ -1,6 +1,6 @@
 #include "gripper_hmi_driver.h"
 #include "gripper_hmi_driver_logic.h"
-#include "utils/logger.h"
+#include "utils/ugripper_logger.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1068,7 +1068,7 @@ bool GripperHmiDriver::writeSerialNumber(const std::string &serialNumber)
     gripper_hmi::GripperSerialNumber encoded{};
     if (!gripper_hmi::encodeSerialNumber(serialNumber, &encoded))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << name_ << ": invalid serial number, expected 1.."
+        DM_LOG_ERROR_CODE("UGR-40-05", "{}", (::DA::utils::LogString() << name_ << ": invalid serial number, expected 1.."
                               << gripper_hmi::kSerialNumberFieldLength
                               << " printable ASCII characters (32-byte field, zero-padded)").str());
         return false;
@@ -1242,7 +1242,7 @@ bool GripperHmiDriver::writeSerialNumber(const std::string &serialNumber)
             }
 
             lastCommandError_ = "serial number write preamble failed: " + describeStatusFrame(responseToken, statusCode);
-            DM_LOG_ERROR("{}", (::DA::utils::LogString() << name_ << ": " << lastCommandError_).str());
+            DM_LOG_ERROR_CODE("UGR-40-05", "{}", (::DA::utils::LogString() << name_ << ": " << lastCommandError_).str());
             return finish(false, lastCommandError_);
         }
 
@@ -1256,7 +1256,7 @@ bool GripperHmiDriver::writeSerialNumber(const std::string &serialNumber)
 
         if (!writeChunkWithRetry(0, reinterpret_cast<const uint8_t *>(encoded.data())))
         {
-            DM_LOG_ERROR("{}", (::DA::utils::LogString() << name_ << ": " << lastCommandError_).str());
+            DM_LOG_ERROR_CODE("UGR-40-05", "{}", (::DA::utils::LogString() << name_ << ": " << lastCommandError_).str());
             return finish(false, lastCommandError_);
         }
 
@@ -1264,7 +1264,7 @@ bool GripperHmiDriver::writeSerialNumber(const std::string &serialNumber)
                                  reinterpret_cast<const uint8_t *>(encoded.data()) +
                                      GripperHmiProtocol::kSerialNumberChunkSize))
         {
-            DM_LOG_ERROR("{}", (::DA::utils::LogString() << name_ << ": " << lastCommandError_).str());
+            DM_LOG_ERROR_CODE("UGR-40-05", "{}", (::DA::utils::LogString() << name_ << ": " << lastCommandError_).str());
             return finish(false, lastCommandError_);
         }
 

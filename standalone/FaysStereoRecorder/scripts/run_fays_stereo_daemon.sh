@@ -73,12 +73,16 @@ daemon_elapsed_ms() {
     echo $((current_ms - DAEMON_STARTED_MS))
 }
 
-fays_ts() {
-    date +"%H:%M:%S.%6N"
+fays_log() {
+    printf '[%s][tid %s][I][%s %s] [fays_stereo_daemon] %s\n' \
+        "$(date '+%s.%6N')" "$BASHPID" "${FUNCNAME[1]:-main}" "${BASH_LINENO[0]:-0}" "$*" >&2
 }
 
-fays_log() {
-    printf '[FAYS_TS %s] [fays_stereo_daemon] %s\n' "$(fays_ts)" "$*" >&2
+fays_error() {
+    local code="$1"
+    shift
+    printf '[%s][tid %s][E][%s %s] [fays_stereo_daemon] %s error_code=%s\n' \
+        "$(date '+%s.%6N')" "$BASHPID" "${FUNCNAME[1]:-main}" "${BASH_LINENO[0]:-0}" "$*" "$code" >&2
 }
 
 fays_log "daemon starting: uptime_ms=$(boot_uptime_ms) initial_settle_s=$DAEMON_INITIAL_SETTLE_SEC start_delay_s=$START_DELAY_SEC fifo_startup_timeout_s=$FIFO_STARTUP_TIMEOUT_SEC start_complete_timeout_s=$START_COMPLETE_TIMEOUT_SEC symlink_stable_s=$SYMLINK_STABLE_SEC symlink_timeout_s=$SYMLINK_STABLE_TIMEOUT_SEC health_grace_s=$HEALTH_GRACE_SEC"
@@ -153,7 +157,7 @@ while [ "$#" -gt 0 ]; do
             exit 0
             ;;
         *)
-            echo "Unknown argument: $1" >&2
+            fays_error "UGR-70-01" "Unknown argument: $1"
             usage >&2
             exit 1
             ;;
@@ -163,7 +167,7 @@ done
 ensure_control_fifo() {
     mkdir -p "$(dirname "$CONTROL_FIFO")"
     if [ -e "$CONTROL_FIFO" ] && [ ! -p "$CONTROL_FIFO" ]; then
-        echo "Error: stereo control path exists but is not a FIFO: $CONTROL_FIFO" >&2
+        fays_error "UGR-22-06" "Error: stereo control path exists but is not a FIFO: $CONTROL_FIFO"
         return 1
     fi
     if [ ! -p "$CONTROL_FIFO" ]; then
@@ -422,7 +426,7 @@ log_fifo_startup_timeout() {
     imu_path="$(config_value "$config" imu_dev_port)"
     [ -n "$stereo_path" ] && stereo_resolved="$(readlink -f "$stereo_path" 2>/dev/null || true)"
     [ -n "$imu_path" ] && imu_resolved="$(readlink -f "$imu_path" 2>/dev/null || true)"
-    fays_log "$side stereo control FIFO startup timeout: fifo=$fifo pid=$pid process_alive=$process_alive runtime_status_exists=$([ -f "$runtime_status_json" ] && echo true || echo false) stereo=${stereo_path:-<empty>} resolved_stereo=${stereo_resolved:-<missing>} imu=${imu_path:-<empty>} resolved_imu=${imu_resolved:-<missing>}"
+    fays_error "UGR-22-06" "$side stereo control FIFO startup timeout: fifo=$fifo pid=$pid process_alive=$process_alive runtime_status_exists=$([ -f "$runtime_status_json" ] && echo true || echo false) stereo=${stereo_path:-<empty>} resolved_stereo=${stereo_resolved:-<missing>} imu=${imu_path:-<empty>} resolved_imu=${imu_resolved:-<missing>}"
 }
 
 wait_for_process_exit() {
@@ -959,7 +963,7 @@ wait_for_side_start_complete() {
     done
 
     pid="$(side_pid "$side")"
-    fays_log "$side recorder SDK startup wait timed out: timeout_s=$START_COMPLETE_TIMEOUT_SEC pid=${pid:-none} fifo_ready=$([ -p "$fifo" ] && echo true || echo false) calib_ready=$(calibration_serial "$calib_json" >/dev/null 2>&1 && echo true || echo false) frame_fresh=$(runtime_frame_fresh "$side" && echo true || echo false)"
+    fays_error "UGR-22-03" "$side recorder SDK startup wait timed out: timeout_s=$START_COMPLETE_TIMEOUT_SEC pid=${pid:-none} fifo_ready=$([ -p "$fifo" ] && echo true || echo false) calib_ready=$(calibration_serial "$calib_json" >/dev/null 2>&1 && echo true || echo false) frame_fresh=$(runtime_frame_fresh "$side" && echo true || echo false)"
     return 1
 }
 
@@ -987,11 +991,11 @@ start_side_daemon() {
     runtime_status_json="$(runtime_status_path "$side")"
 
     if [ ! -x "$RUN_FAYS_RECORD" ]; then
-        echo "Fays record script is missing or not executable: $RUN_FAYS_RECORD" >&2
+        fays_error "UGR-70-01" "Fays record script is missing or not executable: $RUN_FAYS_RECORD"
         return 1
     fi
     if [ ! -f "$config" ]; then
-        echo "Fays config is missing for $side: $config" >&2
+        fays_error "UGR-70-01" "Fays config is missing for $side: $config"
         return 1
     fi
 
@@ -1110,7 +1114,7 @@ maintain_side_daemon() {
     else
         mark_session_error "failed to start $side Fays daemon"
     fi
-    fays_log "$side recorder maintain start failed"
+    fays_error "UGR-22-03" "$side recorder maintain start failed"
     stop_side_daemon "$side" "$fifo" "$pid"
     return 0
 }
@@ -1305,13 +1309,13 @@ check_runtime_health_during_finalize() {
     fi
     if ! runtime_frame_fresh left; then
         LAST_FINALIZE_ERROR="left Fays warmup frame stale during session"
-        fays_log "finalize health error: $LAST_FINALIZE_ERROR episode=$ACTIVE_EPISODE_DIR"
+        fays_error "UGR-22-04" "finalize health error: $LAST_FINALIZE_ERROR episode=$ACTIVE_EPISODE_DIR"
         write_status
         return 0
     fi
     if ! runtime_frame_fresh right; then
         LAST_FINALIZE_ERROR="right Fays warmup frame stale during session"
-        fays_log "finalize health error: $LAST_FINALIZE_ERROR episode=$ACTIVE_EPISODE_DIR"
+        fays_error "UGR-22-04" "finalize health error: $LAST_FINALIZE_ERROR episode=$ACTIVE_EPISODE_DIR"
         write_status
         return 0
     fi
@@ -1372,19 +1376,19 @@ handle_start() {
         else
             LAST_FINALIZE_ERROR="cannot start stereo session before both Fays recorders are ready"
         fi
-        fays_log "session start failed: $LAST_FINALIZE_ERROR"
+        fays_error "UGR-22-06" "session start failed: $LAST_FINALIZE_ERROR"
         write_status
         return 1
     fi
     send_side_start "$LEFT_FIFO" "$episode_dir" || {
         LAST_FINALIZE_ERROR="failed to start left Fays session"
-        fays_log "session start failed: $LAST_FINALIZE_ERROR"
+        fays_error "UGR-22-06" "session start failed: $LAST_FINALIZE_ERROR"
         write_status
         return 1
     }
     send_side_start "$RIGHT_FIFO" "$episode_dir" || {
         LAST_FINALIZE_ERROR="failed to start right Fays session"
-        fays_log "session start failed: $LAST_FINALIZE_ERROR"
+        fays_error "UGR-22-06" "session start failed: $LAST_FINALIZE_ERROR"
         write_status
         return 1
     }
@@ -1415,7 +1419,7 @@ handle_stop() {
     if [ -z "$LAST_FINALIZE_ERROR" ]; then
         send_side_command "$LEFT_FIFO" stop || {
             LAST_FINALIZE_ERROR="failed to stop left Fays recorder"
-            fays_log "session stop error: $LAST_FINALIZE_ERROR"
+            fays_error "UGR-22-06" "session stop error: $LAST_FINALIZE_ERROR"
         }
     else
         send_side_command "$LEFT_FIFO" stop >/dev/null 2>&1 || true
@@ -1423,7 +1427,7 @@ handle_stop() {
     if [ -z "$LAST_FINALIZE_ERROR" ]; then
         send_side_command "$RIGHT_FIFO" stop || {
             LAST_FINALIZE_ERROR="failed to stop right Fays recorder"
-            fays_log "session stop error: $LAST_FINALIZE_ERROR"
+            fays_error "UGR-22-06" "session stop error: $LAST_FINALIZE_ERROR"
         }
     else
         send_side_command "$RIGHT_FIFO" stop >/dev/null 2>&1 || true
@@ -1432,25 +1436,25 @@ handle_stop() {
     if [ -z "$LAST_FINALIZE_ERROR" ]; then
         wait_for_file_nonempty "$episode_dir/stereo_left.mkv" || {
             LAST_FINALIZE_ERROR="stereo_left.mkv missing or empty"
-            fays_log "session finalize error: $LAST_FINALIZE_ERROR"
+            fays_error "UGR-22-07" "session finalize error: $LAST_FINALIZE_ERROR"
         }
     fi
     if [ -z "$LAST_FINALIZE_ERROR" ]; then
         wait_for_file_nonempty "$episode_dir/stereo_right.mkv" || {
             LAST_FINALIZE_ERROR="stereo_right.mkv missing or empty"
-            fays_log "session finalize error: $LAST_FINALIZE_ERROR"
+            fays_error "UGR-22-07" "session finalize error: $LAST_FINALIZE_ERROR"
         }
     fi
     if [ -z "$LAST_FINALIZE_ERROR" ]; then
         wait_for_mcap_complete "$episode_dir/fays_data_left.mcap" || {
             LAST_FINALIZE_ERROR="fays_data_left.mcap missing or incomplete"
-            fays_log "session finalize error: $LAST_FINALIZE_ERROR"
+            fays_error "UGR-22-08" "session finalize error: $LAST_FINALIZE_ERROR"
         }
     fi
     if [ -z "$LAST_FINALIZE_ERROR" ]; then
         wait_for_mcap_complete "$episode_dir/fays_data_right.mcap" || {
             LAST_FINALIZE_ERROR="fays_data_right.mcap missing or incomplete"
-            fays_log "session finalize error: $LAST_FINALIZE_ERROR"
+            fays_error "UGR-22-08" "session finalize error: $LAST_FINALIZE_ERROR"
         }
     fi
 
@@ -1487,14 +1491,14 @@ EOF
             exit 0
             ;;
         *)
-            echo "Unknown stereo control command: $command_line" >&2
+            fays_error "UGR-22-06" "Unknown stereo control command: $command_line"
             return 0
             ;;
     esac
 
     case "${command_seq:-}" in
         ''|*[!0-9]*)
-            echo "Invalid stereo control command seq: $command_line" >&2
+            fays_error "UGR-22-06" "Invalid stereo control command seq: $command_line"
             return 0
             ;;
     esac
@@ -1508,7 +1512,7 @@ EOF
             command_time_us=0
             ;;
         *[!0-9-]*)
-            echo "Invalid stereo control timestamp: $command_line" >&2
+            fays_error "UGR-22-06" "Invalid stereo control timestamp: $command_line"
             return 0
             ;;
     esac

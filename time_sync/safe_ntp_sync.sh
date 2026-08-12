@@ -1,5 +1,10 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=/dev/null
+. "$PROJECT_ROOT/scripts/lib/ugripper_shell_common.sh"
+
 LOCK_FILE="${LOCK_FILE:-/tmp/umi_recording.lock}"
 CHECK_TARGETS=(8.8.8.8 1.1.1.1 223.5.5.5)
 NTP_SERVER_LIST="${NTP_SERVERS:-ntp.ubuntu.com 0.ubuntu.pool.ntp.org 1.ubuntu.pool.ntp.org 223.5.5.5}"
@@ -14,7 +19,13 @@ POLL_INTERVAL_SEC="${POLL_INTERVAL_SEC:-2}"
 NTP_ENABLED_BY_SCRIPT=0
 
 log() {
-    echo "[NTP-Service] $1"
+    ugripper_log "NTP-Service" "INFO" "$1"
+}
+
+log_error() {
+    local code="$1"
+    shift
+    ugripper_log "NTP-Service" "ERROR" "$code" "$*"
 }
 
 disable_ntp_if_needed() {
@@ -133,6 +144,7 @@ wait_for_network() {
         elapsed=$((current_time - start_time))
         if [ "$elapsed" -ge "$MAX_NETWORK_WAIT" ]; then
             log "Network probe timeout after ${MAX_NETWORK_WAIT}s. Skipping NTP sync."
+            log_error "UGR-83-01" "network probe timeout after ${MAX_NETWORK_WAIT}s"
             return 1
         fi
         sleep "$POLL_INTERVAL_SEC"
@@ -248,6 +260,7 @@ elif sync_time_with_timedatectl; then
     log "Time sync SUCCESS."
 else
     log "Time sync FAILED (no usable one-shot backend or all servers failed)."
+    log_error "UGR-83-02" "no usable one-shot backend or all configured backends failed"
 fi
 
 log "Stopping continuous NTP services to protect future recordings."

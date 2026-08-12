@@ -23,7 +23,7 @@ if(UGRIPPER_ENABLE_MCAP_BUILDER)
 endif()
 add_subdirectory(src/utils)
 if(NOT TARGET PP::utils)
-    add_library(PP::utils ALIAS utils)
+    message(FATAL_ERROR "src/utils must provide the immutable pp-main logger target PP::utils")
 endif()
 
 # ========= 主链应用 =========

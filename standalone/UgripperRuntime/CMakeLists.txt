@@ -80,7 +80,7 @@ target_include_directories(runtime_process_boundary
 target_link_libraries(runtime_process_boundary
     PUBLIC
         ugripperruntime_support_utils
-        PP::utils
+        UGripper::utils
         nlohmann_json::nlohmann_json
         Threads::Threads
 )
@@ -102,7 +102,7 @@ target_link_libraries(runtime_control_plane
     PUBLIC
         runtime_process_boundary
         ugripperruntime_support_utils
-        PP::utils
+        UGripper::utils
         nlohmann_json::nlohmann_json
         Threads::Threads
 )
@@ -130,7 +130,7 @@ target_link_libraries(${APP_NAME}
         ugripperruntime_mcap
         ugripperruntime_support_utils
         gripper_hmi
-        PP::utils
+        UGripper::utils
         nlohmann_json::nlohmann_json
         Threads::Threads
         ${UUID_LIBRARY}

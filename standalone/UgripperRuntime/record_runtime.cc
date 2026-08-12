@@ -1,6 +1,7 @@
 #include "record_runtime.h"
 #include "main_camera_calibration_data.h"
-#include "utils/logger.h"
+#include "record_runtime/error_code_mapping.h"
+#include "utils/ugripper_logger.h"
 #include "record_runtime/gripper_refresh_logic.h"
 #include "utils/env_utils.h"
 #include "utils/file_utils.hpp"
@@ -4185,7 +4186,7 @@ bool RecordRuntime::initialize()
 
     if (!panelManager_.connect(options_.gripperPorts))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "failed to connect any gripper HMI port" << std::endl).str());
+        DM_LOG_ERROR_CODE("UGR-40-01", "{}", (::DA::utils::LogString() << "failed to connect any gripper HMI port" << std::endl).str());
         return false;
     }
 
@@ -4526,7 +4527,7 @@ bool RecordRuntime::initialize()
                 },
             .log_error =
                 [](const std::string& message) {
-                    DM_LOG_ERROR("{}", (::DA::utils::LogString() << message << std::endl).str());
+                    DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString() << message << std::endl).str());
                 },
             .sync_runtime_log =
                 [this](const std::string& reason) {
@@ -5137,7 +5138,7 @@ void RecordRuntime::handleEgoBindingToggle()
     {
         if (!clearEgoBindingState())
         {
-            DM_LOG_ERROR("{}", (::DA::utils::LogString()
+            DM_LOG_ERROR_CODE("UGR-82-05", "{}", (::DA::utils::LogString()
                 << "failed to remove ego binding and publish unbound status" << std::endl).str());
             playHmiFeedback(ugripper::runtime::HmiFeedbackEvent::EgoBindingFailed);
             return;
@@ -5179,7 +5180,8 @@ void RecordRuntime::maintainEgoBindingAction()
         playHmiFeedback(ugripper::runtime::HmiFeedbackEvent::EgoBound);
         return;
     }
-    DM_LOG_ERROR("{}", (::DA::utils::LogString() << "ego binding failed" << std::endl).str());
+    DM_LOG_ERROR_CODE("UGR-82-03", "{}",
+                      (::DA::utils::LogString() << "ego binding failed" << std::endl).str());
     playHmiFeedback(ugripper::runtime::HmiFeedbackEvent::EgoBindingFailed);
 }
 
@@ -5249,7 +5251,9 @@ void RecordRuntime::setEgoBindingFault(const std::string &detail)
         return;
     }
     egoBindingFaultActive_ = true;
-    DM_LOG_ERROR("{}", (::DA::utils::LogString() << detail << std::endl).str());
+    DM_LOG_ERROR_CODE(ugripper::runtime::UgrCodeForErrorType(
+                          ugripper::runtime::kErrorTypeEgoDisconnected),
+                      "{}", (::DA::utils::LogString() << detail << std::endl).str());
     if (isRecordingActive())
     {
         stopRecording(true, detail, ugripper::runtime::kErrorTypeEgoDisconnected);
@@ -5757,7 +5761,7 @@ bool RecordRuntime::ensureEpisodeManagerInitialized()
     }
     if (episodeManager_ == nullptr)
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+        DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString()
             << "episode manager is not constructed"
             << std::endl).str());
         return false;
@@ -6931,7 +6935,7 @@ void RecordRuntime::triggerRestoreUsbFailureAlarm(const std::string &reason)
     wroteAny = panelManager_.setBeepEnabledForSide("left", true) || wroteAny;
     wroteAny = panelManager_.setBeepEnabledForSide("right", true) || wroteAny;
 
-    DM_LOG_ERROR("{}", (::DA::utils::LogString()
+    DM_LOG_ERROR_CODE("UGR-80-05", "{}", (::DA::utils::LogString()
         << "restore usb failed after max attempts; hmi beep alarm triggered"
         << " attempts=" << restoreUsbAttemptsInCurrentError_
         << " side=both"
@@ -7100,7 +7104,7 @@ bool RecordRuntime::requestDataDiskUmountForRestoreUsb(const std::string &reason
 {
     if (shutdownRequestPort_ == nullptr)
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+        DM_LOG_ERROR_CODE("UGR-80-02", "{}", (::DA::utils::LogString()
             << "skip restore usb: cannot umount data disk, system action port not initialized"
             << " reason=" << reason
             << std::endl).str());
@@ -7115,7 +7119,7 @@ bool RecordRuntime::requestDataDiskUmountForRestoreUsb(const std::string &reason
         << std::endl).str());
     if (!shutdownRequestPort_->RequestAction("umount", &errorMessage))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+        DM_LOG_ERROR_CODE("UGR-80-01", "{}", (::DA::utils::LogString()
             << "skip restore usb: failed to request data disk umount"
             << " error=" << errorMessage
             << " reason=" << reason
@@ -7129,7 +7133,7 @@ bool RecordRuntime::requestDataDiskUmountForRestoreUsb(const std::string &reason
             static_cast<int>(kSystemActionResultWaitMs),
             &errorMessage))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+        DM_LOG_ERROR_CODE("UGR-80-01", "{}", (::DA::utils::LogString()
             << "skip restore usb: timed out waiting for data disk umount"
             << " error=" << errorMessage
             << " reason=" << reason
@@ -7139,7 +7143,7 @@ bool RecordRuntime::requestDataDiskUmountForRestoreUsb(const std::string &reason
 
     if (result != "ok")
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+        DM_LOG_ERROR_CODE("UGR-80-01", "{}", (::DA::utils::LogString()
             << "skip restore usb: data disk umount failed"
             << " result=" << result
             << " reason=" << reason
@@ -7169,7 +7173,7 @@ bool RecordRuntime::prepareDataDiskForRestoreUsb(const std::string &reason)
         {
             if (!allowKernelHangRestore)
             {
-                DM_LOG_ERROR("{}", (::DA::utils::LogString()
+                DM_LOG_ERROR_CODE("UGR-00-06", "{}", (::DA::utils::LogString()
                     << "skip restore usb: failed to stop recording before power reset"
                     << " reason=" << reason
                     << std::endl).str());
@@ -7369,7 +7373,7 @@ void RecordRuntime::maintainRestoreUsbRetry()
                 }
                 return;
             }
-            DM_LOG_ERROR("{}", (::DA::utils::LogString()
+            DM_LOG_ERROR_CODE("UGR-80-05", "{}", (::DA::utils::LogString()
                 << "restore usb symlinks timeout"
                 << " attempt=" << restoreUsbAttemptsInCurrentError_
                 << " elapsed_ms=" << elapsedMs
@@ -7421,7 +7425,7 @@ void RecordRuntime::maintainRestoreUsbRetry()
         return;
     }
 
-    DM_LOG_ERROR("{}", (::DA::utils::LogString()
+    DM_LOG_ERROR_CODE("UGR-80-05", "{}", (::DA::utils::LogString()
         << "restore usb ready timeout"
         << " attempt=" << restoreUsbAttemptsInCurrentError_
         << " elapsed_ms=" << elapsedMs
@@ -7488,7 +7492,7 @@ void RecordRuntime::triggerRestoreUsbOnError(const std::string &reason, bool che
     if (!prepareDataDiskForRestoreUsb(reason))
     {
         restoreUsbPreflightFailureUntilMs_ = currentSteadyMs() + kRestoreUsbPreflightFailureCooldownMs;
-        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+        DM_LOG_ERROR_CODE("UGR-80-02", "{}", (::DA::utils::LogString()
             << "skip restore usb on error: data disk preflight failed"
             << " cooldown_ms=" << kRestoreUsbPreflightFailureCooldownMs
             << " attempts=" << restoreUsbAttemptsInCurrentError_
@@ -7529,7 +7533,7 @@ void RecordRuntime::triggerRestoreUsbOnError(const std::string &reason, bool che
         const int rc = std::system(command.c_str());
         if (rc == -1)
         {
-            DM_LOG_ERROR("{}", (::DA::utils::LogString()
+            DM_LOG_ERROR_CODE("UGR-80-03", "{}", (::DA::utils::LogString()
                 << "restore usb command failed to start"
                 << " command=" << command
                 << std::endl).str());
@@ -7542,7 +7546,7 @@ void RecordRuntime::triggerRestoreUsbOnError(const std::string &reason, bool che
         }
         else
         {
-            DM_LOG_ERROR("{}", (::DA::utils::LogString()
+            DM_LOG_ERROR_CODE("UGR-80-03", "{}", (::DA::utils::LogString()
                 << "restore usb command failed"
                 << " command=" << command
                 << " status=" << rc
@@ -7587,7 +7591,7 @@ bool RecordRuntime::writeRecordingLock(const std::string &episodeDir)
     std::string errorMessage;
     if (!writeTextFileAtomically(options_.recordingLockFile, lock.dump(2) + "\n", &errorMessage))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "failed to write recording lock "
+        DM_LOG_ERROR_CODE("UGR-10-02", "{}", (::DA::utils::LogString() << "failed to write recording lock "
                                                    << options_.recordingLockFile << ": "
                                                    << errorMessage << std::endl).str());
         return false;
@@ -7611,7 +7615,7 @@ bool RecordRuntime::startRecording(bool resetRecording)
 {
     if (recordingOrchestrator_ == nullptr)
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "recording orchestrator not initialized" << std::endl).str());
+        DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString() << "recording orchestrator not initialized" << std::endl).str());
         return false;
     }
     if (!maintainDataStorage())
@@ -7663,7 +7667,7 @@ bool RecordRuntime::stopRecording(bool dueToError, const std::string &reason, co
 {
     if (recordingOrchestrator_ == nullptr)
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "recording orchestrator not initialized" << std::endl).str());
+        DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString() << "recording orchestrator not initialized" << std::endl).str());
         return false;
     }
     const bool ok = recordingOrchestrator_->StopRecording(dueToError, reason, errorType, nullptr);
@@ -7941,7 +7945,7 @@ void RecordRuntime::handleDualShutdownAction()
     if (shutdownRequestPort_ == nullptr ||
         !shutdownRequestPort_->RequestAction("shutdown", &errorMessage))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "failed to request shutdown action: "
+        DM_LOG_ERROR_CODE("UGR-80-01", "{}", (::DA::utils::LogString() << "failed to request shutdown action: "
                               << options_.systemActionRequestFile
                               << ", error=" << errorMessage << std::endl).str());
         setLedState(LedState::Error5);
@@ -7970,7 +7974,7 @@ bool RecordRuntime::handleLeftDualUmountAction()
     if (shutdownRequestPort_ == nullptr ||
         !shutdownRequestPort_->RequestAction("umount", &errorMessage))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "failed to request umount: " << errorMessage << std::endl).str());
+        DM_LOG_ERROR_CODE("UGR-80-01", "{}", (::DA::utils::LogString() << "failed to request umount: " << errorMessage << std::endl).str());
         setAudioRecoveryCommand(tactileWarningActive_ ? "" : "ready");
         applyIdleState();
         sendAudioCommand("error");
@@ -7983,7 +7987,7 @@ bool RecordRuntime::handleLeftDualUmountAction()
             static_cast<int>(kSystemActionResultWaitMs),
             &errorMessage))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "failed to wait for umount result: " << errorMessage << std::endl).str());
+        DM_LOG_ERROR_CODE("UGR-80-01", "{}", (::DA::utils::LogString() << "failed to wait for umount result: " << errorMessage << std::endl).str());
         setAudioRecoveryCommand(tactileWarningActive_ ? "" : "ready");
         applyIdleState();
         sendAudioCommand("error");
@@ -7999,7 +8003,7 @@ bool RecordRuntime::handleLeftDualUmountAction()
         return true;
     }
 
-    DM_LOG_ERROR("{}", (::DA::utils::LogString() << "umount request failed with result: " << result << std::endl).str());
+    DM_LOG_ERROR_CODE("UGR-80-01", "{}", (::DA::utils::LogString() << "umount request failed with result: " << result << std::endl).str());
     setAudioRecoveryCommand(tactileWarningActive_ ? "" : "ready");
     applyIdleState();
     sendAudioCommand("error");
@@ -8125,7 +8129,7 @@ bool RecordRuntime::handleLeftSingleLongMarkFailedAction()
     std::string errorMessage;
     if (!markEpisodeOperatorFailed(episodeDir, &errorMessage))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+        DM_LOG_ERROR_CODE("UGR-10-02", "{}", (::DA::utils::LogString()
             << "failed to mark episode as operator failed"
             << " episode_dir=" << episodeDir
             << " error=" << errorMessage << std::endl).str());
@@ -8145,7 +8149,7 @@ bool RecordRuntime::recordAudioClip(const std::string &audioType, bool monitorUp
 {
     if (!fs::exists(options_.audioRecordScript))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "audio record script not found: " << options_.audioRecordScript << std::endl).str());
+        DM_LOG_ERROR_CODE("UGR-70-01", "{}", (::DA::utils::LogString() << "audio record script not found: " << options_.audioRecordScript << std::endl).str());
         setAudioRecoveryCommand("error");
         sendAudioCommand("error");
         return false;
@@ -8167,7 +8171,7 @@ bool RecordRuntime::recordAudioClip(const std::string &audioType, bool monitorUp
     audioRecorderArgs.push_back(captureFile.string());
     if (!audioRecorder.Start(audioRecorderArgs))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "failed to start audio recorder" << std::endl).str());
+        DM_LOG_ERROR_CODE("UGR-50-03", "{}", (::DA::utils::LogString() << "failed to start audio recorder" << std::endl).str());
         sendAudioCommand("audio_recording_stop");
         return false;
     }
@@ -8224,7 +8228,7 @@ bool RecordRuntime::recordAudioClip(const std::string &audioType, bool monitorUp
 
     if (!ok || !fileExistsAndNotEmpty(outputFile.string()))
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "failed to process audio clip" << std::endl).str());
+        DM_LOG_ERROR_CODE("UGR-50-05", "{}", (::DA::utils::LogString() << "failed to process audio clip" << std::endl).str());
         fs::remove(outputFile);
         return finishAudioRecording(false);
     }
@@ -8241,7 +8245,7 @@ bool RecordRuntime::recordAudioClip(const std::string &audioType, bool monitorUp
             std::error_code error;
             if (!moveFileWithCrossDeviceFallback(outputFile, fs::path(lastEpisodeDir()) / "audio_post.wav", &error))
             {
-                DM_LOG_ERROR("{}", (::DA::utils::LogString() << "failed to move post-audio into last episode: " << error.message() << std::endl).str());
+                DM_LOG_ERROR_CODE("UGR-50-05", "{}", (::DA::utils::LogString() << "failed to move post-audio into last episode: " << error.message() << std::endl).str());
                 fs::remove(outputFile);
             }
             else if (!flushFileToDisk(fs::path(lastEpisodeDir()) / "audio_post.wav", &error))
@@ -8617,7 +8621,7 @@ void RecordRuntime::monitorHardwareHealth()
                     "recording hardware fault (" + fault.key + "): " + fault.detail;
                 if (shouldNotifyFault)
                 {
-                    DM_LOG_ERROR("{}", (::DA::utils::LogString() << stopReason << std::endl).str());
+                    DM_LOG_ERROR_CODE(ugripper::runtime::UgrCodeForErrorType(fault.key), "{}", (::DA::utils::LogString() << stopReason << std::endl).str());
                     DM_LOG_INFO("{}", (::DA::utils::LogString()
                         << "[HMI_DIAG] category=health_fault"
                         << " key=" << fault.key
@@ -8646,7 +8650,7 @@ void RecordRuntime::monitorHardwareHealth()
                 }
                 else
                 {
-                    DM_LOG_ERROR("{}", (::DA::utils::LogString()
+                    DM_LOG_ERROR_CODE("UGR-00-06", "{}", (::DA::utils::LogString()
                         << "skip restore usb on recording hardware fault: recording still active after stop"
                         << " key=" << fault.key
                         << std::endl).str());
@@ -8656,7 +8660,7 @@ void RecordRuntime::monitorHardwareHealth()
             maybeTriggerRestoreUsbForHardwareFault(fault);
             if (shouldNotifyFault)
             {
-                DM_LOG_ERROR("{}", (::DA::utils::LogString() << "hardware health fault (" << fault.key << "): "
+                DM_LOG_ERROR_CODE(ugripper::runtime::UgrCodeForErrorType(fault.key), "{}", (::DA::utils::LogString() << "hardware health fault (" << fault.key << "): "
                                       << fault.detail << std::endl).str());
                 DM_LOG_INFO("{}", (::DA::utils::LogString()
                     << "[HMI_DIAG] category=health_fault"
@@ -9700,14 +9704,14 @@ bool RecordRuntime::EpisodeManager::initialize()
     fs::create_directories(episodeRoot_, error);
     if (error)
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "create_directories failed for " << episodeRoot_
+        DM_LOG_ERROR_CODE("UGR-10-02", "{}", (::DA::utils::LogString() << "create_directories failed for " << episodeRoot_
                   << ": " << error.message() << std::endl).str());
         return false;
     }
     fs::create_directories(tactileReferenceDir(tactileStateDir_), error);
     if (error)
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "create_directories failed for "
+        DM_LOG_ERROR_CODE("UGR-10-02", "{}", (::DA::utils::LogString() << "create_directories failed for "
                               << tactileReferenceDir(tactileStateDir_) << ": "
                               << error.message() << std::endl).str());
         return false;
@@ -9715,7 +9719,7 @@ bool RecordRuntime::EpisodeManager::initialize()
     fs::create_directories(tactilePersistentDir(tactileStateDir_), error);
     if (error)
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "create_directories failed for "
+        DM_LOG_ERROR_CODE("UGR-10-02", "{}", (::DA::utils::LogString() << "create_directories failed for "
                               << tactilePersistentDir(tactileStateDir_) << ": "
                               << error.message() << std::endl).str());
         return false;

@@ -6,7 +6,7 @@
 #include "record_runtime/stereo_session_port.h"
 #include "record_runtime/subprocess_handle.h"
 
-#include "utils/logger.h"
+#include "utils/ugripper_logger.h"
 #include "utils/fifo_utils.h"
 #include "utils/time_utils.h"
 

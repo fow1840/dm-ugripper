@@ -26,7 +26,9 @@ log_info() {
 }
 
 log_error() {
-  ugripper_log "calibration" "ERROR" "$*"
+  local error_code="$1"
+  shift
+  ugripper_log "calibration" "ERROR" "$error_code" "$*"
 }
 
 # ================= 配置部分 =================
@@ -63,13 +65,13 @@ sleep 3
 log_info "Checking calibration trigger conditions..."
 
 if [ ! -d "$MOUNT_POINT" ]; then
-    log_error "calibration mount point not found: $MOUNT_POINT"
+    log_error "UGR-70-01" "calibration mount point not found: $MOUNT_POINT"
     systemctl start ugripper.service
     exit 1
 fi
 
 if [ ! -f "$MOUNT_POINT/calibration.txt" ]; then
-    log_error "calibration.txt not found in $MOUNT_POINT. Exiting."
+    log_error "UGR-70-01" "calibration.txt not found in $MOUNT_POINT. Exiting."
     systemctl start ugripper.service
     exit 1
 fi
@@ -135,7 +137,7 @@ set_state() {
     stop_led_helper
 
     if [ ! -x "$HMI_HELPER_BIN" ]; then
-        log_error "HMI helper not found: $HMI_HELPER_BIN"
+        log_error "UGR-70-01" "HMI helper not found: $HMI_HELPER_BIN"
         return 1
     fi
 
@@ -266,7 +268,7 @@ notify_audio "calibrating"
 
 # 2.2 Encoder
 if [ ! -x "$ENCODER_CALIB_BIN" ]; then
-    log_error "Encoder binary not found at $ENCODER_CALIB_BIN"
+    log_error "UGR-70-01" "Encoder binary not found at $ENCODER_CALIB_BIN"
     set_state "ERROR_1"
     exit 1
 fi
@@ -310,7 +312,7 @@ if [ "${#FAILED_SIDES[@]}" -eq 0 ]; then
     notify_audio "calib_done"
     sleep 3
 else
-    log_error "Encoder zeroing completed with failures: ${FAILED_SIDES[*]}"
+    log_error "UGR-30-06" "Encoder zeroing completed with failures: ${FAILED_SIDES[*]}"
     set_state "ERROR_1"
     sleep 3
     exit 1

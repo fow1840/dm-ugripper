@@ -1,5 +1,5 @@
 #include "encoder_driver.h"
-#include "utils/logger.h"
+#include "utils/ugripper_logger.h"
 #include "sensor_recorder/sensor_domain.h"
 
 #include <mcap/writer.hpp>
@@ -178,7 +178,7 @@ void sideWriterThreadFunc(SideWriter *sideWriter, PendingWriteQueue *pendingQueu
         const auto writeStatus = sideWriter->writer.write(message);
         if (!writeStatus.ok()) {
             sideWriter->writeFailureCount.fetch_add(1, std::memory_order_relaxed);
-            DM_LOG_ERROR("{}", (::DA::utils::LogString() << "Failed to write " << pendingQueue->label
+            DM_LOG_ERROR_CODE("UGR-30-04", "{}", (::DA::utils::LogString() << "Failed to write " << pendingQueue->label
                                   << " sensor frame: " << writeStatus.message).str());
             g_stopFlag = true;
             pendingQueue->stop();
@@ -260,7 +260,7 @@ bool openSideWriter(const fs::path &outputDir, const SensorSideConfig &config, S
 
     auto status = sideWriter->writer.open(sideWriter->outputFile.string(), options);
     if (!status.ok()) {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "Failed to open MCAP file for " << config.label << ": " << status.message).str());
+        DM_LOG_ERROR_CODE("UGR-30-04", "{}", (::DA::utils::LogString() << "Failed to open MCAP file for " << config.label << ": " << status.message).str());
         return false;
     }
 
@@ -285,7 +285,7 @@ bool connectEncoderWithFallback(EncoderRuntime &encoderRuntime) {
     }
 
     if (connectStatus == ConnectStatus::SERIAL_FAIL) {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "Failed to connect encoder serial port: " << encoderRuntime.config.encoderPort).str());
+        DM_LOG_ERROR_CODE("UGR-30-02", "{}", (::DA::utils::LogString() << "Failed to connect encoder serial port: " << encoderRuntime.config.encoderPort).str());
         return false;
     }
 
@@ -305,7 +305,7 @@ bool connectEncoderWithFallback(EncoderRuntime &encoderRuntime) {
             connectStatus = encoderRuntime.driver->connect();
         }
         if (connectStatus != ConnectStatus::SUCCESS) {
-            DM_LOG_ERROR("{}", (::DA::utils::LogString() << encoderRuntime.config.label
+            DM_LOG_ERROR_CODE("UGR-30-02", "{}", (::DA::utils::LogString() << encoderRuntime.config.label
                                   << " encoder failed to respond after baudrate adjustments.").str());
             return false;
         }
@@ -343,14 +343,14 @@ int main(int argc, char *argv[]) {
                 << "Records left/right encoder streams into MCAP files.\n";
             return 0;
         }
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "Unknown argument: " << argument).str());
+        DM_LOG_ERROR_CODE("UGR-70-01", "{}", (::DA::utils::LogString() << "Unknown argument: " << argument).str());
         return -1;
     }
     std::error_code ec;
     if (!fs::exists(outputDir)) {
         fs::create_directories(outputDir, ec);
         if (ec) {
-            DM_LOG_ERROR("{}", (::DA::utils::LogString() << "Failed to create output directory: " << ec.message()).str());
+            DM_LOG_ERROR_CODE("UGR-10-02", "{}", (::DA::utils::LogString() << "Failed to create output directory: " << ec.message()).str());
             return -1;
         }
     }
@@ -393,7 +393,7 @@ int main(int argc, char *argv[]) {
     leftEncoderInitThread.join();
 
     if (!rightEncoder.connected && !leftEncoder.connected) {
-        DM_LOG_ERROR("Both encoders failed to initialize.");
+        DM_LOG_ERROR_CODE("UGR-30-02", "Both encoders failed to initialize.");
         return -1;
     }
 
@@ -415,7 +415,7 @@ int main(int argc, char *argv[]) {
             }
             if (!encoderRuntime.driver->isConnected()) {
                 encoderRuntime.connected = false;
-                DM_LOG_ERROR("{}", (::DA::utils::LogString() << encoderRuntime.config.label
+                DM_LOG_ERROR_CODE("UGR-30-01", "{}", (::DA::utils::LogString() << encoderRuntime.config.label
                                       << " encoder disconnected during recording; stopping encoder samples for this side.").str());
                 return false;
             }

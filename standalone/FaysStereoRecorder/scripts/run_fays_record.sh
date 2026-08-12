@@ -16,12 +16,16 @@ CALIB_JSON_PATH=""
 STATUS_JSON_PATH=""
 CMD_SEND_TIMEOUT_SEC="${FAYS_CMD_TIMEOUT_SEC:-0.35}"
 
-fays_ts() {
-    date +"%H:%M:%S.%6N"
+fays_log() {
+    printf '[%s][tid %s][I][%s %s] [fays_record_wrapper] %s\n' \
+        "$(date '+%s.%6N')" "$BASHPID" "${FUNCNAME[1]:-main}" "${BASH_LINENO[0]:-0}" "$*" >&2
 }
 
-fays_log() {
-    printf '[FAYS_TS %s] [fays_record_wrapper] %s\n' "$(fays_ts)" "$*" >&2
+fays_error() {
+    local code="$1"
+    shift
+    printf '[%s][tid %s][E][%s %s] [fays_record_wrapper] %s error_code=%s\n' \
+        "$(date '+%s.%6N')" "$BASHPID" "${FUNCNAME[1]:-main}" "${BASH_LINENO[0]:-0}" "$*" "$code" >&2
 }
 
 append_ld_library_path() {
@@ -42,12 +46,12 @@ ensure_fixed_fays_symlinks() {
     local missing=0
 
     if [ ! -e "$stereo_symlink" ]; then
-        echo "Error: Missing Fays stereo symlink: $stereo_symlink"
+        fays_error "UGR-22-01" "Error: Missing Fays stereo symlink: $stereo_symlink"
         missing=1
     fi
 
     if [ ! -e "$imu_symlink" ]; then
-        echo "Error: Missing Fays IMU symlink: $imu_symlink"
+        fays_error "UGR-22-01" "Error: Missing Fays IMU symlink: $imu_symlink"
         missing=1
     fi
 
@@ -70,7 +74,7 @@ verify_config_uses_fixed_symlinks() {
     local imu_cfg
 
     if [ ! -f "$CONFIG_FILE" ]; then
-        echo "Error: Config file not found: $CONFIG_FILE"
+        fays_error "UGR-70-01" "Error: Config file not found: $CONFIG_FILE"
         return 1
     fi
 
@@ -78,12 +82,12 @@ verify_config_uses_fixed_symlinks() {
     imu_cfg=$(sed -n 's/^imu_dev_port:[[:space:]]*//p' "$CONFIG_FILE" | head -n1 | tr -d '"' | xargs)
 
     if [ "$stereo_cfg" != "$stereo_symlink" ]; then
-        echo "Error: Config mismatch: stereo_dev_port=$stereo_cfg (expected $stereo_symlink)"
+        fays_error "UGR-22-03" "Error: Config mismatch: stereo_dev_port=$stereo_cfg (expected $stereo_symlink)"
         return 1
     fi
 
     if [ "$imu_cfg" != "$imu_symlink" ]; then
-        echo "Error: Config mismatch: imu_dev_port=$imu_cfg (expected $imu_symlink)"
+        fays_error "UGR-22-03" "Error: Config mismatch: imu_dev_port=$imu_cfg (expected $imu_symlink)"
         return 1
     fi
 
@@ -92,11 +96,11 @@ verify_config_uses_fixed_symlinks() {
 
 require_config_file() {
     if [ -z "$CONFIG_FILE" ]; then
-        echo "Error: --config FILE is required"
+        fays_error "UGR-70-01" "Error: --config FILE is required"
         return 1
     fi
     if [ ! -f "$CONFIG_FILE" ]; then
-        echo "Error: Config file not found: $CONFIG_FILE"
+        fays_error "UGR-70-01" "Error: Config file not found: $CONFIG_FILE"
         return 1
     fi
     return 0
@@ -105,7 +109,7 @@ require_config_file() {
 ensure_fifo() {
     mkdir -p "$(dirname "$CMD_FIFO")"
     if [ -e "$CMD_FIFO" ] && [ ! -p "$CMD_FIFO" ]; then
-        echo "Error: $CMD_FIFO exists but is not a FIFO"
+        fays_error "UGR-22-06" "Error: $CMD_FIFO exists but is not a FIFO"
         return 1
     fi
     if [ ! -p "$CMD_FIFO" ]; then
@@ -118,12 +122,12 @@ send_control_cmd() {
     local cmd="$1"
 
     if [ ! -p "$CMD_FIFO" ]; then
-        echo "Error: Control FIFO not found: $CMD_FIFO"
+        fays_error "UGR-22-06" "Error: Control FIFO not found: $CMD_FIFO"
         return 1
     fi
 
     if ! timeout "$CMD_SEND_TIMEOUT_SEC" bash -c 'printf "%s\n" "$1" > "$2"' _ "$cmd" "$CMD_FIFO" 2>/dev/null; then
-        echo "Error: Failed to send command '$cmd' via $CMD_FIFO"
+        fays_error "UGR-22-06" "Error: Failed to send command '$cmd' via $CMD_FIFO"
         return 1
     fi
 
@@ -143,7 +147,7 @@ append_ld_library_path "$LOCAL_FTDI_LIB_DIR"
 append_ld_library_path "/usr/local/lib"
 
 if [ ! -f "$EXECUTABLE" ]; then
-    echo "Error: Executable '$EXECUTABLE' not found. Did you run cmake & make?"
+    fays_error "UGR-70-01" "Error: Executable '$EXECUTABLE' not found. Did you run cmake & make?"
     exit 1
 fi
 
@@ -206,7 +210,7 @@ case "$MODE" in
     dump-calib-json)
         require_config_file || exit 1
         if [ -z "$CALIB_JSON_PATH" ]; then
-            echo "Error: dump-calib-json mode requires --calib-json PATH"
+            fays_error "UGR-70-01" "Error: dump-calib-json mode requires --calib-json PATH"
             exit 1
         fi
         STEREO_SYMLINK=$(sed -n 's/^stereo_dev_port:[[:space:]]*//p' "$CONFIG_FILE" | head -n1 | tr -d '"' | xargs)
@@ -218,7 +222,7 @@ case "$MODE" in
     start)
         OUTPUT_DIR="${2:-}"
         if [ -z "$OUTPUT_DIR" ]; then
-            echo "Error: start mode requires output directory"
+            fays_error "UGR-22-06" "Error: start mode requires output directory"
             exit 1
         fi
         send_control_cmd "START|$OUTPUT_DIR"

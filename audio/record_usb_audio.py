@@ -81,11 +81,17 @@ def main() -> int:
         return parecord_process.returncode
 
     if not output_path.is_file() or output_path.stat().st_size <= 44:
-        audio_log("ERROR", f"capture file not written correctly: {output_path}")
+        audio_log("ERROR", f"capture file not written correctly: {output_path}", "UGR-50-03")
         return 2
 
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception as exc:
+        audio_log("ERROR", f"audio recording failed: {exc}", "UGR-50-03")
+        raise SystemExit(1)

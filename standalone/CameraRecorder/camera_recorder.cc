@@ -4,7 +4,7 @@
 #include "camera_recorder/camera_registry.h"
 #include "camera_recorder/camera_timing.h"
 #include "camera_recorder/stereo_control_json.h"
-#include "utils/logger.h"
+#include "utils/ugripper_logger.h"
 
 #include <algorithm>
 #include <array>
@@ -103,16 +103,17 @@ void SignalHandler(int) {
 bool ConfigureManagedChildProcessGroup() {
     if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0) {
         std::cerr << "[camera_recorder] failed to set parent-death signal: "
-                  << std::strerror(errno) << std::endl;
+                  << std::strerror(errno) << " error_code=UGR-00-05" << std::endl;
         return false;
     }
     if (getppid() == 1) {
-        std::cerr << "[camera_recorder] parent exited before child setup completed" << std::endl;
+        std::cerr << "[camera_recorder] parent exited before child setup completed"
+                  << " error_code=UGR-00-05" << std::endl;
         return false;
     }
     if (setpgid(0, 0) != 0 && errno != EACCES) {
         std::cerr << "[camera_recorder] failed to create child process group: "
-                  << std::strerror(errno) << std::endl;
+                  << std::strerror(errno) << " error_code=UGR-00-05" << std::endl;
         return false;
     }
     return true;
@@ -712,7 +713,7 @@ void WriteCameraRecorderFaultJson(const fs::path& episode_dir,
         fs::remove(tmp_path, error);
         return;
     }
-    DM_LOG_ERROR("{}", (::DA::utils::LogString()
+    DM_LOG_ERROR_CODE("UGR-20-03", "{}", (::DA::utils::LogString()
                        << "[camera_recorder] main camera hardware fault published: "
                        << path << " camera=" << config.name
                        << " device=" << config.device
@@ -969,7 +970,8 @@ public:
         close(output_pipe[1]);
         if (setpgid(pid, pid) != 0 && errno != EACCES) {
             std::cerr << "[camera_recorder] failed to assign recorder process group: "
-                      << config_.name << " error=" << std::strerror(errno) << std::endl;
+                      << config_.name << " error=" << std::strerror(errno)
+                      << " error_code=UGR-00-05" << std::endl;
         }
         pid_ = pid;
         started_ = true;
@@ -996,7 +998,7 @@ public:
         const bool unexpected_exit = !stop_requested_;
         if (unexpected_exit) {
             failure_ = true;
-            DM_LOG_ERROR("{}", (::DA::utils::LogString() << "[camera_recorder] recorder exited early: " << config_.name
+            DM_LOG_ERROR_CODE("UGR-00-05", "{}", (::DA::utils::LogString() << "[camera_recorder] recorder exited early: " << config_.name
                                   << " exit_code=" << *exit_code_).str());
         } else {
             DM_LOG_INFO("{}", (::DA::utils::LogString() << "[camera_recorder] recorder stopped: " << config_.name
@@ -1049,7 +1051,7 @@ public:
         }
         if (running_) {
             std::cerr << "[camera_recorder] recorder still not reaped after SIGKILL: "
-                      << config_.name << std::endl;
+                      << config_.name << " error_code=UGR-00-06" << std::endl;
         }
         JoinOutputReaderThread();
     }
@@ -1296,7 +1298,7 @@ public:
             failure_ = true;
             exit_code_ = -1;
             last_error_ = error_message;
-            DM_LOG_ERROR("{}", (::DA::utils::LogString() << "[camera_recorder] failed to start " << config_.name
+            DM_LOG_ERROR_CODE("UGR-20-02", "{}", (::DA::utils::LogString() << "[camera_recorder] failed to start " << config_.name
                                   << ": " << error_message).str());
             WriteCameraRecorderFault(options_.output_dir, config_, error_message);
             CleanupPipeline();
@@ -1942,7 +1944,7 @@ private:
             if (debug != nullptr) {
                 g_free(debug);
             }
-            DM_LOG_ERROR("{}", (::DA::utils::LogString()
+            DM_LOG_ERROR_CODE("UGR-20-05", "{}", (::DA::utils::LogString()
                                 << "[camera_recorder][main_bus_diag] category=bus_error"
                                 << " name=" << config_.name
                                 << " source=" << GstMessageSourceName(message)
@@ -2205,7 +2207,7 @@ private:
 
     void SetFailure(const std::string& error_message) {
         if (!failure_) {
-            DM_LOG_ERROR("{}", (::DA::utils::LogString() << "[camera_recorder] " << error_message).str());
+            DM_LOG_ERROR_CODE("UGR-20-05", "{}", (::DA::utils::LogString() << "[camera_recorder] " << error_message).str());
         }
         failure_ = true;
         last_error_ = error_message;
@@ -2285,7 +2287,7 @@ public:
             exit_code_ = -1;
             last_error_ = error_message;
             std::cerr << "[camera_recorder] failed to start " << config_.name
-                      << ": " << error_message << std::endl;
+                      << ": " << error_message << " error_code=UGR-20-02" << std::endl;
             WriteCameraRecorderFault(options_.output_dir, config_, error_message);
             CleanupPipeline();
             CleanupDevice();
@@ -2759,7 +2761,8 @@ private:
 
     void SetFailure(const std::string& error_message) {
         if (!failure_) {
-            std::cerr << "[camera_recorder] " << error_message << std::endl;
+            std::cerr << "[camera_recorder] " << error_message
+                      << " error_code=UGR-20-03" << std::endl;
         }
         failure_ = true;
         last_error_ = error_message;
@@ -3253,7 +3256,8 @@ public:
         close(output_pipe[1]);
         if (setpgid(pid, pid) != 0 && errno != EACCES) {
             std::cerr << "[camera_recorder] failed to assign stereo session process group: "
-                      << config_.name << " error=" << std::strerror(errno) << std::endl;
+                      << config_.name << " error=" << std::strerror(errno)
+                      << " error_code=UGR-00-05" << std::endl;
         }
         pid_ = pid;
         write_fd_ = input_pipe[1];
@@ -3280,7 +3284,7 @@ public:
         exit_code_ = DecodeExitCode(status);
         if (!stop_requested_) {
             failure_ = true;
-            DM_LOG_ERROR("{}", (::DA::utils::LogString() << "[camera_recorder] stereo session exited early: " << config_.name
+            DM_LOG_ERROR_CODE("UGR-22-07", "{}", (::DA::utils::LogString() << "[camera_recorder] stereo session exited early: " << config_.name
                                   << " exit_code=" << *exit_code_).str());
         } else {
             DM_LOG_INFO("{}", (::DA::utils::LogString() << "[camera_recorder] stereo session stopped: " << config_.name
@@ -3489,7 +3493,7 @@ private:
                           frame.frame_bytes.size())) {
                 if (!stop_requested_) {
                     failure_ = true;
-                    DM_LOG_ERROR("{}", (::DA::utils::LogString() << "[camera_recorder] failed to write stereo frame to ffmpeg stdin: "
+                    DM_LOG_ERROR_CODE("UGR-22-07", "{}", (::DA::utils::LogString() << "[camera_recorder] failed to write stereo frame to ffmpeg stdin: "
                                           << config_.name).str());
                 }
                 break;
@@ -4118,7 +4122,7 @@ public:
 
     bool Run() {
         if (tracks_.empty()) {
-            DM_LOG_ERROR("[camera_recorder] stereo daemon found no stereo cameras to manage");
+            DM_LOG_ERROR_CODE("UGR-22-01", "[camera_recorder] stereo daemon found no stereo cameras to manage");
             return false;
         }
 
@@ -4424,7 +4428,7 @@ bool CameraRecorderManager::WriteInfoJson(bool allow_missing_offsets) const {
     const fs::path info_json_path = RecordingTimingPathForEpisode(options_.output_dir);
     std::ofstream output(info_json_path, std::ios::trunc);
     if (!output.is_open()) {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "[camera_recorder] failed to open recording timing file for write: "
+        DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString() << "[camera_recorder] failed to open recording timing file for write: "
                               << info_json_path).str());
         return false;
     }
@@ -4464,12 +4468,12 @@ bool CameraRecorderManager::WriteInfoJson(bool allow_missing_offsets) const {
             missing_offset = true;
             if (matching_recorder == nullptr) {
                 missing_devices.push_back(config.name);
-                DM_LOG_ERROR("{}", (::DA::utils::LogString()
+                DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString()
                                     << "[camera_recorder] missing camera device for timing: "
                                     << config.name << " device=" << config.device).str());
             } else {
                 missing_cameras.push_back(config.name);
-                DM_LOG_ERROR("{}", (::DA::utils::LogString() << "[camera_recorder] missing record time offset for "
+                DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString() << "[camera_recorder] missing record time offset for "
                                       << config.name).str());
             }
             output << "null";
@@ -4499,14 +4503,14 @@ bool CameraRecorderManager::WriteInfoJson(bool allow_missing_offsets) const {
     output << "\n}\n";
     output.flush();
     if (!output.good()) {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+        DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString()
                             << "[camera_recorder] failed to flush recording timing file: "
                             << info_json_path).str());
         return false;
     }
     output.close();
     if (!output) {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+        DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString()
                             << "[camera_recorder] failed to close recording timing file after write: "
                             << info_json_path).str());
         return false;
@@ -4528,7 +4532,7 @@ bool CameraRecorderManager::WriteInfoJson(bool allow_missing_offsets) const {
             wrote_any = true;
             oss << missing_cameras[i];
         }
-        DM_LOG_ERROR("{}", (::DA::utils::LogString()
+        DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString()
                             << "[camera_recorder] recording timing file is incomplete: path="
                             << info_json_path
                             << " missing_record_time_offset_us="
@@ -4549,7 +4553,7 @@ Options ParseArgs(int argc, char** argv) {
         const std::string arg = argv[index];
         auto require_value = [&](const std::string& flag) -> std::string {
             if (index + 1 >= argc) {
-                throw std::runtime_error("missing value for " + flag);
+                throw CameraConfigurationError("missing value for " + flag);
             }
             return argv[++index];
         };
@@ -4593,17 +4597,17 @@ Options ParseArgs(int argc, char** argv) {
                 << "Records main/tactile/stereo streams with YAML-driven recorder classes.\n";
             std::exit(0);
         } else {
-            throw std::runtime_error("unknown argument: " + arg);
+            throw CameraConfigurationError("unknown argument: " + arg);
         }
     }
 
     if (!options.stereo_daemon && options.output_dir.empty()) {
-        throw std::runtime_error("--output-dir is required");
+        throw CameraConfigurationError("--output-dir is required");
     }
 
     options.codec = ResolveCodec(options.codec);
     if (options.codec != "h264" && options.codec != "h265") {
-        throw std::runtime_error("--codec must be h264 or h265");
+        throw CameraConfigurationError("--codec must be h264 or h265");
     }
 
     return options;

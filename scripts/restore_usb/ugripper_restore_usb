@@ -65,7 +65,7 @@ if [ ! -x "$PYTHON_BIN" ]; then
 fi
 
 if [ -z "$PYTHON_BIN" ] || [ ! -f "$RESTORE_SCRIPT" ]; then
-    echo "error: restore python runtime or script not found" >&2
+    echo "error: restore python runtime or script not found error_code=UGR-80-03" >&2
     restore_rc=1
 else
     "$PYTHON_BIN" "$RESTORE_SCRIPT" || restore_rc=$?

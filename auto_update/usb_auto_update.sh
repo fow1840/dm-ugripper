@@ -31,7 +31,7 @@ SHELL_COMMON="$(resolve_existing_file \
   || true)"
 
 if [ -z "$SHELL_COMMON" ]; then
-  echo "[usb-update][ERROR] missing shell helper: ${SHELL_COMMON_OVERRIDE:-$RESOURCE_ROOT/scripts/lib/ugripper_shell_common.sh}"
+  echo "[usb-update][ERROR] missing shell helper: ${SHELL_COMMON_OVERRIDE:-$RESOURCE_ROOT/scripts/lib/ugripper_shell_common.sh} error_code=UGR-81-01"
   exit 1
 fi
 

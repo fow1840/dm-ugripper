@@ -11,7 +11,37 @@ ugripper_log() {
     local prefix="${1:-ugripper}"
     local level="${2:-INFO}"
     shift 2 || true
-    printf '[%s][%s][%s] %s\n' "$prefix" "$level" "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+    local error_code=""
+    local level_short="I"
+    local source_function="${FUNCNAME[1]:-main}"
+    local source_line="${BASH_LINENO[0]:-0}"
+    local timestamp=""
+    local payload=""
+
+    case "${level^^}" in
+        TRACE) level_short="T" ;;
+        DEBUG) level_short="D" ;;
+        INFO) level_short="I" ;;
+        WARN|WARNING) level_short="W" ;;
+        ERROR) level_short="E" ;;
+        FATAL|CRITICAL) level_short="F" ;;
+        *) return 2 ;;
+    esac
+    if [ "$level_short" = "E" ] || [ "$level_short" = "F" ]; then
+        error_code="${1:-}"
+        shift || true
+        case "$error_code" in
+            UGR-[0-9][0-9]-[0-9][0-9]) ;;
+            *) return 2 ;;
+        esac
+    fi
+    payload="[$prefix] $*"
+    if [ -n "$error_code" ]; then
+        payload="$payload error_code=$error_code"
+    fi
+    timestamp="$(date '+%s.%6N')"
+    printf '[%s][tid %s][%s][%s %s] %s\n' \
+        "$timestamp" "$BASHPID" "$level_short" "$source_function" "$source_line" "$payload"
 }
 
 ugripper_read_env_value() {

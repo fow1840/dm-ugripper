@@ -11,6 +11,15 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+for _logging_dir in (
+    Path(__file__).resolve().parents[3] / "scripts" / "logging",
+    Path("/usr/local/lib/ugripper/logging"),
+):
+    if (_logging_dir / "ugripper_logger.py").is_file():
+        sys.path.insert(0, str(_logging_dir))
+        break
+from ugripper_logger import ugripper_log
+
 
 PACKAGE = "com.ssnwt.helloxr"
 APP_EXTERNAL_ROOT = f"/sdcard/Android/data/{PACKAGE}/files"
@@ -972,6 +981,13 @@ def run_cleanup(args: argparse.Namespace) -> int:
         status["remote_cleanup"] = detail
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
+        if not ok:
+            ugripper_log(
+                "ERROR",
+                detail.get("error") or f"ego cleanup failed: {detail.get('status', 'unknown')}",
+                component="ego",
+                error_code="UGR-82-05",
+            )
         return 0 if ok else 1
 
     if status.get("status") != "finalized":
@@ -1019,6 +1035,7 @@ def run_start(args: argparse.Namespace) -> int:
             status["status"] = "not_found"
             status["error"] = "no SXR/SXR_1 ego device found"
             write_status(args.status_file, status)
+            ugripper_log("WARN", status["error"], component="ego")
             return 0
 
         status["serial"] = adb.serial
@@ -1046,6 +1063,7 @@ def run_start(args: argparse.Namespace) -> int:
             status["status"] = "start_failed"
             status["error"] = (result.stderr or result.stdout).strip()
             write_status(args.status_file, status)
+            ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-03")
             return 0
 
         remote_root = ""
@@ -1068,6 +1086,7 @@ def run_start(args: argparse.Namespace) -> int:
                     }
                 )
                 write_status(args.status_file, status)
+                ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-03")
                 return 0
             time.sleep(args.interval)
 
@@ -1075,6 +1094,7 @@ def run_start(args: argparse.Namespace) -> int:
             status["status"] = "start_timeout"
             status["error"] = "ego app did not create episode_*-temp"
             write_status(args.status_file, status)
+            ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-03")
             return 0
 
         status.update(
@@ -1101,6 +1121,7 @@ def run_start(args: argparse.Namespace) -> int:
         status["error"] = str(exc)
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
+        ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-04")
         return 0
 
 
@@ -1119,6 +1140,7 @@ def run_stop(args: argparse.Namespace) -> int:
                 status["status"] = "not_found"
                 status["error"] = "no SXR/SXR_1 ego device found during stop"
                 write_status(args.status_file, status)
+                ugripper_log("WARN", status["error"], component="ego")
                 return 0
         else:
             adb = Adb(serial)
@@ -1130,6 +1152,7 @@ def run_stop(args: argparse.Namespace) -> int:
         status["stop_broadcast_error"] = str(exc)
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
+        ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-05")
         return 0
 
     if not remote_episode:
@@ -1137,12 +1160,14 @@ def run_stop(args: argparse.Namespace) -> int:
         status["error"] = "remote_episode missing from ego_sync.json"
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
+        ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-05")
         return 0
     if not remote_root:
         status["status"] = "stop_no_remote_root"
         status["error"] = "remote_root missing from ego_sync.json"
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
+        ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-05")
         return 0
 
     local_episode_dir = args.episode_dir / "ego"
@@ -1182,6 +1207,7 @@ def run_stop(args: argparse.Namespace) -> int:
     status["error"] = "ego episode did not finalize before timeout"
     status["updated_at_ms"] = now_ms()
     write_status(args.status_file, status)
+    ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-05")
     return 0
 
 

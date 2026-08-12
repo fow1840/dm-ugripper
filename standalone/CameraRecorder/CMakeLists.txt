@@ -28,7 +28,7 @@ target_include_directories(camera_domain
 )
 target_link_libraries(camera_domain
     PUBLIC
-        PP::utils
+        UGripper::utils
         yaml-cpp::yaml-cpp
         nlohmann_json::nlohmann_json
 )
@@ -47,7 +47,7 @@ target_include_directories(${APP_NAME}
 target_link_libraries(${APP_NAME}
     PRIVATE
         camera_domain
-        PP::utils
+        UGripper::utils
         yaml-cpp::yaml-cpp
         nlohmann_json::nlohmann_json
         Threads::Threads

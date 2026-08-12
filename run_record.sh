@@ -6,7 +6,8 @@ project_root="$script_dir"
 shell_common="$project_root/scripts/lib/ugripper_shell_common.sh"
 
 if [ ! -f "$shell_common" ]; then
-    echo "[run-record][ERROR] missing shell helper: $shell_common"
+    printf '[%s][tid %s][E][run_record %s] [run-record] missing shell helper: %s error_code=UGR-70-01\n' \
+        "$(date '+%s.%6N')" "$BASHPID" "$LINENO" "$shell_common" >&2
     exit 1
 fi
 
@@ -18,14 +19,16 @@ log_info() {
 }
 
 log_error() {
-    ugripper_log "run-record" "ERROR" "$*"
+    local error_code="${1:-UGR-00-01}"
+    shift || true
+    ugripper_log "run-record" "ERROR" "$error_code" "$*"
 }
 
 DEFAULT_RUNTIME_BIN="$project_root/bin/UgripperRuntime/UgripperRuntime"
 RUNTIME_BIN="${RUNTIME_BIN_OVERRIDE:-$DEFAULT_RUNTIME_BIN}"
-ENV_FILE="/etc/environment"
-DISK_ROOT="/mnt/data_disk"
-LOG_DIR_LOCAL="/tmp"
+ENV_FILE="${ENV_FILE_OVERRIDE:-/etc/environment}"
+DISK_ROOT="${DISK_ROOT_OVERRIDE:-/mnt/data_disk}"
+LOG_DIR_LOCAL="${LOG_DIR_LOCAL_OVERRIDE:-/tmp}"
 LOG_DIR_DISK="$DISK_ROOT/logs"
 
 # Keep Rockchip MPP encoder chatter out of journald during normal recording.
@@ -42,6 +45,7 @@ LOG_FILE_LOCAL="$LOG_DIR_LOCAL/umi_sys_${DEVICE_SN_LOWER}_${TODAY}.log"
 LOG_FILE_DISK="$LOG_DIR_DISK/umi_sys_${DEVICE_SN_LOWER}_${TODAY}.log"
 LOG_SYNC_POS_FILE="/tmp/umi_sys_${DEVICE_SN_LOWER}_${TODAY}.pos"
 LOG_SYNC_LOCK_FILE="/tmp/umi_sys_${DEVICE_SN_LOWER}_${TODAY}.lock"
+LOG_WRITER="$project_root/scripts/logging/ugripper_log_writer.py"
 
 cleanup_old_logs() {
     local dir=""
@@ -62,7 +66,7 @@ cleanup_old_logs() {
 }
 
 if [ ! -x "$RUNTIME_BIN" ]; then
-    log_error "record_runtime binary not found: $RUNTIME_BIN"
+    log_error "UGR-70-01" "record_runtime binary not found: $RUNTIME_BIN"
     log_info "expected runtime path: $DEFAULT_RUNTIME_BIN"
     exit 1
 fi
@@ -142,14 +146,23 @@ sync_logs_once() {
 
 cleanup() {
     sync_logs_once "$LOG_FILE_LOCAL" "$LOG_FILE_DISK" "$LOG_SYNC_POS_FILE" "$LOG_SYNC_LOCK_FILE" || true
+    sleep 0.05
+    sync_logs_once "$LOG_FILE_LOCAL" "$LOG_FILE_DISK" "$LOG_SYNC_POS_FILE" "$LOG_SYNC_LOCK_FILE" || true
+    sleep 0.05
+    sync_logs_once "$LOG_FILE_LOCAL" "$LOG_FILE_DISK" "$LOG_SYNC_POS_FILE" "$LOG_SYNC_LOCK_FILE" || true
 }
 
 mkdir -p "$LOG_DIR_LOCAL"
+if [ ! -f "$LOG_WRITER" ]; then
+    printf '[%s][tid %s][E][run_record %s] [run-record] log writer missing: %s error_code=UGR-70-01\n' \
+        "$(date '+%s.%6N')" "$BASHPID" "$LINENO" "$LOG_WRITER" >&2
+    exit 1
+fi
+exec > >(python3 "$LOG_WRITER" --output "$LOG_FILE_LOCAL") 2>&1
 cleanup_old_logs
 
 log_info "project_root=$project_root"
 log_info "logging locally to: $LOG_FILE_LOCAL"
-exec > >(tee -a "$LOG_FILE_LOCAL") 2>&1
 
 trap cleanup EXIT
 

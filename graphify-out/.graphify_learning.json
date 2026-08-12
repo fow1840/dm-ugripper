@@ -1,0 +1,1427 @@
+{
+  "generated_at": "2026-08-03T02:55:28.857957+00:00",
+  "nodes": {
+    "auto_update_usb_auto_update": {
+      "code_fingerprint": "634f143a4c6c650b8b5a52875c952630d29b7998e95b53a7da24b04a9b4d5871",
+      "label": "usb_auto_update.sh",
+      "last": "2026-07-23T08:35:33.663832+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-23T08:35:33.663832+00:00",
+          "outcome": "useful",
+          "q": "基于这个项目给我介绍一下usb总线，我没学过"
+        }
+      ],
+      "score": 0.779815944,
+      "source_file": "auto_update/usb_auto_update.sh",
+      "status": "tentative",
+      "uses": 1
+    },
+    "build_deb": {
+      "code_fingerprint": "d1811717bccc32520c697e57bfc8c1d473dd7441395364fae31389a7fc14102c",
+      "label": "build_deb.sh",
+      "last": "2026-07-28T06:30:08.181196+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T06:30:08.181196+00:00",
+          "outcome": "useful",
+          "q": "如果不在 pp_main 上构建，Harbor 镜像到 pp-arm-dev 容器、挂载 ugripper-1、使用 ARM toolchain 编译并打 deb 的过程写在哪里？"
+        }
+      ],
+      "score": 0.873554049,
+      "source_file": "build_deb.sh",
+      "status": "tentative",
+      "uses": 1
+    },
+    "codex_skills_validate_episode_data_scripts_validate_episode": {
+      "code_fingerprint": "cc01f156c666d2890d8aafff24d18c9d04a20e9544144264cbeac1010e21070c",
+      "label": "validate_episode.py",
+      "last": "2026-07-27T09:34:21.925780+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T09:34:21.925780+00:00",
+          "outcome": "useful",
+          "q": "如果要是各个传感器数据同时使用训练，mcap的时间戳需要对齐吗/项目里有对齐吗"
+        },
+        {
+          "date": "2026-07-27T01:05:21.482222+00:00",
+          "outcome": "useful",
+          "q": "是不是走其中一个硬件的完整数据链路和开发过程？"
+        }
+      ],
+      "score": 1.70529442,
+      "source_file": ".codex/skills/validate-episode-data/scripts/validate_episode.py",
+      "status": "preferred",
+      "uses": 2
+    },
+    "codex_skills_validate_episode_data_scripts_validate_episode_episodevalidator": {
+      "code_fingerprint": "cc01f156c666d2890d8aafff24d18c9d04a20e9544144264cbeac1010e21070c",
+      "label": "EpisodeValidator",
+      "last": "2026-07-24T07:48:31.981364+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-24T07:48:31.981364+00:00",
+          "outcome": "useful",
+          "q": "开始分析status log,这个文件的目的是给使用数采结果的算法员，能够获得该episode的软硬件环境，保留核心信息"
+        }
+      ],
+      "score": 0.797441327,
+      "source_file": ".codex/skills/validate-episode-data/scripts/validate_episode.py",
+      "status": "tentative",
+      "uses": 1
+    },
+    "compression": {
+      "code_fingerprint": "",
+      "label": "Compression",
+      "last": "2026-07-27T08:47:38.313642+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T08:47:38.313642+00:00",
+          "outcome": "useful",
+          "q": "chunk可以设置压缩前大小，现在是256k；LZ4是压缩协议还是压缩选项？还有别的选择吗"
+        }
+      ],
+      "score": 0.855487371,
+      "source_file": "",
+      "status": "tentative",
+      "uses": 1
+    },
+    "docs_archive_2026_refactor_history_baseline_standalone_integration_inputs_standalone_integration_inputs_baseline": {
+      "code_fingerprint": "4f12d1262bd76ac22d5f199e2431838c77ef75fc265bb4ccf75b66f7e48e3649",
+      "label": "Standalone Integration Inputs Baseline",
+      "last": "2026-07-28T04:13:34.250096+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T04:13:34.250096+00:00",
+          "outcome": "useful",
+          "q": "是否可以找到完整的PP_main仓库"
+        },
+        {
+          "date": "2026-07-28T04:09:43.701152+00:00",
+          "outcome": "useful",
+          "q": "Ugripper在容器内编译，需要使用的pp_main框架呢"
+        }
+      ],
+      "score": 1.743230282,
+      "source_file": "docs/archive/2026-refactor-history/baseline/standalone-integration-inputs.md",
+      "status": "preferred",
+      "uses": 2
+    },
+    "docs_archive_2026_refactor_history_ppmain_ugripper_process_thread_refactor_reference_pp_main_standalone_mode": {
+      "code_fingerprint": "94c654069be4a7f463697d0e64685994f3f85c9968b27e8053cda1d3bb5e50ff",
+      "label": "pp_main standalone mode",
+      "last": "2026-07-28T06:23:40.964441+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T06:23:40.964441+00:00",
+          "outcome": "useful",
+          "q": "为什么当时构建的时候没有按照README走"
+        },
+        {
+          "date": "2026-07-28T06:19:49.531138+00:00",
+          "outcome": "useful",
+          "q": "README.md里面不是说交叉编译容器需要 /home/dm/proj/pp-main/standalone/UGripper 文件夹吗？本地是否存在"
+        },
+        {
+          "date": "2026-07-28T05:46:00.534949+00:00",
+          "outcome": "useful",
+          "q": "当前docker是怎么构建的？里面的pp_main组件是怎么下载的？"
+        },
+        {
+          "date": "2026-07-28T04:09:43.701152+00:00",
+          "outcome": "useful",
+          "q": "Ugripper在容器内编译，需要使用的pp_main框架呢"
+        }
+      ],
+      "score": 3.491397181,
+      "source_file": "docs/archive/2026-refactor-history/ppmain-ugripper-process-thread-refactor-reference.md",
+      "status": "preferred",
+      "uses": 4
+    },
+    "docs_archive_2026_refactor_history_repo_architecture_repo_architecture_draft": {
+      "code_fingerprint": "1c2cae21ea4239840b247279525f71a9b5f226844499cf021e98dceb4011aa93",
+      "label": "Repo Architecture Draft",
+      "last": "2026-07-28T04:13:34.250096+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T04:13:34.250096+00:00",
+          "outcome": "useful",
+          "q": "是否可以找到完整的PP_main仓库"
+        }
+      ],
+      "score": 0.87164201,
+      "source_file": "docs/archive/2026-refactor-history/repo-architecture.md",
+      "status": "tentative",
+      "uses": 1
+    },
+    "docs_archive_2026_refactor_history_standalone_merge_plan_ugripper_refactor_and_standalone_integration_plan": {
+      "code_fingerprint": "dd4516536375205f81fd9c4ce62aeb3ac01628333425f8c29ecc5385cbb9598b",
+      "label": "Ugripper Refactor And Standalone Integration Plan",
+      "last": "2026-07-28T06:23:40.964441+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T06:23:40.964441+00:00",
+          "outcome": "useful",
+          "q": "为什么当时构建的时候没有按照README走"
+        },
+        {
+          "date": "2026-07-28T04:13:34.250096+00:00",
+          "outcome": "useful",
+          "q": "是否可以找到完整的PP_main仓库"
+        }
+      ],
+      "score": 1.745105609,
+      "source_file": "docs/archive/2026-refactor-history/standalone-merge-plan.md",
+      "status": "preferred",
+      "uses": 2
+    },
+    "docs_docker_arm_container_env_request_document": {
+      "code_fingerprint": "f005173faedf7de1763644ea3c93d13c949986f255ee71e032a284c0eb2c36ef",
+      "label": "ros2-humble-arm Container Environment Request",
+      "last": "2026-07-28T06:23:40.964441+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T06:23:40.964441+00:00",
+          "outcome": "useful",
+          "q": "为什么当时构建的时候没有按照README走"
+        },
+        {
+          "date": "2026-07-28T06:19:49.531138+00:00",
+          "outcome": "useful",
+          "q": "README.md里面不是说交叉编译容器需要 /home/dm/proj/pp-main/standalone/UGripper 文件夹吗？本地是否存在"
+        },
+        {
+          "date": "2026-07-28T05:46:00.534949+00:00",
+          "outcome": "useful",
+          "q": "当前docker是怎么构建的？里面的pp_main组件是怎么下载的？"
+        },
+        {
+          "date": "2026-07-28T04:09:43.701152+00:00",
+          "outcome": "useful",
+          "q": "Ugripper在容器内编译，需要使用的pp_main框架呢"
+        }
+      ],
+      "score": 3.491397181,
+      "source_file": "docs/docker-arm-container-env-request.md",
+      "status": "preferred",
+      "uses": 4
+    },
+    "docs_docker_arm_container_env_request_md": {
+      "code_fingerprint": "f005173faedf7de1763644ea3c93d13c949986f255ee71e032a284c0eb2c36ef",
+      "label": "docker-arm-container-env-request.md",
+      "last": "2026-07-28T04:04:23.811344+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T04:04:23.811344+00:00",
+          "outcome": "useful",
+          "q": "pp-main docker里面是否有一个”pp main“ CPP框架"
+        }
+      ],
+      "score": 0.871513716,
+      "source_file": "docs/docker-arm-container-env-request.md",
+      "status": "tentative",
+      "uses": 1
+    },
+    "docs_umi_calibration_protocol_umi_calibration_read_write_protocol": {
+      "code_fingerprint": "60256993e53a05547881c1c593550df9bcc3554dc9b6e340eab871e3dc27f245",
+      "label": "UMI Calibration Read/Write Protocol",
+      "last": "2026-07-28T09:55:08.894076+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T09:55:08.894076+00:00",
+          "outcome": "useful",
+          "q": "ego和umi在项目里是什么意思"
+        }
+      ],
+      "score": 0.876432276,
+      "source_file": "docs/umi_calibration_protocol.md",
+      "status": "tentative",
+      "uses": 1
+    },
+    "episodemanager": {
+      "code_fingerprint": "",
+      "label": "EpisodeManager",
+      "last": "2026-07-23T08:04:48.706301+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-23T08:04:48.706301+00:00",
+          "outcome": "useful",
+          "q": "当前的事件是基于已有的日志，以及项目实际情况做的全覆盖的事件类型吗"
+        }
+      ],
+      "score": 0.779431298,
+      "source_file": "",
+      "status": "tentative",
+      "uses": 1
+    },
+    "healthmonitortest": {
+      "code_fingerprint": "",
+      "label": "HealthMonitorTest",
+      "last": "2026-07-27T01:24:50.671887+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T01:24:50.671887+00:00",
+          "outcome": "useful",
+          "q": "但是这些完整链路是不是当前项目已经实现了？"
+        }
+      ],
+      "score": 0.849430962,
+      "source_file": "",
+      "status": "tentative",
+      "uses": 1
+    },
+    "pp_main_concept": {
+      "code_fingerprint": "3f90c3b7721ca48db693d6a8d872ab136b55f0aff6c8b17d2a50712d6b8f2477",
+      "label": "pp_main",
+      "last": "2026-07-28T04:04:23.811344+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T04:04:23.811344+00:00",
+          "outcome": "useful",
+          "q": "pp-main docker里面是否有一个”pp main“ CPP框架"
+        }
+      ],
+      "score": 0.871513716,
+      "source_file": "docs/CHANGELOG.md",
+      "status": "tentative",
+      "uses": 1
+    },
+    "py_script_sensor_recorder_gap_test": {
+      "code_fingerprint": "edb321d1a5b9bd85de34b3869a0327d0655793884dc5c153d364cf213595fd06",
+      "label": "sensor_recorder_gap_test.py",
+      "last": "2026-08-03T01:47:24.900572+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-03T01:47:24.900572+00:00",
+          "outcome": "useful",
+          "q": "前面精简版和详细版的简历都没有数据成果，无法给简历成果做支撑，如果要添加数据作为实习成果，应该怎么测试"
+        },
+        {
+          "date": "2026-07-27T02:33:44.621178+00:00",
+          "outcome": "useful",
+          "q": "Ugripper encoder 串口链路应该优化哪些数据指标，对应方案有哪些？"
+        }
+      ],
+      "score": 1.849278993,
+      "source_file": "py_script/sensor_recorder_gap_test.py",
+      "status": "preferred",
+      "uses": 2
+    },
+    "py_script_v2_serial_probe_portinfo": {
+      "code_fingerprint": "9d85ec8880a174fd4ad082813ae9cb38ea07acc132f896ed3a99a7881e440d55",
+      "label": "PortInfo",
+      "last": "2026-07-23T08:35:33.663832+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-23T08:35:33.663832+00:00",
+          "outcome": "useful",
+          "q": "基于这个项目给我介绍一下usb总线，我没学过"
+        }
+      ],
+      "score": 0.779815944,
+      "source_file": "py_script/v2_serial_probe.py",
+      "status": "tentative",
+      "uses": 1
+    },
+    "readme_md": {
+      "code_fingerprint": "51c21204ec250d93f7a3256a4289041e2ed59e7ce6a66eceef392dd26159bf1b",
+      "label": "README.md",
+      "last": "2026-07-28T06:35:57.412206+00:00",
+      "neg": 1,
+      "provenance": [
+        {
+          "date": "2026-07-28T06:35:57.412206+00:00",
+          "outcome": "corrected",
+          "q": "pp-arm-dev 这个名称在哪里沿用的？"
+        },
+        {
+          "date": "2026-07-28T06:30:08.181196+00:00",
+          "outcome": "useful",
+          "q": "如果不在 pp_main 上构建，Harbor 镜像到 pp-arm-dev 容器、挂载 ugripper-1、使用 ARM toolchain 编译并打 deb 的过程写在哪里？"
+        },
+        {
+          "date": "2026-07-28T06:23:40.964441+00:00",
+          "outcome": "useful",
+          "q": "为什么当时构建的时候没有按照README走"
+        },
+        {
+          "date": "2026-07-28T06:19:49.531138+00:00",
+          "outcome": "useful",
+          "q": "README.md里面不是说交叉编译容器需要 /home/dm/proj/pp-main/standalone/UGripper 文件夹吗？本地是否存在"
+        }
+      ],
+      "score": 1.746791555,
+      "source_file": "README.md",
+      "status": "contested",
+      "uses": 3,
+      "verdict": "useful"
+    },
+    "scripts_build_arm_deb_in_pp_arm_dev": {
+      "code_fingerprint": "d9b7dfa84263094b287a9d8705f61f4c26c584e7c6e88f118776ea891bd76a8e",
+      "label": "build_arm_deb_in_pp_arm_dev.sh",
+      "last": "2026-07-28T06:35:57.412206+00:00",
+      "neg": 1,
+      "provenance": [
+        {
+          "date": "2026-07-28T06:35:57.412206+00:00",
+          "outcome": "corrected",
+          "q": "pp-arm-dev 这个名称在哪里沿用的？"
+        },
+        {
+          "date": "2026-07-28T06:30:08.181196+00:00",
+          "outcome": "useful",
+          "q": "如果不在 pp_main 上构建，Harbor 镜像到 pp-arm-dev 容器、挂载 ugripper-1、使用 ARM toolchain 编译并打 deb 的过程写在哪里？"
+        }
+      ],
+      "score": -8.1586e-05,
+      "source_file": "scripts/build_arm_deb_in_pp_arm_dev.sh",
+      "status": "contested",
+      "uses": 1,
+      "verdict": "dead end"
+    },
+    "scripts_setup_arm_build_env": {
+      "code_fingerprint": "53ab0d0069b11301decfdad890c5438a2c24fadd9b5e15d4201aafdb0fe65a78",
+      "label": "setup_arm_build_env.sh",
+      "last": "2026-07-28T05:46:00.534949+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T05:46:00.534949+00:00",
+          "outcome": "useful",
+          "q": "当前docker是怎么构建的？里面的pp_main组件是怎么下载的？"
+        }
+      ],
+      "score": 0.872935767,
+      "source_file": "scripts/setup_arm_build_env.sh",
+      "status": "tentative",
+      "uses": 1
+    },
+    "scripts_setup_arm_build_env_download_arm_packages": {
+      "code_fingerprint": "53ab0d0069b11301decfdad890c5438a2c24fadd9b5e15d4201aafdb0fe65a78",
+      "label": "download_arm_packages()",
+      "last": "2026-07-28T05:46:00.534949+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T05:46:00.534949+00:00",
+          "outcome": "useful",
+          "q": "当前docker是怎么构建的？里面的pp_main组件是怎么下载的？"
+        }
+      ],
+      "score": 0.872935767,
+      "source_file": "scripts/setup_arm_build_env.sh",
+      "status": "tentative",
+      "uses": 1
+    },
+    "src_third_party_fays_lib_include_fays_atrak_fays_atrak_types_atrakgnss_service": {
+      "code_fingerprint": "1d4c1f45f9effdadd011d15da8b546e8919979d25ecf1bfaa9253dfb83afee40",
+      "label": "service",
+      "last": "2026-07-24T08:33:11.773324+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-24T08:33:11.773324+00:00",
+          "outcome": "useful",
+          "q": "该项目debug是用gdb吗？"
+        }
+      ],
+      "score": 0.798012998,
+      "source_file": "src/third_party/fays_lib/include/fays_atrak/fays_atrak_types.h",
+      "status": "tentative",
+      "uses": 1
+    },
+    "src_utils_include_utils_log_fmtter_customizedlogformatter": {
+      "code_fingerprint": "f93605cebb441ccaf9994a01773ca8548cd93cd7b98d47f6e2b49b1889addf6a",
+      "label": "CustomizedLogFormatter",
+      "last": "2026-07-27T05:56:10.220884+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T05:56:10.220884+00:00",
+          "outcome": "useful",
+          "q": "目前phase4已经全部完成，检查日志更新条件是否成熟"
+        }
+      ],
+      "score": 0.853136972,
+      "source_file": "src/utils/include/utils/log_fmtter.h",
+      "status": "tentative",
+      "uses": 1
+    },
+    "src_utils_include_utils_spd_logger_spdlogger": {
+      "code_fingerprint": "a685895ff1f55d0111911572d0005db1321c7f2fb5b9d5e5c0ddfa528fde38ce",
+      "label": "SpdLogger",
+      "last": "2026-07-27T06:07:31.067979+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T06:07:31.067979+00:00",
+          "outcome": "useful",
+          "q": "关于错误码在日志的展现形式：以目前已经重构好的错误码为准；进入R1需要创建的两个文档作用是什么"
+        },
+        {
+          "date": "2026-07-27T05:56:10.220884+00:00",
+          "outcome": "useful",
+          "q": "目前phase4已经全部完成，检查日志更新条件是否成熟"
+        },
+        {
+          "date": "2026-07-24T07:20:26.333550+00:00",
+          "outcome": "useful",
+          "q": "我现在同步在执行错误码修改的phase3,4,该日志进行修改会影响吗"
+        }
+      ],
+      "score": 2.503511233,
+      "source_file": "src/utils/include/utils/spd_logger.h",
+      "status": "preferred",
+      "uses": 3
+    },
+    "src_utils_include_utils_spd_logger_spdlogger_updatefilelogging": {
+      "code_fingerprint": "a685895ff1f55d0111911572d0005db1321c7f2fb5b9d5e5c0ddfa528fde38ce",
+      "label": "UpdateFileLogging",
+      "last": "2026-07-27T01:59:00.927044+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T01:59:00.927044+00:00",
+          "outcome": "useful",
+          "q": "目前我还在进行日志重构和错误码重构，给我这三个优化项目的执行顺序"
+        },
+        {
+          "date": "2026-07-24T08:33:11.773324+00:00",
+          "outcome": "useful",
+          "q": "该项目debug是用gdb吗？"
+        }
+      ],
+      "score": 1.647909809,
+      "source_file": "src/utils/include/utils/spd_logger.h",
+      "status": "preferred",
+      "uses": 2
+    },
+    "standalone_camerarecorder_camera_recorder": {
+      "code_fingerprint": "6ed1fe543268895035485bc0bc365a4cc0c26e2f36b834bb87b5eaa6b6610ed3",
+      "label": "camera_recorder.cc",
+      "last": "2026-07-24T07:50:56.860615+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-24T07:50:56.860615+00:00",
+          "outcome": "useful",
+          "q": "介绍一下，一次episode结束会产生的日志"
+        },
+        {
+          "date": "2026-07-23T02:38:05.246363+00:00",
+          "outcome": "useful",
+          "q": "以主摄链路为例，讲解从采集线程拉起到文件构建构的过程"
+        }
+      ],
+      "score": 1.572828187,
+      "source_file": "standalone/CameraRecorder/camera_recorder.cc",
+      "status": "preferred",
+      "uses": 2
+    },
+    "standalone_camerarecorder_camera_recorder_maincamerarecorder": {
+      "code_fingerprint": "6ed1fe543268895035485bc0bc365a4cc0c26e2f36b834bb87b5eaa6b6610ed3",
+      "label": "MainCameraRecorder",
+      "last": "2026-07-24T07:48:31.981364+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-24T07:48:31.981364+00:00",
+          "outcome": "useful",
+          "q": "开始分析status log,这个文件的目的是给使用数采结果的算法员，能够获得该episode的软硬件环境，保留核心信息"
+        },
+        {
+          "date": "2026-07-23T08:35:33.663832+00:00",
+          "outcome": "useful",
+          "q": "基于这个项目给我介绍一下usb总线，我没学过"
+        },
+        {
+          "date": "2026-07-23T02:38:05.246363+00:00",
+          "outcome": "useful",
+          "q": "以主摄链路为例，讲解从采集线程拉起到文件构建构的过程"
+        }
+      ],
+      "score": 2.352613235,
+      "source_file": "standalone/CameraRecorder/camera_recorder.cc",
+      "status": "preferred",
+      "uses": 3
+    },
+    "standalone_camerarecorder_include_camera_recorder_camera_recorder_camerarecordermanager": {
+      "code_fingerprint": "159132e7fc81520768d7e696cc869379b29b0e7856e82963fb424d7a928721db",
+      "label": "CameraRecorderManager",
+      "last": "2026-07-27T01:24:50.671887+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T01:24:50.671887+00:00",
+          "outcome": "useful",
+          "q": "但是这些完整链路是不是当前项目已经实现了？"
+        },
+        {
+          "date": "2026-07-27T01:00:07.485759+00:00",
+          "outcome": "useful",
+          "q": "这是我之前和ai的对话，基于当前本地你可以读取的这个项目，继续回答我的问题"
+        },
+        {
+          "date": "2026-07-23T02:38:05.246363+00:00",
+          "outcome": "useful",
+          "q": "以主摄链路为例，讲解从采集线程拉起到文件构建构的过程"
+        }
+      ],
+      "score": 2.473881044,
+      "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
+      "status": "preferred",
+      "uses": 3
+    },
+    "standalone_camerarecorder_include_camera_recorder_stereo_control_json_stereoservicestatus": {
+      "code_fingerprint": "f52ac292b90403feff1b41015a608edccfd366ff3fbf3f065b08fe99d2cf1ecd",
+      "label": "StereoServiceStatus",
+      "last": "2026-07-30T08:12:45.076999+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-30T08:12:45.076999+00:00",
+          "outcome": "useful",
+          "q": "有几个文件的当前功能分支的版本对比develop-aci修改过大，分析原因： run_fays_stereo_daemon.sh"
+        },
+        {
+          "date": "2026-07-24T08:33:28.242274+00:00",
+          "outcome": "useful",
+          "q": "更新status的指责：用于给另一个进程的通信，比如一个手机程序要实时获取rk采集状态，需要读取这个status.json status的内容是各个硬件的状态，比如世界相机，fays等，目的是如果报错了能快速获取错误位置，再次重构status的内容"
+        }
+      ],
+      "score": 1.714392072,
+      "source_file": "standalone/CameraRecorder/include/camera_recorder/stereo_control_json.h",
+      "status": "preferred",
+      "uses": 2
+    },
+    "standalone_camerarecorder_main_camera_xu_tool_cameraxudevice": {
+      "code_fingerprint": "1894cfb5a859b432eca45e9172c25b541e19344a9670eaf256adc915bb6d86fb",
+      "label": "CameraXuDevice",
+      "last": "2026-07-23T08:35:33.663832+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-23T08:35:33.663832+00:00",
+          "outcome": "useful",
+          "q": "基于这个项目给我介绍一下usb总线，我没学过"
+        }
+      ],
+      "score": 0.779815944,
+      "source_file": "standalone/CameraRecorder/main_camera_xu_tool.cpp",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_faysstereorecorder_scripts_run_fays_stereo_daemon": {
+      "code_fingerprint": "dbb27ae983c7f6d8d7e4c4816e5530536457ce9a29231b58ad2855de5ec0f06c",
+      "label": "run_fays_stereo_daemon.sh",
+      "last": "2026-07-30T08:12:45.076999+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-30T08:12:45.076999+00:00",
+          "outcome": "useful",
+          "q": "有几个文件的当前功能分支的版本对比develop-aci修改过大，分析原因： run_fays_stereo_daemon.sh"
+        }
+      ],
+      "score": 0.91637556,
+      "source_file": "standalone/FaysStereoRecorder/scripts/run_fays_stereo_daemon.sh",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_faysstereorecorder_src_record": {
+      "code_fingerprint": "c2406086cd59bf362bf283edc1b32828caea128f48217ba184fd05fa204c3dba",
+      "label": "record.cpp",
+      "last": "2026-07-31T06:38:20.599906+00:00",
+      "neg": 2,
+      "provenance": [
+        {
+          "date": "2026-07-31T06:38:20.599906+00:00",
+          "outcome": "corrected",
+          "q": "所以应该回撤到阶段B,执行阶段B到E是吗"
+        },
+        {
+          "date": "2026-07-31T06:34:40.915706+00:00",
+          "outcome": "corrected",
+          "q": "所以你是没有按照执行文件走吗"
+        },
+        {
+          "date": "2026-07-31T06:32:36.476958+00:00",
+          "outcome": "useful",
+          "q": "之前说的将日志业务代码剥离出主业务文件没有做吗"
+        },
+        {
+          "date": "2026-07-31T06:31:09.921150+00:00",
+          "outcome": "useful",
+          "q": "这几个才减少十几行？"
+        },
+        {
+          "date": "2026-07-24T07:50:56.860615+00:00",
+          "outcome": "useful",
+          "q": "介绍一下，一次episode结束会产生的日志"
+        }
+      ],
+      "score": 1.594415171,
+      "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
+      "status": "contested",
+      "uses": 4,
+      "verdict": "useful"
+    },
+    "standalone_faysstereorecorder_src_record_faysdatalogger": {
+      "code_fingerprint": "c2406086cd59bf362bf283edc1b32828caea128f48217ba184fd05fa204c3dba",
+      "label": "FaysDataLogger",
+      "last": "2026-07-27T07:07:58.505048+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T07:07:58.505048+00:00",
+          "outcome": "useful",
+          "q": "现有项目生成的4个mcap文件，以sensor_left.mcap和fays_data_left.mcap为典型，这两个mcap文件结构如何定义，有什么字段，每个字段包含什么数据，数据怎么来，解释数据内容"
+        }
+      ],
+      "score": 0.854120448,
+      "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_faysstereorecorder_src_record_faysrecorder": {
+      "code_fingerprint": "c2406086cd59bf362bf283edc1b32828caea128f48217ba184fd05fa204c3dba",
+      "label": "FaysRecorder",
+      "last": "2026-07-30T08:12:45.076999+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-30T08:12:45.076999+00:00",
+          "outcome": "useful",
+          "q": "有几个文件的当前功能分支的版本对比develop-aci修改过大，分析原因： run_fays_stereo_daemon.sh"
+        },
+        {
+          "date": "2026-07-27T09:34:21.925780+00:00",
+          "outcome": "useful",
+          "q": "如果要是各个传感器数据同时使用训练，mcap的时间戳需要对齐吗/项目里有对齐吗"
+        },
+        {
+          "date": "2026-07-27T07:07:58.505048+00:00",
+          "outcome": "useful",
+          "q": "现有项目生成的4个mcap文件，以sensor_left.mcap和fays_data_left.mcap为典型，这两个mcap文件结构如何定义，有什么字段，每个字段包含什么数据，数据怎么来，解释数据内容"
+        },
+        {
+          "date": "2026-07-24T09:28:14.754942+00:00",
+          "outcome": "useful",
+          "q": "rk板里面/dev/shm/ugripper都是什么文件"
+        },
+        {
+          "date": "2026-07-24T07:48:31.981364+00:00",
+          "outcome": "useful",
+          "q": "开始分析status log,这个文件的目的是给使用数采结果的算法员，能够获得该episode的软硬件环境，保留核心信息"
+        }
+      ],
+      "score": 5.002600455,
+      "source_file": "standalone/FaysStereoRecorder/src/record.cpp",
+      "status": "preferred",
+      "uses": 6
+    },
+    "standalone_gripperhmitool_include_gripper_hmi_driver_gripperhmidriver": {
+      "code_fingerprint": "7877b71dbb63ee296d90ab4bb1feb5b9ae03757f612cd366bf5f767fda576c2f",
+      "label": "GripperHmiDriver",
+      "last": "2026-07-27T01:00:07.485759+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T01:00:07.485759+00:00",
+          "outcome": "useful",
+          "q": "这是我之前和ai的对话，基于当前本地你可以读取的这个项目，继续回答我的问题"
+        }
+      ],
+      "score": 0.849094118,
+      "source_file": "standalone/GripperHmiTool/include/gripper_hmi_driver.h",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_sensorrecorder_encoder_driver_encoderdriver_verifycrc16": {
+      "code_fingerprint": "4d80fc2b9fdddea0a961078b4c38a4ffc6d693c732bb3e79a9961379beece21a",
+      "label": "EncoderDriver::verifyCRC16()",
+      "last": "2026-07-27T09:11:07.830694+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T09:11:07.830694+00:00",
+          "outcome": "useful",
+          "q": "现在说要我做力传感器的接入，数据链路构建（使用现有的sensor_encoder链路，用串口通信+CRC校验），以及传感器数据的标定（力的大小）"
+        }
+      ],
+      "score": 0.855809891,
+      "source_file": "standalone/SensorRecorder/encoder_driver.cc",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_sensorrecorder_include_encoder_driver_encoderdriver": {
+      "code_fingerprint": "bbbc77380596f04b3ebf5bf46e48d340c4b6774002f79d74f093a96b6940f571",
+      "label": "EncoderDriver",
+      "last": "2026-08-03T01:47:24.900572+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-03T01:47:24.900572+00:00",
+          "outcome": "useful",
+          "q": "前面精简版和详细版的简历都没有数据成果，无法给简历成果做支撑，如果要添加数据作为实习成果，应该怎么测试"
+        },
+        {
+          "date": "2026-07-30T09:55:29.069620+00:00",
+          "outcome": "useful",
+          "q": "基于当前已经做好的串口传输编码器数据链路作为成果 /home/dm/Code/ugripper-1/，构建简历内容"
+        },
+        {
+          "date": "2026-07-30T01:21:05.283915+00:00",
+          "outcome": "useful",
+          "q": "/home/dm/Code/ugripper-1/这里是具体的蔬菜项目，比较成熟，已有传感器链路，可以参考这个吗"
+        },
+        {
+          "date": "2026-07-28T03:07:55.665541+00:00",
+          "outcome": "useful",
+          "q": "解析sensor_code链路，如果可以，从底层寄存器数据读取开始，到串口数据传输的参数配置，板端解包过程，数据读取过程，打包为mcap的过程（更正：sensor_encoder）"
+        },
+        {
+          "date": "2026-07-27T09:11:07.830694+00:00",
+          "outcome": "useful",
+          "q": "现在说要我做力传感器的接入，数据链路构建（使用现有的sensor_encoder链路，用串口通信+CRC校验），以及传感器数据的标定（力的大小）"
+        }
+      ],
+      "score": 9.662153654,
+      "source_file": "standalone/SensorRecorder/include/encoder_driver.h",
+      "status": "preferred",
+      "uses": 11
+    },
+    "standalone_sensorrecorder_include_encoder_driver_encoderdriver_parsereceiveddata": {
+      "code_fingerprint": "bbbc77380596f04b3ebf5bf46e48d340c4b6774002f79d74f093a96b6940f571",
+      "label": "parseReceivedData",
+      "last": "2026-07-27T02:19:49.100002+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T02:19:49.100002+00:00",
+          "outcome": "useful",
+          "q": "基于 Ugripper 串口 encoder 数据链路扫盲并准备面试问题"
+        }
+      ],
+      "score": 0.85018054,
+      "source_file": "standalone/SensorRecorder/include/encoder_driver.h",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_sensorrecorder_include_sensor_recorder_sensor_domain_batchtimestampsmoothingstate": {
+      "code_fingerprint": "24b99c3430dc181fc059bc31b56afa1b265dd72e98345310e492f9640ba441a4",
+      "label": "BatchTimestampSmoothingState",
+      "last": "2026-07-30T09:55:29.069620+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-30T09:55:29.069620+00:00",
+          "outcome": "useful",
+          "q": "基于当前已经做好的串口传输编码器数据链路作为成果 /home/dm/Code/ugripper-1/，构建简历内容"
+        },
+        {
+          "date": "2026-07-30T01:21:05.283915+00:00",
+          "outcome": "useful",
+          "q": "/home/dm/Code/ugripper-1/这里是具体的蔬菜项目，比较成熟，已有传感器链路，可以参考这个吗"
+        },
+        {
+          "date": "2026-07-28T03:07:55.665541+00:00",
+          "outcome": "useful",
+          "q": "解析sensor_code链路，如果可以，从底层寄存器数据读取开始，到串口数据传输的参数配置，板端解包过程，数据读取过程，打包为mcap的过程（更正：sensor_encoder）"
+        },
+        {
+          "date": "2026-07-27T09:11:07.830694+00:00",
+          "outcome": "useful",
+          "q": "现在说要我做力传感器的接入，数据链路构建（使用现有的sensor_encoder链路，用串口通信+CRC校验），以及传感器数据的标定（力的大小）"
+        },
+        {
+          "date": "2026-07-27T07:43:42.760392+00:00",
+          "outcome": "useful",
+          "q": "解释sensor_left.mcap的message中每个字段的含义"
+        }
+      ],
+      "score": 5.259745217,
+      "source_file": "standalone/SensorRecorder/include/sensor_recorder/sensor_domain.h",
+      "status": "preferred",
+      "uses": 6
+    },
+    "standalone_sensorrecorder_main_encoderruntime": {
+      "code_fingerprint": "533d092c3e3e1a61d199184cd8bcc47dd229e2cc87bc1a0781c9f9d1b13afa0e",
+      "label": "EncoderRuntime",
+      "last": "2026-07-27T01:05:21.482222+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T01:05:21.482222+00:00",
+          "outcome": "useful",
+          "q": "是不是走其中一个硬件的完整数据链路和开发过程？"
+        }
+      ],
+      "score": 0.849165418,
+      "source_file": "standalone/SensorRecorder/main.cc",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_sensorrecorder_main_pendingwritequeue": {
+      "code_fingerprint": "533d092c3e3e1a61d199184cd8bcc47dd229e2cc87bc1a0781c9f9d1b13afa0e",
+      "label": "PendingWriteQueue",
+      "last": "2026-07-30T09:55:29.069620+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-30T09:55:29.069620+00:00",
+          "outcome": "useful",
+          "q": "基于当前已经做好的串口传输编码器数据链路作为成果 /home/dm/Code/ugripper-1/，构建简历内容"
+        },
+        {
+          "date": "2026-07-30T01:21:05.283915+00:00",
+          "outcome": "useful",
+          "q": "/home/dm/Code/ugripper-1/这里是具体的蔬菜项目，比较成熟，已有传感器链路，可以参考这个吗"
+        },
+        {
+          "date": "2026-07-27T09:11:07.830694+00:00",
+          "outcome": "useful",
+          "q": "现在说要我做力传感器的接入，数据链路构建（使用现有的sensor_encoder链路，用串口通信+CRC校验），以及传感器数据的标定（力的大小）"
+        },
+        {
+          "date": "2026-07-27T02:33:44.621178+00:00",
+          "outcome": "useful",
+          "q": "Ugripper encoder 串口链路应该优化哪些数据指标，对应方案有哪些？"
+        },
+        {
+          "date": "2026-07-27T02:19:49.100002+00:00",
+          "outcome": "useful",
+          "q": "基于 Ugripper 串口 encoder 数据链路扫盲并准备面试问题"
+        }
+      ],
+      "score": 6.083718644,
+      "source_file": "standalone/SensorRecorder/main.cc",
+      "status": "preferred",
+      "uses": 7
+    },
+    "standalone_sensorrecorder_main_sidewriter": {
+      "code_fingerprint": "533d092c3e3e1a61d199184cd8bcc47dd229e2cc87bc1a0781c9f9d1b13afa0e",
+      "label": "SideWriter",
+      "last": "2026-07-28T03:07:55.665541+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T03:07:55.665541+00:00",
+          "outcome": "useful",
+          "q": "解析sensor_code链路，如果可以，从底层寄存器数据读取开始，到串口数据传输的参数配置，板端解包过程，数据读取过程，打包为mcap的过程（更正：sensor_encoder）"
+        },
+        {
+          "date": "2026-07-27T02:33:44.621178+00:00",
+          "outcome": "useful",
+          "q": "Ugripper encoder 串口链路应该优化哪些数据指标，对应方案有哪些？"
+        },
+        {
+          "date": "2026-07-27T02:09:02.549388+00:00",
+          "outcome": "useful",
+          "q": "基于我的简历模板，如何把 Ugripper 项目写成符合实习生贡献尺度、突出完整数据链路、架构优化和性能提升的嵌入式 Linux 项目经历？"
+        }
+      ],
+      "score": 2.571128516,
+      "source_file": "standalone/SensorRecorder/main.cc",
+      "status": "preferred",
+      "uses": 3
+    },
+    "standalone_sensorrecorder_third_party_mcap_include_mcap_types_chunk": {
+      "code_fingerprint": "fc133ebc38b3833d91d24a052baac6c5fc1d33754ff4c0a16af47403192221da",
+      "label": "Chunk()",
+      "last": "2026-07-27T08:47:38.313642+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T08:47:38.313642+00:00",
+          "outcome": "useful",
+          "q": "chunk可以设置压缩前大小，现在是256k；LZ4是压缩协议还是压缩选项？还有别的选择吗"
+        },
+        {
+          "date": "2026-07-27T08:38:57.346942+00:00",
+          "outcome": "useful",
+          "q": "mcap文件生成之后，256 KiB Chunk、LZ4压缩、Schema/Channel记录、Footer、不生成Message Index是什么，开与不开有什么影响"
+        }
+      ],
+      "score": 1.710855568,
+      "source_file": "standalone/SensorRecorder/third_party/mcap/include/mcap/types.hpp",
+      "status": "preferred",
+      "uses": 2
+    },
+    "standalone_sensorrecorder_third_party_mcap_include_mcap_types_footer": {
+      "code_fingerprint": "fc133ebc38b3833d91d24a052baac6c5fc1d33754ff4c0a16af47403192221da",
+      "label": "Footer()",
+      "last": "2026-07-27T08:38:57.346942+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T08:38:57.346942+00:00",
+          "outcome": "useful",
+          "q": "mcap文件生成之后，256 KiB Chunk、LZ4压缩、Schema/Channel记录、Footer、不生成Message Index是什么，开与不开有什么影响"
+        }
+      ],
+      "score": 0.855368197,
+      "source_file": "standalone/SensorRecorder/third_party/mcap/include/mcap/types.hpp",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_sensorrecorder_third_party_mcap_include_mcap_types_message": {
+      "code_fingerprint": "fc133ebc38b3833d91d24a052baac6c5fc1d33754ff4c0a16af47403192221da",
+      "label": "Message()",
+      "last": "2026-07-27T09:34:21.925780+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T09:34:21.925780+00:00",
+          "outcome": "useful",
+          "q": "如果要是各个传感器数据同时使用训练，mcap的时间戳需要对齐吗/项目里有对齐吗"
+        },
+        {
+          "date": "2026-07-27T08:38:57.346942+00:00",
+          "outcome": "useful",
+          "q": "mcap文件生成之后，256 KiB Chunk、LZ4压缩、Schema/Channel记录、Footer、不生成Message Index是什么，开与不开有什么影响"
+        },
+        {
+          "date": "2026-07-27T07:43:42.760392+00:00",
+          "outcome": "useful",
+          "q": "解释sensor_left.mcap的message中每个字段的含义"
+        }
+      ],
+      "score": 2.56610755,
+      "source_file": "standalone/SensorRecorder/third_party/mcap/include/mcap/types.hpp",
+      "status": "preferred",
+      "uses": 3
+    },
+    "standalone_sensorrecorder_third_party_mcap_include_mcap_writer": {
+      "code_fingerprint": "3c609a079e029342683efdfbc977c685444e75c5ca5fad16b7be595c63930e69",
+      "label": "writer.hpp",
+      "last": "2026-07-27T08:47:38.313642+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T08:47:38.313642+00:00",
+          "outcome": "useful",
+          "q": "chunk可以设置压缩前大小，现在是256k；LZ4是压缩协议还是压缩选项？还有别的选择吗"
+        },
+        {
+          "date": "2026-07-27T08:38:57.346942+00:00",
+          "outcome": "useful",
+          "q": "mcap文件生成之后，256 KiB Chunk、LZ4压缩、Schema/Channel记录、Footer、不生成Message Index是什么，开与不开有什么影响"
+        }
+      ],
+      "score": 1.710855568,
+      "source_file": "standalone/SensorRecorder/third_party/mcap/include/mcap/writer.hpp",
+      "status": "preferred",
+      "uses": 2
+    },
+    "standalone_ugripperruntime_ego_ego_recording_worker": {
+      "code_fingerprint": "75157f4e640df43173b68de2aefea438871e8e9ecc284853942b5c346f9bfa14",
+      "label": "ego_recording_worker.py",
+      "last": "2026-07-28T09:55:08.894076+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T09:55:08.894076+00:00",
+          "outcome": "useful",
+          "q": "ego和umi在项目里是什么意思"
+        }
+      ],
+      "score": 0.876432276,
+      "source_file": "standalone/UgripperRuntime/ego/ego_recording_worker.py",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_ugripperruntime_include_record_runtime_health_monitor_healthmonitor": {
+      "code_fingerprint": "cfcce6ea001ee2f8364968f7c6f5d811a8e819d2478887f944e24f79a4f19855",
+      "label": "HealthMonitor",
+      "last": "2026-07-28T04:11:31.425942+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T04:11:31.425942+00:00",
+          "outcome": "useful",
+          "q": "检查 /home/dm/Doc/ugripper_runtime_status_design_v1.md 中 status.log 方案当前构建进入到哪一步"
+        },
+        {
+          "date": "2026-07-27T01:00:07.485759+00:00",
+          "outcome": "useful",
+          "q": "这是我之前和ai的对话，基于当前本地你可以读取的这个项目，继续回答我的问题"
+        }
+      ],
+      "score": 1.720707499,
+      "source_file": "standalone/UgripperRuntime/include/record_runtime/health_monitor.h",
+      "status": "preferred",
+      "uses": 2
+    },
+    "standalone_ugripperruntime_include_record_runtime_health_monitor_healthmonitoroptions": {
+      "code_fingerprint": "cfcce6ea001ee2f8364968f7c6f5d811a8e819d2478887f944e24f79a4f19855",
+      "label": "HealthMonitorOptions",
+      "last": "2026-07-27T01:05:21.482222+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T01:05:21.482222+00:00",
+          "outcome": "useful",
+          "q": "是不是走其中一个硬件的完整数据链路和开发过程？"
+        },
+        {
+          "date": "2026-07-24T08:33:28.242274+00:00",
+          "outcome": "useful",
+          "q": "更新status的指责：用于给另一个进程的通信，比如一个手机程序要实时获取rk采集状态，需要读取这个status.json status的内容是各个硬件的状态，比如世界相机，fays等，目的是如果报错了能快速获取错误位置，再次重构status的内容"
+        }
+      ],
+      "score": 1.64718193,
+      "source_file": "standalone/UgripperRuntime/include/record_runtime/health_monitor.h",
+      "status": "preferred",
+      "uses": 2
+    },
+    "standalone_ugripperruntime_include_record_runtime_process_supervisor_processstatus": {
+      "code_fingerprint": "9bbbefc1e69f2355bff7724e284b3c7689584014b8669af86a5df4eee1a3e7a3",
+      "label": "ProcessStatus",
+      "last": "2026-07-24T08:33:28.242274+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-24T08:33:28.242274+00:00",
+          "outcome": "useful",
+          "q": "更新status的指责：用于给另一个进程的通信，比如一个手机程序要实时获取rk采集状态，需要读取这个status.json status的内容是各个硬件的状态，比如世界相机，fays等，目的是如果报错了能快速获取错误位置，再次重构status的内容"
+        }
+      ],
+      "score": 0.798016512,
+      "source_file": "standalone/UgripperRuntime/include/record_runtime/process_supervisor.h",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_ugripperruntime_include_record_runtime_process_supervisor_processsupervisor": {
+      "code_fingerprint": "9bbbefc1e69f2355bff7724e284b3c7689584014b8669af86a5df4eee1a3e7a3",
+      "label": "ProcessSupervisor",
+      "last": "2026-07-30T08:12:45.076999+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-30T08:12:45.076999+00:00",
+          "outcome": "useful",
+          "q": "有几个文件的当前功能分支的版本对比develop-aci修改过大，分析原因： run_fays_stereo_daemon.sh"
+        },
+        {
+          "date": "2026-07-28T04:11:31.425942+00:00",
+          "outcome": "useful",
+          "q": "检查 /home/dm/Doc/ugripper_runtime_status_design_v1.md 中 status.log 方案当前构建进入到哪一步"
+        },
+        {
+          "date": "2026-07-27T01:24:50.671887+00:00",
+          "outcome": "useful",
+          "q": "但是这些完整链路是不是当前项目已经实现了？"
+        },
+        {
+          "date": "2026-07-27T01:00:07.485759+00:00",
+          "outcome": "useful",
+          "q": "这是我之前和ai的对话，基于当前本地你可以读取的这个项目，继续回答我的问题"
+        }
+      ],
+      "score": 3.486514021,
+      "source_file": "standalone/UgripperRuntime/include/record_runtime/process_supervisor.h",
+      "status": "preferred",
+      "uses": 4
+    },
+    "standalone_ugripperruntime_include_record_runtime_recording_orchestrator_recordingorchestrator": {
+      "code_fingerprint": "1015862b835c2ba8446b81f876d0eb4be253f5a8932aa8fccd771bb5e355f6ef",
+      "label": "RecordingOrchestrator",
+      "last": "2026-07-30T01:21:05.283915+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-30T01:21:05.283915+00:00",
+          "outcome": "useful",
+          "q": "/home/dm/Code/ugripper-1/这里是具体的蔬菜项目，比较成熟，已有传感器链路，可以参考这个吗"
+        },
+        {
+          "date": "2026-07-24T08:33:28.242274+00:00",
+          "outcome": "useful",
+          "q": "更新status的指责：用于给另一个进程的通信，比如一个手机程序要实时获取rk采集状态，需要读取这个status.json status的内容是各个硬件的状态，比如世界相机，fays等，目的是如果报错了能快速获取错误位置，再次重构status的内容"
+        },
+        {
+          "date": "2026-07-24T07:50:56.860615+00:00",
+          "outcome": "useful",
+          "q": "介绍一下，一次episode结束会产生的日志"
+        },
+        {
+          "date": "2026-07-23T08:04:48.706301+00:00",
+          "outcome": "useful",
+          "q": "当前的事件是基于已有的日志，以及项目实际情况做的全覆盖的事件类型吗"
+        }
+      ],
+      "score": 3.285262725,
+      "source_file": "standalone/UgripperRuntime/include/record_runtime/recording_orchestrator.h",
+      "status": "preferred",
+      "uses": 4
+    },
+    "standalone_ugripperruntime_include_record_runtime_recordruntime": {
+      "code_fingerprint": "b0ea1ac9df09b9f72bd707647466f51652db0153760df5083444d24ea96e080a",
+      "label": "RecordRuntime",
+      "last": "2026-07-24T08:33:28.242274+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-24T08:33:28.242274+00:00",
+          "outcome": "useful",
+          "q": "更新status的指责：用于给另一个进程的通信，比如一个手机程序要实时获取rk采集状态，需要读取这个status.json status的内容是各个硬件的状态，比如世界相机，fays等，目的是如果报错了能快速获取错误位置，再次重构status的内容"
+        },
+        {
+          "date": "2026-07-23T08:04:48.706301+00:00",
+          "outcome": "useful",
+          "q": "当前的事件是基于已有的日志，以及项目实际情况做的全覆盖的事件类型吗"
+        }
+      ],
+      "score": 1.57744781,
+      "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
+      "status": "preferred",
+      "uses": 2
+    },
+    "standalone_ugripperruntime_include_record_runtime_recordruntime_triggerrestoreusbonerror": {
+      "code_fingerprint": "b0ea1ac9df09b9f72bd707647466f51652db0153760df5083444d24ea96e080a",
+      "label": "triggerRestoreUsbOnError",
+      "last": "2026-07-23T08:35:33.663832+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-23T08:35:33.663832+00:00",
+          "outcome": "useful",
+          "q": "基于这个项目给我介绍一下usb总线，我没学过"
+        }
+      ],
+      "score": 0.779815944,
+      "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_ugripperruntime_include_record_runtime_runtime_types_healthfault": {
+      "code_fingerprint": "acbdca17d75c36fee4678c03ca0043f6ab64a6fe29787659c77f834ce6492d1d",
+      "label": "HealthFault",
+      "last": "2026-07-27T01:59:00.927044+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T01:59:00.927044+00:00",
+          "outcome": "useful",
+          "q": "目前我还在进行日志重构和错误码重构，给我这三个优化项目的执行顺序"
+        },
+        {
+          "date": "2026-07-23T08:04:48.706301+00:00",
+          "outcome": "useful",
+          "q": "当前的事件是基于已有的日志，以及项目实际情况做的全覆盖的事件类型吗"
+        }
+      ],
+      "score": 1.629328109,
+      "source_file": "standalone/UgripperRuntime/include/record_runtime/runtime_types.h",
+      "status": "preferred",
+      "uses": 2
+    },
+    "standalone_ugripperruntime_include_record_runtime_stereo_session_client_stereosessionclient": {
+      "code_fingerprint": "4d22e1ceadef2b8f1f1c97af930a4bd873d3dbf02e696f549c16916059ea1d50",
+      "label": "StereoSessionClient",
+      "last": "2026-07-30T08:12:45.076999+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-30T08:12:45.076999+00:00",
+          "outcome": "useful",
+          "q": "有几个文件的当前功能分支的版本对比develop-aci修改过大，分析原因： run_fays_stereo_daemon.sh"
+        }
+      ],
+      "score": 0.91637556,
+      "source_file": "standalone/UgripperRuntime/include/record_runtime/stereo_session_client.h",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_ugripperruntime_include_record_runtime_stereo_session_port_stereosessionstatussnapshot": {
+      "code_fingerprint": "bde225d104663525451a6755426cc63afcf4f0a74500f9d6376eb74553a6dc87",
+      "label": "StereoSessionStatusSnapshot",
+      "last": "2026-07-28T04:11:31.425942+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-28T04:11:31.425942+00:00",
+          "outcome": "useful",
+          "q": "检查 /home/dm/Doc/ugripper_runtime_status_design_v1.md 中 status.log 方案当前构建进入到哪一步"
+        }
+      ],
+      "score": 0.871613381,
+      "source_file": "standalone/UgripperRuntime/include/record_runtime/stereo_session_port.h",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_ugripperruntime_include_record_runtime_subprocess_handle_subprocesshandle": {
+      "code_fingerprint": "16decdb0d054adbab8be4d15fb4e5b9f556647d7fe64197f3b355a45cbd4bd5f",
+      "label": "SubprocessHandle",
+      "last": "2026-07-30T07:46:09.385345+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-30T07:46:09.385345+00:00",
+          "outcome": "useful",
+          "q": "分析原有日志的问题，以及新日志的优越性，这段总结是否正确"
+        }
+      ],
+      "score": 0.915984611,
+      "source_file": "standalone/UgripperRuntime/include/record_runtime/subprocess_handle.h",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_ugripperruntime_record_runtime": {
+      "code_fingerprint": "84127ef0965095d542ae6c51890fa1a95f76e8476847f3c07577ebc744c28462",
+      "label": "record_runtime.cc",
+      "last": "2026-07-31T06:38:20.599906+00:00",
+      "neg": 2,
+      "provenance": [
+        {
+          "date": "2026-07-31T06:38:20.599906+00:00",
+          "outcome": "corrected",
+          "q": "所以应该回撤到阶段B,执行阶段B到E是吗"
+        },
+        {
+          "date": "2026-07-31T06:34:40.915706+00:00",
+          "outcome": "corrected",
+          "q": "所以你是没有按照执行文件走吗"
+        },
+        {
+          "date": "2026-07-31T06:32:36.476958+00:00",
+          "outcome": "useful",
+          "q": "之前说的将日志业务代码剥离出主业务文件没有做吗"
+        },
+        {
+          "date": "2026-07-31T06:31:09.921150+00:00",
+          "outcome": "useful",
+          "q": "这几个才减少十几行？"
+        },
+        {
+          "date": "2026-07-30T08:51:58.763682+00:00",
+          "outcome": "useful",
+          "q": "1. audio的问题不管 2. 这样会改什么文件？新增什么文件？能够实现降低代码冗余度的效果吗"
+        }
+      ],
+      "score": 11.819446462,
+      "source_file": "standalone/UgripperRuntime/record_runtime.cc",
+      "status": "contested",
+      "uses": 16,
+      "verdict": "useful"
+    },
+    "standalone_ugripperruntime_record_runtime_recordruntime_pollrecordcontrolpipe": {
+      "code_fingerprint": "84127ef0965095d542ae6c51890fa1a95f76e8476847f3c07577ebc744c28462",
+      "label": "RecordRuntime::pollRecordControlPipe()",
+      "last": "2026-07-24T09:28:14.754942+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-24T09:28:14.754942+00:00",
+          "outcome": "useful",
+          "q": "rk板里面/dev/shm/ugripper都是什么文件"
+        }
+      ],
+      "score": 0.798718175,
+      "source_file": "standalone/UgripperRuntime/record_runtime.cc",
+      "status": "tentative",
+      "uses": 1
+    },
+    "standalone_ugripperruntime_runtime_domain": {
+      "code_fingerprint": "663839c435b8dc6c5db2a783bb0150e357b50b286e49bd73230564cd928e572b",
+      "label": "runtime_domain.cc",
+      "last": "2026-07-31T08:57:52.095195+00:00",
+      "neg": 2,
+      "provenance": [
+        {
+          "date": "2026-07-31T08:57:52.095195+00:00",
+          "outcome": "useful",
+          "q": "runtime_domain.cc 的 sensor_args 是什么含义"
+        },
+        {
+          "date": "2026-07-31T06:38:20.599906+00:00",
+          "outcome": "corrected",
+          "q": "所以应该回撤到阶段B,执行阶段B到E是吗"
+        },
+        {
+          "date": "2026-07-31T06:34:40.915706+00:00",
+          "outcome": "corrected",
+          "q": "所以你是没有按照执行文件走吗"
+        },
+        {
+          "date": "2026-07-31T06:32:36.476958+00:00",
+          "outcome": "useful",
+          "q": "之前说的将日志业务代码剥离出主业务文件没有做吗"
+        },
+        {
+          "date": "2026-07-31T06:31:09.921150+00:00",
+          "outcome": "useful",
+          "q": "这几个才减少十几行？"
+        }
+      ],
+      "score": 1.735416892,
+      "source_file": "standalone/UgripperRuntime/runtime_domain.cc",
+      "status": "contested",
+      "uses": 4,
+      "verdict": "useful"
+    },
+    "standalone_ugripperruntime_runtime_process": {
+      "code_fingerprint": "38f016677176869f0f15be0317fae0a10b8030509aaff45d2fe7359be223fac1",
+      "label": "runtime_process.cc",
+      "last": "2026-07-31T06:31:09.921150+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-31T06:31:09.921150+00:00",
+          "outcome": "useful",
+          "q": "这几个才减少十几行？"
+        },
+        {
+          "date": "2026-07-30T08:51:58.763682+00:00",
+          "outcome": "useful",
+          "q": "1. audio的问题不管 2. 这样会改什么文件？新增什么文件？能够实现降低代码冗余度的效果吗"
+        },
+        {
+          "date": "2026-07-30T08:35:59.226936+00:00",
+          "outcome": "useful",
+          "q": "log_event和log_adapter需要被高度复用，目前功能分支 的head具有大量的代码冗余，分析原因以及优化方案，优化方向就是代码的复用，包括C++类的复用等方式"
+        }
+      ],
+      "score": 2.769937298,
+      "source_file": "standalone/UgripperRuntime/runtime_process.cc",
+      "status": "preferred",
+      "uses": 3
+    },
+    "test_scripts_board_encoder_cmd_ack_latency_py_test_scripts_board_encoder_cmd_ack_latency": {
+      "code_fingerprint": "fe66c75f4699207a5e120fa38ac85190894117449a55b5e64822a1db3c5a86dd",
+      "label": "board_encoder_cmd_ack_latency.py",
+      "last": "2026-08-03T01:47:24.900572+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-03T01:47:24.900572+00:00",
+          "outcome": "useful",
+          "q": "前面精简版和详细版的简历都没有数据成果，无法给简历成果做支撑，如果要添加数据作为实习成果，应该怎么测试"
+        },
+        {
+          "date": "2026-07-27T02:33:44.621178+00:00",
+          "outcome": "useful",
+          "q": "Ugripper encoder 串口链路应该优化哪些数据指标，对应方案有哪些？"
+        }
+      ],
+      "score": 1.849278993,
+      "source_file": "test/scripts/board_encoder_cmd_ack_latency.py",
+      "status": "preferred",
+      "uses": 2
+    },
+    "test_scripts_camera_crash_capture": {
+      "code_fingerprint": "2b6e414cb52d3f8e007c20ffda7947f57b40847c90e0095a9dbff6822b841363",
+      "label": "camera_crash_capture.sh",
+      "last": "2026-07-24T08:33:11.773324+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-24T08:33:11.773324+00:00",
+          "outcome": "useful",
+          "q": "该项目debug是用gdb吗？"
+        }
+      ],
+      "score": 0.798012998,
+      "source_file": "test/scripts/camera_crash_capture.sh",
+      "status": "tentative",
+      "uses": 1
+    },
+    "test_src_record_runtime_test_runtime_health": {
+      "code_fingerprint": "9c54185948a86de83b8972fa6243fdcf3be721ffe2a90304c4ffd2d774e67b74",
+      "label": "test_runtime_health.cc",
+      "last": "2026-07-27T01:24:50.671887+00:00",
+      "provenance": [
+        {
+          "date": "2026-07-27T01:24:50.671887+00:00",
+          "outcome": "useful",
+          "q": "但是这些完整链路是不是当前项目已经实现了？"
+        }
+      ],
+      "score": 0.849430962,
+      "source_file": "test/src/record_runtime/test_runtime_health.cc",
+      "status": "tentative",
+      "uses": 1
+    },
+    "test_src_sensor_recorder_sensor_mcap_checker_h_test_src_sensor_recorder_sensor_mcap_checker": {
+      "code_fingerprint": "70640f29c2aa8497225cf366e2427e4f7678a040f5c8b1b7dfdd2f82fd3b4f4f",
+      "label": "sensor_mcap_checker.h",
+      "last": "2026-08-03T01:47:24.900572+00:00",
+      "provenance": [
+        {
+          "date": "2026-08-03T01:47:24.900572+00:00",
+          "outcome": "useful",
+          "q": "前面精简版和详细版的简历都没有数据成果，无法给简历成果做支撑，如果要添加数据作为实习成果，应该怎么测试"
+        },
+        {
+          "date": "2026-07-27T02:09:02.549388+00:00",
+          "outcome": "useful",
+          "q": "基于我的简历模板，如何把 Ugripper 项目写成符合实习生贡献尺度、突出完整数据链路、架构优化和性能提升的嵌入式 Linux 项目经历？"
+        }
+      ],
+      "score": 1.84894203,
+      "source_file": "test/src/sensor_recorder/sensor_mcap_checker.h",
+      "status": "preferred",
+      "uses": 2
+    }
+  },
+  "version": 1
+}
