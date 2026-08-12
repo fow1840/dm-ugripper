@@ -377,13 +377,14 @@ bool parseOptions(int argc, char **argv, Options *options)
             }
             else
             {
-                std::cerr << "invalid bandwidth mode: " << mode << std::endl;
+                std::cerr << "invalid bandwidth mode: " << mode
+                          << " error_code=UGR-70-01" << std::endl;
                 return false;
             }
             continue;
         }
 
-        std::cerr << "unknown argument: " << arg << std::endl;
+        std::cerr << "unknown argument: " << arg << " error_code=UGR-70-01" << std::endl;
         return false;
     }
 
@@ -469,7 +470,7 @@ int main(int argc, char **argv)
     }
     catch (const std::exception &ex)
     {
-        std::cerr << ex.what() << std::endl;
+        std::cerr << ex.what() << " error_code=UGR-20-06" << std::endl;
         return 1;
     }
 }

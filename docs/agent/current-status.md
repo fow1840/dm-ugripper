@@ -95,6 +95,15 @@
 - 音频 ready 标记：`/dev/shm/ugripper/umi_audio_ready`
 - 录制锁文件：`/tmp/umi_recording.lock`
 
+### 4.4 当前主日志状态
+- 主运行日志已统一为 V3 单行格式，禁止 ANSI 和重复外层。
+- `run_record.sh` 通过 `ugripper_log_writer.py` 统一写入主日志。
+- C++、Python、Shell 和子进程输出均经过同一日志入口。
+- 错误日志末尾统一保留一个显式 `error_code=UGR-xx-xx`。
+- 业务标签保持原样，错误码不按消息关键词猜测。
+- 日志后端真源为 `PP_MAIN_ROOT/src/utils`；本仓仅保留适配和兜底 helper。
+- stereo 离线同步和物理 USB power reset 仍为后续项，暂停时 SSH 状态抓取失败。
+
 ## 5. 当前模块总览
 | 模块 | 入口 | 当前职责 | 关键输入/输出 |
 | --- | --- | --- | --- |

@@ -33,6 +33,7 @@
 #include <stdexcept>
 #include <opencv2/imgproc.hpp>
 #include "utils/fifo_utils.h"
+#include "utils/ugripper_logger.h"
 #include "fays_atrak/fays_atrak_types.h"
 #include "fays_atrak/fays_vikit.h"
 #include "common/print_helpers.h"
@@ -70,22 +71,8 @@ std::string ToLowerCopy(std::string value) {
     return value;
 }
 
-std::string FaysReadableTimestamp() {
-    const auto now = std::chrono::system_clock::now();
-    const auto us = std::chrono::duration_cast<std::chrono::microseconds>(
-        now.time_since_epoch()).count();
-    const std::time_t seconds = std::chrono::system_clock::to_time_t(now);
-    std::tm localTime {};
-    localtime_r(&seconds, &localTime);
-    std::ostringstream out;
-    out << std::put_time(&localTime, "%H:%M:%S") << "."
-        << std::setw(6) << std::setfill('0') << (us % 1000000);
-    return out.str();
-}
-
 void FaysEventLog(const std::string& component, const std::string& message) {
-    std::cerr << "[FAYS_TS " << FaysReadableTimestamp() << "] [" << component << "] "
-              << message << std::endl;
+    DM_LOG_INFO("[{}] {}", component, message);
 }
 
 #ifndef UGRIPPER_ENABLE_PERF_LOG
@@ -1146,7 +1133,8 @@ public:
 
         auto openStatus = writer_->open(path, options);
         if (!openStatus.ok()) {
-            std::cerr << "[MCAP] Failed to open " << path << ": " << openStatus.message << std::endl;
+            std::cerr << "[MCAP] Failed to open " << path << ": " << openStatus.message
+                      << " error_code=UGR-22-08" << std::endl;
             return false;
         }
 
@@ -1212,7 +1200,8 @@ public:
 
         auto writeStatus = writer_->write(msg);
         if (!writeStatus.ok()) {
-            std::cerr << "[MCAP] Failed to write IMU frame: " << writeStatus.message << std::endl;
+            std::cerr << "[MCAP] Failed to write IMU frame: " << writeStatus.message
+                      << " error_code=UGR-22-08" << std::endl;
         }
     }
 
@@ -1235,7 +1224,8 @@ public:
 
         auto writeStatus = writer_->write(msg);
         if (!writeStatus.ok()) {
-            std::cerr << "[MCAP] Failed to write camera timestamp: " << writeStatus.message << std::endl;
+            std::cerr << "[MCAP] Failed to write camera timestamp: " << writeStatus.message
+                      << " error_code=UGR-22-08" << std::endl;
         }
     }
 
@@ -1345,14 +1335,16 @@ public:
 
         int pipeFds[2] = {-1, -1};
         if (pipe(pipeFds) != 0) {
-            std::cerr << "[FFmpeg] Failed to create pipe: " << std::strerror(errno) << std::endl;
+            std::cerr << "[FFmpeg] Failed to create pipe: " << std::strerror(errno)
+                      << " error_code=UGR-22-07" << std::endl;
             return false;
         }
 
         const int childFdLimit = ChildFileDescriptorLimit();
         const pid_t pid = fork();
         if (pid < 0) {
-            std::cerr << "[FFmpeg] Failed to fork: " << std::strerror(errno) << std::endl;
+            std::cerr << "[FFmpeg] Failed to fork: " << std::strerror(errno)
+                      << " error_code=UGR-22-07" << std::endl;
             close(pipeFds[0]);
             close(pipeFds[1]);
             return false;
@@ -1406,10 +1398,11 @@ public:
                     continue;
                 }
                 if (errno == EPIPE) {
-                    std::cerr << "[FFmpeg] Encoder pipe closed." << std::endl;
+                    std::cerr << "[FFmpeg] Encoder pipe closed. error_code=UGR-22-07" << std::endl;
                     return;
                 }
-                std::cerr << "[FFmpeg] Pipe write failed: " << std::strerror(errno) << std::endl;
+                std::cerr << "[FFmpeg] Pipe write failed: " << std::strerror(errno)
+                          << " error_code=UGR-22-07" << std::endl;
                 return;
             }
             if (written == 0) {
@@ -1443,7 +1436,8 @@ public:
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
 
-            std::cerr << "[FFmpeg] Encoder did not exit after stdin close; sending SIGTERM." << std::endl;
+            std::cerr << "[FFmpeg] Encoder did not exit after stdin close; sending SIGTERM."
+                      << " error_code=UGR-22-07" << std::endl;
             kill(-childPid_, SIGTERM);
             const auto termDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
             while (std::chrono::steady_clock::now() < termDeadline) {
@@ -1456,7 +1450,8 @@ public:
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
 
-            std::cerr << "[FFmpeg] Encoder did not exit after SIGTERM; sending SIGKILL." << std::endl;
+            std::cerr << "[FFmpeg] Encoder did not exit after SIGTERM; sending SIGKILL."
+                      << " error_code=UGR-22-07" << std::endl;
             kill(-childPid_, SIGKILL);
             waitpid(childPid_, &status, 0);
             childPid_ = -1;
@@ -1893,7 +1888,7 @@ private:
                               << ", failure_type=" << failureType
                               << ", elapsed_ms=" << elapsedMs
                               << ", consecutive_failures=" << status.consecutiveFailures
-                              << ". Exiting fays_record_example." << std::endl;
+                              << ". Exiting fays_record_example. error_code=UGR-22-01" << std::endl;
                     Stop();
                     std::fflush(nullptr);
                     std::exit(2);
@@ -2019,7 +2014,7 @@ private:
                 }
                 if (!mDataLogger_.Open(cmd.mcapPath)) {
                     std::cerr << "[Control] START aborted in MCAP thread: failed to open "
-                              << cmd.mcapPath << std::endl;
+                              << cmd.mcapPath << " error_code=UGR-22-08" << std::endl;
                     recordingSessionId_.store(0, std::memory_order_release);
                     recordingEnabled_.store(false, std::memory_order_release);
                     return;
@@ -2399,7 +2394,7 @@ static std::string Trim(const std::string& input) {
 static bool EnsureControlFifo(const std::string& fifoPath) {
     std::string error;
     if (!utils::EnsureFifo(fifoPath, 0666, &error)) {
-        std::cerr << "[Control] " << error << std::endl;
+        std::cerr << "[Control] " << error << " error_code=UGR-22-06" << std::endl;
         return false;
     }
     return true;
@@ -2412,7 +2407,8 @@ static void RunControlLoop(FaysRecorder& recorder, const std::string& fifoPath) 
         utils::BufferedFifoLineReader reader;
         std::string error;
         if (!reader.Open(fifoPath, 0666, &error)) {
-            std::cerr << "[Control] Failed to open FIFO: " << error << std::endl;
+            std::cerr << "[Control] Failed to open FIFO: " << error
+                      << " error_code=UGR-22-06" << std::endl;
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             continue;
         }
@@ -2427,7 +2423,8 @@ static void RunControlLoop(FaysRecorder& recorder, const std::string& fifoPath) 
 
             std::vector<std::string> commands;
             if (!reader.ReadAvailable(&commands, &error)) {
-                std::cerr << "[Control] FIFO read failed: " << error << std::endl;
+                std::cerr << "[Control] FIFO read failed: " << error
+                          << " error_code=UGR-22-06" << std::endl;
                 break;
             }
             if (commands.empty()) {
@@ -2445,7 +2442,8 @@ static void RunControlLoop(FaysRecorder& recorder, const std::string& fifoPath) 
                     std::string outputDir = Trim(cmd.substr(6));
                     if (outputDir.empty()) {
                         FaysEventLog("fays_recorder", "control START rejected: missing output directory");
-                        std::cerr << "[Control] START command missing output directory." << std::endl;
+                        std::cerr << "[Control] START command missing output directory."
+                                  << " error_code=UGR-22-06" << std::endl;
                         continue;
                     }
                     FaysEventLog("fays_recorder", "control START output_dir=" + outputDir);
@@ -2459,7 +2457,8 @@ static void RunControlLoop(FaysRecorder& recorder, const std::string& fifoPath) 
                     break;
                 } else {
                     FaysEventLog("fays_recorder", "control unknown cmd=" + cmd);
-                    std::cerr << "[Control] Unknown command: " << cmd << std::endl;
+                    std::cerr << "[Control] Unknown command: " << cmd
+                              << " error_code=UGR-22-06" << std::endl;
                 }
             }
         }
@@ -2474,8 +2473,10 @@ static void RunControlLoop(FaysRecorder& recorder, const std::string& fifoPath) 
 }
 
 int main(int argc, char** argv) {
+    DM_LOG_INIT("FaysStereoRecorder", "info", "./logs/FaysStereoRecorder.log",
+                1024 * 1024 * 10, 3, false);
     if (argc < 2) {
-        std::cerr << "Usage:" << std::endl;
+        std::cerr << "Usage: error_code=UGR-70-01" << std::endl;
         std::cerr << "  ./fays_record_example <config_path> [output_directory] [--video-name name] [--mcap-name name]" << std::endl;
         std::cerr << "  ./fays_record_example <config_path> --control-fifo <fifo_path> [--video-name name] [--mcap-name name] [--calib-json path] [--status-json path]" << std::endl;
         std::cerr << "  ./fays_record_example <config_path> --dump-calib-json <output_path>" << std::endl;
@@ -2525,7 +2526,7 @@ int main(int argc, char** argv) {
             outputDir = arg;
             continue;
         }
-        std::cerr << "Unknown argument: " << arg << std::endl;
+        std::cerr << "Unknown argument: " << arg << " error_code=UGR-70-01" << std::endl;
         return 1;
     }
 
@@ -2536,13 +2537,15 @@ int main(int argc, char** argv) {
 
     if (dumpCalibJsonMode) {
         if (controlMode) {
-            std::cerr << "--dump-calib-json cannot be combined with --control-fifo" << std::endl;
+            std::cerr << "--dump-calib-json cannot be combined with --control-fifo"
+                      << " error_code=UGR-70-01" << std::endl;
             return 1;
         }
         std::string errorMessage;
         if (!DumpCalibrationJson(configPath, dumpCalibJsonPath, &errorMessage)) {
             FaysEventLog("fays_recorder", "dump calibration failed: " + errorMessage);
-            std::cerr << "[FaysCalibration] ERROR: " << errorMessage << std::endl;
+            std::cerr << "[FaysCalibration] ERROR: " << errorMessage
+                      << " error_code=UGR-22-03" << std::endl;
             return 1;
         }
         FaysEventLog("fays_recorder", "dump calibration ok path=" + dumpCalibJsonPath);
@@ -2589,7 +2592,8 @@ int main(int argc, char** argv) {
     } catch (const std::exception& exc) {
         g_recorder = nullptr;
         FaysEventLog("fays_recorder", "process exit exception config=" + configPath + " error=" + exc.what());
-        std::cerr << "[FaysRecorder] ERROR: " << exc.what() << std::endl;
+        std::cerr << "[FaysRecorder] ERROR: " << exc.what()
+                  << " error_code=UGR-00-01" << std::endl;
         return 1;
     }
 }

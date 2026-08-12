@@ -1,5 +1,5 @@
 #include "record_runtime.h"
-#include "utils/logger.h"
+#include "utils/ugripper_logger.h"
 
 #include <csignal>
 #include <iostream>
@@ -72,7 +72,7 @@ int main(int argc, char **argv)
             continue;
         }
 
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "Unknown argument: " << argument).str());
+        DM_LOG_ERROR_CODE("UGR-70-01", "{}", (::DA::utils::LogString() << "Unknown argument: " << argument).str());
         printUsage(argv[0]);
         return 1;
     }

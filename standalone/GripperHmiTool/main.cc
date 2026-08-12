@@ -1,6 +1,6 @@
 #include "gripper_hmi_driver.h"
 #include "gripper_hmi_led_effects.h"
-#include "utils/logger.h"
+#include "utils/ugripper_logger.h"
 
 #include <array>
 #include <atomic>
@@ -27,6 +27,19 @@ constexpr int kBeepStateProbeDelayMs = 80;
 constexpr int kBeepStateProbeIntervalMs = 100;
 constexpr int kBeepSilenceRetryLimit = 5;
 constexpr int kBeepSilenceConfirmMs = 150;
+
+void logDeviceError(const char *errorCode,
+                    const std::string &messagePrefix,
+                    const GripperHmiDriver &device)
+{
+    std::string message = messagePrefix + device.getPort();
+    const std::string reason = device.getLastCommandError();
+    if (!reason.empty())
+    {
+        message += " reason=" + reason;
+    }
+    DM_LOG_ERROR_CODE(errorCode, "{}", message);
+}
 
 template <size_t N>
 std::string joinFloatArray(const float (&values)[N])
@@ -158,10 +171,11 @@ static bool silenceBeepWithRetries(GripperHmiDriver *device)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-        std::cerr << "Failed to confirm beep silence on: " << device->getPort()
-                  << " attempt=" << attempt
-                  << " command_ok=" << (commandOk ? "true" : "false")
-                  << std::endl;
+        DM_LOG_ERROR_CODE("UGR-40-03",
+                          "Failed to confirm beep silence on: {} attempt={} command_ok={}",
+                          device->getPort(),
+                          attempt,
+                          commandOk ? "true" : "false");
     }
     return false;
 }
@@ -217,7 +231,7 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
         {
             if (index + 1 >= argc)
             {
-                std::cerr << "Missing value for --port" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Missing value for --port");
                 return false;
             }
             options->ports.emplace_back(argv[++index]);
@@ -229,7 +243,7 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
             int value = 0;
             if (index + 1 >= argc || !parseInt(argv[++index], &value) || value <= 0)
             {
-                std::cerr << "Invalid value for --baud" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Invalid value for --baud");
                 return false;
             }
             options->baudrate = static_cast<uint32_t>(value);
@@ -241,7 +255,7 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
             int value = 0;
             if (index + 1 >= argc || !parseInt(argv[++index], &value) || value < 0)
             {
-                std::cerr << "Invalid value for --duration" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Invalid value for --duration");
                 return false;
             }
             options->durationSec = value;
@@ -253,7 +267,7 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
             int value = 0;
             if (index + 1 >= argc || !parseInt(argv[++index], &value) || value < 0)
             {
-                std::cerr << "Invalid value for --poll-ms" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Invalid value for --poll-ms");
                 return false;
             }
             options->pollMs = value;
@@ -273,7 +287,7 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
                 green < 0 || green > 255 ||
                 blue < 0 || blue > 255)
             {
-                std::cerr << "Invalid value for --rgb" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Invalid value for --rgb");
                 return false;
             }
             options->setLed = true;
@@ -296,7 +310,7 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
             int value = 0;
             if (index + 1 >= argc || !parseInt(argv[++index], &value) || value < 0 || value > 255)
             {
-                std::cerr << "Invalid value for --beep-duty" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Invalid value for --beep-duty");
                 return false;
             }
             options->enableBeep = true;
@@ -310,7 +324,7 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
             int value = 0;
             if (index + 1 >= argc || !parseInt(argv[++index], &value) || value < 0 || value > 65535)
             {
-                std::cerr << "Invalid value for --beep-freq" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Invalid value for --beep-freq");
                 return false;
             }
             options->enableBeep = true;
@@ -324,7 +338,7 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
             int value = 0;
             if (index + 1 >= argc || !parseInt(argv[++index], &value) || value < 0)
             {
-                std::cerr << "Invalid value for --beep-ms" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Invalid value for --beep-ms");
                 return false;
             }
             options->beepDurationMs = value;
@@ -335,12 +349,12 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
         {
             if (index + 1 >= argc)
             {
-                std::cerr << "Missing value for --state" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Missing value for --state");
                 return false;
             }
             if (!GripperLedEffectRenderer::parseStateText(argv[++index], &options->effect))
             {
-                std::cerr << "Invalid value for --state" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Invalid value for --state");
                 return false;
             }
             options->stateMode = true;
@@ -363,7 +377,7 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
         {
             if (index + 1 >= argc)
             {
-                std::cerr << "Missing value for --write-sn" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Missing value for --write-sn");
                 return false;
             }
             options->serialNumberToWrite = argv[++index];
@@ -381,7 +395,7 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
         {
             if (index + 1 >= argc)
             {
-                std::cerr << "Missing value for --write-calib-bin" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Missing value for --write-calib-bin");
                 return false;
             }
             options->writeCalibrationBinPath = argv[++index];
@@ -392,14 +406,14 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
         {
             if (index + 1 >= argc)
             {
-                std::cerr << "Missing value for --dump-calib-bin" << std::endl;
+                DM_LOG_ERROR_CODE("UGR-70-01", "Missing value for --dump-calib-bin");
                 return false;
             }
             options->dumpCalibrationBinPath = argv[++index];
             continue;
         }
 
-        std::cerr << "Unknown argument: " << argument << std::endl;
+        DM_LOG_ERROR_CODE("UGR-70-01", "Unknown argument: {}", argument);
         return false;
     }
 
@@ -525,7 +539,7 @@ int main(int argc, char **argv)
 
         if (!driver->connect())
         {
-            std::cerr << "Failed to connect: " << options.ports[index] << std::endl;
+            DM_LOG_ERROR_CODE("UGR-40-01", "Failed to connect: {}", options.ports[index]);
             return 1;
         }
 
@@ -545,12 +559,7 @@ int main(int argc, char **argv)
             {
                 if (!device->writeSerialNumber(options.serialNumberToWrite))
                 {
-                    std::cerr << "Failed to write SN on: " << device->getPort();
-                    if (!device->getLastCommandError().empty())
-                    {
-                        std::cerr << " reason=" << device->getLastCommandError();
-                    }
-                    std::cerr << std::endl;
+                    logDeviceError("UGR-40-05", "Failed to write SN on: ", *device);
                     allOk = false;
                 }
                 else
@@ -567,12 +576,7 @@ int main(int argc, char **argv)
                 std::string serialNumber;
                 if (!device->readSerialNumber(&serialNumber))
                 {
-                    std::cerr << "Failed to read SN on: " << device->getPort();
-                    if (!device->getLastCommandError().empty())
-                    {
-                        std::cerr << " reason=" << device->getLastCommandError();
-                    }
-                    std::cerr << std::endl;
+                    logDeviceError("UGR-40-05", "Failed to read SN on: ", *device);
                     allOk = false;
                 }
                 else
@@ -592,13 +596,17 @@ int main(int argc, char **argv)
             std::vector<uint8_t> raw;
             if (!readBinaryFile(options.writeCalibrationBinPath, &raw))
             {
-                std::cerr << "Failed to read calibration binary: " << options.writeCalibrationBinPath << std::endl;
+                DM_LOG_ERROR_CODE("UGR-40-06",
+                                  "Failed to read calibration binary: {}",
+                                  options.writeCalibrationBinPath);
                 return 1;
             }
             if (raw.size() != gripper_hmi::kCalibrationPayloadSize)
             {
-                std::cerr << "Invalid calibration binary size: " << raw.size()
-                          << " expected=" << gripper_hmi::kCalibrationPayloadSize << std::endl;
+                DM_LOG_ERROR_CODE("UGR-40-06",
+                                  "Invalid calibration binary size: {} expected={}",
+                                  raw.size(),
+                                  gripper_hmi::kCalibrationPayloadSize);
                 return 1;
             }
 
@@ -608,12 +616,7 @@ int main(int argc, char **argv)
             {
                 if (!device->writeCalibrationData(calibrationData))
                 {
-                    std::cerr << "Failed to write calibration on: " << device->getPort();
-                    if (!device->getLastCommandError().empty())
-                    {
-                        std::cerr << " reason=" << device->getLastCommandError();
-                    }
-                    std::cerr << std::endl;
+                    logDeviceError("UGR-40-06", "Failed to write calibration on: ", *device);
                     allOk = false;
                 }
                 else
@@ -630,12 +633,7 @@ int main(int argc, char **argv)
                 gripper_hmi::GripperCalibrationDataV1 calibrationData{};
                 if (!device->readCalibrationData(&calibrationData))
                 {
-                    std::cerr << "Failed to read calibration on: " << device->getPort();
-                    if (!device->getLastCommandError().empty())
-                    {
-                        std::cerr << " reason=" << device->getLastCommandError();
-                    }
-                    std::cerr << std::endl;
+                    logDeviceError("UGR-40-06", "Failed to read calibration on: ", *device);
                     allOk = false;
                     continue;
                 }
@@ -653,7 +651,9 @@ int main(int argc, char **argv)
                                          reinterpret_cast<const uint8_t *>(&calibrationData),
                                          sizeof(calibrationData)))
                     {
-                        std::cerr << "Failed to dump calibration binary: " << dumpPath << std::endl;
+                        DM_LOG_ERROR_CODE("UGR-40-06",
+                                          "Failed to dump calibration binary: {}",
+                                          dumpPath);
                         allOk = false;
                     }
                     else
@@ -712,7 +712,9 @@ int main(int argc, char **argv)
                 {
                     if (!device->setLedColor(rendered))
                     {
-                        std::cerr << "Failed to set LED on: " << device->getPort() << std::endl;
+                        DM_LOG_ERROR_CODE("UGR-40-03",
+                                          "Failed to set LED on: {}",
+                                          device->getPort());
                     }
                 }
                 lastColor = color;
@@ -724,7 +726,9 @@ int main(int argc, char **argv)
             {
                 if (!device->setLedColor(options.color))
                 {
-                    std::cerr << "Failed to set LED on: " << device->getPort() << std::endl;
+                    DM_LOG_ERROR_CODE("UGR-40-03",
+                                      "Failed to set LED on: {}",
+                                      device->getPort());
                 }
             }
             options.setLed = false;
@@ -743,7 +747,9 @@ int main(int argc, char **argv)
                                     : device->setBeepEnabled(true);
                 if (!ok)
                 {
-                    std::cerr << "Failed to enable beep on: " << device->getPort() << std::endl;
+                    DM_LOG_ERROR_CODE("UGR-40-03",
+                                      "Failed to enable beep on: {}",
+                                      device->getPort());
                 }
             }
             beepApplied = true;
@@ -759,7 +765,9 @@ int main(int argc, char **argv)
                 {
                     if (!silenceBeepWithRetries(device.get()))
                     {
-                        std::cerr << "Failed to silence beep on: " << device->getPort() << std::endl;
+                        DM_LOG_ERROR_CODE("UGR-40-03",
+                                          "Failed to silence beep on: {}",
+                                          device->getPort());
                     }
                 }
                 beepSilenced = true;

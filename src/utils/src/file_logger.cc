@@ -38,7 +38,7 @@ void FileLogger::Init(bool enable_file, const std::string& file_path) {
     }
   } catch (const std::exception& e) {
     std::cerr << "[FileLogger] create_directories failed: " << e.what()
-              << " path=" << file_path_ << std::endl;
+              << " path=" << file_path_ << " error_code=UGR-00-01" << std::endl;
   }
 
   // 打开文件
@@ -46,7 +46,8 @@ void FileLogger::Init(bool enable_file, const std::string& file_path) {
 
   // 如果打开失败，给个提示（否则你又会遇到“啥也没有”）
   if (!ofs_.is_open()) {
-    std::cerr << "[FileLogger] open failed: " << file_path_ << std::endl;
+    std::cerr << "[FileLogger] open failed: " << file_path_
+              << " error_code=UGR-00-01" << std::endl;
   }
 }
 

@@ -47,7 +47,7 @@
 4. 服务进入 `/opt/ugripper/run_record.sh`。
 5. `run_record.sh` 读取 `/etc/environment` 中的 `DEVICE_SN`，建立当天运行日志文件名 `umi_sys_<device_sn_lower>_<YYYYMMDD>.log`。
 6. `run_record.sh` 检查 `./bin/UgripperRuntime/UgripperRuntime`，然后等待 `/mnt/data_disk` 成为真实可写挂载点。
-7. 数据盘可写后，`run_record.sh` 启动 v1 风格日志维护：业务 stdout/stderr 先落到 `/tmp`；当收到视频停录、音频停录请求或运行时退出时，再按增量方式同步到 `/mnt/data_disk/logs`，并清理本地与数据盘上同 SN 的非当天日志。
+7. `run_record.sh` 在启动 Runtime 前建立 V3 主日志单写入口：所有业务及 child stdout/stderr 按物理行归一化后先落到 `/tmp`，再在视频停录、音频停录请求或运行时退出时增量同步到 `/mnt/data_disk/logs`，并清理本地与数据盘上同 SN 的非当天日志。
 8. `run_record.sh` 再拉起 `record_runtime`；运行时退出前会额外补一次日志同步。
 9. `record_runtime` 启动后读取 `/etc/environment`，至少关注：
    - `DEVICE_SN`：决定数据目录。
@@ -158,7 +158,7 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
   - 左右 Fays recorder 不并行拉起：daemon 会按左右 stereo symlink 当前解析到的 `/dev/videoN` 顺序启动，较小 videoN 视为更早插入/枚举的一侧；单侧启动后会等待 SDK handle 完成启动（FIFO 在线、calibration serial 可读且 warmup frame fresh）或默认 `10s` 超时，再拉起另一侧，可通过 `FAYS_STEREO_START_COMPLETE_TIMEOUT_SEC` 覆盖该等待窗口。
   - 单侧 recorder 清理优先走 FIFO `EXIT` 触发进程内 `Stop()`，该路径会唤醒视频、IMU、MCAP 和编码队列；若 SDK 线程仍未退出，再依次用 `SIGTERM` 和 `SIGKILL` 兜底，避免外层 daemon 因无界 `wait` 卡住。
   - Fays recorder 重启不会主动执行 USB `unbind/bind`、USB reset 或 udev 规则重载；它会关闭旧进程持有的 SDK/video/IMU handle，再重新拉起 recorder 并由 SDK 打开当前 symlink 指向的设备节点。外层 daemon 在启动/重启前会用 `fuser` 检查该侧 stereo/IMU 实际节点是否仍被占用，必要时会终止占用这些节点的进程；因此日志中可能看到 video port 占用清理，但这不是内核 USB 设备 reset。
-  - Fays 相关关键事件日志统一带 `[FAYS_TS <HH:MM:SS.usec>]` 前缀，便于和 `dmesg -T` 的内核日志对齐。当前覆盖 stereo daemon 的 recorder start/stop/restart、video port busy/forced cleanup、session start/stop/finalize error，以及 `fays_record_example` 的进程启动、SDK handle 创建失败、控制 FIFO `START/STOP/EXIT` 和进程退出。
+  - Fays 相关关键事件统一使用 V3 外层，`[fays_stereo_daemon]` / `[fays_recorder]` 保留为 payload 标签；时间使用统一 Unix epoch 微秒，可直接与其他主日志来源排序。覆盖 recorder start/stop/restart、video port busy/forced cleanup、session start/stop/finalize error，以及 `fays_record_example` 的进程启动、SDK handle、控制 FIFO 和进程退出。
   - 最终 `stereo_left.mkv` / `stereo_right.mkv` 始终直接由录制会话写入单文件；不会在 episode 目录生成 `stereo_info.json`、`.concat.txt` 或后台 segment cache 文件。
 - 内部 `/dev/shm/ugripper_recording_timing_*.json` 的时间字段由 `camera_recorder` 负责写出，而不是在停录校验阶段回填：
   - `boot_time_offset`
@@ -286,7 +286,7 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
 - stereo daemon 顶层控制 FIFO：`/dev/shm/ugripper/umi_stereo_camera_control.pipe`（保留兼容入口，当前普通录制起停由 `record_runtime` 直接写左右 Fays recorder FIFO）
 - 触觉传感器持久化状态：`/var/lib/ugripper/tactile_state`（包含 `reference/`、`persistent/`子目录与 `history.json`；`persistent/` 存放跨关机有效的长周期 baseline）
 - `/mnt/data_disk` 只作为固定挂载点使用：安装阶段会预创建为 `root:root 0555`，业务不会把本地空目录当成数据目录；只有真实数据盘挂载成功后才允许继续启动录制服务。
-- 运行日志维护当前参考 V1 口径：本地先写 `/tmp`，在视频停录、音频停录和运行时退出时增量同步到 `/mnt/data_disk/logs`，并只保留当天同 SN 日志。
+- 运行日志维护使用 V3 口径：单一 writer 将 C++、Python、Shell 和外部 child 的每个非空物理行统一格式后写入 `/tmp`，在视频停录、音频停录和运行时退出时增量同步到 `/mnt/data_disk/logs`，并只保留当天同 SN 日志。
 
 ### 8.3 软件录制控制
 - `record_runtime` 启动后会创建并非阻塞打开 `/dev/shm/ugripper/umi_record_control.pipe`，供本机受控脚本触发录制起停；若 FIFO 创建或打开失败，只记录告警并继续保留原有 HMI 按键控制能力。
@@ -305,7 +305,7 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
 
 ### 8.4 PERF 日志
 - 停录收尾、文件 flush、视频探测和 episode validation 会输出 `[PERF]` 耗时日志，用于现场拆分蓝灯延迟。
-- `[PERF]` 日志由编译包决定，默认发布包关闭；需要开启时在构建时定义 `UGRIPPER_ENABLE_PERF_LOG=1`。运行时不再读取 `/etc/environment` 开关；错误日志、校验失败记录和必要状态日志不受影响，关闭时会同步压低 ffmpeg/gst/MPP 等编码链路噪声，`[FAYS_TS ...]` 事件日志仍会输出。`run_record.sh` 还会默认导出 `mpp_debug=0`、`mpp_log_level=2`、`mpp_syslog_perror=0`，让 CameraRecorder/Fays/ffmpeg 子进程继承 MPP error-only 日志口径，避免 `mpp_info`、`mpp_enc` 初始化配置行刷屏。
+- `[PERF]` 日志由编译包决定，默认发布包关闭；需要开启时在构建时定义 `UGRIPPER_ENABLE_PERF_LOG=1`。运行时不再读取 `/etc/environment` 开关；错误日志、校验失败记录和必要状态日志不受影响，Fays 事件也使用统一 V3 外层。`run_record.sh` 还会默认导出 `mpp_debug=0`、`mpp_log_level=2`、`mpp_syslog_perror=0`，让 CameraRecorder/Fays/ffmpeg 子进程继承 MPP error-only 日志口径，避免 `mpp_info`、`mpp_enc` 初始化配置行刷屏。
 - validation 耗时当前按粗粒度输出：setup、并行视频 probe、并行 tail checks 与总耗时。其中 encoder/Fays tail checks 会作为 4 个只读任务并行执行，并统一打一条总耗时与详情日志；后台 tactile 慢校验另行输出 queued/start/end/applied/cancel 相关 PERF。
 
 ### 8.5 音频链路关键行为

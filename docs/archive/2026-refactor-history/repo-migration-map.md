@@ -19,7 +19,7 @@
 | `src/camera_recorder` | 产品主链应用 | `keep` | Phase 1 保持在 `src/`；后续视情况再评估 `apps/camera_recorder` | P2 之后再议 | 是 | 中 |
 | `src/sensor_recorder` | 产品主链应用 | `keep` | Phase 1 保持在 `src/`；后续视情况再评估 `apps/sensor_recorder` | P2 之后再议 | 是 | 中 |
 | `src/gripper_hmi` | 产品主链库 | `keep` | Phase 1 保持在 `src/`；后续视情况再评估 `libs/gripper_hmi` | P2 之后再议 | 是 | 中 |
-| `src/utils` | 主链公共库 | `keep` | Phase 1 保持在 `src/`；继续作为最小公共层真源 | 当前阶段 | 是 | 低 |
+| `src/utils` | UGripper 主链适配与公共库 | `keep` | Phase 1 保持在 `src/`；只作为 UGripper 错误码/日志适配和被动 helper 真源，logger 后端真源固定为 `PP_MAIN_ROOT/src/utils` | 当前阶段 | 是 | 低 |
 | `src/third_party` | 第三方依赖 | `keep` | 暂不迁移；后续按构建系统统一管理 | 后续再议 | 是 | 低 |
 | `run_record.sh` | 运行时入口脚本 | `keep` | 先保留根目录；后续再评估 `scripts/runtime/` | P2 之后再议 | 是 | 高 |
 | `auto_update/` | 主链更新与 U 盘流程 | `keep` | 先保留目录，内部逐步拆成 `lib/` 与 `steps/`；后续再评估迁入 `scripts/update/` | P4 | 是 | 高 |

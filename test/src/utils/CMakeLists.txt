@@ -26,3 +26,7 @@ add_host_only_gtest(test_file_utils
 add_host_only_gtest(test_time_utils
     test_time_utils.cc
 )
+
+add_host_only_gtest(test_logging_v3
+    test_logging_v3.cc
+)

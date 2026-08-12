@@ -1,0 +1,15 @@
+case_id	source	level	input_text	expected_payload	expected_error_code	action
+existing_tagged_spdlog	cpp_spdlog	I	[1784604654.707685][tid 2367][I][void RecordRuntime.setLedState 8242] [HMI_DIAG] category=led_target state=Ready progress=0.000	[HMI_DIAG] category=led_target state=Ready progress=0.000	-	keep_single_outer
+existing_untagged_spdlog	cpp_spdlog	I	[1784604652.015178][tid 2367][I][void RecordRuntime.maintainRestoreUsbDevicePresence 6624] restore usb manual insert settle grace expired side=left	restore usb manual insert settle grace expired side=left	-	keep_single_outer
+fays_shell_outer	shell_fays	I	[FAYS_TS 11:30:35.475191] [fays_stereo_daemon] right recorder maintain start ok	[fays_stereo_daemon] right recorder maintain start ok	-	replace_outer
+audio_python_outer	python_audio	I	[audio][INFO][2026-07-21 11:31:44] playing: ready	[audio] playing: ready	-	replace_outer
+fays_config_tag	cpp_fays	I	[FaysConfig] imu_dev_port: /dev/right_fays_imu -> /dev/video2	[FaysConfig] imu_dev_port: /dev/right_fays_imu -> /dev/video2	-	add_outer
+untagged_calibration	cpp_fays_helper	I	Camera 1 Intrinsics:	Camera 1 Intrinsics:	-	add_outer
+untagged_matrix_row	cpp_fays_helper	I	  1.000000   0.000000   0.000000   0.012345	  1.000000   0.000000   0.000000   0.012345	-	add_outer
+untagged_separator	cpp_fays_helper	I	==============================================================================================	==============================================================================================	-	add_outer
+usb_tag	cpp_fays	I	[USB] Watching device node: /dev/stereo_right -> /dev/video0	[USB] Watching device node: /dev/stereo_right -> /dev/video0	-	add_outer
+fifo_known_error	cpp_fays	E	[Control] Failed to open FIFO: Permission denied	[Control] Failed to open FIFO: Permission denied error_code=UGR-22-06	UGR-22-06	add_outer_and_code
+ffmpeg_external	external_ffmpeg	W	[hevc_rkmpp @ 0xffff] encoder returned temporary warning	[hevc_rkmpp @ 0xffff] encoder returned temporary warning	-	forward_diagnostic
+fays_sdk_banner	external_fays_sdk	I	Fays VIKit Version: 3.5.2	Fays VIKit Version: 3.5.2	-	add_outer
+pygame_banner	external_pygame	I	Hello from the pygame community. https://www.pygame.org/contribute.html	-	-	suppress_noise
+multiline_exception	python_worker	E	worker failed\nTraceback: device unavailable	worker failed error_code=UGR-00-01\nTraceback: device unavailable error_code=UGR-00-01	UGR-00-01	split_lines_add_outer_and_code

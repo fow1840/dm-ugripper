@@ -1,5 +1,5 @@
 #include "camera_recorder/camera_recorder.h"
-#include "utils/logger.h"
+#include "utils/ugripper_logger.h"
 
 #include <filesystem>
 #include <system_error>
@@ -47,7 +47,7 @@ std::filesystem::path ResolveConfigYamlPath(const camera_recorder::Options& opti
     for (const auto& candidate : candidates) {
         message += ": " + candidate.string();
     }
-    throw std::runtime_error(message);
+    throw camera_recorder::CameraConfigurationError(message);
 }
 
 }  // namespace
@@ -66,7 +66,12 @@ int main(int argc, char** argv) {
         Options options = ParseArgs(argc, argv);
         options.config_yaml = ResolveConfigYamlPath(options, argc > 0 ? argv[0] : nullptr);
         DM_LOG_INFO("[camera_recorder] config_yaml={}", options.config_yaml.string());
-        const std::vector<CameraConfig> configs = LoadCameraConfigList(options.config_yaml);
+        std::vector<CameraConfig> configs;
+        try {
+            configs = LoadCameraConfigList(options.config_yaml);
+        } catch (const std::runtime_error& ex) {
+            throw CameraConfigurationError(ex.what());
+        }
         InstallSignalHandlers();
 
         if (options.stereo_daemon) {
@@ -81,9 +86,9 @@ int main(int argc, char** argv) {
         manager.Prepare(configs, &missing_devices);
 
         if (!missing_devices.empty()) {
-            DM_LOG_ERROR("[camera_recorder] missing devices:");
+            DM_LOG_ERROR_CODE("UGR-00-01", "[camera_recorder] missing devices:");
             for (const auto& device : missing_devices) {
-                DM_LOG_ERROR("  - {}", device);
+                DM_LOG_ERROR_CODE("UGR-00-01", "  - {}", device);
             }
             if (!options.allow_missing) {
                 manager.WriteInfoJson();
@@ -92,7 +97,7 @@ int main(int argc, char** argv) {
         }
 
         if (manager.empty()) {
-            DM_LOG_ERROR("[camera_recorder] no camera process to start");
+            DM_LOG_ERROR_CODE("UGR-00-05", "[camera_recorder] no camera process to start");
             manager.WriteInfoJson();
             return 2;
         }
@@ -116,8 +121,11 @@ int main(int argc, char** argv) {
         manager.StopAll();
         const bool info_ok = manager.WriteInfoJson();
         return (monitor_ok && !manager.had_failure() && info_ok) ? 0 : 1;
+    } catch (const camera_recorder::CameraConfigurationError& ex) {
+        DM_LOG_ERROR_CODE("UGR-70-01", "[camera_recorder] {}", ex.what());
+        return 1;
     } catch (const std::exception& ex) {
-        DM_LOG_ERROR("[camera_recorder] {}", ex.what());
+        DM_LOG_ERROR_CODE("UGR-00-01", "[camera_recorder] {}", ex.what());
         return 1;
     }
 }

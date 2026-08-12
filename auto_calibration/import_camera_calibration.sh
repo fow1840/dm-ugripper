@@ -10,10 +10,27 @@ GRIPPER_CALIB_GENERATOR="${GRIPPER_CALIB_GENERATOR_OVERRIDE:-$PROJECT_ROOT/auto_
 HMI_RUN_USER="${HMI_RUN_USER_OVERRIDE:-ubuntu}"
 HMI_LOCK_FILE="${HMI_LOCK_FILE_OVERRIDE:-/run/ugripper_hmi_operation.lock}"
 HMI_LOCK_TIMEOUT_SEC="${HMI_LOCK_TIMEOUT_SEC_OVERRIDE:-30}"
+SHELL_COMMON="$PROJECT_ROOT/scripts/lib/ugripper_shell_common.sh"
+TMP_STAGE_DIR=""
+
+# shellcheck source=/dev/null
+. "$SHELL_COMMON"
 
 log() {
-    echo "[calib-import][$(date '+%Y-%m-%d %H:%M:%S')] $*" >&2
+    ugripper_log "calib-import" "INFO" "$*" >&2
 }
+
+on_exit() {
+    local rc="$1"
+    if [ -n "$TMP_STAGE_DIR" ] && [ -d "$TMP_STAGE_DIR" ]; then
+        rm -rf "$TMP_STAGE_DIR"
+    fi
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 10 ]; then
+        ugripper_log "calib-import" "ERROR" "UGR-70-03" \
+            "calibration import failed with exit code $rc" >&2
+    fi
+}
+trap 'on_exit $?' EXIT
 
 resolve_import_sides() {
     local raw="${IMPORT_SIDES_OVERRIDE:-left,right}"
@@ -325,7 +342,6 @@ chmod 755 "$TMP_STAGE_DIR"
 cleanup_stage_dir() {
     rm -rf "$TMP_STAGE_DIR"
 }
-trap cleanup_stage_dir EXIT
 TEMP_CALIB_JSON="$TMP_STAGE_DIR/calibration.json"
 
 LEFT_GRIPPER_PORT="${LEFT_GRIPPER_PORT_OVERRIDE:-/dev/left_gripper}"

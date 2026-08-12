@@ -1,0 +1,86 @@
+entry_id	legacy_error_type	presence_at_62	root_context	v3_code	mapping_status	notes
+legacy.unknown	unknown	yes	root cause cannot be confirmed	UGR-00-01	mapped	unknown means unconfirmed cause only
+legacy.runtime_unknown	runtime_error	yes	no direct upstream cause available	UGR-00-01	mapped	reuse confirmed upstream code when available
+legacy.missing_file_unknown	missing_file	yes	missing artifact with no confirmed producer failure	UGR-00-01	mapped	missing file is a result, not root cause
+legacy.finalize_unknown	finalize_error	yes	finalize failed with no confirmed upstream source	UGR-00-01	mapped	prefer persistence/device/control root cause
+legacy.calibration_unknown	calibration_error	yes	calibration failure source cannot be established	UGR-00-01	mapped	context-specific rows override
+legacy.device_unknown	device_disconnected	yes	device domain cannot be established	UGR-00-01	mapped	context-specific rows override
+legacy.duration_unknown	collection_duration_too_short	yes	short collection with no confirmed upstream cause	UGR-00-01	mapped	short duration is a result
+legacy.frame_unknown	frame_loss	yes	frame loss with no confirmed source	UGR-00-01	mapped	context-specific rows override
+legacy.critical_unknown	critical_devices_missing	yes	missing device domain cannot be established	UGR-00-01	mapped	context-specific rows override
+legacy.stereo_unknown	stereo_not_ready	yes	stereo failure source cannot be established	UGR-00-01	mapped	context-specific rows override
+legacy.main_start_unknown	main_camera_v4l2_startup_failure	yes	startup phase cannot be established	UGR-00-01	mapped	context-specific rows override
+legacy.main_short_unknown	main_camera_short_stream	yes	short stream without source-stall evidence	UGR-00-01	mapped	context-specific row overrides
+storage.mount	disk_mount_lost	yes	data disk mount disappeared	UGR-10-01	mapped	any side/path detail stays in payload
+storage.write	disk_not_writable	yes	data disk is not writable	UGR-10-02	mapped	-
+storage.full	disk_full	yes	data disk exhausted	UGR-10-03	mapped	-
+storage.space	disk_space_unavailable	yes	capacity query unavailable or exhausted	UGR-10-03	mapped	-
+camera.disconnect	device_disconnected	yes	main camera missing/disconnected	UGR-20-01	mapped	-
+camera.critical_missing	critical_devices_missing	yes	main camera missing	UGR-20-01	mapped	-
+camera.v4l2_start	main_camera_v4l2_startup_failure	yes	open/format/buffer/STREAMON failed	UGR-20-02	mapped	-
+camera.v4l2_io	main_camera_v4l2_startup_failure	yes	poll/DQBUF/QBUF failed	UGR-20-03	mapped	-
+camera.v4l2_hang	main_camera_v4l2_kernel_hang	yes	kernel-side capture hang	UGR-20-03	mapped	-
+camera.frame_loss	frame_loss	yes	main camera IO stall confirmed	UGR-20-03	mapped	-
+camera.short_stall	main_camera_short_stream	yes	main camera source-stall evidence exists	UGR-20-03	mapped	-
+camera.pipeline	main_camera_v4l2_startup_failure	yes	GStreamer/appsrc/bus media pipeline failed	UGR-20-05	mapped	-
+camera.calibration	calibration_error	yes	main camera identity/calibration read failed	UGR-20-06	mapped	-
+tactile.disconnect	device_disconnected	yes	tactile camera missing/disconnected	UGR-21-01	mapped	-
+tactile.critical_missing	critical_devices_missing	yes	tactile camera missing	UGR-21-01	mapped	-
+tactile.calibration	calibration_error	yes	tactile serial/reference/baseline failed	UGR-21-03	mapped	-
+fays.disconnect	device_disconnected	yes	Fays stereo/IMU node missing/remapped/disconnected	UGR-22-01	mapped	-
+fays.critical_missing	critical_devices_missing	yes	Fays stereo/IMU missing	UGR-22-01	mapped	-
+fays.daemon	stereo_daemon_not_running	yes	daemon not running	UGR-22-02	mapped	-
+fays.status_missing	stereo_status_missing	yes	status source missing	UGR-22-02	mapped	-
+fays.status_invalid	stereo_status_invalid	yes	status source invalid	UGR-22-02	mapped	-
+fays.not_ready_daemon	stereo_not_ready	yes	daemon/status source unavailable	UGR-22-02	mapped	-
+fays.calibration	calibration_error	yes	SDK config/handle/device info/calibration failed	UGR-22-03	mapped	-
+fays.not_ready_sdk	stereo_not_ready	yes	SDK initialization/configuration failed	UGR-22-03	mapped	-
+fays.frame	frame_loss	yes	Fays source stopped or returned invalid frame	UGR-22-04	mapped	-
+fays.not_ready_frame	stereo_not_ready	yes	no frame/invalid frame confirmed	UGR-22-04	mapped	-
+fays.control	stereo_control_failed	yes	FIFO/START/STOP/session control failed	UGR-22-06	mapped	-
+fays.not_ready_control	stereo_not_ready	yes	FIFO/session control failed	UGR-22-06	mapped	-
+encoder.disconnect	device_disconnected	yes	encoder device disconnected	UGR-30-01	mapped	-
+encoder.critical_missing	critical_devices_missing	yes	encoder missing	UGR-30-01	mapped	-
+hmi.disconnect	device_disconnected	yes	HMI device/port disconnected	UGR-40-01	mapped	-
+hmi.critical_missing	critical_devices_missing	yes	HMI device/port missing	UGR-40-01	mapped	-
+hmi.all_disconnected	hmi_all_disconnected	yes	all HMI disconnected	UGR-40-01	mapped	-
+hmi.ports_disconnected	hmi_ports_disconnected	yes	configured HMI ports disconnected	UGR-40-01	mapped	-
+hmi.input_disconnected	hmi_input_disconnected	yes	HMI input disconnected	UGR-40-01	mapped	-
+hmi.input_inactive	hmi_input_inactive	yes	HMI input stopped updating	UGR-40-02	mapped	-
+hmi.ports_inactive	hmi_ports_inactive	yes	HMI ports inactive	UGR-40-02	mapped	-
+hmi.calibration	calibration_error	yes	HMI calibration transaction/payload invalid	UGR-40-06	mapped	-
+config.calibration_import	calibration_error	yes	calibration import/assembly failed	UGR-70-03	mapped	-
+ego.disconnect	ego_disconnected	no	bound/required Ego or ADB unavailable	UGR-82-01	mapped	known develop-aci type retained for later compatibility
+ego.pull	ego_pull_incomplete	no	Ego pull/read/write/sync incomplete	UGR-82-04	mapped	known develop-aci type retained for later compatibility
+manual.operator	operator_marked_failed	yes	manual quality decision	-	no_system_code	not a system root cause
+raw.runtime_worker_launch	-	yes	camera/sensor/worker fork or exec failure	UGR-00-05	mapped	explicit process launch context
+raw.runtime_worker_reap	-	yes	worker stop/kill/reap failure	UGR-00-06	mapped	explicit process cleanup context
+raw.fays_video	-	yes	Fays ffmpeg pipe/fork/write/exit failure	UGR-22-07	mapped	explicit Fays video stage
+raw.fays_mcap	-	yes	Fays MCAP open/write/finalize failure	UGR-22-08	mapped	explicit Fays persistence stage
+raw.sensor_serial	-	yes	encoder serial initialization/response failed	UGR-30-02	mapped	explicit encoder serial stage
+raw.sensor_protocol	-	yes	encoder response/protocol invalid	UGR-30-03	mapped	only add code when emitted as E/F; warning stays without code
+raw.sensor_mcap	-	yes	sensor MCAP open/write/finalize failed	UGR-30-04	mapped	explicit sensor persistence stage
+raw.sensor_queue	-	yes	sustained sensor write queue backlog	UGR-30-05	mapped	warning does not automatically receive code
+raw.sensor_zeroing	-	yes	encoder zeroing transaction failed	UGR-30-06	mapped	explicit zeroing stage
+raw.audio_runtime	-	yes	audio runtime resource/control unavailable	UGR-50-01	mapped	explicit audio runtime stage
+raw.audio_output	-	yes	audio playback/output failed	UGR-50-02	mapped	explicit audio output stage
+raw.audio_input	-	yes	audio recording/input failed	UGR-50-03	mapped	explicit audio input stage
+raw.audio_hid	-	yes	USB headset HID unavailable	UGR-50-04	mapped	warning stays warning unless source declares failure
+raw.audio_artifact	-	yes	audio processing/commit failed	UGR-50-05	mapped	explicit audio artifact stage
+raw.required_config	-	yes	required YAML/config missing or invalid	UGR-70-01	mapped	explicit startup preflight stage
+raw.usb_preflight	-	yes	USB recovery preflight failed	UGR-80-02	mapped	explicit preflight stage
+raw.usb_resource	-	yes	USB recovery command or runtime unavailable	UGR-80-03	mapped	explicit resource stage
+raw.usb_power	-	yes	USB power control or verification failed	UGR-80-04	mapped	explicit Modbus power stage
+raw.usb_result	-	yes	devices unhealthy after recovery	UGR-80-05	mapped	explicit post-recovery stage
+raw.updater_mount	-	yes	updater resource or mount unavailable	UGR-81-01	mapped	not main log today; retained in global scope
+raw.updater_metadata	-	yes	updater package metadata invalid	UGR-81-02	mapped	not main log today; retained in global scope
+raw.updater_install	-	yes	package install or postinst failed	UGR-81-03	mapped	not main log today; retained in global scope
+raw.updater_stop	-	yes	service stop or resource release failed	UGR-81-04	mapped	not main log today; retained in global scope
+raw.updater_recovery	-	yes	service or workflow recovery failed	UGR-81-05	mapped	not main log today; retained in global scope
+raw.ego_device	-	yes	Ego ADB/device unavailable	UGR-82-01	mapped	optional absence remains warning
+raw.ego_time	-	yes	Ego time sync failed	UGR-82-02	mapped	explicit Ego time stage
+raw.ego_start	-	yes	Ego session start/discovery failed	UGR-82-03	mapped	explicit Ego start stage
+raw.ego_sync	-	yes	Ego data synchronization failed	UGR-82-04	mapped	explicit Ego sync stage
+raw.ego_finalize	-	yes	Ego stop/finalize/cleanup failed	UGR-82-05	mapped	explicit Ego finalization stage
+raw.time_network	-	yes	NTP network unavailable	UGR-83-01	mapped	not main log today; retained in global scope
+raw.time_backend	-	yes	NTP backend failed	UGR-83-02	mapped	not main log today; retained in global scope

@@ -14,7 +14,7 @@ function(add_host_only_runtime_gtest target_name)
         PRIVATE
             runtime_control_plane
             runtime_process_boundary
-            PP::utils
+            UGripper::utils
             GTest::gtest_main
     )
     gtest_discover_tests(${target_name}
@@ -69,6 +69,10 @@ add_host_only_runtime_gtest(test_recording_orchestrator
 
 add_host_only_runtime_gtest(test_led_state_bridge
     test_led_state_bridge.cc
+)
+
+add_host_only_runtime_gtest(test_error_code_mapping
+    test_error_code_mapping.cc
 )
 
 add_host_only_runtime_gtest(test_shutdown_request_port

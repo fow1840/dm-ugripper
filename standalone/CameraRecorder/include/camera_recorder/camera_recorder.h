@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <set>
 #include <string>
 #include <vector>
@@ -16,6 +17,11 @@ namespace fs = std::filesystem;
 
 using CameraConfig = ::ugripper::camera::CameraConfig;
 using CameraRecordMode = ::ugripper::camera::CameraRecordMode;
+
+class CameraConfigurationError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
 
 struct Options {
     fs::path output_dir;

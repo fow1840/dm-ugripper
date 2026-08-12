@@ -119,7 +119,7 @@ target_link_libraries(${APP_NAME}
         sensor_protocol
         sensor_domain
         sensorrecorder_mcap
-        PP::utils
+        UGripper::utils
         ${SENSORRECORDER_LIBSERIALPORT_TARGET}
         Threads::Threads
 )
@@ -147,7 +147,7 @@ target_include_directories(zeroing
 target_link_libraries(zeroing
     PRIVATE
         sensor_protocol
-        PP::utils
+        UGripper::utils
         ${SENSORRECORDER_LIBSERIALPORT_TARGET}
         Threads::Threads
 )

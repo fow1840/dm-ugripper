@@ -6,7 +6,7 @@ function(add_host_only_camera_gtest target_name)
     target_link_libraries(${target_name}
         PRIVATE
             camera_domain
-            PP::utils
+            UGripper::utils
             GTest::gtest_main
     )
     gtest_discover_tests(${target_name}

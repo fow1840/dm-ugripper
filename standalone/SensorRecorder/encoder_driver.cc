@@ -1,5 +1,5 @@
 #include "encoder_driver.h"
-#include "utils/logger.h"
+#include "utils/ugripper_logger.h"
 #include <chrono>
 #include <filesystem>
 #include <iomanip>
@@ -70,7 +70,7 @@ ConnectStatus EncoderDriver::connect(bool logVerification)
     sp_return result = sp_get_port_by_name(resolvedPort.c_str(), &serialPort_);
     if (result != SP_OK)
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "EncoderDriver: Cannot find port " << port_
+        DM_LOG_ERROR_CODE("UGR-30-02", "{}", (::DA::utils::LogString() << "EncoderDriver: Cannot find port " << port_
                               << " (resolved=" << resolvedPort << ")").str());
         return ConnectStatus::SERIAL_FAIL;
     }
@@ -78,7 +78,7 @@ ConnectStatus EncoderDriver::connect(bool logVerification)
     result = sp_open(serialPort_, SP_MODE_READ_WRITE);
     if (result != SP_OK)
     {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "EncoderDriver: Cannot open port " << port_
+        DM_LOG_ERROR_CODE("UGR-30-02", "{}", (::DA::utils::LogString() << "EncoderDriver: Cannot open port " << port_
                               << " (resolved=" << resolvedPort << ")").str());
         sp_free_port(serialPort_);
         serialPort_ = nullptr;
@@ -119,7 +119,7 @@ ConnectStatus EncoderDriver::connect(bool logVerification)
     {
         if (logVerification)
         {
-            DM_LOG_ERROR("EncoderDriver: No response from encoder.");
+            DM_LOG_ERROR_CODE("UGR-30-02", "EncoderDriver: No response from encoder.");
         }
         return ConnectStatus::NO_RESPONSE;
     }
@@ -463,7 +463,7 @@ bool EncoderDriver::setBaudrate(uint32_t baudrate)
         type = 0x07;
         break;
     default:
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "Unsupported baudrate: " << baudrate).str());
+        DM_LOG_ERROR_CODE("UGR-70-01", "{}", (::DA::utils::LogString() << "Unsupported baudrate: " << baudrate).str());
         return false;
     }
 

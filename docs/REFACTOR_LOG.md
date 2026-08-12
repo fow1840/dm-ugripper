@@ -34,6 +34,50 @@
 
 ## Entries
 
+### 2026-08-04 - restore-immutable-pp-main-logger-ownership
+
+- 阶段：`A3 / Logging V3 ownership correction`
+- 范围：`src/utils / standalone CMake / Logging V3 wrappers / tests / ARM package`
+- 类型：`日志所有权收口 / pp_main logger 复用 / 板端验证`
+- 主要改动：
+  - `PP::utils` 改为直接编译 `PP_MAIN_ROOT/src/utils/log_fmtter.cc` 与 `spd_logger.cc`；本仓业务目标统一链接 `UGripper::utils`，本地 `src/utils/src` 中两份同名文件恢复为 pp-main 基准且不再参与实际构建。
+  - `utils/ugripper_logger.h` 保留 UGripper 适配责任：初始化异常兜底追加 `UGR-00-01`，`DM_LOG_ERROR_CODE` / `DM_LOG_CRITICAL_CODE` 在进入不可修改的 pp-main formatter 前按物理行拆分，保留每行原始 source/TID。`utils/logger.h` 与 `utils/log_fmtter.h` 恢复为 develop-aci 基线副本，业务入口显式包含适配头。
+  - ANSI 清理、pp-main `C -> F`、外部 stdout/stderr 和无 source 初始化消息归一化继续由 `ugripper_log_writer.py` 负责；未引入基于消息文本猜测错误码的逻辑。
+  - Runtime 中 3 个既存裸 `DM_LOG_ERROR` 已按 Ego 失败阶段改为显式 `UGR-82-05`、`UGR-82-03` 和 resolver 返回的 `UGR-82-01`。
+- 风险与行为等价说明：
+  - logger 后端行为以 pp-main 真源为准；UGripper 不再通过修改 formatter/logger 后端维持 V3 合同。
+  - `FaysStereoRecorder` 保持 C++17，wrapper 同时提供 C++17 文件/行/函数分支；其他目标继续使用 C++20 `source_location`。
+- 已执行验证：
+  - 两份本地 `.cc` 与 `/home/dm/Code/pp-main/src/utils` 执行 `diff -u` 无差异。
+  - `pp-arm-dev` 原生 x86 host-only 配置成功，`test_logging_v3_python`、`check_logging_sources_v3` 和 2 项 C++ `LoggingV3` gtest 共 4 项通过；Python 合同测试内部 9 项通过。
+  - 板端完整主日志、非法 `--baud` 探针及单参数内含换行的多行错误探针均通过 V3 checker。
+  - 多行板端探针生成两条同 TID、同 `[parseOptions 416]` source 的 `E` 行，每行独立以 `error_code=UGR-70-01` 结尾，未降级为 `main_log_forwarder 0`。
+  - `pp-arm-dev` 内完整编译 `CameraRecorder`、`main_camera_xu_tool`、`SensorRecorder`、`zeroing`、`GripperHmiTool`、`UgripperRuntime`、`fays_record_example`；构建依赖文件确认 logger 对象来自 `/workspace/pp-main/src/utils`。
+  - 未修改版本号，生成 `ugripper_2.1.10_arm64.deb` 并安装到 `ubuntu@192.168.2.240`；板端包为 `2.1.10 arm64`、服务 `active`、Runtime 单实例。
+- 后续待验证：
+  - 本轮未执行人工录制、长录、USB power reset 或完整 release gate；验证范围限定为 logger 所有权、构建接线、服务启动和 V3 日志合同。
+
+### 2026-08-03 - logging-v3-and-error-code-rollout
+
+- 阶段：`Logging V3 Phase 0-Rollout`
+- 范围：`src/utils / UgripperRuntime / CameraRecorder / SensorRecorder / GripperHmiTool / Fays / Python / Shell / tests / package`
+- 类型：`日志统一 / 错误码显式映射 / 外部输出收口 / 板端验证`
+- 主要改动：
+  - C++、Python、Shell 与外部 child 的每个非空物理日志行统一使用 Unix 微秒、native TID、等级和调用点组成的 V3 外层；保留已有 payload 标签，禁止 ANSI、旧 audio/FAYS 外层及嵌套 V3 外层。
+  - 原有错误分支通过显式 API 或 `error_type + direct context` resolver 在 payload 末尾追加 `error_code=UGR-xx-xx`，不根据错误消息关键词猜测根因。
+  - 新增输入来源、错误现场和归一化 golden ledger，以及源码 checker、主日志 checker、Python/C++ 合同测试和 ARM 打包接线。
+- 风险与行为说明：
+  - 日志 payload 业务文本与已有标签保持不变，但外层格式、错误码和外部进程 stdout/stderr 的进入方式发生变化。
+  - Graphify 生成文件不作为日志合同真源；合并后应基于最终源码重新生成。
+- 已执行验证：
+  - Python 合同测试、源码错误码 checker、Shell 语法、主日志 checker 与 `git diff --check` 通过。
+  - 在 `pp-arm-dev` ARM 容器复用 `build/arm_container_release` 完成受影响目标增量编译，并生成、安装 `ugripper_2.1.7_arm64.deb`。
+  - 板端 Camera 配置错误输出 `UGR-70-01`，HMI 连续缺失端口注入输出完整 `UGR-40-01`；正式主日志通过增强 checker。
+  - 数据盘卸载输出 `UGR-10-01` 并恢复，零可用空间分支输出 `UGR-10-03` 并恢复。
+- 后续待验证：
+  - 物理 USB power reset 尚未执行。
+  - `episode_20260803_0001` 的 Runtime 校验成功，但离线深度校验存在 stereo 首尾同步异常；该数据质量项不作为本次 Logging V3 提交阻塞项。
+
 ### 2026-07-27 - nostereo-ego-recording-linkage-check
 
 - 阶段：`T15/T16 board verification`

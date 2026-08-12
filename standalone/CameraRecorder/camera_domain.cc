@@ -5,7 +5,7 @@
 #include "camera_recorder/camera_types.h"
 #include "camera_recorder/stereo_control_json.h"
 
-#include "utils/logger.h"
+#include "utils/ugripper_logger.h"
 
 #include <algorithm>
 #include <filesystem>

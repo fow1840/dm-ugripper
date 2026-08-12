@@ -1,5 +1,5 @@
 #include "encoder_driver.h"
-#include "utils/logger.h"
+#include "utils/ugripper_logger.h"
 
 #include <atomic>
 #include <chrono>
@@ -85,7 +85,7 @@ int main(int argc, char *argv[]) {
     std::signal(SIGTERM, signalHandler);
 
     if (argc < 2) {
-        std::cerr << "Usage: zeroing <left|right|/dev/encoder_path>" << std::endl;
+        std::cerr << "Usage: zeroing <left|right|/dev/encoder_path> error_code=UGR-70-01" << std::endl;
         return 1;
     }
 
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     if (status == ConnectStatus::SERIAL_FAIL) {
-        DM_LOG_ERROR("Error: Serial port open failed!");
+        DM_LOG_ERROR_CODE("UGR-30-02", "Error: Serial port open failed!");
         return -1;
     } else if (status == ConnectStatus::NO_RESPONSE) {
         DM_LOG_WARN("1Mbps not responding, trying 115200...");
@@ -133,11 +133,11 @@ int main(int argc, char *argv[]) {
             if (status == ConnectStatus::SUCCESS) {
                 DM_LOG_INFO("Baudrate negotiation successful (1Mbps).");
             } else {
-                DM_LOG_ERROR("Failed to reconnect at 1Mbps after baudrate reset.");
+                DM_LOG_ERROR_CODE("UGR-30-02", "Failed to reconnect at 1Mbps after baudrate reset.");
                 return -1;
             }
         } else {
-            DM_LOG_ERROR("Failed to connect at 115200. Encoder not responding.");
+            DM_LOG_ERROR_CODE("UGR-30-02", "Failed to connect at 115200. Encoder not responding.");
             return -1;
         }
     } else {
@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
         }
         std::cout << "--------------------------------" << std::endl;
     } else {
-        DM_LOG_ERROR("{}", (::DA::utils::LogString() << "[FAILED] Failed to set zero position for encoder side " << encoderLabel
+        DM_LOG_ERROR_CODE("UGR-30-06", "{}", (::DA::utils::LogString() << "[FAILED] Failed to set zero position for encoder side " << encoderLabel
                               << "! (Or verify failed)").str());
     }
 

@@ -90,7 +90,7 @@ target_link_libraries(gripper_hmi
         gripper_hmi_led_effects
         ${GRIPPER_HMI_LIBSERIALPORT_TARGET}
     PRIVATE
-        PP::utils
+        UGripper::utils
 )
 
 add_executable(${APP_NAME}
@@ -109,7 +109,7 @@ target_include_directories(${APP_NAME}
 target_link_libraries(${APP_NAME}
     PRIVATE
         gripper_hmi
-        PP::utils
+        UGripper::utils
         Threads::Threads
 )
 
