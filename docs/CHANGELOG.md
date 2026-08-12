@@ -4,6 +4,7 @@
 
 - 主运行日志统一为 V3 单行合同：C++、Python、Shell 与外部 child 的每个非空物理行使用同一 Unix 微秒/native TID/等级/调用点外层，保留既有业务标签并移除 ANSI/旧 audio/FAYS 外层；原有错误分支在 payload 末尾追加显式 `UGR-xx-xx` 错误码，不按错误文本猜测根因。
 - 修正 CameraRecorder 必填配置/命令行参数缺失错误码为 `UGR-70-01`；GripperHmiTool 错误消息改为单次 logger 输出，避免异步 driver 日志插入消息中间；主日志 checker 同步拒绝 payload 内嵌第二套 V3 外层。
+- Fays VIKit SDK 从 `3.8.0` 更新到上游 `v3.8.1`（`d86cf962`），同步 aarch64/x86_64 运行库与版本头，修复上游 IMU 参数读取错误；FT602 `1.0.17` 运行库保持不变。
 - 扩展 Ego dataset 目录兼容：未显式配置远端 root 时优先按绑定 serial 精确识别新版 `/files/dataset/<ego_serial>/data`，命中后跳过目录扫描；旧 `/files/<ego_serial>/data/dataset` 与 `/files/dataset` 保留为 fallback，降低新版联动起录的路径发现延迟。
 - 修复 Ego 解绑后 `ego_binding_status.json` 仍残留 `connected` 的问题：解绑现在不依赖 ADB 在线，Ego 已断连或拔出时仍可解除绑定、清除 `ERROR_5` 并发布不带旧 serial 的 `unbound`；服务启动发现无有效 binding 时也会归一化旧版遗留状态，probe 发布结果前重新核对当前 binding，避免解绑或重新绑定期间的在途旧探测回写过期连接状态。
 - 修正 episode 深度校验器的首帧时间口径：统一表现在覆盖本机 MCAP 中实际发现的全部 sensor topic，并用 `ego/metadata.json` 的 `head_pose_details.start_offset_us` 为 Ego 单调时钟 topic 计算固定 Unix offset；已使用 Unix `publishTime` 的 Ego metainfo 保持原值。主摄专项解码扫描改为 passthrough 并显式使用微秒输出 time base，避免 FFmpeg 帧率量化产生伪 non-monotonic DTS，同时修正左右主摄文件归类。
