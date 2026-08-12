@@ -421,13 +421,27 @@ def list_dataset_roots(adb: Adb) -> list[str]:
         return [configured]
 
     external_root_q = shell_quote(APP_EXTERNAL_ROOT)
+    fallback_pattern_q = shell_quote(f"{LEGACY_REMOTE_ROOT}/*/data")
+    fast_path_checks = ""
+    adb_serial = str(getattr(adb, "serial", "") or "")
+    if adb_serial:
+        preferred_roots = (
+            f"{LEGACY_REMOTE_ROOT}/{adb_serial}/data",
+            f"{APP_EXTERNAL_ROOT}/{adb_serial}/data/dataset",
+        )
+        fast_path_checks = "".join(
+            f"if [ -d {shell_quote(root)} ]; then printf '%s\\n' {shell_quote(root)}; exit 0; fi; "
+            for root in preferred_roots
+        )
     command = (
-        f"find {external_root_q} -mindepth 1 -maxdepth 4 -type d -name dataset -print "
+        f"{fast_path_checks}"
+        f"find {external_root_q} -mindepth 1 -maxdepth 4 -type d "
+        f"\\( -name dataset -o -path {fallback_pattern_q} \\) -print "
         "2>/dev/null | sort"
     )
     result = adb.run("shell", command, timeout=8)
     roots = [line.strip().replace("\r", "") for line in result.stdout.splitlines() if line.strip()]
-    if LEGACY_REMOTE_ROOT not in roots:
+    if not roots:
         legacy = adb.run("shell", "test", "-d", LEGACY_REMOTE_ROOT, timeout=8)
         if legacy.returncode == 0:
             roots.append(LEGACY_REMOTE_ROOT)
