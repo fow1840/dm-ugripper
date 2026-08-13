@@ -395,7 +395,10 @@ private:
                             int64_t startSystemTimeUs,
                             int64_t stopSystemTimeUs);
     bool waitForStereoFinalize(const std::string &episodeDir, int timeoutMs, std::string *errorMessage);
-    bool startEgoRecording(const std::string &episodeDir, int64_t startSystemTimeUs, std::string *errorMessage);
+    bool startEgoRecording(const std::string &episodeDir,
+                           int64_t startSystemTimeUs,
+                           std::string *errorMessage,
+                           std::string *errorType);
     bool stopEgoRecording(const std::string &episodeDir, int64_t stopSystemTimeUs, std::string *errorMessage);
     bool waitForEgoFinalize(const std::string &episodeDir, int timeoutMs, std::string *errorMessage);
     bool cleanupEgoRemote(const std::string &episodeDir, std::string *errorMessage);

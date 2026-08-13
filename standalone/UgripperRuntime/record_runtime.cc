@@ -4406,8 +4406,12 @@ bool RecordRuntime::initialize()
                         episode_dir, stop_system_time_us, error_message);
                 },
             .start_ego_recording =
-                [this](const std::string& episode_dir, int64_t start_system_time_us, std::string* error_message) {
-                    return startEgoRecording(episode_dir, start_system_time_us, error_message);
+                [this](const std::string& episode_dir,
+                       int64_t start_system_time_us,
+                       std::string* error_message,
+                       std::string* error_type) {
+                    return startEgoRecording(
+                        episode_dir, start_system_time_us, error_message, error_type);
                 },
             .stop_ego_recording =
                 [this](const std::string& episode_dir, int64_t stop_system_time_us, std::string* error_message) {
@@ -4894,9 +4898,14 @@ std::vector<std::string> egoBindingWorkerArgs(const std::string &script,
 
 bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
                                       int64_t,
-                                      std::string *errorMessage)
+                                      std::string *errorMessage,
+                                      std::string *errorType)
 {
     egoRecordingAttempted_ = false;
+    if (errorType != nullptr)
+    {
+        errorType->clear();
+    }
     if (!fs::exists(options_.egoRecordingScript))
     {
         if (errorMessage != nullptr)
@@ -4944,13 +4953,42 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
     }
     const fs::path statusPath = fs::path(episodeDir) / "ego" / kEgoSyncStatusFileName;
     const uint64_t startMs = currentSteadyMs();
+    json lastStatus = json::object();
+    auto stopEgoStartupWorker = [this]() {
+        if (!egoRecordingWorker_.has_value())
+        {
+            return;
+        }
+        std::string ignoredError;
+        egoRecordingWorker_->Stop(
+            ugripper::runtime::ProcessStopMode::SigTermThenKill,
+            1000,
+            &ignoredError);
+        egoRecordingWorker_.reset();
+        egoRecordingAttempted_ = false;
+    };
     while ((currentSteadyMs() - startMs) < kEgoStartAckWaitMs)
     {
         json status = json::object();
         std::string loadError;
         if (loadJsonFile(statusPath.string(), &status, &loadError) && status.is_object())
         {
+            lastStatus = status;
             const std::string state = status.value("status", std::string());
+            if (state == "time_sync_failed")
+            {
+                if (errorMessage != nullptr)
+                {
+                    *errorMessage = status.value("error", std::string("ego time sync failed"));
+                }
+                if (errorType != nullptr)
+                {
+                    *errorType = status.value(
+                        "error_type", std::string(ugripper::runtime::kErrorTypeEgoTimeSyncFailed));
+                }
+                stopEgoStartupWorker();
+                return false;
+            }
             if (state == "recording")
             {
                 const std::string remoteEpisode = status.value("remote_episode", std::string());
@@ -5007,14 +5045,60 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
         std::this_thread::sleep_for(std::chrono::milliseconds(kEgoStartAckPollMs));
     }
 
+    json timeSync = lastStatus.value("time_sync", json::object());
+    if (timeSync.is_object() && timeSync.value("status", std::string()) == "ok")
+    {
+        if (errorMessage != nullptr)
+        {
+            *errorMessage = "timed out waiting for ego remote episode status";
+        }
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << "ego recording sidecar did not report remote episode before gripper start"
+            << std::endl).str());
+        return !isEgoRequired();
+    }
+
+    stopEgoStartupWorker();
+    const bool hasOffset = timeSync.is_object() && timeSync.contains("final_offset_ms") &&
+                           timeSync["final_offset_ms"].is_number();
+    const std::string offsetText = hasOffset
+                                       ? std::to_string(timeSync["final_offset_ms"].get<double>())
+                                       : std::string("unknown");
+    const std::string syncError = "ego time sync failed offset_ms=" + offsetText +
+                                  " threshold_ms=15";
+    if (!timeSync.is_object())
+    {
+        timeSync = json::object();
+    }
+    timeSync["status"] = "error";
+    timeSync["threshold_ms"] = 15.0;
+    timeSync["error"] = syncError;
+    if (!hasOffset)
+    {
+        timeSync["final_offset_ms"] = nullptr;
+    }
+    lastStatus["status"] = "time_sync_failed";
+    lastStatus["error_type"] = ugripper::runtime::kErrorTypeEgoTimeSyncFailed;
+    lastStatus["error"] = syncError;
+    lastStatus["time_sync"] = std::move(timeSync);
+    std::string writeError;
+    if (!writeTextFileAtomically(statusPath, lastStatus.dump(2) + "\n", &writeError))
+    {
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << "failed to write ego time sync timeout status: " << writeError
+            << std::endl).str());
+    }
+    DM_LOG_ERROR_CODE("UGR-82-02", "{}", (::DA::utils::LogString()
+        << syncError << std::endl).str());
     if (errorMessage != nullptr)
     {
-        *errorMessage = "timed out waiting for ego remote episode status";
+        *errorMessage = syncError;
     }
-    DM_LOG_WARN("{}", (::DA::utils::LogString()
-        << "ego recording sidecar did not report remote episode before gripper start"
-        << std::endl).str());
-    return !isEgoRequired();
+    if (errorType != nullptr)
+    {
+        *errorType = ugripper::runtime::kErrorTypeEgoTimeSyncFailed;
+    }
+    return false;
 }
 
 bool RecordRuntime::stopEgoRecording(const std::string &episodeDir,

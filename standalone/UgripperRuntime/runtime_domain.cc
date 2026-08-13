@@ -835,17 +835,26 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
     if (dependencies_.start_ego_recording != nullptr)
     {
         std::string ego_error;
+        std::string ego_error_type;
         if (dependencies_.start_ego_recording(
-                state_.current_episode_dir, session_start_system_time_us, &ego_error))
+                state_.current_episode_dir,
+                session_start_system_time_us,
+                &ego_error,
+                &ego_error_type))
         {
             ego_started_for_episode = true;
         }
         else
         {
-            CallLog(dependencies_.log_warn,
-                    "ego recording sidecar did not start early: " +
-                        (ego_error.empty() ? std::string("unknown error") : ego_error));
-            if (ego_required)
+            if (ego_error_type != ugripper::runtime::kErrorTypeEgoTimeSyncFailed)
+            {
+                CallLog(dependencies_.log_warn,
+                        "ego recording sidecar did not start early: " +
+                            (ego_error.empty() ? std::string("unknown error") : ego_error));
+            }
+            const bool fatal_ego_start_failure =
+                ego_required || ego_error_type == ugripper::runtime::kErrorTypeEgoTimeSyncFailed;
+            if (fatal_ego_start_failure)
             {
                 if (dependencies_.set_led_state != nullptr)
                 {

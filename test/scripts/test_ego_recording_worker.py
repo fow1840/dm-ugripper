@@ -35,6 +35,139 @@ class FakeAdb:
 
 
 class EgoRecordingWorkerTest(unittest.TestCase):
+    def test_time_sync_accepts_first_attempt_below_threshold(self):
+        first_set = {"returncode": 0, "elapsed_ms": 2, "stdout": "", "stderr": ""}
+        with mock.patch.object(WORKER, "TIME_SYNC_MAX_OFFSET_MS", 15.0), mock.patch.object(
+            WORKER, "TIME_SYNC_SET_AHEAD_MS", 20.0
+        ), mock.patch.object(WORKER, "now_ms", side_effect=[1000, 1004, 1008]), mock.patch.object(
+            WORKER, "set_remote_time_ms", return_value=first_set
+        ) as set_time, mock.patch.object(
+            WORKER, "measure_time_offsets", return_value=[{"offset_ms": 8.0, "rtt_ms": 4}]
+        ):
+            result = WORKER.sync_ego_time(object())
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["attempt_count"], 1)
+        self.assertEqual(result["final_offset_ms"], 8.0)
+        self.assertEqual(result["set_ahead_ms"], 20.0)
+        set_time.assert_called_once_with(mock.ANY, 1024)
+
+    def test_time_sync_retries_with_same_set_ahead(self):
+        set_result = {"returncode": 0, "elapsed_ms": 2, "stdout": "", "stderr": ""}
+        with mock.patch.object(WORKER, "TIME_SYNC_MAX_OFFSET_MS", 15.0), mock.patch.object(
+            WORKER, "TIME_SYNC_SET_AHEAD_MS", 20.0
+        ), mock.patch.object(WORKER, "now_ms", side_effect=[1000, 1004, 1008, 1012]), mock.patch.object(
+            WORKER, "set_remote_time_ms", return_value=set_result
+        ) as set_time, mock.patch.object(
+            WORKER,
+            "measure_time_offsets",
+            side_effect=[
+                [{"offset_ms": 24.0, "rtt_ms": 5}],
+                [{"offset_ms": 6.0, "rtt_ms": 4}],
+            ],
+        ):
+            result = WORKER.sync_ego_time(object())
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["attempt_count"], 2)
+        self.assertEqual(result["final_offset_ms"], 6.0)
+        self.assertEqual(set_time.call_args_list[0].args[1], 1024)
+        self.assertEqual(set_time.call_args_list[1].args[1], 1028)
+        self.assertEqual([item["set_ahead_ms"] for item in result["attempts"]], [20.0, 20.0])
+
+    def test_time_sync_reports_second_attempt_outside_threshold(self):
+        set_result = {"returncode": 0, "elapsed_ms": 2, "stdout": "", "stderr": ""}
+        with mock.patch.object(WORKER, "TIME_SYNC_MAX_OFFSET_MS", 15.0), mock.patch.object(
+            WORKER, "TIME_SYNC_MAX_CORRECTIONS", 1
+        ), mock.patch.object(
+            WORKER, "TIME_SYNC_SET_AHEAD_MS", 20.0
+        ), mock.patch.object(WORKER, "now_ms", side_effect=[1000, 1004, 1008, 1012]), mock.patch.object(
+            WORKER, "set_remote_time_ms", return_value=set_result
+        ), mock.patch.object(
+            WORKER,
+            "measure_time_offsets",
+            side_effect=[
+                [{"offset_ms": 28.0, "rtt_ms": 5}],
+                [{"offset_ms": 18.5, "rtt_ms": 4}],
+            ],
+        ):
+            result = WORKER.sync_ego_time(object())
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["attempt_count"], 2)
+        self.assertEqual(result["final_offset_ms"], 18.5)
+        self.assertIn("offset_ms=18.500", result["error"])
+
+    def test_time_sync_allows_three_corrections_and_keeps_history(self):
+        set_result = {"returncode": 0, "elapsed_ms": 2, "stdout": "", "stderr": ""}
+        with mock.patch.object(WORKER, "TIME_SYNC_MAX_OFFSET_MS", 15.0), mock.patch.object(
+            WORKER, "TIME_SYNC_MAX_CORRECTIONS", 3
+        ), mock.patch.object(WORKER, "TIME_SYNC_SET_AHEAD_MS", 20.0), mock.patch.object(
+            WORKER, "now_ms", side_effect=[1000, 1004, 1008, 1012, 1016, 1020, 1024]
+        ), mock.patch.object(WORKER, "set_remote_time_ms", return_value=set_result) as set_time, mock.patch.object(
+            WORKER,
+            "measure_time_offsets",
+            side_effect=[
+                [{"offset_ms": 40.0, "rtt_ms": 5}],
+                [{"offset_ms": 30.0, "rtt_ms": 4}],
+                [{"offset_ms": 20.0, "rtt_ms": 4}],
+                [{"offset_ms": 10.0, "rtt_ms": 4}],
+            ],
+        ):
+            result = WORKER.sync_ego_time(object())
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["attempt_count"], 4)
+        self.assertEqual(result["correction_count"], 3)
+        self.assertEqual(result["first_offset_ms"], 40.0)
+        self.assertEqual(result["final_offset_ms"], 10.0)
+        self.assertEqual([item["offset_ms"] for item in result["attempts"]], [40.0, 30.0, 20.0, 10.0])
+        self.assertEqual(set_time.call_count, 4)
+
+    def test_time_sync_stops_after_three_corrections_when_still_outside_threshold(self):
+        set_result = {"returncode": 0, "elapsed_ms": 2, "stdout": "", "stderr": ""}
+        with mock.patch.object(WORKER, "TIME_SYNC_MAX_OFFSET_MS", 15.0), mock.patch.object(
+            WORKER, "TIME_SYNC_MAX_CORRECTIONS", 3
+        ), mock.patch.object(WORKER, "TIME_SYNC_SET_AHEAD_MS", 20.0), mock.patch.object(
+            WORKER, "now_ms", side_effect=[1000, 1004, 1008, 1012, 1016, 1020, 1024]
+        ), mock.patch.object(WORKER, "set_remote_time_ms", return_value=set_result) as set_time, mock.patch.object(
+            WORKER,
+            "measure_time_offsets",
+            side_effect=[
+                [{"offset_ms": 40.0, "rtt_ms": 5}],
+                [{"offset_ms": 35.0, "rtt_ms": 4}],
+                [{"offset_ms": 30.0, "rtt_ms": 4}],
+                [{"offset_ms": 25.0, "rtt_ms": 4}],
+            ],
+        ):
+            result = WORKER.sync_ego_time(object())
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["attempt_count"], 4)
+        self.assertEqual(result["correction_count"], 3)
+        self.assertEqual(result["final_offset_ms"], 25.0)
+        self.assertEqual(set_time.call_count, 4)
+
+    def test_time_sync_requires_strictly_less_than_fifteen_ms(self):
+        set_result = {"returncode": 0, "elapsed_ms": 2, "stdout": "", "stderr": ""}
+        with mock.patch.object(WORKER, "TIME_SYNC_MAX_CORRECTIONS", 1), mock.patch.object(
+            WORKER, "TIME_SYNC_SET_AHEAD_MS", 20.0
+        ), mock.patch.object(
+            WORKER, "now_ms", side_effect=[1000, 1004, 1008, 1012]
+        ), mock.patch.object(WORKER, "set_remote_time_ms", return_value=set_result), mock.patch.object(
+            WORKER,
+            "measure_time_offsets",
+            side_effect=[
+                [{"offset_ms": 15.0, "rtt_ms": 4}],
+                [{"offset_ms": -15.0, "rtt_ms": 4}],
+            ],
+        ):
+            result = WORKER.sync_ego_time(object())
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["attempt_count"], 2)
+        self.assertEqual(result["final_offset_ms"], -15.0)
+
     def test_discovers_serial_scoped_dataset_root(self):
         root = "/sdcard/Android/data/com.ssnwt.helloxr/files/1150063703226061200012/data/dataset"
         with mock.patch.dict(WORKER.os.environ, {}, clear=True):
@@ -280,6 +413,44 @@ class EgoRecordingWorkerTest(unittest.TestCase):
             self.assertTrue(snapshots)
             self.assertEqual(snapshots[0]["status"], "starting")
             self.assertNotIn("not_found", [payload["status"] for payload in snapshots])
+
+    def test_start_stops_before_broadcast_when_time_sync_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            args = argparse.Namespace(
+                serial="ego-001",
+                episode_dir=root / "episode_0001-temp",
+                status_file=root / "ego_sync.json",
+                codec="h264",
+                detect_timeout=1.0,
+                interval=0.01,
+            )
+            adb = mock.Mock(serial="ego-001")
+            failed_sync = {
+                "status": "error",
+                "threshold_ms": 15.0,
+                "attempt_count": 2,
+                "set_ahead_ms": 20.0,
+                "first_offset_ms": 26.0,
+                "final_offset_ms": 18.5,
+                "error": "ego time sync failed offset_ms=18.500 threshold_ms=15",
+            }
+            with mock.patch.object(WORKER, "detect_ego", return_value=(adb, {})), mock.patch.object(
+                WORKER, "sync_ego_time", return_value=failed_sync
+            ), mock.patch.object(WORKER, "ugripper_log") as log:
+                self.assertEqual(WORKER.run_start(args), 1)
+
+            status = json.loads(args.status_file.read_text(encoding="utf-8"))
+            self.assertEqual(status["status"], "time_sync_failed")
+            self.assertEqual(status["error_type"], "ego_time_sync_failed")
+            self.assertEqual(status["time_sync"]["final_offset_ms"], 18.5)
+            adb.run.assert_not_called()
+            log.assert_called_once_with(
+                "ERROR",
+                "ego time sync failed offset_ms=18.500 threshold_ms=15",
+                component="ego",
+                error_code="UGR-82-02",
+            )
 
 
 if __name__ == "__main__":

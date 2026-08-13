@@ -38,6 +38,7 @@ inline std::string_view UgrCodeForErrorType(
       error_type == "hmi_input_disconnected") return "UGR-40-01";
   if (error_type == "hmi_input_inactive" || error_type == "hmi_ports_inactive") return "UGR-40-02";
   if (error_type == "ego_disconnected") return "UGR-82-01";
+  if (error_type == "ego_time_sync_failed") return "UGR-82-02";
   if (error_type == "ego_pull_incomplete") return "UGR-82-04";
   if (error_type == "main_camera_v4l2_kernel_hang") return "UGR-20-03";
   if (error_type == "calibration_error") {

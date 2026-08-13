@@ -68,6 +68,7 @@ struct RecordingHarness
     bool wait_finalize_ok = true;
     bool ego_required = false;
     bool ego_start_ok = true;
+    std::string ego_start_error_type;
     bool ego_stop_ok = true;
     bool ego_finalize_ok = true;
     bool ego_cleanup_ok = true;
@@ -193,11 +194,15 @@ struct RecordingHarness
                      return stereo_stop_ok;
                  },
              .start_ego_recording =
-                 [this](const std::string&, int64_t, std::string* error) {
+                 [this](const std::string&, int64_t, std::string* error, std::string* error_type) {
                      ++ego_start_calls;
                      if (!ego_start_ok && error != nullptr)
                      {
                          *error = ego_error;
+                     }
+                     if (!ego_start_ok && error_type != nullptr)
+                     {
+                         *error_type = ego_start_error_type;
                      }
                      return ego_start_ok;
                  },
@@ -370,6 +375,25 @@ TEST(RecordingOrchestratorTest, RequiredEgoStartFailureBlocksRecordingWithError5
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
     EXPECT_EQ(harness.audio_commands.back(), "error");
+}
+
+TEST(RecordingOrchestratorTest, EgoTimeSyncFailureAlwaysBlocksRecordingWithError5)
+{
+    RecordingHarness harness;
+    harness.ego_start_ok = false;
+    harness.ego_start_error_type = ugripper::runtime::kErrorTypeEgoTimeSyncFailed;
+    harness.ego_error = "ego time sync failed offset_ms=18.500 threshold_ms=15";
+    auto orchestrator = harness.Make();
+
+    ASSERT_FALSE(orchestrator.StartRecording(false));
+    EXPECT_FALSE(orchestrator.state().is_recording);
+    EXPECT_TRUE(harness.started_specs.empty());
+    EXPECT_EQ(harness.ego_stop_calls, 0);
+    ASSERT_FALSE(harness.led_states.empty());
+    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
+    EXPECT_EQ(harness.audio_commands.back(), "error");
+    EXPECT_EQ(harness.lock_events,
+              (std::vector<std::string>{"remove", "write:", "remove"}));
 }
 
 TEST(RecordingOrchestratorTest, RequiredEgoPullFailureMapsToError5)

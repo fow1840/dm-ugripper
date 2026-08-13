@@ -41,7 +41,8 @@ public:
     using HardwareFaultLedFn = std::function<void(const HealthFault&)>;
     using FailureStateFn = std::function<void(RuntimeLedState, const std::vector<std::string>&, const std::string&)>;
     using StereoSessionFn = std::function<bool(const std::string&, int64_t, std::string*)>;
-    using StartEgoRecordingFn = std::function<bool(const std::string&, int64_t, std::string*)>;
+    using StartEgoRecordingFn =
+        std::function<bool(const std::string&, int64_t, std::string*, std::string*)>;
     using StopEgoRecordingFn = std::function<bool(const std::string&, int64_t, std::string*)>;
     using WaitForFinalizeFn = std::function<bool(const std::string&, int, std::string*)>;
     using CleanupEgoRemoteFn = std::function<bool(const std::string&, std::string*)>;

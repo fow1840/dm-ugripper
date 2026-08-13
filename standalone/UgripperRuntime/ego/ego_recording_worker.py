@@ -43,6 +43,11 @@ MP4_FILES = (
 MP4_HEADER_SCAN_BYTES = int(os.environ.get("UGRIPPER_EGO_MP4_HEADER_SCAN_BYTES", str(1024 * 1024)))
 MP4_HEADER_MERGE_GAP = int(os.environ.get("UGRIPPER_EGO_MP4_HEADER_MERGE_GAP", "4096"))
 TIME_SYNC_SAMPLES = int(os.environ.get("UGRIPPER_EGO_TIME_SYNC_SAMPLES", "3"))
+TIME_SYNC_MAX_OFFSET_MS = 15.0
+TIME_SYNC_SET_AHEAD_MS = float(os.environ.get("UGRIPPER_EGO_TIME_SYNC_SET_AHEAD_MS", "20"))
+TIME_SYNC_MAX_CORRECTIONS = min(
+    3, max(0, int(os.environ.get("UGRIPPER_EGO_TIME_SYNC_MAX_CORRECTIONS", "3")))
+)
 SXR_PROPS = {
     "ro.product.manufacturer": "SXR",
     "ro.product.model": "SXR_1",
@@ -174,9 +179,14 @@ def compact_time_sync(detail: dict) -> dict:
     keys = (
         "status",
         "elapsed_ms",
-        "pre_best_offset_ms",
-        "mid_best_offset_ms",
-        "post_best_offset_ms",
+        "threshold_ms",
+        "max_corrections",
+        "correction_count",
+        "attempt_count",
+        "set_ahead_ms",
+        "first_offset_ms",
+        "final_offset_ms",
+        "attempts",
         "set_results",
         "error",
     )
@@ -567,44 +577,72 @@ def summarize_set_time_result(result: dict) -> dict:
 
 def sync_ego_time(adb: Adb) -> dict:
     started = now_ms()
+    threshold_ms = max(0.0, TIME_SYNC_MAX_OFFSET_MS)
+    set_ahead_ms = TIME_SYNC_SET_AHEAD_MS
     detail: dict = {
         "status": "error",
         "started_at_ms": started,
         "sample_count": max(1, TIME_SYNC_SAMPLES),
+        "threshold_ms": threshold_ms,
+        "set_ahead_ms": set_ahead_ms,
+        "max_corrections": TIME_SYNC_MAX_CORRECTIONS,
     }
     try:
-        pre_samples = measure_time_offsets(adb, TIME_SYNC_SAMPLES)
-        first_set = set_remote_time_ms(adb, now_ms())
-        mid_samples = measure_time_offsets(adb, TIME_SYNC_SAMPLES)
-        correction_offset = best_offset_ms(mid_samples)
-        set_results = [first_set]
-        if first_set.get("returncode") == 0 and correction_offset is not None:
-            corrected_target_ms = now_ms() - int(round(correction_offset))
-            set_results.append(set_remote_time_ms(adb, corrected_target_ms))
-        post_samples = measure_time_offsets(adb, TIME_SYNC_SAMPLES)
+        set_results = []
+        attempts = []
+        first_offset = None
+        final_offset = None
+        for attempt_index in range(TIME_SYNC_MAX_CORRECTIONS + 1):
+            target_ms = now_ms() + int(round(set_ahead_ms))
+            set_result = set_remote_time_ms(adb, target_ms)
+            set_results.append(set_result)
+            offset = best_offset_ms(measure_time_offsets(adb, TIME_SYNC_SAMPLES))
+            if attempt_index == 0:
+                first_offset = offset
+            attempt_detail = {
+                "attempt": attempt_index + 1,
+                "correction_count": attempt_index,
+                "set_ahead_ms": set_ahead_ms,
+                "offset_ms": offset,
+                "set_result": summarize_set_time_result(set_result),
+            }
+            attempts.append(attempt_detail)
+            final_offset = offset
+            set_ok = set_result.get("returncode") == 0
+            within_threshold = offset is not None and abs(offset) < threshold_ms
+            if set_ok and within_threshold:
+                break
+            if attempt_index >= TIME_SYNC_MAX_CORRECTIONS:
+                break
 
-        final_offset = best_offset_ms(post_samples)
-        errors = [
-            (result.get("stderr") or result.get("stdout") or f"set-time rc={result.get('returncode')}")
-            for result in set_results
-            if result.get("returncode") != 0
-        ]
+        final_set_ok = set_results[-1].get("returncode") == 0
+        within_threshold = final_offset is not None and abs(final_offset) < threshold_ms
         finished = now_ms()
         detail.update(
             {
-                "status": "ok" if not errors and final_offset is not None else "error",
+                "status": "ok" if final_set_ok and within_threshold else "error",
                 "finished_at_ms": finished,
                 "elapsed_ms": finished - started,
-                "pre_best_offset_ms": best_offset_ms(pre_samples),
-                "mid_best_offset_ms": correction_offset,
-                "post_best_offset_ms": final_offset,
+                "attempt_count": len(attempts),
+                "correction_count": max(0, len(attempts) - 1),
+                "first_offset_ms": first_offset,
+                "final_offset_ms": final_offset,
+                "attempts": attempts,
                 "set_results": [summarize_set_time_result(result) for result in set_results],
             }
         )
-        if errors:
-            detail["error"] = "; ".join(str(error) for error in errors if error)
+        if not final_set_ok:
+            result = set_results[-1]
+            detail["error"] = str(
+                result.get("stderr") or result.get("stdout") or f"set-time rc={result.get('returncode')}"
+            )
         elif final_offset is None:
             detail["error"] = "unable to read ego time after sync"
+        elif not within_threshold:
+            detail["error"] = (
+                f"ego time sync failed offset_ms={final_offset:.3f} "
+                f"threshold_ms={threshold_ms:g}"
+            )
         return detail
     except Exception as exc:
         finished = now_ms()
@@ -1062,6 +1100,23 @@ def run_start(args: argparse.Namespace) -> int:
         status["time_sync"] = sync_ego_time(adb)
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
+        if status["time_sync"].get("status") != "ok":
+            final_offset = status["time_sync"].get("final_offset_ms")
+            offset_text = f"{float(final_offset):.3f}" if isinstance(final_offset, (int, float)) else "unknown"
+            status.update(
+                {
+                    "status": "time_sync_failed",
+                    "error_type": "ego_time_sync_failed",
+                    "error": (
+                        f"ego time sync failed offset_ms={offset_text} "
+                        f"threshold_ms={TIME_SYNC_MAX_OFFSET_MS:g}"
+                    ),
+                    "updated_at_ms": now_ms(),
+                }
+            )
+            ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-02")
+            write_status(args.status_file, status)
+            return 1
 
         existing_temp_episodes = snapshot_temp_episodes(adb)
         status["remote_roots"] = sorted(existing_temp_episodes)

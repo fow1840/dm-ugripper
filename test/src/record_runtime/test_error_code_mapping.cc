@@ -14,6 +14,7 @@ TEST(ErrorCodeMapping, MapsUniqueLegacyTypesWithoutPayloadInspection) {
   EXPECT_EQ(UgrCodeForErrorType("hmi_all_disconnected"), "UGR-40-01");
   EXPECT_EQ(UgrCodeForErrorType("hmi_input_inactive"), "UGR-40-02");
   EXPECT_EQ(UgrCodeForErrorType("ego_disconnected"), "UGR-82-01");
+  EXPECT_EQ(UgrCodeForErrorType("ego_time_sync_failed"), "UGR-82-02");
   EXPECT_EQ(UgrCodeForErrorType("ego_pull_incomplete"), "UGR-82-04");
 }
 

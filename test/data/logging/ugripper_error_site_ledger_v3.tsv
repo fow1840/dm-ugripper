@@ -51,6 +51,7 @@ hmi.ports_inactive	hmi_ports_inactive	yes	HMI ports inactive	UGR-40-02	mapped	-
 hmi.calibration	calibration_error	yes	HMI calibration transaction/payload invalid	UGR-40-06	mapped	-
 config.calibration_import	calibration_error	yes	calibration import/assembly failed	UGR-70-03	mapped	-
 ego.disconnect	ego_disconnected	no	bound/required Ego or ADB unavailable	UGR-82-01	mapped	known develop-aci type retained for later compatibility
+ego.time_sync	ego_time_sync_failed	no	Ego clock offset remains outside threshold	UGR-82-02	mapped	fatal before local recording workers start
 ego.pull	ego_pull_incomplete	no	Ego pull/read/write/sync incomplete	UGR-82-04	mapped	known develop-aci type retained for later compatibility
 manual.operator	operator_marked_failed	yes	manual quality decision	-	no_system_code	not a system root cause
 raw.runtime_worker_launch	-	yes	camera/sensor/worker fork or exec failure	UGR-00-05	mapped	explicit process launch context
