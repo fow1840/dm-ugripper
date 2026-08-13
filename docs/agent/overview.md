@@ -303,6 +303,7 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
   - `echo START > /dev/shm/ugripper/umi_record_control.pipe`
   - `echo STOP > /dev/shm/ugripper/umi_record_control.pipe`
   - 如需严格模拟按键：`echo SHORT_UP > /dev/shm/ugripper/umi_record_control.pipe`、`echo SHORT_DOWN > /dev/shm/ugripper/umi_record_control.pipe`
+- `test/scripts/board_stopwatch_record_test.sh` 是面向测试交付的 PC 端外部秒表联动入口：默认连接 `ubuntu@192.168.2.240`，将自身下发到板端 `/tmp`，以 GPIO139 低电平触发秒表后立即写 `START`，到达指定时长后写 `STOP` 并恢复 GPIO 高电平。它只使用上述 runtime FIFO，不直接启停 camera/sensor/Fays 子进程；等待正常停录收尾和 episode rename 完成后，在对应最终 episode 中额外写入 `stopwatch_timing.json`，保存 GPIO 写入边界、录制命令时间和测得延迟。该文件属于测试辅助证据，不进入 `metadata.json` schema、`require_files` 或运行时质量校验范围。
 
 ### 8.4 PERF 日志
 - 停录收尾、文件 flush、视频探测和 episode validation 会输出 `[PERF]` 耗时日志，用于现场拆分蓝灯延迟。

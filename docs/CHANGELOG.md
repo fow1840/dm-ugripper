@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- 新增 PC 端外部秒表录制联动测试脚本：自动下发到 240 板端，以 GPIO139 触发/停止秒表，并通过 runtime 软件录制 FIFO 执行正常起停；停录收尾后在对应 episode 写入 `stopwatch_timing.json`，记录 GPIO 与录制命令的 Unix/monotonic 时间及延迟。
 - 主运行日志统一为 V3 单行合同：C++、Python、Shell 与外部 child 的每个非空物理行使用同一 Unix 微秒/native TID/等级/调用点外层，保留既有业务标签并移除 ANSI/旧 audio/FAYS 外层；原有错误分支在 payload 末尾追加显式 `UGR-xx-xx` 错误码，不按错误文本猜测根因。
 - 修正 CameraRecorder 必填配置/命令行参数缺失错误码为 `UGR-70-01`；GripperHmiTool 错误消息改为单次 logger 输出，避免异步 driver 日志插入消息中间；主日志 checker 同步拒绝 payload 内嵌第二套 V3 外层。
 - Ego 起录前时间同步增加严格 `<15ms` 误差门限：每次绝对授时固定补偿实测 ADB 生效延迟 `20ms`，未达标时最多按同一策略重试三次，避免按残余 offset 满量反向修正产生振荡；`ego_sync.json` 保留逐次 offset/授时结果，连续失败以 `UGR-82-02` 中止本条录制并进入 `ERROR_5`。

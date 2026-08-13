@@ -47,6 +47,10 @@
   - 报告首先列出全部视频、本机 MCAP 中实际发现的全部 sensor topic、左右 Fays IMU/camera，以及存在时 `ego/sensor.mcap` 全部 topic 的 Unix 首帧时间、换算方式及相对最早流的误差；最大首帧误差达到 `1000ms` 时返回失败。
   - Fays 全局时间使用 MCAP `publishTime`，设备原始 `logTime` 仅用于 gap 和回退分析；Ego 单调时钟 topic 使用 `head_pose_details.start_offset_us` 计算固定 offset，已是 Unix 时间的 metainfo 不重复换算；`+nostereo` profile 自动跳过 Fays。
   - 主相机逐帧 Unix 时间按 `metadata.video_details[].start_offset_us + packet_pts_sec * 1000000` 计算；主相机 PTS 必须保留 V4L2 真实 gap，丢帧后不得压紧后续时间轴。Stereo 逐帧时间只使用 Fays MCAP camera `publishTime`，不使用 Stereo MKV PTS 做同步真值。
+- `test/scripts/board_stopwatch_record_test.sh`
+  - 在 PC 上一键连接 `ubuntu@192.168.2.240`，把脚本自身传到板端 `/tmp` 后执行外部秒表与正常 UGripper 录制联动测试；默认 GPIO139 低电平启动秒表，并立即通过运行时软件录制 FIFO 发送 `START`。
+  - 默认录制 `10s`，到时通过同一 FIFO 发送 `STOP` 并恢复 GPIO 高电平；等待 runtime 完成正常停录、校验和 episode rename 后，在对应最终 episode 中原子写入 `stopwatch_timing.json`。
+  - JSON 保存 GPIO 写入前后、录制 `START/STOP` 命令的 Unix/monotonic 时间及延迟计算。异常退出时脚本会尽力停录并恢复 GPIO 待机电平。
 - `test/scripts/board_gripper_hmi_link_stress.sh`
   - 停止 `ugripper.service` 后反复独占连接左右 HMI，执行 RGB、蜂鸣器开关和状态回读，统计合法回复、蜂鸣器状态确认、最大回复年龄与失败轮次。
   - 默认在整个压力窗口并行运行 `SensorRecorder`，持续记录左右 encoder，以区分 HMI 单 UART/控制板异常和整颗 CH9344 或 USB 上行链路异常。
@@ -90,6 +94,8 @@ bash test/scripts/testVideoPipe.sh
 bash test/scripts/validate_episode_data.sh /path/to/episode
 bash test/scripts/validate_episode_data.sh /path/to/data --latest
 bash test/scripts/validate_episode_data.sh /path/to/episode --json > /tmp/episode-validation.json
+bash test/scripts/board_stopwatch_record_test.sh
+bash test/scripts/board_stopwatch_record_test.sh --duration-sec 30
 bash test/scripts/board_tactile_ffmpeg_streamon_soak.sh --device /dev/tcam_left_l --duration-sec 1800 --cycle-sec 5
 bash test/scripts/board_tactile_ffmpeg_parallel_soak.sh --duration-sec 1800 --cycle-sec 1
 bash test/scripts/board_encoder_cmd_ack_latency.sh --iterations 5000 --timeout-ms 20
@@ -154,3 +160,4 @@ sudo bash /dev/shm/ugripper_hmi_test/board_gripper_hmi_link_stress.sh \
 - `camera_crash_capture.sh` 在开启内核日志抓取时依赖 `sudo -n dmesg` 与 `sudo -n journalctl -k`；无免密 sudo 时，对应日志会失败或为空。
 - `testVideoPipe.sh` 依赖 `v4l2-ctl`。
 - `scan_main_camera_mkv_issues.py` 依赖 `ffprobe`；当 `--decode-mode` 不是 `off` 时还依赖 `ffmpeg`。
+- `board_stopwatch_record_test.sh` 的 PC 端依赖 `sshpass`、`ssh` 和 `scp`；板端必须处于可正常起录状态，数据盘已挂载，且没有其他正在进行的录制。默认秒表触发极性为低电平有效，可用 `--active-level 1` 覆盖。
