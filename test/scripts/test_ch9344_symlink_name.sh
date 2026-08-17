@@ -37,11 +37,23 @@ check_group() {
     fi
 }
 
-check_group "1-1.2" 0 right
-check_group "9-1.2" 8 left
-check_group "1-1.4" 16 right
-check_group "9-1.4" 24 left
-check_group "5-1.4" 32 right
-check_group "11-1.4" 40 left
+reject_group() {
+    route="$1"
+    first_num="$2"
+    tty_dir="$TMP_ROOT/devices/$route/${route}:1.0/tty"
+    first="ttyCH9344USB$first_num"
+
+    mkdir -p "$tty_dir"
+    : > "$tty_dir/$first"
+    if $HELPER "$tty_dir/$first" "$first" >/dev/null 2>&1; then
+        fail "$route unexpectedly produced a legacy symlink"
+    fi
+}
+
+check_group "1-1.4" 0 right
+check_group "5-1.4" 8 left
+reject_group "1-1.2" 16
+reject_group "9-1.4" 24
+reject_group "11-1.4" 32
 
 echo "PASS: CH9344 symlink topology mappings"

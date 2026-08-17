@@ -23,9 +23,9 @@
 - U 盘升级入口：`auto_update/usb_auto_update.sh`
 
 ### USB 硬件拓扑补充
-- V3 RK3588 设备的左右 USB2 手部链路分别为 `5-1 -> 5-1.2`（右）和 `9-1 -> 9-1.2`（左）；嵌套 7-port hub 的 `3/5/7` 端口依次承载 tactile L/R 与主相机。
-- V3 的 USB3 Fays 链路仍为 `6-1.4`（右）和 `10-1.4`（左），沿用现有 `stereo_*` / `*_fays_imu` 规则。
-- `config/99-fixed-usb-map.rules` 同时保留 V2/V2.5 的旧 hub 路径和 V3 路径，按父链路精确建立 `/dev/cam_*`、`/dev/tcam_*` symlink。
+- V3 RK3588 当前唯一支持的左右 USB2 手部链路分别为 `1-1`（右）和 `5-1`（左）；四口 hub 的 `.1/.2/.3/.4` 依次承载主相机、tactile R、tactile L 与 CH9344。
+- V3 当前唯一支持的 USB3 Fays 链路为 `8-1.2`（右）和 `6-1.2`（左）。该拓扑于 2026-08-14 在当前 240 设备上逐侧采集确认，规则与 USB2 整侧同步，确保 `stereo_*` / `*_fays_imu` 和 HMI、主摄、触觉数据左右语义一致。
+- `config/99-fixed-usb-map.rules` 仅按上述当前父链路建立 `/dev/cam_*`、`/dev/tcam_*`、`/dev/stereo_*`、`/dev/*_fays_imu` 与夹爪串口 symlink，不再兼容 V2/V2.5、旧 hub 或其他 USB 根路径。
 
 ## 3. 模块总览
 | 模块 | 入口 | 当前职责 | 关键输入/输出 |
@@ -137,11 +137,10 @@
 - 配置入口：`config/camera_recorder.yaml`。
 - 当前 YAML 定义 9 路相机：左右主摄、可选胸部主摄、左右 stereo、4 路触觉。
 - `udev` 口位策略当前口径：
-  - stereo 允许同侧 hub 的内部端口 `.1/.2` 互换；CH9344 同时兼容旧版/嵌套 hub 的 `.1/.2` 与 V3 四口 hub 的 `.4`，同组序号最小两路依次映射为 `*_gripper`、`*_encoder`；
-  - V3 四口 USB2 hub 的固定映射为 `.1 -> cam_*`、`.2 -> tcam_*_r`、`.3 -> tcam_*_l`、`.4 -> CH9344`，右侧兼容 bus `1/5`，左侧兼容 bus `9/11`；
+  - stereo 仅匹配右侧 `8-1.2` 与左侧 `6-1.2`；CH9344 仅匹配右侧 `1-1.4` 与左侧 `5-1.4`，同组序号最小两路依次映射为 `*_gripper`、`*_encoder`；
+  - V3 四口 USB2 hub 的固定映射为 `.1 -> cam_*`、`.2 -> tcam_*_r`、`.3 -> tcam_*_l`、`.4 -> CH9344`；当前右爪为 bus `1`，左爪为 bus `5`，不再接受历史或备用根路径；
   - tactile `l/r` 仍按左右侧固定 kernel 路径命名，不做跨侧互换；
-  - 左侧更换新 hub 后，左主摄与左触觉 `l` 不再只按 `.4.2/.4.4` 固定口位判断，当前优先按设备类型识别：`27c2:0530` 归 `/dev/cam_left`，`0bda:5846` 归 `/dev/tcam_left_l`，USB2 口位仅用于限定属于左侧链路；
-  - 左手新 hub 的 tactile 口位与右手保持同构：`.3 -> /dev/tcam_left_l`、`.4 -> /dev/tcam_left_r`；同时继续兼容旧特殊 hub 的 `/dev/tcam_left_r <- .3`。
+  - 主摄与触觉同时按精确父路径、VID/PID、USB2 速率及 video index 匹配，不做仅按设备类型或旧特殊 hub 的宽松识别。
 - 默认运行时录制 8 路：左右主摄 + 左右 stereo + 4 路触觉；启用胸部主摄时为 9 路。`+nostereo` 变体为 6/7 路。
 - 普通 `camera_recorder` 直接启动主摄与触觉；默认包另行启动双目 warmup daemon，`+nostereo` 变体不启动。
 - 夹爪热插拔恢复完成后，`record_runtime` 当前会在该侧关键设备全部 ready、并完成 gripper runtime refresh 之后，只按 tactile 相机 USB `serial` 标记该侧实时参考帧待更新；服务初始化阶段不会直接打开触觉相机抓参考帧。待更新实时参考帧统一由后续首个可用 episode 的触觉视频截帧生成，若该 episode 缺失、损坏或截帧失败则顺延到下一条 episode。持久化 baseline 不因夹爪重连刷新，避免覆盖关机期间发生的盖板损坏。

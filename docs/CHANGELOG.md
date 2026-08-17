@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 按当前 240 设备逐侧采集结果适配 V3 唯一 USB 拓扑：`1-1.1/.2/.3/.4` 与 `8-1.2` 映射为右爪链路，`5-1.1/.2/.3/.4` 与 `6-1.2` 映射为左爪链路，并同步更新主摄、触觉、Fays stereo/IMU 与 CH9344 gripper/encoder symlink；rules/helper 不再接受 V2/V2.5、旧 hub、备用 root 或其他 USB 路径。
+
 - episode 深度校验新增 V3 `force_left/right` 必需 topic、8-byte float64/N payload、NaN/Inf、数值分布、force 专用 gap、长 gap 时间占比及左右首尾同步检查，`--latest` 会排除录制中的 `*-temp`。HMI 驱动临时增加可集中关闭的 `[TEMP_FORCE_DIAG]`，检测到连续高频请求后分别记录压力请求排队、实际发送和回包的 `80–1000ms` 空洞，并始终捕获低两字节为 `FF FF` 的可疑原始帧；诊断不修改或过滤录制数据。
 - 暂停录制态 lux 闭环补光并解除补光 PWM 与环境光传感器的运行时绑定：保留 HMI lux/PWM 协议和工具入口，补光默认关闭，后续由相机 gain 提供独立控制输入；`UGRIPPER_AUTO_FILL_LIGHT` 保留为全局开关，但 gain 控制源接线前即使启用也保持 PWM 为零。
 - SensorRecorder 新增左右夹爪力传感器录制：运行时读取匹配夹爪 SN 的 FCAL 两点标定，将压力原始值转换为牛顿后写入 `sensor_left/right.mcap` 的 `force_left/right` topic；V3 停录校验要求两侧 force topic 均存在且有数据。HMI dashboard 的完整力标定以夹爪 UCAL/FCAL payload 为唯一持久化来源，首次标定的零点仅使用 `/run/ugripper` 临时暂存；写入后会核验独立 SN，必要时恢复写入前的 SN。dashboard 读取标定时只执行一次 `--read-calib` 链路并短重试；`GripperHmiTool` 在同一独占事务内按“先 SN、后 calibration”读取并完成匹配，不再因标定读尾帧干扰后置 SN 查询而误报 `UNCALIBRATED`。

@@ -1,14 +1,11 @@
-# Minimal fixed USB names for the current UGripper topology.
+# Fixed USB names for the observed V3 gripper topology on device 240.
 #
-# Storage is handled by 99-usb-auto-update.rules. This file only maps:
-# main cameras, chest camera, tactile cameras, Fays stereo/IMU, and CH9344.
-#
-# Board ports:
-# - right USB2 hub: 1-1 or 5-1
-# - right USB3 hub: 6-1 or 8-1
-# - left USB2 hub: 9-1 or 11-1
-# - left USB3 hub: 10-1 or 12-1
-# - chest camera: 5-1 or 11-1 direct USB2 only
+# Captured one side at a time on the current device 240 on 2026-08-14:
+# - right hand USB2 / USB3: 1-1 / 8-1
+# - left hand USB2 / USB3: 5-1 / 6-1
+# - USB2 four-port hub: .1=main camera, .2=tactile R,
+#   .3=tactile L, .4=CH9344
+# - USB3 Fays device: .2
 
 ACTION!="add|change", GOTO="ugripper_fixed_end"
 
@@ -18,88 +15,32 @@ SUBSYSTEM=="tty", GOTO="ugripper_fixed_tty"
 GOTO="ugripper_fixed_end"
 
 LABEL="ugripper_fixed_usb"
-# Fays SDK needs access to the USB device/control node. Match only SuperSpeed
-# ports in the current UGripper side topology.
-ENV{DEVTYPE}=="usb_device", KERNEL=="[68]-1", ATTR{idVendor}=="0403", ATTR{idProduct}=="602e", ATTR{speed}=="5000", MODE:="0777", GROUP:="plugdev"
-ENV{DEVTYPE}=="usb_device", KERNEL=="[68]-1.[1-4]", ATTR{idVendor}=="0403", ATTR{idProduct}=="602e", ATTR{speed}=="5000", MODE:="0777", GROUP:="plugdev"
-ENV{DEVTYPE}=="usb_device", KERNEL=="1[02]-1", ATTR{idVendor}=="0403", ATTR{idProduct}=="602e", ATTR{speed}=="5000", MODE:="0777", GROUP:="plugdev"
-ENV{DEVTYPE}=="usb_device", KERNEL=="1[02]-1.[1-4]", ATTR{idVendor}=="0403", ATTR{idProduct}=="602e", ATTR{speed}=="5000", MODE:="0777", GROUP:="plugdev"
+# Fays SDK needs access to the USB device/control node.
+ENV{DEVTYPE}=="usb_device", KERNEL=="8-1.2", ATTR{idVendor}=="0403", ATTR{idProduct}=="602e", ATTR{speed}=="5000", MODE:="0777", GROUP:="plugdev"
+ENV{DEVTYPE}=="usb_device", KERNEL=="6-1.2", ATTR{idVendor}=="0403", ATTR{idProduct}=="602e", ATTR{speed}=="5000", MODE:="0777", GROUP:="plugdev"
 GOTO="ugripper_fixed_end"
 
 LABEL="ugripper_fixed_video"
-# Fays video + IMU streams on USB3. Interface 00 is stereo; interface 02 is IMU.
-KERNEL=="video*", KERNELS=="[68]-1", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="00", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="stereo_right", SYMLINK+="right_fays_stereo"
-KERNEL=="video*", KERNELS=="[68]-1.[1-4]", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="00", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="stereo_right", SYMLINK+="right_fays_stereo"
-KERNEL=="video*", KERNELS=="[68]-1", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="02", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="right_fays_imu"
-KERNEL=="video*", KERNELS=="[68]-1.[1-4]", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="02", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="right_fays_imu"
-KERNEL=="video*", KERNELS=="1[02]-1", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="00", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="stereo_left", SYMLINK+="left_fays_stereo"
-KERNEL=="video*", KERNELS=="1[02]-1.[1-4]", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="00", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="stereo_left", SYMLINK+="left_fays_stereo"
-KERNEL=="video*", KERNELS=="1[02]-1", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="02", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="left_fays_imu"
-KERNEL=="video*", KERNELS=="1[02]-1.[1-4]", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="02", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="left_fays_imu"
+# Fays interface 00 is stereo; interface 02 is IMU.
+KERNEL=="video*", KERNELS=="8-1.2", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="00", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="stereo_right", SYMLINK+="right_fays_stereo"
+KERNEL=="video*", KERNELS=="8-1.2", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="02", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="right_fays_imu"
+KERNEL=="video*", KERNELS=="6-1.2", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="00", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="stereo_left", SYMLINK+="left_fays_stereo"
+KERNEL=="video*", KERNELS=="6-1.2", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="602e", ATTRS{speed}=="5000", ENV{ID_USB_INTERFACE_NUM}=="02", ATTR{index}=="0", MODE:="0777", GROUP:="video", SYMLINK+="left_fays_imu"
 
-# Left/right main cameras on the hand USB2 hubs.
-KERNEL=="video*", KERNELS=="[15]-1.4.4", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_right"
-KERNEL=="video*", KERNELS=="[15]-1.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_right"
-KERNEL=="video*", KERNELS=="[15]-1.2.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_right"
-KERNEL=="video*", KERNELS=="[15]-1.7", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_right"
-# V3 RK3588 hand hubs: the downstream 7-port hub is behind USB2 port 2.
-KERNEL=="video*", KERNELS=="5-1.2.7", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_right"
-KERNEL=="video*", KERNELS=="9-1.4.[24]", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
-KERNEL=="video*", KERNELS=="11-1.4.[24]", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
-KERNEL=="video*", KERNELS=="9-1.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
-KERNEL=="video*", KERNELS=="11-1.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
-KERNEL=="video*", KERNELS=="9-1.2.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
-KERNEL=="video*", KERNELS=="11-1.2.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
-KERNEL=="video*", KERNELS=="9-1.7", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
-KERNEL=="video*", KERNELS=="11-1.7", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
-# V3 RK3588 hand hubs: left side uses the matching USB2 port 2 path.
-KERNEL=="video*", KERNELS=="9-1.2.7", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
+# Main cameras on port 1 of each USB2 four-port hub.
+KERNEL=="video*", KERNELS=="1-1.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_right"
+KERNEL=="video*", KERNELS=="5-1.1", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
 
-# Taobao commercial hub compatibility
-KERNEL=="video*", KERNELS=="9-1.4", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_left"
-KERNEL=="video*", KERNELS=="1-1.4", ATTRS{idVendor}=="27c2", ATTRS{idProduct}=="0530", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="cam_right"
-
-# Chest camera can only be directly plugged into right-upper or left-lower USB2.
-KERNEL=="video*", KERNELS=="5-1:1.0", ENV{ID_VENDOR_ID}=="27c2", ENV{ID_MODEL_ID}=="0530", ATTR{index}=="0", SYMLINK+="cam_chest"
-KERNEL=="video*", KERNELS=="11-1:1.0", ENV{ID_VENDOR_ID}=="27c2", ENV{ID_MODEL_ID}=="0530", ATTR{index}=="0", SYMLINK+="cam_chest"
-
-# Tactile cameras on the hand USB2 hubs.
-KERNEL=="video*", KERNELS=="[15]-1.4.2", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_l"
-KERNEL=="video*", KERNELS=="[15]-1.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_l"
-KERNEL=="video*", KERNELS=="[15]-1.4.1", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_r"
-KERNEL=="video*", KERNELS=="[15]-1.4:1.0", ENV{ID_VENDOR_ID}=="0bda", ENV{ID_MODEL_ID}=="5846", ATTR{index}=="0", SYMLINK+="tcam_right_r"
-KERNEL=="video*", KERNELS=="[15]-1.5", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_r"
-KERNEL=="video*", KERNELS=="[15]-1.2", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_r"
-KERNEL=="video*", KERNELS=="9-1.4.[24]", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_l"
-KERNEL=="video*", KERNELS=="11-1.4.[24]", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_l"
-KERNEL=="video*", KERNELS=="9-1.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_l"
-KERNEL=="video*", KERNELS=="11-1.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_l"
-KERNEL=="video*", KERNELS=="9-1.4.1", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
-KERNEL=="video*", KERNELS=="11-1.4.1", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
-KERNEL=="video*", KERNELS=="9-1.4:1.0", ENV{ID_VENDOR_ID}=="0bda", ENV{ID_MODEL_ID}=="5846", ATTR{index}=="0", SYMLINK+="tcam_left_r"
-KERNEL=="video*", KERNELS=="11-1.4:1.0", ENV{ID_VENDOR_ID}=="0bda", ENV{ID_MODEL_ID}=="5846", ATTR{index}=="0", SYMLINK+="tcam_left_r"
-KERNEL=="video*", KERNELS=="9-1.5", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
-KERNEL=="video*", KERNELS=="11-1.5", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
-KERNEL=="video*", KERNELS=="9-1.2", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
-KERNEL=="video*", KERNELS=="11-1.2", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
-
-# V3 RK3588 hand hubs: tactile cameras are on ports 3 and 5 of the nested hub.
-KERNEL=="video*", KERNELS=="5-1.2.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_l"
-KERNEL=="video*", KERNELS=="5-1.2.5", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_r"
-KERNEL=="video*", KERNELS=="9-1.2.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_l"
-KERNEL=="video*", KERNELS=="9-1.2.5", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
-
-# Taobao commercial hub compatibility
-KERNEL=="video*", KERNELS=="1-1.2.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_l"
-KERNEL=="video*", KERNELS=="1-1.2.4", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_r"
-KERNEL=="video*", KERNELS=="9-1.2.4", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
+# Tactile cameras on ports 2 (R) and 3 (L).
+KERNEL=="video*", KERNELS=="1-1.2", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_r"
+KERNEL=="video*", KERNELS=="1-1.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_right_l"
+KERNEL=="video*", KERNELS=="5-1.2", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_r"
+KERNEL=="video*", KERNELS=="5-1.3", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="5846", ATTRS{speed}=="480", ATTR{index}=="0", SYMLINK+="tcam_left_l"
 GOTO="ugripper_fixed_end"
 
 LABEL="ugripper_fixed_tty"
-# CH9344 exposes multiple tty nodes without a stable per-port sysfs attribute.
-# Keep udev rules thin: one permission rule, then a small helper returns the
-# symlink name for group rank 1/2 only (gripper/encoder). The helper accepts
-# legacy/nested hub ports 1/2 and the flat V3 four-port hub's port 4.
+# CH9344 is fixed on port 4. The helper maps group rank 1/2 to
+# gripper/encoder for the side selected by the exact parent path.
 KERNEL=="ttyCH9344USB*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d9", MODE:="0666"
 KERNEL=="ttyCH9344USB*", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d9", PROGRAM=="/usr/local/bin/ugripper_ch9344_symlink_name %p %k", SYMLINK+="%c"
 
