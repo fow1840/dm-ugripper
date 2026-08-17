@@ -430,6 +430,17 @@
 - 主包打包当前默认优先从 Nexus raw 仓库下载并解压归档好的 `.venv` `tar.gz`，再沿用同一套 `.venv` 架构校验与 staging 同步逻辑；当前默认归档为 `ugripper-v2-uv-venv/py311_v2.1.0/ugripper_venv_20260623_102954_arm64.tar.gz`，这条入口只针对 raw 制品下载，不走 Conan recipe。
 - 若需要临时切回本地或外部目录中的 `.venv` / `build`，可显式设置 `PACKAGED_VENV_URL=''` 后再配合 `PACKAGED_VENV_SOURCE`、`PACKAGED_BUILD_DIR` 覆盖来源；若最终 `.venv` 来源不存在，脚本会同步移除 staging 中旧的 `.venv`，此时包仍可生成，但不再满足部署后直接运行的交付约束。
 
+### 9.8 客户侧 x86 Linux deb 烧录工具
+- `scripts/customer_deb_flasher.cpp` 是内部维护源码，`scripts/customer_deb_flasher_x86_64` 是交付客户的 x86-64 Linux 单文件可执行程序；程序扫描启动时当前工作目录中的 `.deb`，不依赖 `production_tools` 或仓库其他文件。
+- `scripts/internal_deb_flasher.py` 是供内部工程师在 Windows 上直接维护和执行的明文 Python 版本，扫描脚本同级目录并复用相同的白名单、目标版本查询、安装校验及 Mender force-init 口径；只依赖 `paramiko` 和 `zstandard`，仅列出目标机与本地版本而不比较大小，输出及异常不显示固定连接参数。
+- 工具只接受 Debian 元数据 `Package` 属于 `ugripper`、`das-usb-updater`、`bluetooth-gatt-server`、`databot-device-joint`、`device-ota-mender` 且 `Architecture` 为 `arm64/all` 的包；同名多版本选择 Debian 版本最高者。
+- Windows 内部 Python 版本不比较 Debian 版本；同一包名存在多个本地 deb 时直接报错，要求目录中每个包只保留一个。
+- 工具先连接设备并同时检查远端 `dpkg --print-architecture=arm64` 与 `uname -m=aarch64/arm64`，随后读取全部白名单软件的已安装版本，与当前目录的待安装版本、架构及升级/降级/重装/新安装状态一并展示；只有用户输入 `INSTALL` 后才上传或修改设备，其他输入只取消安装。
+- 上传后再次读取 deb 元数据，随后按批量 `dpkg --auto-deconfigure -i --force-overwrite`、`apt-get -f install --no-download` 和逐包版本回读的顺序安装。
+- 若本批包含 `device-ota-mender`，必须在版本回读成功后按 production tools 的现行口径等待 `2s`、等待 apt/dpkg 锁释放，再执行 `mender-offline-init --force-install-module`；命令缺失或真实退出码非零时整批安装失败。
+- 固定连接参数以混淆字节保存在源码和可执行程序中，不通过命令行参数、交互界面或日志输出；SSH 使用匿名临时配置和程序自身 askpass。该措施用于避免普通交付场景直接看到凭据，不能阻止拥有客户机完全控制权的人员通过调试、内存读取或逆向工程提取运行时秘密。
+- 客户侧 Linux 可执行程序需提供常规 `dpkg/dpkg-deb` 与 OpenSSH `ssh/scp` 命令，不要求 Python、`production_tools` 或 `sshpass`；Windows 内部 Python 版本自行解析 deb 并通过 Paramiko/SFTP 连接，不要求 Windows OpenSSH 或 dpkg。两种工具都属于仓库侧交付辅助资产，不进入 ugripper ARM deb 的安装布局。
+
 ## 10. 常用检查与排障入口
 ### 10.1 服务管理
 ```bash

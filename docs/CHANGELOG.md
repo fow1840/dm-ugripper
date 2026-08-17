@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 新增客户侧 x86-64 Linux 单文件 deb 烧录工具：扫描当前目录中的固定白名单 `arm64/all` 包，先只读连接 240 设备、检查 ARM64 架构并展示全部白名单软件的目标机版本、本地版本和升级状态，确认后再上传、批量强制安装并回读版本；`device-ota-mender` 安装后按 production tools 口径等待 apt/dpkg 锁并执行 `mender-offline-init --force-install-module`。固定连接参数不进入命令行、界面或日志，并在源码和可执行文件中以混淆字节保存。
+- 同步提供内部 Windows 明文 Python 版本，直接解析脚本同级 deb 并通过 Paramiko/SFTP 执行目标版本列表、确认安装和 Mender force-init 流程；不比较版本大小，仅依赖 `paramiko` 和 `zstandard`，运行输出及异常不显示用户名或密码。
+
 - 按当前 240 设备逐侧采集结果适配 V3 唯一 USB 拓扑：`1-1.1/.2/.3/.4` 与 `8-1.2` 映射为右爪链路，`5-1.1/.2/.3/.4` 与 `6-1.2` 映射为左爪链路，并同步更新主摄、触觉、Fays stereo/IMU 与 CH9344 gripper/encoder symlink；rules/helper 不再接受 V2/V2.5、旧 hub、备用 root 或其他 USB 路径。
 
 - episode 深度校验新增 V3 `force_left/right` 必需 topic、8-byte float64/N payload、NaN/Inf、数值分布、force 专用 gap、长 gap 时间占比及左右首尾同步检查，`--latest` 会排除录制中的 `*-temp`。HMI 驱动临时增加可集中关闭的 `[TEMP_FORCE_DIAG]`，检测到连续高频请求后分别记录压力请求排队、实际发送和回包的 `80–1000ms` 空洞，并始终捕获低两字节为 `FF FF` 的可疑原始帧；诊断不修改或过滤录制数据。
