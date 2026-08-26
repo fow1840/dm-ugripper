@@ -161,6 +161,52 @@ std::array<uint8_t, 8> GripperHmiProtocol::buildSetRgbCommand(const GripperLedCo
     return frame;
 }
 
+std::array<uint8_t, 7> GripperHmiProtocol::buildInitializeVersionCommand()
+{
+    return buildStandardCommand(kIndexWriteCalibrationData, kIndexVersion, 0x65, 0x72);
+}
+
+std::array<uint8_t, 7> GripperHmiProtocol::buildReadVersionCommand()
+{
+    return buildStandardCommand(kIndexReadCalibrationData, kIndexVersion, 0x00, 0x00);
+}
+
+std::array<uint8_t, 7> GripperHmiProtocol::buildReadFirmwareVersionCommand()
+{
+    return buildStandardCommand(kIndexReadCalibrationData, kIndexWriteCalibrationData, 0x00, 0x00);
+}
+
+std::optional<std::string> GripperHmiProtocol::decodeVersionPayload(const uint8_t *data, size_t size)
+{
+    if (data == nullptr || size != kVersionDataSize)
+    {
+        return std::nullopt;
+    }
+
+    size_t used = 0;
+    while (used < size && data[used] != 0x00 && data[used] != 0xFF)
+    {
+        if (data[used] < 0x21 || data[used] > 0x7E)
+        {
+            return std::nullopt;
+        }
+        ++used;
+    }
+    if (used == 0)
+    {
+        return std::nullopt;
+    }
+
+    for (size_t index = used; index < size; ++index)
+    {
+        if (data[index] != 0x00 && data[index] != 0xFF)
+        {
+            return std::nullopt;
+        }
+    }
+    return std::string(reinterpret_cast<const char *>(data), used);
+}
+
 std::array<uint8_t, 7> GripperHmiProtocol::buildReadSerialNumberCommand()
 {
     return buildStandardCommand(kIndexReadCalibrationData, kIndexSerialNumber, 0x00, 0x00);

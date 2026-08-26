@@ -48,13 +48,20 @@ public:
     bool setBeepState(const GripperBeepState &state);
     bool setBeepEnabled(bool enabled);
     bool silenceBeep();
+    bool readVersions(std::string *version56, std::string *version57);
+    bool initializeVersionStorage();
     bool readSerialNumber(std::string *serialNumber);
+    bool readSerialNumberPayload(gripper_hmi::GripperSerialNumber *serialNumber);
     bool writeSerialNumber(const std::string &serialNumber);
+    bool writeSerialNumberPayload(const gripper_hmi::GripperSerialNumber &serialNumber);
+    bool readCalibrationPayload(gripper_hmi::GripperCalibrationPayload *payload);
     bool readCalibrationData(gripper_hmi::GripperCalibrationDataV1 *calibrationData);
     bool readSerialNumberAndCalibration(std::string *serialNumber,
                                         bool *hasSerialNumber,
                                         gripper_hmi::GripperCalibrationDataV1 *calibrationData);
-    bool writeCalibrationData(const gripper_hmi::GripperCalibrationDataV1 &calibrationData);
+    bool writeCalibrationPayload(const gripper_hmi::GripperCalibrationPayload &payload);
+    bool writeCalibrationData(const gripper_hmi::GripperCalibrationDataV1 &calibrationData,
+                              bool preservePayloadBytes = false);
 
     bool pollOnce(int timeoutMs = 20);
     bool waitForKeyChange(int timeoutMs, GripperKeyReport *report);
@@ -90,8 +97,18 @@ private:
     bool readRawDataFrameLocked(size_t dataLength, std::vector<uint8_t> *payload, int timeoutMs);
     bool readCalibrationFrameLocked(uint8_t expectedToken, std::vector<uint8_t> *payload, int timeoutMs);
     bool abortCalibrationWriteStateLocked(const std::string &reason);
-    bool readSerialNumberLocked(std::string *serialNumber);
+    bool readVersionsLocked(std::string *version56, std::string *version57);
+    bool readVersionPayloadLocked(const std::array<uint8_t, 7> &request,
+                                  std::string *version,
+                                  std::string *error);
+    bool readSerialNumberLocked(std::string *serialNumber,
+                                gripper_hmi::GripperSerialNumber *rawPayload = nullptr);
+    bool readCalibrationPayloadLocked(gripper_hmi::GripperCalibrationPayload *payload);
     bool readCalibrationDataLocked(gripper_hmi::GripperCalibrationDataV1 *calibrationData);
+    ExclusiveFrameReadResult readVersionDataOrStatusFrameLocked(std::vector<uint8_t> *payload,
+                                                                uint8_t *token,
+                                                                uint8_t *statusCode,
+                                                                int timeoutMs);
     ExclusiveFrameReadResult readRawDataOrStatusFrameLocked(size_t dataLength,
                                                             std::vector<uint8_t> *payload,
                                                             uint8_t *token,

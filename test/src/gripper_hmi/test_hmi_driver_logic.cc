@@ -592,4 +592,152 @@ TEST(GripperHmiDriverLogicTest, CollectCalibrationRangeFrameConsumesStatusAndDro
     EXPECT_EQ(garbage.front(), GripperHmiProtocol::kRecvHead2);
 }
 
+
+
+TEST(GripperHmiDriverLogicTest, ScansTwoCoalescedRawFramesWithoutDroppingTail)
+{
+    auto appendFrame = [](std::vector<uint8_t>* buffer, uint8_t fill) {
+        const size_t start = buffer->size();
+        buffer->push_back(GripperHmiProtocol::kRecvHead1);
+        buffer->push_back(GripperHmiProtocol::kRecvHead2);
+        buffer->insert(buffer->end(), GripperHmiProtocol::kSerialNumberChunkSize, fill);
+        buffer->push_back(GripperHmiProtocol::calculateXor(
+            buffer->data() + start,
+            2 + GripperHmiProtocol::kSerialNumberChunkSize));
+    };
+
+    std::vector<uint8_t> buffer;
+    appendFrame(&buffer, 0x31);
+    appendFrame(&buffer, 0x32);
+
+    std::vector<uint8_t> first;
+    std::vector<uint8_t> second;
+    EXPECT_EQ(
+        gripper_hmi::driver_logic::ScanRawDataOrStatusFrame(
+            &buffer, GripperHmiProtocol::kSerialNumberChunkSize, &first, nullptr, nullptr),
+        gripper_hmi::driver_logic::ExclusiveFrameScanResult::MatchedData);
+    EXPECT_EQ(
+        gripper_hmi::driver_logic::ScanRawDataOrStatusFrame(
+            &buffer, GripperHmiProtocol::kSerialNumberChunkSize, &second, nullptr, nullptr),
+        gripper_hmi::driver_logic::ExclusiveFrameScanResult::MatchedData);
+    EXPECT_TRUE(buffer.empty());
+    ASSERT_EQ(first.size(), GripperHmiProtocol::kSerialNumberChunkSize);
+    ASSERT_EQ(second.size(), GripperHmiProtocol::kSerialNumberChunkSize);
+    EXPECT_EQ(first.front(), 0x31);
+    EXPECT_EQ(second.front(), 0x32);
+}
+
+TEST(GripperHmiDriverLogicTest, AcceptsOneBasedCalibrationResponseTokenForSingleChunkRead)
+{
+    std::vector<uint8_t> buffer = {
+        GripperHmiProtocol::kRecvHead1,
+        GripperHmiProtocol::kRecvHead2,
+        0x01,
+    };
+    for (uint8_t i = 0; i < GripperHmiProtocol::kCalibrationChunkSize; ++i)
+    {
+        buffer.push_back(static_cast<uint8_t>(0xA0 + i));
+    }
+    buffer.push_back(GripperHmiProtocol::calculateXor(
+        buffer.data() + 3, GripperHmiProtocol::kCalibrationChunkSize));
+
+    std::vector<uint8_t> payload;
+    uint8_t token = 0;
+    uint8_t status = 0;
+    EXPECT_EQ(
+        gripper_hmi::driver_logic::ScanCalibrationDataOrStatusFrame(
+            &buffer, 0, GripperHmiProtocol::kCalibrationChunkSize, &payload, &token, &status),
+        gripper_hmi::driver_logic::ExclusiveFrameScanResult::MatchedData);
+    ASSERT_EQ(payload.size(), GripperHmiProtocol::kCalibrationChunkSize);
+    EXPECT_EQ(payload.front(), 0xA0);
+    EXPECT_EQ(payload.back(), 0xAF);
+}
+
+TEST(GripperHmiDriverLogicTest, CollectsCompleteOneBasedRawCalibrationPayloadWithoutValidHeader)
+{
+    gripper_hmi::GripperCalibrationPayload raw{};
+    std::array<bool, gripper_hmi::driver_logic::kCalibrationChunkCount> received{};
+    bool required_chunk_count_known = true;
+    size_t required_chunk_count = gripper_hmi::driver_logic::kCalibrationChunkCount;
+    auto index_base = gripper_hmi::driver_logic::CalibrationChunkIndexBase::Unknown;
+    uint8_t status_token = 0;
+    uint8_t status_code = 0;
+
+    for (size_t packet_index = 0;
+         packet_index < gripper_hmi::driver_logic::kCalibrationChunkCount;
+         ++packet_index)
+    {
+        const uint8_t token = static_cast<uint8_t>(packet_index + 1);
+        std::vector<uint8_t> frame = {
+            GripperHmiProtocol::kRecvHead1,
+            GripperHmiProtocol::kRecvHead2,
+            token,
+        };
+        frame.insert(frame.end(),
+                     GripperHmiProtocol::kCalibrationChunkSize,
+                     static_cast<uint8_t>(packet_index));
+        frame.push_back(GripperHmiProtocol::calculateXor(
+            frame.data() + 3, GripperHmiProtocol::kCalibrationChunkSize));
+
+        const auto result = gripper_hmi::driver_logic::CollectCalibrationRangeFrame(
+            &frame,
+            gripper_hmi::driver_logic::CalibrationRangeCollectState{
+                .raw = &raw,
+                .received = &received,
+                .required_chunk_count_known = &required_chunk_count_known,
+                .required_chunk_count = &required_chunk_count,
+                .index_base = &index_base,
+                .status_token = &status_token,
+                .status_code = &status_code,
+            });
+        EXPECT_EQ(
+            result,
+            packet_index + 1 == gripper_hmi::driver_logic::kCalibrationChunkCount
+                ? gripper_hmi::driver_logic::CalibrationRangeCollectResult::CollectionComplete
+                : gripper_hmi::driver_logic::CalibrationRangeCollectResult::ContinueScanning);
+    }
+
+    EXPECT_EQ(index_base, gripper_hmi::driver_logic::CalibrationChunkIndexBase::OneBased);
+    EXPECT_TRUE(gripper_hmi::driver_logic::HasAllCalibrationChunks(received, required_chunk_count));
+    EXPECT_EQ(raw.front(), 0x00);
+    EXPECT_EQ(raw[GripperHmiProtocol::kCalibrationChunkSize], 0x01);
+    EXPECT_EQ(raw.back(), 0x3F);
+    EXPECT_TRUE(received.front());
+    EXPECT_TRUE(received.back());
+}
+
+TEST(GripperHmiDriverLogicTest, CollectsZeroBasedCalibrationRangePayload)
+{
+    gripper_hmi::GripperCalibrationPayload raw{};
+    std::array<bool, gripper_hmi::driver_logic::kCalibrationChunkCount> received{};
+    bool required_chunk_count_known = true;
+    size_t required_chunk_count = gripper_hmi::driver_logic::kCalibrationChunkCount;
+    auto index_base = gripper_hmi::driver_logic::CalibrationChunkIndexBase::Unknown;
+
+    std::vector<uint8_t> frame = {
+        GripperHmiProtocol::kRecvHead1,
+        GripperHmiProtocol::kRecvHead2,
+        0x00,
+    };
+    frame.insert(frame.end(), GripperHmiProtocol::kCalibrationChunkSize, 0x5A);
+    frame.push_back(GripperHmiProtocol::calculateXor(
+        frame.data() + 3, GripperHmiProtocol::kCalibrationChunkSize));
+
+    EXPECT_EQ(
+        gripper_hmi::driver_logic::CollectCalibrationRangeFrame(
+            &frame,
+            gripper_hmi::driver_logic::CalibrationRangeCollectState{
+                .raw = &raw,
+                .received = &received,
+                .required_chunk_count_known = &required_chunk_count_known,
+                .required_chunk_count = &required_chunk_count,
+                .index_base = &index_base,
+            }),
+        gripper_hmi::driver_logic::CalibrationRangeCollectResult::ContinueScanning);
+    EXPECT_EQ(index_base, gripper_hmi::driver_logic::CalibrationChunkIndexBase::ZeroBased);
+    EXPECT_TRUE(received[0]);
+    EXPECT_EQ(raw[0], 0x5A);
+    EXPECT_EQ(raw[GripperHmiProtocol::kCalibrationChunkSize - 1], 0x5A);
+}
+
 }  // namespace

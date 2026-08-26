@@ -32,7 +32,7 @@
 | 相机录制 | `bin/CameraRecorder/CameraRecorder` | 负责主摄/触觉会话录制；默认同时启动 Fays 双目链路，`+nostereo` 变体不启动 Fays | 默认 8 路基础 `mkv`；`+nostereo` 为 6 路 |
 | 传感器录制 | `bin/SensorRecorder/SensorRecorder` | 录制左右 IMU/encoder，按“采样入队 + 每侧独立 MCAP 写线程”分别输出 MCAP；收到 `SIGINT` / `SIGTERM` 时信号处理函数只设置停止标志，退出主循环后先等待编码器读写线程停止，再关闭串口、排空队列并关闭 MCAP，避免信号上下文日志死锁或串口释放竞态造成 Footer 缺失；encoder zeroing 使用相同的信号安全约束 | `sensor_left.mcap`、`sensor_right.mcap` |
 | Ego 联动采集 | `bin/UgripperRuntime/ego/ego_recording_worker.py` + `bin/UgripperRuntime/adb/adb` | 通过左右上键组合绑定/解绑一台 SXR Ego；录制起停阶段通过内置 ADB 联动 Ego app，起录前同步系统时间并按增量方式同步 Ego episode。未绑定时保持可选联动；绑定后设备在线、停录 finalize、文件拉取和远端/本地大小核对均成为录制硬条件；绑定只在本次开机周期内有效，整机重启后自动解除 | `/dev/shm/ugripper/ego_binding.json`、`/dev/shm/ugripper/ego_binding_status.json`、`ego/`、`ego/ego_sync.json` |
-| HMI 类库 | `standalone/GripperHmiTool` | 读取夹爪按键，并在驱动内部以单线程 owner 线程完成状态查询、灯效生成与 RGB 指令发送；默认由状态机切灯效，必要时仍可直接下发 RGB；当前也提供 SN 与 1024-byte 标定参数读写 API | 按键快照、RGB 指令、SN/标定参数读写 |
+| HMI 类库 | `standalone/GripperHmiTool` | 读取夹爪按键，并在驱动内部以单线程 owner 线程完成状态查询、灯效生成与 RGB 指令发送；默认由状态机切灯效，必要时仍可直接下发 RGB；`--read-version` 仅只读 HMI `0x52/0x56` 与 `0x52/0x57` 两路版本。显式 `--initialize-version-preserve-payload` 才会执行版本存储初始化，并在初始化前缓存完整 `32-byte` SN 与 `1024-byte` 标定 payload，随后原样写回、逐字节回读校验，失败最多重试 3 轮 | 按键快照、RGB 指令、双路版本、SN/标定参数读写与无损版本初始化 |
 | 音频播放 | `bin/UgripperRuntime/audio/audio_play.py` | 优先绑定受支持 USB 耳机、无耳机时回退系统默认声卡；播放提示音并处理耳机 HID 音量键；初始化阶段受控处理 idle suspend | `/dev/shm/ugripper/umi_audio_pipe` |
 | 音频采集 | `audio/record_usb_audio.py` | 优先从受支持 USB 耳机麦克风录音，无耳机时回退系统默认 source，供 pre/post 处理链路使用 | 临时 wav 文件 |
 | 数据盘挂载 | `config/99-fixed-usb-map.rules` | 限定允许物理 USB 口，使用独立 mount helper 将数据盘挂到 `/mnt/data_disk`；主包只负责挂载/卸载，不再直接拉起 updater | `/mnt/data_disk` |
@@ -508,7 +508,13 @@ for key in [
 PY
 ```
 
-### 10.8 仓库内测试脚本
+### 10.8 HMI 版本读取
+- `GripperHmiTool --port /dev/<side>_gripper --read-version` **禁止发送**版本初始化/写入帧 `5A 5A 57 56 65 72 16`；现场已确认该帧会清空或覆盖 HMI SN，因此版本读取只允许发送只读命令。
+- Tool 直接依次发送只读帧 `5A 5A 52 56 00 00 04` 与 `5A 5A 52 57 00 00 05`，两路读取互相独立；某一路返回 `F2 function_error` 时仍继续读取另一路。
+- CLI 稳定输出分别为 `version_56=<value|UNAVAILABLE>` 与 `version_57=<value|UNAVAILABLE>`；至少一路成功时命令成功，两路均失败时返回非零。固件当前观察到的响应为无帧头 16-byte ASCII，也兼容带 `A5 A5` 头和 XOR 的 19-byte 响应。
+- 生产强检不预设固定来源，而是从两路成功结果中选择命中允许表的版本；例如 `52/56=V1.2.1`、`52/57=V1.0.02.20260324` 时选择后者。
+
+### 10.9 仓库内测试脚本
 - 仓库根目录下的 `test/scripts/` 用于存放仓库侧、现场定向验证用脚本，不属于 `ugripper.service` 默认运行链路。
 - 当前目录包含：
   - `camera_test.sh`：直接拉起多路 `ffmpeg` 验证非主相机录制稳定性，并记录运行态信息。

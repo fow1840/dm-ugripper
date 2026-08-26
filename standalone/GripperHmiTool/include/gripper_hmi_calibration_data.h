@@ -12,6 +12,7 @@ namespace gripper_hmi
 constexpr size_t kSerialNumberLength = 16;
 constexpr size_t kSerialNumberFieldLength = 32;
 constexpr size_t kCalibrationPayloadSize = 1024;
+using GripperCalibrationPayload = std::array<uint8_t, kCalibrationPayloadSize>;
 constexpr uint32_t kCalibrationDataFormatVersion1 = 0x00010000u;
 
 enum GripperCalibrationValidField : uint32_t

@@ -57,6 +57,8 @@ public:
     static constexpr size_t kStopCalibrationWriteFrameLength = 20;
     static constexpr size_t kAbortCalibrationWriteFrameLength = 20;
     static constexpr size_t kSerialNumberResponseFrameLength = 19;
+    static constexpr size_t kVersionDataSize = 16;
+    static constexpr size_t kVersionFramedResponseLength = 19;
     static constexpr uint8_t kSendHead1 = 0x5A;
     static constexpr uint8_t kSendHead2 = 0x5A;
     static constexpr uint8_t kRecvHead1 = 0xA5;
@@ -67,6 +69,7 @@ public:
     static constexpr uint8_t kIndexRgbLight = 0x0F;
     static constexpr uint8_t kIndexReadCalibrationData = 0x52;
     static constexpr uint8_t kIndexSerialNumber = 0x53;
+    static constexpr uint8_t kIndexVersion = 0x56;
     static constexpr uint8_t kIndexWriteCalibrationData = 0x57;
     static constexpr uint8_t kFuncPwmGet = 0x02;
     static constexpr uint8_t kFuncReadCalibrationData = 0x5A;
@@ -85,6 +88,10 @@ public:
     static std::array<uint8_t, 7> buildBeepStateRequest();
     static std::array<uint8_t, 7> buildSetBeepCommand(const GripperBeepState &state);
     static std::array<uint8_t, 8> buildSetRgbCommand(const GripperLedColor &color);
+    static std::array<uint8_t, 7> buildInitializeVersionCommand();
+    static std::array<uint8_t, 7> buildReadVersionCommand();
+    static std::array<uint8_t, 7> buildReadFirmwareVersionCommand();
+    static std::optional<std::string> decodeVersionPayload(const uint8_t *data, size_t size);
     static std::array<uint8_t, 7> buildReadSerialNumberCommand();
     static std::array<uint8_t, 7> buildWriteSerialNumberCommand();
     static std::array<uint8_t, kSerialNumberFrameLength> buildWriteSerialNumberFrame(

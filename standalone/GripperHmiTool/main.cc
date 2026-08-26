@@ -27,6 +27,8 @@ constexpr int kBeepStateProbeDelayMs = 80;
 constexpr int kBeepStateProbeIntervalMs = 100;
 constexpr int kBeepSilenceRetryLimit = 5;
 constexpr int kBeepSilenceConfirmMs = 150;
+constexpr int kPayloadRestoreRetryLimit = 3;
+constexpr int kPayloadRestoreRetryDelayMs = 200;
 
 void logDeviceError(const char *errorCode,
                     const std::string &messagePrefix,
@@ -89,8 +91,11 @@ struct TestOptions
     bool ledOnly = false;
     bool stateMode = false;
     bool showHelp = false;
+    bool readVersion = false;
+    bool initializeVersionPreservePayload = false;
     bool readSerialNumber = false;
     bool readCalibration = false;
+    bool readCalibrationPayload = false;
     bool hasWriteSerialNumber = false;
     int beepDurationMs = 0;
     int beepDuty = static_cast<int>(GripperHmiDriver::kDefaultBeepDuty);
@@ -116,9 +121,12 @@ static void printUsage(const char *program)
         << "  --beep-duty 50 --beep-freq 1000 --beep-ms 300\n"
         << "  beep uses fixed tested defaults for active buzzer: duty=30 freq=1000\n"
         << "Protocol commands:\n"
+        << "  --read-version  # safely read both 0x52/0x56 and 0x52/0x57 version fields\n"
+        << "  --initialize-version-preserve-payload  # DANGEROUS: back up SN/calibration, initialize, restore and verify\n"
         << "  --read-sn\n"
         << "  --write-sn DAG91126320001D6  # encoded into 32-byte field with trailing zeros\n"
         << "  --read-calib [--dump-calib-bin /tmp/umi_calib.bin]\n"
+        << "  --read-calib-raw --dump-calib-bin /tmp/umi_calib.raw.bin  # dump all 1024 bytes without UCAL validation\n"
         << "  --write-calib-bin /tmp/umi_calib.bin\n"
         << "Defaults:\n"
         << "  --port /dev/right_gripper\n"
@@ -367,6 +375,18 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
             continue;
         }
 
+        if (argument == "--read-version")
+        {
+            options->readVersion = true;
+            continue;
+        }
+
+        if (argument == "--initialize-version-preserve-payload")
+        {
+            options->initializeVersionPreservePayload = true;
+            continue;
+        }
+
         if (argument == "--read-sn")
         {
             options->readSerialNumber = true;
@@ -388,6 +408,12 @@ static bool parseOptions(int argc, char **argv, TestOptions *options)
         if (argument == "--read-calib")
         {
             options->readCalibration = true;
+            continue;
+        }
+
+        if (argument == "--read-calib-raw")
+        {
+            options->readCalibrationPayload = true;
             continue;
         }
 
@@ -505,6 +531,97 @@ static void printCalibrationSummary(const gripper_hmi::GripperCalibrationDataV1 
         << "residuals.accel.stddev=" << data.residuals.accelerometerErrorImu0MS2.stddev << std::endl;
 }
 
+static bool initializeVersionPreservingPayload(GripperHmiDriver *device)
+{
+    if (device == nullptr)
+    {
+        return false;
+    }
+
+    gripper_hmi::GripperSerialNumber savedSerialNumber{};
+    gripper_hmi::GripperCalibrationPayload savedCalibration{};
+    if (!device->readSerialNumberPayload(&savedSerialNumber))
+    {
+        logDeviceError("UGR-40-05", "Refusing version initialization: failed to back up complete SN payload on: ", *device);
+        return false;
+    }
+    if (!device->readCalibrationPayload(&savedCalibration))
+    {
+        logDeviceError("UGR-40-06", "Refusing version initialization: failed to back up calibration payload on: ", *device);
+        return false;
+    }
+
+    std::cout << '[' << device->getPort()
+              << "] payload_backup=OK sn_bytes=" << savedSerialNumber.size()
+              << " calibration_bytes=" << savedCalibration.size() << std::endl;
+
+    if (!device->initializeVersionStorage())
+    {
+        logDeviceError("UGR-40-05", "Failed to initialize HMI version storage on: ", *device);
+        return false;
+    }
+
+    for (int attempt = 1; attempt <= kPayloadRestoreRetryLimit; ++attempt)
+    {
+        std::string failureReason;
+        if (!device->writeCalibrationPayload(savedCalibration))
+        {
+            failureReason = "calibration write failed: " + device->getLastCommandError();
+        }
+        else if (!device->writeSerialNumberPayload(savedSerialNumber))
+        {
+            failureReason = "SN write failed: " + device->getLastCommandError();
+        }
+        else
+        {
+            gripper_hmi::GripperCalibrationPayload readbackCalibration{};
+            gripper_hmi::GripperSerialNumber readbackSerialNumber{};
+            if (!device->readCalibrationPayload(&readbackCalibration))
+            {
+                failureReason = "calibration readback failed: " + device->getLastCommandError();
+            }
+            else if (readbackCalibration != savedCalibration)
+            {
+                failureReason = "calibration readback mismatch";
+            }
+            else if (!device->readSerialNumberPayload(&readbackSerialNumber))
+            {
+                failureReason = "SN readback failed: " + device->getLastCommandError();
+            }
+            else if (readbackSerialNumber != savedSerialNumber)
+            {
+                failureReason = "SN readback mismatch";
+            }
+            else
+            {
+                std::cout << '[' << device->getPort()
+                          << "] payload_preserve_init=OK attempts=" << attempt << std::endl;
+                return true;
+            }
+        }
+
+        DM_LOG_ERROR_CODE("UGR-40-06",
+                          "Payload restore/verify failed on: {} attempt={}/{} reason={}",
+                          device->getPort(),
+                          attempt,
+                          kPayloadRestoreRetryLimit,
+                          failureReason);
+        std::cout << '[' << device->getPort()
+                  << "] payload_restore_attempt=" << attempt
+                  << " result=FAIL reason=" << failureReason << std::endl;
+        if (attempt < kPayloadRestoreRetryLimit)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(kPayloadRestoreRetryDelayMs));
+        }
+    }
+
+    DM_LOG_ERROR_CODE("UGR-40-06",
+                      "Payload restore/verify exhausted retries on: {} retries={}",
+                      device->getPort(),
+                      kPayloadRestoreRetryLimit);
+    return false;
+}
+
 int main(int argc, char **argv)
 {
     DM_LOG_INIT("GripperHmiTool",
@@ -548,10 +665,44 @@ int main(int argc, char **argv)
 
     std::cout << "Connected " << devices.size() << " gripper HMI device(s)" << std::endl;
 
-    if (options.readSerialNumber || options.hasWriteSerialNumber ||
-        options.readCalibration || !options.writeCalibrationBinPath.empty())
+    if (options.readVersion || options.initializeVersionPreservePayload ||
+        options.readSerialNumber || options.hasWriteSerialNumber ||
+        options.readCalibration || options.readCalibrationPayload ||
+        !options.writeCalibrationBinPath.empty())
     {
         bool allOk = true;
+
+        if (options.readVersion)
+        {
+            for (auto &device : devices)
+            {
+                std::string version56;
+                std::string version57;
+                if (!device->readVersions(&version56, &version57))
+                {
+                    logDeviceError("UGR-40-05", "Failed to read HMI version on: ", *device);
+                    allOk = false;
+                }
+                else
+                {
+                    std::cout << '[' << device->getPort() << "] version_56="
+                              << (version56.empty() ? "UNAVAILABLE" : version56) << std::endl;
+                    std::cout << '[' << device->getPort() << "] version_57="
+                              << (version57.empty() ? "UNAVAILABLE" : version57) << std::endl;
+                }
+            }
+        }
+
+        if (options.initializeVersionPreservePayload)
+        {
+            for (auto &device : devices)
+            {
+                if (!initializeVersionPreservingPayload(device.get()))
+                {
+                    allOk = false;
+                }
+            }
+        }
 
         if (options.hasWriteSerialNumber)
         {
@@ -622,6 +773,43 @@ int main(int argc, char **argv)
                 else
                 {
                     std::cout << '[' << device->getPort() << "] write-calibration ok" << std::endl;
+                }
+            }
+        }
+
+        if (options.readCalibrationPayload)
+        {
+            if (options.dumpCalibrationBinPath.empty())
+            {
+                DM_LOG_ERROR_CODE("UGR-70-01", "--read-calib-raw requires --dump-calib-bin PATH");
+                allOk = false;
+            }
+            else
+            {
+                for (auto &device : devices)
+                {
+                    gripper_hmi::GripperCalibrationPayload payload{};
+                    if (!device->readCalibrationPayload(&payload))
+                    {
+                        logDeviceError("UGR-40-06", "Failed to read raw calibration payload on: ", *device);
+                        allOk = false;
+                        continue;
+                    }
+
+                    const std::string dumpPath =
+                        devices.size() == 1
+                            ? options.dumpCalibrationBinPath
+                            : options.dumpCalibrationBinPath + "." + device->getName() + ".bin";
+                    if (!writeBinaryFile(dumpPath, payload.data(), payload.size()))
+                    {
+                        DM_LOG_ERROR_CODE("UGR-40-06", "Failed to dump raw calibration payload: {}", dumpPath);
+                        allOk = false;
+                    }
+                    else
+                    {
+                        std::cout << '[' << device->getPort() << "] raw_calibration_bytes="
+                                  << payload.size() << " dumped=" << dumpPath << std::endl;
+                    }
                 }
             }
         }

@@ -71,6 +71,13 @@ enum class CalibrationRangeCollectResult
     CollectionComplete,
 };
 
+enum class CalibrationChunkIndexBase
+{
+    Unknown,
+    ZeroBased,
+    OneBased,
+};
+
 enum class CalibrationReadRetryAction
 {
     AbortRecoverRetry,
@@ -105,6 +112,7 @@ struct CalibrationRangeCollectState
     std::array<bool, kCalibrationChunkCount>* received = nullptr;
     bool* required_chunk_count_known = nullptr;
     size_t* required_chunk_count = nullptr;
+    CalibrationChunkIndexBase* index_base = nullptr;
     uint8_t* status_token = nullptr;
     uint8_t* status_code = nullptr;
 };
@@ -150,10 +158,15 @@ inline bool IsCalibrationAbortRecoveryStatus(uint8_t status_code)
            status_code == GripperHmiProtocol::kStatusZeroDataChecksumError;
 }
 
-inline bool IsCalibrationWriteAckToken(size_t packet_index, uint8_t token)
+inline bool IsCalibrationReadResponseToken(size_t packet_index, uint8_t token)
 {
     return token == static_cast<uint8_t>(packet_index) ||
            token == static_cast<uint8_t>(packet_index + 1);
+}
+
+inline bool IsCalibrationWriteAckToken(size_t packet_index, uint8_t token)
+{
+    return IsCalibrationReadResponseToken(packet_index, token);
 }
 
 inline bool IsValidEightByteRecvFrame(const uint8_t* frame)
@@ -301,7 +314,7 @@ inline ExclusiveFrameScanResult ScanCalibrationDataOrStatusFrame(std::vector<uin
 
     const size_t data_frame_size = 2 + 1 + data_length + 1;
     if (buffer->size() >= data_frame_size &&
-        (*buffer)[2] == expected_token &&
+        IsCalibrationReadResponseToken(expected_token, (*buffer)[2]) &&
         ValidateCalibrationReadFrame(buffer->data()))
     {
         if (payload != nullptr)
@@ -322,7 +335,7 @@ inline ExclusiveFrameScanResult ScanCalibrationDataOrStatusFrame(std::vector<uin
             buffer->begin(),
             buffer->begin() + static_cast<std::ptrdiff_t>(GripperHmiProtocol::kStatusFrameLength));
 
-        if (parsed_token != expected_token)
+        if (!IsCalibrationReadResponseToken(expected_token, parsed_token))
         {
             return ExclusiveFrameScanResult::ContinueScanning;
         }
@@ -373,6 +386,7 @@ inline ExclusiveFrameScanResult ScanRawDataOrStatusFrame(std::vector<uint8_t>* b
                 buffer->begin() + 2,
                 buffer->begin() + 2 + static_cast<std::ptrdiff_t>(data_length));
         }
+        buffer->erase(buffer->begin(), buffer->begin() + static_cast<std::ptrdiff_t>(data_frame_size));
         return ExclusiveFrameScanResult::MatchedData;
     }
 
@@ -387,6 +401,9 @@ inline ExclusiveFrameScanResult ScanRawDataOrStatusFrame(std::vector<uint8_t>* b
         {
             *status_code = (*buffer)[3];
         }
+        buffer->erase(
+            buffer->begin(),
+            buffer->begin() + static_cast<std::ptrdiff_t>(GripperHmiProtocol::kStatusFrameLength));
         return ExclusiveFrameScanResult::MatchedStatus;
     }
 
@@ -504,9 +521,52 @@ inline CalibrationRangeCollectResult CollectCalibrationRangeFrame(std::vector<ui
     if (buffer->size() >= kDataFrameSize && ValidateCalibrationReadFrame(buffer->data()))
     {
         const uint8_t token = (*buffer)[2];
-        if (token < state.received->size())
+        CalibrationChunkIndexBase resolved_base = CalibrationChunkIndexBase::ZeroBased;
+        if (state.index_base != nullptr)
         {
-            const size_t packet_index = static_cast<size_t>(token);
+            if (*state.index_base == CalibrationChunkIndexBase::Unknown && token == 0)
+            {
+                *state.index_base = CalibrationChunkIndexBase::ZeroBased;
+            }
+            else if (*state.index_base == CalibrationChunkIndexBase::Unknown &&
+                     static_cast<size_t>(token) == state.received->size())
+            {
+                // Tokens 1..63 are ambiguous until token 0 or token 64 is observed.
+                // While ambiguous they are stored provisionally at their token index.
+                // Seeing token 64 proves the old 1-based convention, so shift the
+                // provisional chunks down by one before storing the final chunk.
+                for (size_t index = 0; index + 1 < state.received->size(); ++index)
+                {
+                    (*state.received)[index] = (*state.received)[index + 1];
+                    if ((*state.received)[index])
+                    {
+                        std::memcpy(
+                            state.raw->data() + index * GripperHmiProtocol::kCalibrationChunkSize,
+                            state.raw->data() + (index + 1) * GripperHmiProtocol::kCalibrationChunkSize,
+                            GripperHmiProtocol::kCalibrationChunkSize);
+                    }
+                }
+                state.received->back() = false;
+                *state.index_base = CalibrationChunkIndexBase::OneBased;
+            }
+            resolved_base = *state.index_base;
+        }
+
+        size_t packet_index = state.received->size();
+        if ((resolved_base == CalibrationChunkIndexBase::ZeroBased ||
+             resolved_base == CalibrationChunkIndexBase::Unknown) &&
+            token < state.received->size())
+        {
+            packet_index = static_cast<size_t>(token);
+        }
+        else if (resolved_base == CalibrationChunkIndexBase::OneBased &&
+                 token >= 1 && static_cast<size_t>(token) <= state.received->size())
+        {
+            packet_index = static_cast<size_t>(token - 1);
+        }
+
+        if (packet_index < state.received->size())
+        {
             std::memcpy(state.raw->data() + packet_index * GripperHmiProtocol::kCalibrationChunkSize,
                         buffer->data() + 3,
                         GripperHmiProtocol::kCalibrationChunkSize);
