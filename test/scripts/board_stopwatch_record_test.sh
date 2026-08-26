@@ -2,9 +2,11 @@
 #
 # UGripper 外部秒表联动录制测试
 #
-# 在 PC 上执行本脚本。脚本会将自身下发到目标板端，通过 GPIO139 触发外部
-# 秒表，随后立即通过运行时控制 FIFO 启动一次正常的 UGripper 录制；达到
-# 指定时长后停止录制和秒表，并向最终 episode 写入 stopwatch_timing.json。
+# 在 PC 上执行本脚本。脚本会将自身和仓库内的 CH9344 helper 下发到目标
+# 板端，先把 helper 安装到 /usr/local/bin 并重放已枚举 CH9344 串口的 udev
+# 事件，再通过 GPIO139 触发外部秒表，随后立即通过运行时控制 FIFO 启动一次
+# 正常的 UGripper 录制；达到指定时长后停止录制和秒表，并向最终 episode
+# 写入 stopwatch_timing.json。
 #
 # PC 端前置条件：
 #   - 已安装 bash、ssh、scp 和 sshpass
@@ -36,6 +38,14 @@
 #   最终 episode 会新增 stopwatch_timing.json，其中包含 GPIO 触发/停止的
 #   时间边界、START/STOP FIFO 时间戳、实测命令延迟、指定时长和 episode 路径。
 #
+# CH9344 串口保护：
+#   - 每次执行都会覆盖板端 /usr/local/bin/ugripper_ch9344_symlink_name；该修改
+#     会在测试结束后保留，不会自动恢复。
+#   - helper 只允许 bus1 映射右手、bus9 映射左手；bus5 和 bus11 上的测试或
+#     扩展设备不会生成 left/right gripper/encoder 逻辑链接。
+#   - GPIO 触发前会校验四个逻辑链接均只有一个声明者，且物理来源符合上述
+#     bus 约束；校验失败时不会启动秒表或录制。
+#
 # 安全机制：
 #   START 后如遇中断或失败，板端 trap 会发送 STOP 并将 GPIO 恢复为空闲电平。
 #   如已存在录制锁，脚本会拒绝开始新测试。
@@ -43,7 +53,7 @@
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-SCRIPT_VERSION="1"
+SCRIPT_VERSION="3"
 
 DEFAULT_HOST="192.168.2.240"
 DEFAULT_USER="ubuntu"
@@ -58,6 +68,7 @@ RECORD_CONTROL_PIPE="/dev/shm/ugripper/umi_record_control.pipe"
 RECORDING_LOCK="/tmp/umi_recording.lock"
 SERVICE_NAME="ugripper.service"
 TIMING_FILE_NAME="stopwatch_timing.json"
+INSTALLED_CH9344_HELPER="/usr/local/bin/ugripper_ch9344_symlink_name"
 
 usage() {
     sed -n '2,/^set -euo pipefail$/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'
@@ -316,19 +327,21 @@ payload = {
         },
     },
     "measurements": {
-        "stopwatch_start_write_window_ms": (gpio_start_after_mono - gpio_start_before_mono) / 1_000_000,
-        "record_start_write_window_ms": (record_start_after_mono - record_start_before_mono) / 1_000_000,
-        "stopwatch_start_to_record_start_command_max_ms": (record_start_after_mono - gpio_start_before_mono) / 1_000_000,
-        "stopwatch_start_after_to_record_start_command_ms": (record_start_after_mono - gpio_start_after_mono) / 1_000_000,
-        "record_start_command_to_episode_observed_ms": (episode_observed_mono - record_start_after_mono) / 1_000_000,
-        "record_command_window_ms": (record_stop_before_mono - record_start_after_mono) / 1_000_000,
-        "record_stop_write_window_ms": (record_stop_after_mono - record_stop_before_mono) / 1_000_000,
-        "record_stop_command_to_stopwatch_stop_max_ms": (gpio_stop_after_mono - record_stop_before_mono) / 1_000_000,
-        "stopwatch_active_min_ms": (gpio_stop_after_mono - gpio_start_after_mono) / 1_000_000,
-        "stopwatch_active_max_ms": (gpio_stop_after_mono - gpio_start_before_mono) / 1_000_000,
+        "clock": "unix_ns",
+        "stopwatch_start_write_window_ms": (gpio_start_after - gpio_start_before) / 1_000_000,
+        "record_start_write_window_ms": (record_start_after - record_start_before) / 1_000_000,
+        "stopwatch_start_to_record_start_command_max_ms": (record_start_after - gpio_start_before) / 1_000_000,
+        "stopwatch_start_after_to_record_start_command_ms": (record_start_after - gpio_start_after) / 1_000_000,
+        "record_start_command_to_episode_observed_ms": (episode_observed - record_start_after) / 1_000_000,
+        "record_command_window_ms": (record_stop_before - record_start_after) / 1_000_000,
+        "record_stop_write_window_ms": (record_stop_after - record_stop_before) / 1_000_000,
+        "record_stop_command_to_stopwatch_stop_max_ms": (gpio_stop_after - record_stop_before) / 1_000_000,
+        "stopwatch_active_min_ms": (gpio_stop_after - gpio_start_after) / 1_000_000,
+        "stopwatch_active_max_ms": (gpio_stop_after - gpio_start_before) / 1_000_000,
     },
     "notes": [
         "The physical GPIO edge occurred between each write_before/write_after timestamp pair.",
+        "Millisecond measurements use the nanosecond-resolution Unix timestamps; monotonic timestamps are retained as raw diagnostic evidence.",
         "START and STOP were sent through the normal UGripper runtime recording control FIFO.",
     ],
 }
@@ -349,6 +362,106 @@ finally:
     except FileNotFoundError:
         pass
 PY
+}
+
+install_ch9344_helper() {
+    [[ -n "${CH9344_HELPER_SOURCE}" ]] || die "missing CH9344 helper source argument"
+    [[ -r "${CH9344_HELPER_SOURCE}" ]] || die "CH9344 helper source is not readable: ${CH9344_HELPER_SOURCE}"
+    command -v install >/dev/null 2>&1 || die "install command is required on the board"
+    command -v udevadm >/dev/null 2>&1 || die "udevadm is required on the board"
+
+    echo "Installing restricted CH9344 helper: ${INSTALLED_CH9344_HELPER}"
+    sudo -n install -o root -g root -m 0755 \
+        "${CH9344_HELPER_SOURCE}" "${INSTALLED_CH9344_HELPER}"
+    sudo -n udevadm control --reload-rules
+
+    local tty_path
+    local trigger_count=0
+    for tty_path in /sys/class/tty/ttyCH9344USB*; do
+        [[ -e "${tty_path}" ]] || continue
+        sudo -n udevadm trigger --action=change "${tty_path}"
+        trigger_count=$((trigger_count + 1))
+    done
+    [[ "${trigger_count}" -gt 0 ]] || die "no enumerated ttyCH9344USB devices found"
+    sudo -n udevadm settle
+    echo "Replayed udev events for ${trigger_count} CH9344 tty nodes"
+}
+
+device_devlinks() {
+    local node="$1"
+    udevadm info -q property -n "${node}" | sed -n 's/^DEVLINKS=//p'
+}
+
+devlinks_contain() {
+    local devlinks="$1"
+    local expected="$2"
+    local link
+    for link in ${devlinks}; do
+        [[ "${link}" == "${expected}" ]] && return 0
+    done
+    return 1
+}
+
+validate_logical_ch9344_link() {
+    local logical_name="$1"
+    local expected_bus="$2"
+    local count=0
+    local claimant=""
+    local node
+    local devlinks
+
+    for node in /dev/ttyCH9344USB*; do
+        [[ -e "${node}" ]] || continue
+        devlinks="$(device_devlinks "${node}")"
+        if devlinks_contain "${devlinks}" "/dev/${logical_name}"; then
+            count=$((count + 1))
+            claimant="${node}"
+        fi
+    done
+
+    [[ "${count}" -eq 1 ]] || die "/dev/${logical_name} must have exactly one CH9344 claimant, found ${count}"
+    [[ -L "/dev/${logical_name}" ]] || die "/dev/${logical_name} is not an active udev symlink"
+    [[ "$(readlink -f "/dev/${logical_name}")" == "$(readlink -f "${claimant}")" ]] || \
+        die "/dev/${logical_name} does not resolve to its sole claimant ${claimant}"
+
+    local device_path
+    device_path="$(udevadm info -q path -n "${claimant}")"
+    case "${device_path}" in
+        *"/usb${expected_bus}/${expected_bus}-1/"*) ;;
+        *) die "/dev/${logical_name} claimant ${claimant} is not from bus${expected_bus}: ${device_path}" ;;
+    esac
+    echo "/dev/${logical_name} -> ${claimant} (bus${expected_bus})"
+}
+
+validate_rejected_ch9344_buses() {
+    local node
+    local device_path
+    local devlinks
+    local logical_name
+    for node in /dev/ttyCH9344USB*; do
+        [[ -e "${node}" ]] || continue
+        device_path="$(udevadm info -q path -n "${node}")"
+        case "${device_path}" in
+            *"/usb5/5-1/"*|*"/usb11/11-1/"*)
+                devlinks="$(device_devlinks "${node}")"
+                for logical_name in right_gripper right_encoder left_gripper left_encoder; do
+                    if devlinks_contain "${devlinks}" "/dev/${logical_name}"; then
+                        die "rejected CH9344 node ${node} still declares /dev/${logical_name}: ${device_path}"
+                    fi
+                done
+                ;;
+        esac
+    done
+}
+
+validate_ch9344_mapping() {
+    echo "Validating restricted CH9344 logical links"
+    validate_logical_ch9344_link right_gripper 1
+    validate_logical_ch9344_link right_encoder 1
+    validate_logical_ch9344_link left_gripper 9
+    validate_logical_ch9344_link left_encoder 9
+    validate_rejected_ch9344_buses
+    echo "CH9344 mapping validation passed; bus5/bus11 do not claim gripper links"
 }
 
 board_cleanup() {
@@ -378,6 +491,7 @@ run_board() {
     FINALIZE_TIMEOUT_SEC="${DEFAULT_FINALIZE_TIMEOUT_SEC}"
     EPISODE_ROOT_OVERRIDE=""
     TARGET_LABEL="unknown"
+    CH9344_HELPER_SOURCE=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -388,6 +502,7 @@ run_board() {
             --start-timeout-sec) START_TIMEOUT_SEC="$2"; shift 2 ;;
             --finalize-timeout-sec) FINALIZE_TIMEOUT_SEC="$2"; shift 2 ;;
             --target-label) TARGET_LABEL="$2"; shift 2 ;;
+            --ch9344-helper-source) CH9344_HELPER_SOURCE="$2"; shift 2 ;;
             *) die "unknown board argument: $1" ;;
         esac
     done
@@ -401,6 +516,8 @@ run_board() {
 
     command -v sudo >/dev/null 2>&1 || die "sudo is required on the board"
     sudo -n true || die "sudo credentials are not cached; PC-side launcher must validate sudo first"
+    install_ch9344_helper
+    validate_ch9344_mapping
     systemctl is-active --quiet "${SERVICE_NAME}" || die "${SERVICE_NAME} is not active"
     [[ -p "${RECORD_CONTROL_PIPE}" ]] || die "record control FIFO is missing: ${RECORD_CONTROL_PIPE}"
     [[ -w "${RECORD_CONTROL_PIPE}" ]] || die "record control FIFO is not writable: ${RECORD_CONTROL_PIPE}"
@@ -506,7 +623,8 @@ host_cleanup() {
     trap - EXIT HUP INT TERM
     set +e
     if [[ -n "${REMOTE_SCRIPT:-}" && -n "${SSH_TARGET:-}" ]]; then
-        sshpass -p "${PASSWORD}" ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}" "rm -f $(printf '%q' "${REMOTE_SCRIPT}")" >/dev/null 2>&1
+        sshpass -p "${PASSWORD}" ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}" \
+            "rm -f $(printf '%q' "${REMOTE_SCRIPT}") $(printf '%q' "${REMOTE_HELPER:-}")" >/dev/null 2>&1
     fi
     exit "${exit_code}"
 }
@@ -560,10 +678,18 @@ run_host() {
         -o ServerAliveCountMax=3
     )
     REMOTE_SCRIPT="/tmp/ugripper_stopwatch_record_test_${USER_NAME}_$$.sh"
+    REMOTE_HELPER="/tmp/ugripper_ch9344_symlink_name_${USER_NAME}_$$.sh"
     trap host_cleanup EXIT HUP INT TERM
 
-    echo "Copying ${SCRIPT_NAME} to ${SSH_TARGET}:${REMOTE_SCRIPT}"
+    local local_script_dir
+    local local_helper
+    local_script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    local_helper="${local_script_dir}/../../scripts/ugripper_ch9344_symlink_name.sh"
+    [[ -r "${local_helper}" ]] || die "repository CH9344 helper not found: ${local_helper}"
+
+    echo "Copying ${SCRIPT_NAME} and restricted CH9344 helper to ${SSH_TARGET}"
     sshpass -p "${PASSWORD}" scp "${SSH_OPTIONS[@]}" "${BASH_SOURCE[0]}" "${SSH_TARGET}:${REMOTE_SCRIPT}"
+    sshpass -p "${PASSWORD}" scp "${SSH_OPTIONS[@]}" "${local_helper}" "${SSH_TARGET}:${REMOTE_HELPER}"
 
     local board_args=(
         bash "${REMOTE_SCRIPT}" --board-run
@@ -573,6 +699,7 @@ run_host() {
         --start-timeout-sec "${START_TIMEOUT_SEC}"
         --finalize-timeout-sec "${FINALIZE_TIMEOUT_SEC}"
         --target-label "${SSH_TARGET}"
+        --ch9344-helper-source "${REMOTE_HELPER}"
     )
     if [[ -n "${EPISODE_ROOT_OVERRIDE}" ]]; then
         board_args+=(--episode-root "${EPISODE_ROOT_OVERRIDE}")
@@ -585,8 +712,9 @@ run_host() {
     printf '%s\n' "${PASSWORD}" | sshpass -p "${PASSWORD}" ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}" "${remote_command}"
 
     trap - EXIT HUP INT TERM
-    sshpass -p "${PASSWORD}" ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}" "rm -f $(printf '%q' "${REMOTE_SCRIPT}")" >/dev/null
-    echo "Remote test script removed: ${REMOTE_SCRIPT}"
+    sshpass -p "${PASSWORD}" ssh "${SSH_OPTIONS[@]}" "${SSH_TARGET}" \
+        "rm -f $(printf '%q' "${REMOTE_SCRIPT}") $(printf '%q' "${REMOTE_HELPER}")" >/dev/null
+    echo "Remote temporary files removed: ${REMOTE_SCRIPT}, ${REMOTE_HELPER}"
 }
 
 if [[ "${1:-}" == "--board-run" ]]; then

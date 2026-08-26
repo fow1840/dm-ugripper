@@ -37,11 +37,30 @@ check_group() {
     fi
 }
 
+check_rejected_group() {
+    route="$1"
+    first_num="$2"
+    tty_dir="$TMP_ROOT/devices/$route/${route}:1.0/tty"
+    first="ttyCH9344USB$first_num"
+    second="ttyCH9344USB$((first_num + 1))"
+
+    mkdir -p "$tty_dir"
+    : > "$tty_dir/$first"
+    : > "$tty_dir/$second"
+
+    if $HELPER "$tty_dir/$first" "$first" >/dev/null 2>&1; then
+        fail "$route first port unexpectedly produced a symlink"
+    fi
+    if $HELPER "$tty_dir/$second" "$second" >/dev/null 2>&1; then
+        fail "$route second port unexpectedly produced a symlink"
+    fi
+}
+
 check_group "1-1.2" 0 right
 check_group "9-1.2" 8 left
 check_group "1-1.4" 16 right
 check_group "9-1.4" 24 left
-check_group "5-1.4" 32 right
-check_group "11-1.4" 40 left
+check_rejected_group "5-1.4" 32
+check_rejected_group "11-1.4" 40
 
-echo "PASS: CH9344 symlink topology mappings"
+echo "PASS: CH9344 symlink topology mappings and bus5/bus11 rejection"

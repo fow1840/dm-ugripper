@@ -127,8 +127,8 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
 - 配置入口：`config/camera_recorder.yaml`。
 - 当前 YAML 定义 9 路相机：左右主摄、可选胸部主摄、左右 stereo、4 路触觉。
 - `udev` 口位策略当前口径：
-  - stereo 允许同侧 hub 的内部端口 `.1/.2` 互换；CH9344 同时兼容旧版/嵌套 hub 的 `.1/.2` 与四口 hub 的 `.4`，同组序号最小两路依次映射为 `*_gripper`、`*_encoder`；
-  - 四口 USB2 hub 的固定映射为 `.1 -> cam_*`、`.2 -> tcam_*_r`、`.3 -> tcam_*_l`、`.4 -> CH9344`，右侧兼容 bus `1/5`，左侧兼容 bus `9/11`；
+  - stereo 允许同侧 hub 的内部端口 `.1/.2` 互换；夹爪 CH9344 兼容 hub 内部端口 `.1/.2` 与四口 hub 的 `.4`，同组序号最小两路依次映射为 `*_gripper`、`*_encoder`；
+  - 四口 USB2 hub 的固定映射为 `.1 -> cam_*`、`.2 -> tcam_*_r`、`.3 -> tcam_*_l`、`.4 -> CH9344`；夹爪 CH9344 只接受 bus `1` 作为右手、bus `9` 作为左手，bus `5/11` 保留给测试或扩展设备且不生成 `left/right_gripper`、`left/right_encoder` 链接；
   - tactile `l/r` 仍按左右侧固定 kernel 路径命名，不做跨侧互换；
   - 左侧更换新 hub 后，左主摄与左触觉 `l` 不再只按 `.4.2/.4.4` 固定口位判断，当前优先按设备类型识别：`27c2:0530` 归 `/dev/cam_left`，`0bda:5846` 归 `/dev/tcam_left_l`，USB2 口位仅用于限定属于左侧链路；
   - 左手新 hub 的 tactile 口位与右手保持同构：`.3 -> /dev/tcam_left_l`、`.4 -> /dev/tcam_left_r`；同时继续兼容旧特殊 hub 的 `/dev/tcam_left_r <- .3`。
@@ -221,10 +221,12 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
 
 ### 7.2 metadata.json
 停录校验完成后，`record_runtime` 写入最终 `metadata.json`。当前顶层字段固定为：
-`device_sn / device_type / device_mode / camera_codec / hardware_version / software_version / das_usb_updater_version / data_version / hardware_list / episode_name / data_uuid / audio_uuid / quality_check_status / quality_check_err_type / collection_duration_s / task_start_s / task_stop_s / require_files / video_details`。
+`device_sn / device_type / device_mode / camera_codec / hardware_version / software_version / das_usb_updater_version / data_version / hardware_list / episode_name / data_uuid / audio_uuid / quality_check_status / quality_check_err_type / collection_duration_s / task_start_s / task_stop_s / boot_time_s / tactile_damage_sn_list / require_files / video_details`。
 
-- `device_sn` 使用主控 `DEVICE_SN`，写出前统一转大写；`device_type=ugripper`，`device_mode=dual`，`data_version=3.1`。
-- `task_start_s` / `task_stop_s` 是录制中右手上键任务切片点的 Unix 秒时间戳，按触发顺序各只写一次；当前 `3.1` 录制端未标记时固定写 `0.0`，两字段位于 `collection_duration_s` 后、`require_files` 前。离线深度校验允许历史或外部数据省略这两个可选字段；只有有效 `task_start_s` 而没有有效 `task_stop_s` 时按“无结束前回环数据”处理，不降低校验状态。
+- `device_sn` 使用主控 `DEVICE_SN`，写出前统一转大写；`device_type=ugripper`，`device_mode=dual`，`data_version=3.2`。
+- `boot_time_s` 是本次系统开机时间点的 Unix 秒时间戳，优先复用 CameraRecorder timing 中的 `boot_time_offset`；timing 缺失时按当前 Unix 时钟与单调时钟差值回退计算。
+- `tactile_damage_sn_list` 初始写为 `[]`；停录后的后台触觉慢校验中，任意单次 finding 满足 `damaged=true` 就加入对应非空传感器 SN，不等待连续三次黄灯告警门槛，SN 去重后原子回写该字段；本条 episode 未发现损坏时保持 `[]`。
+- `task_start_s` / `task_stop_s` 是录制中右手上键任务切片点的 Unix 秒时间戳，按触发顺序各只写一次；当前 `3.2` 录制端未标记时固定写 `0.0`。`boot_time_s`、`tactile_damage_sn_list` 依次紧跟在 `task_stop_s` 后，并位于 `require_files` 前。离线深度校验允许历史或外部数据省略两个 task 字段；只有有效 `task_start_s` 而没有有效 `task_stop_s` 时按“无结束前回环数据”处理，不降低校验状态。
 - `metadata.json` 使用范本顺序写出顶层字段、`hardware_list` 字段和 `video_details[]` 字段；校验脚本会把 key 顺序漂移作为格式错误。
 - `data_uuid` 使用系统随机 UUID；若 `/proc/sys/kernel/random/uuid` 不可用则回退 `libuuid` 的 `uuid_generate/uuid_unparse`。无音频文件时 `audio_uuid` 允许为空字符串。
 - `hardware_version` 默认 `v2.5`，可通过 `UGRIPPER_HARDWARE_VERSION` 覆盖；`software_version` 来自 ugripper 主包版本并带 `v` 前缀；`das_usb_updater_version` 优先读取 `das-usb-updater` 包版本。
@@ -298,12 +300,13 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
   - `START`：仅空闲时接受，并映射到 `ShortUpPressed`；录制中会忽略并记录 `[CONTROL_DIAG] ... reason=already_recording`。
   - `STOP`：仅录制中接受，并映射到 `ShortDownPressed`；空闲时会忽略并记录 `[CONTROL_DIAG] ... reason=not_recording`。
 - 被接受的软件命令会在同一主循环内复用 `handleShortUpAction()` / `handleShortDownAction()`，不经过物理按键 `1s` 双击防误触门槛，因此停录会进入与按键双击确认后的相同 stop、finalize、merge、validation、LED/audio 恢复路径；不要通过直接写 stereo FIFO、kill recorder 或删除 lock 文件来替代停录。
+- 停录成功、校验失败和异常停录三个收尾分支都先执行 `sync_runtime_log("video stop")`，再清空当前 episode 状态并删除 `/tmp/umi_recording.lock`，确保释放录制锁前已触发运行日志增量同步。
 - 控制入口带 `300ms` 防抖，单轮主循环最多处理 `8` 条命令，避免外部脚本重复写入导致 start/stop 连续抖动；同一轮中若已接受软件控制命令，会跳过本轮物理按键事件处理，降低叠加触发风险。
 - 建议使用示例：
   - `echo START > /dev/shm/ugripper/umi_record_control.pipe`
   - `echo STOP > /dev/shm/ugripper/umi_record_control.pipe`
   - 如需严格模拟按键：`echo SHORT_UP > /dev/shm/ugripper/umi_record_control.pipe`、`echo SHORT_DOWN > /dev/shm/ugripper/umi_record_control.pipe`
-- `test/scripts/board_stopwatch_record_test.sh` 是面向测试交付的 PC 端外部秒表联动入口：默认连接 `ubuntu@192.168.2.240`，将自身下发到板端 `/tmp`，以 GPIO139 低电平触发秒表后立即写 `START`，到达指定时长后写 `STOP` 并恢复 GPIO 高电平。它只使用上述 runtime FIFO，不直接启停 camera/sensor/Fays 子进程；等待正常停录收尾和 episode rename 完成后，在对应最终 episode 中额外写入 `stopwatch_timing.json`，保存 GPIO 写入边界、录制命令时间和测得延迟。该文件属于测试辅助证据，不进入 `metadata.json` schema、`require_files` 或运行时质量校验范围。
+- `test/scripts/board_stopwatch_record_test.sh` 是面向测试交付的 PC 端外部秒表联动入口：默认连接 `ubuntu@192.168.2.240`，将自身及仓库内收紧版 CH9344 helper 下发到板端 `/tmp`，覆盖安装 `/usr/local/bin/ugripper_ch9344_symlink_name` 并重放已枚举 CH9344 tty 的 udev 事件。helper 只允许 bus1 生成右手链接、bus9 生成左手链接，拒绝 bus5/bus11；脚本还会在 GPIO 和 `START` 前校验四个逻辑链接各自只有一个声明者且来自预期物理 bus，失败时不开始测试。校验通过后以 GPIO139 低电平触发秒表并立即写 `START`，到达指定时长后写 `STOP` 并恢复 GPIO 高电平。它只使用上述 runtime FIFO，不直接启停 camera/sensor/Fays 子进程；等待正常停录收尾和 episode rename 完成后，在对应最终 episode 中额外写入 `stopwatch_timing.json`，保存 GPIO 写入边界、录制命令时间和测得延迟。helper 覆盖修改在测试结束后持久保留；时间文件属于测试辅助证据，不进入 `metadata.json` schema、`require_files` 或运行时质量校验范围。
 
 ### 8.4 PERF 日志
 - 停录收尾、文件 flush、视频探测和 episode validation 会输出 `[PERF]` 耗时日志，用于现场拆分蓝灯延迟。
