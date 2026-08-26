@@ -282,6 +282,10 @@ private:
     private:
         bool writeFilteredCalibration(const std::string &episodeDir, std::string *errorMessage) const;
         bool prepareEpisodeOutputs(const std::string &episodeDir, std::string *errorMessage) const;
+        bool updateTactileDamageMetadata(
+            const std::string &episodeDir,
+            const std::vector<TactileValidationFinding> &tactileFindings,
+            std::string *errorMessage) const;
         const TactileCameraRuntimeState *tactileCameraStateForName(const std::string &cameraName) const;
         std::string cachedTactileSerialForName(const std::string &cameraName) const;
 

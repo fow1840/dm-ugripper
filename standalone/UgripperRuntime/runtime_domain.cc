@@ -1564,11 +1564,17 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         }
     }
 
-    state_.current_episode_dir.clear();
-    if (dependencies_.remove_recording_lock != nullptr)
-    {
-        dependencies_.remove_recording_lock();
-    }
+    const auto finish_stop_cleanup = [this]() {
+        if (dependencies_.sync_runtime_log != nullptr)
+        {
+            dependencies_.sync_runtime_log("video stop");
+        }
+        state_.current_episode_dir.clear();
+        if (dependencies_.remove_recording_lock != nullptr)
+        {
+            dependencies_.remove_recording_lock();
+        }
+    };
 
     const RuntimeLedState failure_led_state = SelectFailureLedState(error_types, due_to_error);
     const std::string failure_audio_command = SelectStopFailureAudioCommand(failure_led_state);
@@ -1594,10 +1600,7 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         CallPerfLog(dependencies_,
                 "[PERF] stop phase end: due_to_error=true total_elapsed_ms=" +
                     std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stop_start_ms) - stop_start_ms));
-        if (dependencies_.sync_runtime_log != nullptr)
-        {
-            dependencies_.sync_runtime_log("video stop");
-        }
+        finish_stop_cleanup();
         if (error_message != nullptr)
         {
             *error_message = final_error_message;
@@ -1627,10 +1630,7 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         CallPerfLog(dependencies_,
             "[PERF] stop phase end: valid=false total_elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stop_start_ms) - stop_start_ms));
-        if (dependencies_.sync_runtime_log != nullptr)
-        {
-            dependencies_.sync_runtime_log("video stop");
-        }
+        finish_stop_cleanup();
         if (error_message != nullptr)
         {
             *error_message = final_error_message;
@@ -1653,10 +1653,7 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     CallPerfLog(dependencies_,
             "[PERF] stop phase end: valid=true total_elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stop_start_ms) - stop_start_ms));
-    if (dependencies_.sync_runtime_log != nullptr)
-    {
-        dependencies_.sync_runtime_log("video stop");
-    }
+    finish_stop_cleanup();
     return true;
 }
 

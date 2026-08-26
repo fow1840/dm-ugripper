@@ -45,6 +45,7 @@ struct RecordingHarness
     std::vector<std::string> stop_reasons;
     std::vector<std::string> logs;
     std::vector<std::string> lock_events;
+    std::vector<std::string> sync_and_lock_events;
     std::vector<std::string> validate_error_types;
     std::vector<std::string> metadata_error_types;
     std::vector<std::string> sensor_args;
@@ -266,6 +267,7 @@ struct RecordingHarness
              .remove_recording_lock =
                  [this]() {
                      lock_events.push_back("remove");
+                     sync_and_lock_events.push_back("remove");
                  },
              .start_worker =
                  [this](WorkerName worker, const ProcessSpec& spec, std::string*) {
@@ -324,6 +326,7 @@ struct RecordingHarness
              .sync_runtime_log =
                  [this](const std::string& reason) {
                      sync_reason = reason;
+                     sync_and_lock_events.push_back("sync:" + reason);
                  }},
             &FakeEpochUs,
             &FakeSteadyMs);
@@ -452,6 +455,8 @@ TEST(RecordingOrchestratorTest, StopRecordingHandlesValidationFailure)
     ASSERT_FALSE(harness.audio_commands.empty());
     EXPECT_EQ(harness.audio_commands.back(), "validation_failed");
     EXPECT_EQ(harness.sync_reason, "video stop");
+    EXPECT_EQ(harness.sync_and_lock_events,
+              (std::vector<std::string>{"remove", "sync:video stop", "remove"}));
     EXPECT_FALSE(harness.last_validation_log.empty());
 }
 
@@ -493,6 +498,8 @@ TEST(RecordingOrchestratorTest, StopRecordingSuccessSignalsWritingThenReady)
                   RuntimeLedState::Ready,
               }));
     EXPECT_EQ(harness.sync_reason, "video stop");
+    EXPECT_EQ(harness.sync_and_lock_events,
+              (std::vector<std::string>{"remove", "sync:video stop", "remove"}));
     EXPECT_EQ(harness.lock_events,
               (std::vector<std::string>{"remove", "write:", "write:/tmp/episode_0001", "remove"}));
 }
@@ -531,6 +538,8 @@ TEST(RecordingOrchestratorTest, StopRecordingStereoFinalizeFailureMapsToValidati
     EXPECT_EQ(harness.last_validation_log, "stereo finalize timeout");
     EXPECT_EQ(harness.validate_calls, 0);
     EXPECT_EQ(harness.sync_reason, "video stop");
+    EXPECT_EQ(harness.sync_and_lock_events,
+              (std::vector<std::string>{"remove", "sync:video stop", "remove"}));
 }
 
 TEST(RecordingOrchestratorTest, StopRecordingRightStereoControlFailureMapsToError4)
@@ -651,6 +660,8 @@ TEST(RecordingOrchestratorTest, StopRecordingDueToErrorMapsToErrorOutput)
     ASSERT_FALSE(harness.recovery_commands.empty());
     EXPECT_EQ(harness.recovery_commands.back(), "error");
     EXPECT_EQ(harness.sync_reason, "video stop");
+    EXPECT_EQ(harness.sync_and_lock_events,
+              (std::vector<std::string>{"remove", "sync:video stop", "remove"}));
 }
 
 TEST(RecordingOrchestratorTest, StopRecordingDueToDiskFaultMapsToError3Output)

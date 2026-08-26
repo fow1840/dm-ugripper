@@ -66,6 +66,8 @@ EXPECTED_METADATA_KEY_ORDER = [
     "collection_duration_s",
     "task_start_s",
     "task_stop_s",
+    "boot_time_s",
+    "tactile_damage_sn_list",
     "require_files",
     "video_details",
 ]
@@ -79,6 +81,8 @@ REQUIRED_METADATA_FIELDS = [
     "software_version",
     "das_usb_updater_version",
     "data_version",
+    "boot_time_s",
+    "tactile_damage_sn_list",
     "hardware_list",
     "episode_name",
     "data_uuid",
@@ -625,10 +629,18 @@ class EpisodeValidator:
             self.ego_metadata = self.load_json_file("ego/metadata.json")
 
     def validate_metadata_fields(self) -> None:
+        data_version = safe_str(self.metadata.get("data_version"))
+        legacy_schema = data_version in {"3.0", "3.1"}
+        version_specific_keys = {"boot_time_s", "tactile_damage_sn_list"}
+        schema_key_order = [
+            key
+            for key in EXPECTED_METADATA_KEY_ORDER
+            if not legacy_schema or key not in version_specific_keys
+        ]
         metadata_key_order = list(self.metadata.keys())
         expected_metadata_key_order = [
             key
-            for key in EXPECTED_METADATA_KEY_ORDER
+            for key in schema_key_order
             if key not in OPTIONAL_METADATA_KEYS or key in self.metadata
         ]
         if metadata_key_order != expected_metadata_key_order:
@@ -640,8 +652,9 @@ class EpisodeValidator:
                 expected_order=expected_metadata_key_order,
             )
         metadata_keys = set(self.metadata.keys())
-        missing_keys = sorted((EXPECTED_METADATA_KEYS - OPTIONAL_METADATA_KEYS) - metadata_keys)
-        unexpected_keys = sorted(metadata_keys - EXPECTED_METADATA_KEYS)
+        expected_metadata_keys = set(schema_key_order)
+        missing_keys = sorted((expected_metadata_keys - OPTIONAL_METADATA_KEYS) - metadata_keys)
+        unexpected_keys = sorted(metadata_keys - expected_metadata_keys)
         if missing_keys:
             self.add_finding(
                 "FAIL",
@@ -656,11 +669,17 @@ class EpisodeValidator:
                 "metadata.json 出现未登记字段，疑似 schema 被改动",
                 unexpected_keys=unexpected_keys,
             )
-        for field_name in REQUIRED_METADATA_FIELDS:
+        required_metadata_fields = [
+            field_name
+            for field_name in REQUIRED_METADATA_FIELDS
+            if not legacy_schema or field_name not in version_specific_keys
+        ]
+        for field_name in required_metadata_fields:
             value = self.metadata.get(field_name)
-            if value in (None, "", []):
+            if value in (None, "", []) and field_name != "tactile_damage_sn_list":
                 self.add_finding("FAIL", "metadata_field", f"metadata.json 缺少字段: {field_name}")
         expected_types = {
+            "boot_time_s": (int, float),
             "camera_codec": str,
             "collection_duration_s": (int, float),
             "audio_uuid": str,
@@ -679,6 +698,7 @@ class EpisodeValidator:
             "software_version": str,
             "task_start_s": (int, float),
             "task_stop_s": (int, float),
+            "tactile_damage_sn_list": list,
             "video_details": list,
         }
         for field_name, expected_type in expected_types.items():
@@ -701,6 +721,37 @@ class EpisodeValidator:
                     f"metadata.json 字段类型异常: {field_name}",
                     expected_type=expected_type_name,
                     actual_type=value_type_name(value),
+                )
+        boot_time_s = self.metadata.get("boot_time_s")
+        if isinstance(boot_time_s, (int, float)) and not isinstance(boot_time_s, bool):
+            if not math.isfinite(boot_time_s) or boot_time_s < 946684800.0:
+                self.add_finding(
+                    "FAIL",
+                    "metadata_boot_time",
+                    "metadata.json.boot_time_s 不是合理的 Unix 秒时间点",
+                    boot_time_s=boot_time_s,
+                )
+        tactile_damage_sn_list = self.metadata.get("tactile_damage_sn_list")
+        if isinstance(tactile_damage_sn_list, list):
+            invalid_items = [
+                item
+                for item in tactile_damage_sn_list
+                if not isinstance(item, str) or not item.strip()
+            ]
+            if invalid_items:
+                self.add_finding(
+                    "FAIL",
+                    "metadata_tactile_damage_sn_list",
+                    "metadata.json.tactile_damage_sn_list 只能包含非空字符串 SN",
+                    invalid_items=invalid_items,
+                )
+            valid_items = [item for item in tactile_damage_sn_list if isinstance(item, str)]
+            if len(valid_items) != len(set(valid_items)):
+                self.add_finding(
+                    "FAIL",
+                    "metadata_tactile_damage_sn_list",
+                    "metadata.json.tactile_damage_sn_list 包含重复 SN",
+                    tactile_damage_sn_list=tactile_damage_sn_list,
                 )
         hardware_list = self.metadata.get("hardware_list")
         if isinstance(hardware_list, dict):
@@ -760,19 +811,18 @@ class EpisodeValidator:
                         "metadata_hardware_sn",
                         f"metadata.json.hardware_list.{key} 为空",
                     )
-        data_version = safe_str(self.metadata.get("data_version"))
-        if data_version == "3.0":
+        if data_version in {"3.0", "3.1"}:
             self.add_finding(
                 "INFO",
                 "metadata_data_version_legacy",
-                "metadata.json 使用兼容的历史 data_version 3.0",
+                f"metadata.json 使用兼容的历史 data_version {data_version}",
                 data_version=data_version,
             )
-        elif data_version is not None and data_version != "3.1":
+        elif data_version is not None and data_version != "3.2":
             self.add_finding(
                 "WARN",
                 "metadata_data_version",
-                "metadata.json 的 data_version 不是当前版本 3.1",
+                "metadata.json 的 data_version 不是当前版本 3.2",
                 data_version=data_version,
             )
         self.validate_task_markers()

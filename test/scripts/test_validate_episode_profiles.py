@@ -65,7 +65,7 @@ def video_details(names):
     ]
 
 
-def metadata(stereo_enabled=False, data_version="3.1", marker_values=None):
+def metadata(stereo_enabled=False, data_version="3.2", marker_values=None):
     required_files = list(VALIDATOR.CORE_REQUIRED_FILES)
     names = NOSTEREO_VIDEO_NAMES
     if stereo_enabled:
@@ -80,6 +80,8 @@ def metadata(stereo_enabled=False, data_version="3.1", marker_values=None):
         "software_version": "v2.1.9" if stereo_enabled else "v2.1.9+nostereo",
         "das_usb_updater_version": "1.0.3",
         "data_version": data_version,
+    }
+    result.update({
         "hardware_list": hardware_list(stereo_enabled),
         "episode_name": "episode_20260727_0001",
         "data_uuid": "test-uuid",
@@ -87,9 +89,12 @@ def metadata(stereo_enabled=False, data_version="3.1", marker_values=None):
         "quality_check_status": "success",
         "quality_check_err_type": "",
         "collection_duration_s": 10.0,
-    }
+    })
     if marker_values is not None:
         result.update(marker_values)
+    if data_version not in {"3.0", "3.1"}:
+        result["boot_time_s"] = 1_785_000_000.0
+        result["tactile_damage_sn_list"] = []
     result["require_files"] = required_files
     result["video_details"] = video_details(names)
     return result
@@ -221,10 +226,35 @@ class ValidateEpisodeProfileTest(unittest.TestCase):
                     any(item.code == "metadata_task_markers" and item.severity == "FAIL" for item in validator.findings)
                 )
 
-    def test_data_version_3_0_is_accepted_as_legacy(self):
-        validator = self.validate_metadata(metadata(data_version="3.0"))
-        self.assertFalse(any(item.code == "metadata_data_version" for item in validator.findings))
-        self.assertTrue(any(item.code == "metadata_data_version_legacy" for item in validator.findings))
+    def test_tactile_damage_sn_list_accepts_empty_and_single_sn(self):
+        for damaged_serial_numbers in ([], ["TR-R"]):
+            with self.subTest(damaged_serial_numbers=damaged_serial_numbers):
+                payload = metadata()
+                payload["tactile_damage_sn_list"] = damaged_serial_numbers
+                validator = self.validate_metadata(payload)
+                self.assertFalse(any(item.severity == "FAIL" for item in validator.findings))
+
+    def test_invalid_metadata_3_2_damage_list_or_boot_time_fails(self):
+        cases = [
+            ("tactile_damage_sn_list", ["TR-R", "TR-R"]),
+            ("tactile_damage_sn_list", [""]),
+            ("tactile_damage_sn_list", [123]),
+            ("boot_time_s", True),
+            ("boot_time_s", 1.0),
+        ]
+        for field_name, value in cases:
+            with self.subTest(field_name=field_name, value=value):
+                payload = metadata()
+                payload[field_name] = value
+                validator = self.validate_metadata(payload)
+                self.assertTrue(any(item.severity == "FAIL" for item in validator.findings))
+
+    def test_data_versions_3_0_and_3_1_are_accepted_as_legacy(self):
+        for data_version in ("3.0", "3.1"):
+            with self.subTest(data_version=data_version):
+                validator = self.validate_metadata(metadata(data_version=data_version))
+                self.assertFalse(any(item.code == "metadata_data_version" for item in validator.findings))
+                self.assertTrue(any(item.code == "metadata_data_version_legacy" for item in validator.findings))
 
     def test_relative_video_offsets_fail_unix_time_validation(self):
         payload = metadata()
