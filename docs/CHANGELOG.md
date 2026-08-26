@@ -2,34 +2,52 @@
 
 ## Unreleased
 
-- 新增 PC 端外部秒表录制联动测试脚本：自动下发到 240 板端，以 GPIO139 触发/停止秒表，并通过 runtime 软件录制 FIFO 执行正常起停；停录收尾后在对应 episode 写入 `stopwatch_timing.json`，记录 GPIO 与录制命令的 Unix/monotonic 时间及延迟。
-- 主运行日志统一为 V3 单行合同：C++、Python、Shell 与外部 child 的每个非空物理行使用同一 Unix 微秒/native TID/等级/调用点外层，保留既有业务标签并移除 ANSI/旧 audio/FAYS 外层；原有错误分支在 payload 末尾追加显式 `UGR-xx-xx` 错误码，不按错误文本猜测根因。
-- 修正 CameraRecorder 必填配置/命令行参数缺失错误码为 `UGR-70-01`；GripperHmiTool 错误消息改为单次 logger 输出，避免异步 driver 日志插入消息中间；主日志 checker 同步拒绝 payload 内嵌第二套 V3 外层。
-- Ego 起录前时间同步增加严格 `<15ms` 误差门限：每次绝对授时固定补偿实测 ADB 生效延迟 `20ms`，未达标时最多按同一策略重试三次，避免按残余 offset 满量反向修正产生振荡；`ego_sync.json` 保留逐次 offset/授时结果，连续失败以 `UGR-82-02` 中止本条录制并进入 `ERROR_5`。
-- Fays VIKit SDK 从 `3.8.0` 更新到上游 `v3.8.1`（`d86cf962`），同步 aarch64/x86_64 运行库与版本头，修复上游 IMU 参数读取错误；FT602 `1.0.17` 运行库保持不变。
-- 扩展 Ego dataset 目录兼容：未显式配置远端 root 时优先按绑定 serial 精确识别新版 `/files/dataset/<ego_serial>/data`，命中后跳过目录扫描；旧 `/files/<ego_serial>/data/dataset` 与 `/files/dataset` 保留为 fallback，降低新版联动起录的路径发现延迟。
-- 修复 Ego 解绑后 `ego_binding_status.json` 仍残留 `connected` 的问题：解绑现在不依赖 ADB 在线，Ego 已断连或拔出时仍可解除绑定、清除 `ERROR_5` 并发布不带旧 serial 的 `unbound`；服务启动发现无有效 binding 时也会归一化旧版遗留状态，probe 发布结果前重新核对当前 binding，避免解绑或重新绑定期间的在途旧探测回写过期连接状态。
-- 修正 episode 深度校验器的首帧时间口径：统一表现在覆盖本机 MCAP 中实际发现的全部 sensor topic，并用 `ego/metadata.json` 的 `head_pose_details.start_offset_us` 为 Ego 单调时钟 topic 计算固定 Unix offset；已使用 Unix `publishTime` 的 Ego metainfo 保持原值。主摄专项解码扫描改为 passthrough 并显式使用微秒输出 time base，避免 FFmpeg 帧率量化产生伪 non-monotonic DTS，同时修正左右主摄文件归类。
-- 主相机 MKV 的 PTS 改为逐帧使用 V4L2 buffer 实际时间相对首个写入帧生成，`metadata.video_details[].start_offset_us + packet_pts_us` 现在对应各帧 V4L2 Unix 时间；丢帧和采集卡顿产生的真实时间洞不再被名义 `60fps` 帧序号压平，重复或回退时间戳仅做最小单调钳制并记录诊断。Stereo 逐帧同步继续以 Fays MCAP camera `publishTime` 为唯一真值，不依赖 Stereo MKV PTS。
-- 修复 HMI 端口保持连接但长期无响应时 `age_ms` 持续增长导致健康错误重复上报、USB restore 的 `6s` 稳定窗口反复重置的问题；`hmi_input_inactive` / `hmi_ports_inactive` 的故障证据现在只保留稳定的超时阈值和端口路径。
-- 修复 `metadata.json.video_details[].start_offset_us` 被最早视频归零的问题：当前 `data_version=3.1` 直接保存各视频 `PTS=0` 对应的 Unix 微秒 offset，stereo 继续使用 Fays MCAP 首个 camera `publishTime`；新增测试工程师离线 episode 校验入口，统一展示全部视频、encoder 与 Fays IMU/camera 首帧的相对误差，并在最大误差达到 `1s` 时失败。
-- Ego 绑定改为开机周期状态：绑定文件迁移到 `/dev/shm/ugripper/ego_binding.json`，同次开机内服务重启保持绑定，整机重启或断电开机后自动解绑；升级时清理旧持久化绑定文件。
-- 提高 Ego 绑定/解绑反馈区分度：绑定成功改为双手亮黄色三闪与 `1000/2000/4000Hz` 升调，解绑成功改为双手紫色三闪与 `4000/2000/1000Hz` 降调；继续复用蜂鸣状态重试和结束静音机制。
-- 修复夹爪蜂鸣反馈偶发持续鸣响：HMI 驱动对蜂鸣开启和关闭状态切换统一执行 `5` 次、`20ms` 间隔重发，并在连接建立与驱动退出时主动重发关闭状态；Ego 绑定、任务打标等按侧反馈不再依赖单次关闭帧。
-- 修正 stereo 元数据时间基准：Fays finalize 后，runtime 通过现有 MCAP reader 轻量读取 summary 与首尾 chunk，将首末 camera `publishTime` 和消息数写入现有 timing 缓存；`video_details[].start_offset_us/duration_s` 不再使用 Ego 等待前的 session START 时间或固定帧率 MKV 的压紧时长。metadata 写入只消费 timing 缓存，不改变原有原子写入与 flush 顺序。
-- Episode 深度校验器按 `software_version` 的 `+nostereo` 构建标记动态选择产物清单，当前 schema 同步到 `data_version=3.1`，并兼容历史 `3.0` 以及缺少可选 `task_start_s/task_stop_s` 的数据；仅有开始标记时按无回环数据处理。Ego 绑定/解绑与录制任务打标新增青色灯光反馈，有效任务标记改为双手同步显示，失败和拒绝动作分别沿用红色、橙色语义；所有周期灯效统一按绝对单调时钟计算，避免左右夹爪在单侧提示恢复或重连后错相。
-- 新增 SXR Ego 显式绑定：空闲时左右上键同时长按 `2s` 可绑定唯一在线 Ego 或解除现有绑定，绑定结果通过不同蜂鸣节奏提示并持久化；绑定后断连、起录失败或停录 finalize/拉取/远端本地大小核对不完整统一进入 `ERROR_5`。普通单键长按统一调整为 `1000ms`，左上仅用于标记上一条 episode 失败，左下预留；录制中右上长按 `800ms` 依次写入 `task_start_s` / `task_stop_s`，第三次拒绝。metadata `data_version` 更新为 `3.1`，主包版本提升到 `2.1.9`。
-- 修正绑定 Ego 起录竞态：worker 在校时、编码设置和广播阶段使用非终态 `starting`，避免运行时把准备中的设备误判为 `not_found`，导致 UGripper 起录被拒绝而 Ego 已开始录制。
-- 修复 auto-release manifest 扫描构建目录和归档虚拟环境导致的长时间卡顿：基线迁移到独立状态目录，改用 Git 文件集和批量哈希，并增加原子写入与超时保护。
-- Fays VIKit SDK 从 `3.5.1` 更新到上游 `main` 的 `3.8.0`（`b1d74499`），同步 aarch64/x86_64 运行库与公开 API/版本头；FT602 `1.0.17` 运行库保持不变。主包版本同步提升到 `2.1.8`。
-- 扩展四口手部 USB2 hub 映射：支持 `.1=主摄/.2=tactile_r/.3=tactile_l/.4=CH9344`，并由 `.4` 自动生成左右 gripper/encoder symlink，同时保留既有 hub 拓扑兼容。
-- 新增构建期开关 `UGRIPPER_ENABLE_STEREO`，默认 `ON` 并沿用普通版本/包名；显式设为 `OFF` 时生成 `+nostereo` 包变体，运行时不启动 Fays daemon、不检查 stereo/Fays 健康、不执行双目 session/finalize，也不生成或校验 `stereo_left/right.mkv` 与 `fays_data_left/right.mcap`。该开关不提供 `/etc/environment`、`config.txt` 或命令行运行时覆盖。
-- HMI 物理按键在动作状态机前新增按下、松开各 `40ms` 的双向稳定滤波，过滤短暂电平毛刺；原有 `80ms` 短按动作间隔保持不变。
-- UgripperRuntime、SensorRecorder 与 encoder zeroing 的信号处理路径只设置停止标志，不再在信号上下文执行日志、子进程等待或复杂对象清理；SensorRecorder 退出时先等待编码器读写线程停止，再关闭串口，避免服务停止或停录时发生死锁、资源竞态及 sensor MCAP Footer 未封口。
+- GripperHmiTool 新增绝对只读的 HMI 双版本字段读取：依次发送 `0x52/0x56` 与 `0x52/0x57`，单路 `F2` 不阻断另一通道，并通过 `version_56` / `version_57` 稳定输出供生产强检选择有效固件版本；另新增显式高风险命令 `--initialize-version-preserve-payload`，初始化前完整缓存 `32-byte` SN 与 `1024-byte` 标定 payload，初始化后逐字节原样写回并回读比对，写入或回读失败最多执行 3 轮完整恢复。
+- metadata schema 更新到 `data_version=3.2`：在 `task_stop_s` 后依次新增 Unix 秒开机时间 `boot_time_s` 和触觉损坏 SN 列表 `tactile_damage_sn_list`；后台触觉校验按本条 episode 单次 `damaged=true` 原子回写对应 SN，无损坏保持空列表。停录收尾调整为先同步 `video stop` 运行日志，再释放录制锁；离线 episode 校验器同步支持 3.2，并兼容历史 3.1/3.0。
+- 新增 PC 端外部秒表录制联动测试脚本：自动下发到 240 板端，以 GPIO139 触发/停止秒表，并通过 runtime 软件录制 FIFO 执行正常起停；执行前同步覆盖收紧版 CH9344 helper，只允许 bus1/bus9 分别映射右/左夹爪并排除 bus5/bus11，同时校验四个逻辑链接的唯一性和物理来源，失败时不触发测试；停录收尾后在对应 episode 写入 `stopwatch_timing.json`，记录 GPIO 与录制命令的 Unix/monotonic 时间及延迟。
+- Ego 起录前时间同步增加严格 `<15ms` 误差门限：每次绝对授时固定补偿实测 ADB 生效延迟 `20ms`，未达标时最多按同一策略重试三次；连续失败以 `UGR-82-02` 中止本条录制并进入 `ERROR_5`。
+
+## v2.1.11 - 2026-08-12
+
+- 主运行日志统一为 V3 单行合同，C++、Python、Shell 与外部 child 使用同一 Unix 微秒/native TID/等级/调用点外层；既有错误分支追加显式 `UGR-xx-xx` 错误码，并补齐日志合同检查工具。
+- 修复 Ego 解绑后状态仍残留 `connected`，并兼容新版 `/files/dataset/<ego_serial>/data`、旧 serial-scoped 路径及 legacy dataset root。
+- Fays VIKit SDK 从 `3.8.0` 更新到上游 `v3.8.1`，修复 IMU 参数读取错误；FT602 `1.0.17` 保持不变。
+- 构建脚本默认主包版本调整到 `2.1.11`。
+
+## v2.1.10 - 2026-07-29
+
+- 主相机 MKV 的 PTS 改为使用 V4L2 buffer 实际时间，保留丢帧和采集卡顿产生的真实时间洞；stereo 逐帧同步继续以 Fays MCAP camera `publishTime` 为准。
+- 修复 HMI 端口长期无响应时故障证据持续变化、健康错误重复上报及 USB restore 稳定窗口反复重置的问题。
+- 离线 episode 校验统一检查全部视频、encoder 与 Fays IMU/camera 首帧的全局时间对齐，并新增版本间测试重点汇总工具。
+- 构建脚本默认主包版本调整到 `2.1.10`。
+
+## v2.1.9 - 2026-07-28
+
+- 新增 SXR Ego 显式绑定和录制任务起止标记；绑定改为开机周期状态，metadata 更新到 `data_version=3.1`，并修复准备阶段被误判为离线的问题。
+- 修正 stereo 元数据时间基准：offset/duration 改用 Fays MCAP camera 首尾时间；Episode 深度校验器支持按 `+nostereo` 版本选择产物清单并兼容历史 schema。
+- 修复 HMI 蜂鸣偶发持续响及周期灯效错相问题；扩展四口手部 USB2 hub 映射，并修复 auto-release manifest 扫描卡顿。
+- 构建脚本默认主包版本调整到 `2.1.9`。
+
+## v2.1.8 - 2026-07-24
+
+- Fays VIKit SDK 从 `3.5.1` 更新到上游 `3.8.0`，同步 aarch64/x86_64 运行库、公开 API 与版本头；FT602 `1.0.17` 保持不变。
+- 构建脚本默认主包版本调整到 `2.1.8`。
+
+## v2.1.7 - 2026-07-20
+
+- 新增 `+nostereo` 构建变体：关闭 Fays daemon、stereo 健康检查、双目 session/finalize 及相关产物生成和校验；默认包仍启用 stereo。
+- Ego dataset 目录发现支持按设备 serial 扫描，兼容新旧 SXR 数据路径。
+- 构建脚本默认主包版本调整到 `2.1.7`。
+
+## v2.1.6 - 2026-07-14
+
+- HMI 物理按键增加按下、松开双向稳定滤波，过滤短暂电平毛刺并保留既有短按动作间隔。
+- UgripperRuntime、SensorRecorder 与 encoder zeroing 的信号处理改为仅设置停止标志；SensorRecorder 退出时先等待读写线程停止再关闭串口，避免服务停止或停录时死锁、资源竞态及 MCAP 未封口。
+- 构建脚本默认主包版本调整到 `2.1.6`。
 
 > 说明：本文件只保留 v2.0.0 以来的高信号发布变更；当前系统行为以 `docs/agent/overview.md` 为准。
 >
-> 仓库没有 `v2.0.x` git tag。下面的发布边界按 `build_deb.sh` / `scripts/build_arm_deb_in_pp_arm_dev.sh` 中 `BASE_VERSION` 的提交记录推定：`2caf6e0` 为 v2.0.0，`d81c3c1` 为 v2.0.1。
+> 仓库没有对应的 v2.0.x/v2.1.x git tag。下面的发布边界按 `build_deb.sh` / `scripts/build_arm_deb_in_pp_arm_dev.sh` 中 `BASE_VERSION` 的提交记录推定。
 
 ## v2.1.5 - 2026-07-13
 
