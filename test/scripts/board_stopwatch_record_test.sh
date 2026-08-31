@@ -4,9 +4,9 @@
 #
 # 在 PC 上执行本脚本。脚本会将自身和仓库内的 CH9344 helper 下发到目标
 # 板端，先把 helper 安装到 /usr/local/bin 并重放已枚举 CH9344 串口的 udev
-# 事件，再通过 GPIO139 触发外部秒表，随后立即通过运行时控制 FIFO 启动一次
-# 正常的 UGripper 录制；达到指定时长后停止录制和秒表，并向最终 episode
-# 写入 stopwatch_timing.json。
+# 事件，再通过运行时控制 FIFO 启动一次正常的 UGripper 录制；等待指定延迟后
+# 通过 GPIO139 触发外部秒表。达到录制总时长后停止录制和秒表，并向最终
+# episode 写入 stopwatch_timing.json。
 #
 # PC 端前置条件：
 #   - 已安装 bash、ssh、scp 和 sshpass
@@ -27,7 +27,8 @@
 #   --host HOST                  板端地址（默认：192.168.2.240）
 #   --user USER                  SSH 用户名（默认：ubuntu）
 #   --password PASSWORD          SSH/sudo 密码（默认：ubuntu）
-#   --duration-sec N             秒表和录制持续时长，单位秒（默认：10）
+#   --duration-sec N             录制总持续时长，单位秒（默认：15）
+#   --stopwatch-delay-sec N      录制 START 后等待多久再触发秒表，单位秒（默认：2）
 #   --gpio N                     legacy sysfs GPIO 编号（默认：139）
 #   --active-level 0|1           秒表触发电平（默认：0）
 #   --episode-root DIR           板端 episode 根目录；默认自动识别
@@ -47,18 +48,21 @@
 #     bus 约束；校验失败时不会启动秒表或录制。
 #
 # 安全机制：
+#   GPIO 初始化会原子设置输出方向和空闲电平，避免低电平有效场景在正式触发前
+#   因 direction=out 的瞬时低电平误启动秒表。
 #   START 后如遇中断或失败，板端 trap 会发送 STOP 并将 GPIO 恢复为空闲电平。
 #   如已存在录制锁，脚本会拒绝开始新测试。
 
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-SCRIPT_VERSION="3"
+SCRIPT_VERSION="5"
 
 DEFAULT_HOST="192.168.2.240"
 DEFAULT_USER="ubuntu"
 DEFAULT_PASSWORD="ubuntu"
-DEFAULT_DURATION_SEC=10
+DEFAULT_DURATION_SEC=15
+DEFAULT_STOPWATCH_DELAY_SEC=2
 DEFAULT_GPIO=139
 DEFAULT_ACTIVE_LEVEL=0
 DEFAULT_START_TIMEOUT_SEC=30
@@ -207,6 +211,7 @@ write_timing_json() {
     export UGRIPPER_STOPWATCH_TARGET_LABEL="${TARGET_LABEL}"
     export UGRIPPER_STOPWATCH_EPISODE="${final_episode}"
     export UGRIPPER_STOPWATCH_DURATION_SEC="${DURATION_SEC}"
+    export UGRIPPER_STOPWATCH_DELAY_SEC="${STOPWATCH_DELAY_SEC}"
     export UGRIPPER_STOPWATCH_GPIO="${GPIO}"
     export UGRIPPER_STOPWATCH_ACTIVE_LEVEL="${ACTIVE_LEVEL}"
     export UGRIPPER_STOPWATCH_IDLE_LEVEL="${IDLE_LEVEL}"
@@ -274,11 +279,12 @@ gpio_stop_after_mono = mono_ns("GPIO_STOP_AFTER_MONOTONIC_SEC")
 
 payload = {
     "schema_version": 1,
-    "test": "external_stopwatch_normal_recording",
+    "test": "normal_recording_then_external_stopwatch",
     "script_version": env("SCRIPT_VERSION"),
     "target": env("TARGET_LABEL"),
     "episode_path": env("EPISODE"),
     "requested_duration_sec": int(env("DURATION_SEC")),
+    "requested_stopwatch_delay_sec": int(env("DELAY_SEC")),
     "gpio": {
         "number": int(env("GPIO")),
         "active_level": int(env("ACTIVE_LEVEL")),
@@ -330,8 +336,8 @@ payload = {
         "clock": "unix_ns",
         "stopwatch_start_write_window_ms": (gpio_start_after - gpio_start_before) / 1_000_000,
         "record_start_write_window_ms": (record_start_after - record_start_before) / 1_000_000,
-        "stopwatch_start_to_record_start_command_max_ms": (record_start_after - gpio_start_before) / 1_000_000,
-        "stopwatch_start_after_to_record_start_command_ms": (record_start_after - gpio_start_after) / 1_000_000,
+        "record_start_command_to_stopwatch_start_min_ms": (gpio_start_before - record_start_after) / 1_000_000,
+        "record_start_command_to_stopwatch_start_max_ms": (gpio_start_after - record_start_before) / 1_000_000,
         "record_start_command_to_episode_observed_ms": (episode_observed - record_start_after) / 1_000_000,
         "record_command_window_ms": (record_stop_before - record_start_after) / 1_000_000,
         "record_stop_write_window_ms": (record_stop_after - record_stop_before) / 1_000_000,
@@ -342,7 +348,9 @@ payload = {
     "notes": [
         "The physical GPIO edge occurred between each write_before/write_after timestamp pair.",
         "Millisecond measurements use the nanosecond-resolution Unix timestamps; monotonic timestamps are retained as raw diagnostic evidence.",
+        "GPIO direction and idle level were initialized atomically before the trigger to avoid an active-low initialization glitch.",
         "START and STOP were sent through the normal UGripper runtime recording control FIFO.",
+        "Recording START was sent before the stopwatch trigger; the configured delay is included in requested_stopwatch_delay_sec.",
     ],
 }
 
@@ -485,6 +493,7 @@ board_cleanup() {
 
 run_board() {
     DURATION_SEC="${DEFAULT_DURATION_SEC}"
+    STOPWATCH_DELAY_SEC="${DEFAULT_STOPWATCH_DELAY_SEC}"
     GPIO="${DEFAULT_GPIO}"
     ACTIVE_LEVEL="${DEFAULT_ACTIVE_LEVEL}"
     START_TIMEOUT_SEC="${DEFAULT_START_TIMEOUT_SEC}"
@@ -496,6 +505,7 @@ run_board() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --duration-sec) DURATION_SEC="$2"; shift 2 ;;
+            --stopwatch-delay-sec) STOPWATCH_DELAY_SEC="$2"; shift 2 ;;
             --gpio) GPIO="$2"; shift 2 ;;
             --active-level) ACTIVE_LEVEL="$2"; shift 2 ;;
             --episode-root) EPISODE_ROOT_OVERRIDE="$2"; shift 2 ;;
@@ -508,6 +518,8 @@ run_board() {
     done
 
     require_positive_integer "duration-sec" "${DURATION_SEC}"
+    require_nonnegative_integer "stopwatch-delay-sec" "${STOPWATCH_DELAY_SEC}"
+    (( STOPWATCH_DELAY_SEC < DURATION_SEC )) || die "stopwatch-delay-sec must be less than duration-sec"
     require_nonnegative_integer "gpio" "${GPIO}"
     require_positive_integer "start-timeout-sec" "${START_TIMEOUT_SEC}"
     require_positive_integer "finalize-timeout-sec" "${FINALIZE_TIMEOUT_SEC}"
@@ -535,8 +547,18 @@ run_board() {
         done
     fi
     [[ -d "/sys/class/gpio/gpio${GPIO}" ]] || die "GPIO${GPIO} did not appear after export"
-    printf 'out\n' | sudo -n tee "/sys/class/gpio/gpio${GPIO}/direction" >/dev/null
-    write_gpio_value "${IDLE_LEVEL}"
+    local idle_direction
+    if [[ "${IDLE_LEVEL}" == "1" ]]; then
+        idle_direction="high"
+    else
+        idle_direction="low"
+    fi
+    # Writing "out" makes sysfs drive the GPIO low before the following value
+    # write. Configure direction and idle level atomically so an active-low
+    # stopwatch cannot see a false trigger during script initialization.
+    printf '%s\n' "${idle_direction}" | sudo -n tee "/sys/class/gpio/gpio${GPIO}/direction" >/dev/null
+    [[ "$(<"/sys/class/gpio/gpio${GPIO}/direction")" == "out" ]] || die "GPIO${GPIO} is not configured as output"
+    [[ "$(<"/sys/class/gpio/gpio${GPIO}/value")" == "${IDLE_LEVEL}" ]] || die "GPIO${GPIO} idle-level initialization failed"
 
     WORK_DIR="$(mktemp -d "/tmp/ugripper_stopwatch_record.XXXXXX")"
     BASELINE_FILE="${WORK_DIR}/baseline.txt"
@@ -554,22 +576,26 @@ run_board() {
     echo "target=${TARGET_LABEL}"
     echo "episode_root=${EPISODE_ROOT}"
     echo "duration_sec=${DURATION_SEC}"
+    echo "stopwatch_delay_sec=${STOPWATCH_DELAY_SEC}"
     echo "gpio=${GPIO} active_level=${ACTIVE_LEVEL} idle_level=${IDLE_LEVEL}"
 
     monitor_new_episode &
     MONITOR_PID=$!
 
-    capture_time gpio_start_before
-    write_gpio_value "${ACTIVE_LEVEL}"
-    GPIO_ACTIVE=1
-    capture_time gpio_start_after
     capture_time record_start_before
     printf 'START\n' > "${RECORD_CONTROL_PIPE}"
     RECORD_START_SENT=1
     capture_time record_start_after
     local start_deadline=$((SECONDS + START_TIMEOUT_SEC))
 
-    sleep "${DURATION_SEC}"
+    sleep "${STOPWATCH_DELAY_SEC}"
+
+    capture_time gpio_start_before
+    write_gpio_value "${ACTIVE_LEVEL}"
+    GPIO_ACTIVE=1
+    capture_time gpio_start_after
+
+    sleep "$((DURATION_SEC - STOPWATCH_DELAY_SEC))"
 
     capture_time record_stop_before
     printf 'STOP\n' > "${RECORD_CONTROL_PIPE}"
@@ -634,6 +660,7 @@ run_host() {
     USER_NAME="${DEFAULT_USER}"
     PASSWORD="${DEFAULT_PASSWORD}"
     DURATION_SEC="${DEFAULT_DURATION_SEC}"
+    STOPWATCH_DELAY_SEC="${DEFAULT_STOPWATCH_DELAY_SEC}"
     GPIO="${DEFAULT_GPIO}"
     ACTIVE_LEVEL="${DEFAULT_ACTIVE_LEVEL}"
     START_TIMEOUT_SEC="${DEFAULT_START_TIMEOUT_SEC}"
@@ -647,6 +674,7 @@ run_host() {
             --user) USER_NAME="$2"; shift 2 ;;
             --password) PASSWORD="$2"; shift 2 ;;
             --duration-sec) DURATION_SEC="$2"; shift 2 ;;
+            --stopwatch-delay-sec) STOPWATCH_DELAY_SEC="$2"; shift 2 ;;
             --gpio) GPIO="$2"; shift 2 ;;
             --active-level) ACTIVE_LEVEL="$2"; shift 2 ;;
             --episode-root) EPISODE_ROOT_OVERRIDE="$2"; shift 2 ;;
@@ -659,6 +687,8 @@ run_host() {
     done
 
     require_positive_integer "duration-sec" "${DURATION_SEC}"
+    require_nonnegative_integer "stopwatch-delay-sec" "${STOPWATCH_DELAY_SEC}"
+    (( STOPWATCH_DELAY_SEC < DURATION_SEC )) || die "stopwatch-delay-sec must be less than duration-sec"
     require_nonnegative_integer "gpio" "${GPIO}"
     require_positive_integer "start-timeout-sec" "${START_TIMEOUT_SEC}"
     require_positive_integer "finalize-timeout-sec" "${FINALIZE_TIMEOUT_SEC}"
@@ -694,6 +724,7 @@ run_host() {
     local board_args=(
         bash "${REMOTE_SCRIPT}" --board-run
         --duration-sec "${DURATION_SEC}"
+        --stopwatch-delay-sec "${STOPWATCH_DELAY_SEC}"
         --gpio "${GPIO}"
         --active-level "${ACTIVE_LEVEL}"
         --start-timeout-sec "${START_TIMEOUT_SEC}"
