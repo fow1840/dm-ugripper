@@ -2,8 +2,8 @@
 
 #include <gtest/gtest.h>
 
-using ugripper::runtime::ErrorCodeContext;
-using ugripper::runtime::UgrCodeForErrorType;
+using DA::Ugripper::ErrorCodeContext;
+using DA::Ugripper::UgrCodeForErrorType;
 
 TEST(ErrorCodeMapping, MapsUniqueLegacyTypesWithoutPayloadInspection) {
   EXPECT_EQ(UgrCodeForErrorType("disk_mount_lost"), "UGR-10-01");

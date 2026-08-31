@@ -17,28 +17,26 @@
 - `config/camera_recorder.yaml` 的兼容策略
 - `test/src/camera/config_samples/` 的测试资产口径
 
-当前文档不要求：
+当前文档的初始冻结阶段不要求：
 
 - 立即重命名现有 `main.cpp`
-- 立即把所有现有 namespace 改成 `ugripper::*`
+- 立即把所有现有 namespace 改成同一前缀；后续 UgripperRuntime 已按明确评审迁移到 `DA::Ugripper`
 - 立即让 parser 支持 `schema_version: 1`
 
 ## 2. 命名契约
 
 ### 2.1 新增公共 namespace 目标
 
-从 `Step 4` 开始，新增公共符号默认目标 namespace 为：
+当前已落地的 UgripperRuntime 目标 namespace 为：
 
-- `ugripper::camera`
-- `ugripper::runtime`
-- `ugripper::sensor`
-- `ugripper::hmi`
-- `ugripper::config`
-- `ugripper::utils`
+- `DA::Ugripper`：公共接口与领域类型
+- `DA::Ugripper::detail`：内部 helper
+
+CameraRecorder、SensorRecorder、GripperHmiTool 与本地 utils 的 namespace 仍按各模块独立维护；不因 runtime 已迁移就一次性批量改名。
 
 过渡规则：
 
-- 现有模块不做一次性 namespace 迁移
+- 除已完成明确评审和全量验证的 UgripperRuntime 外，现有模块不做一次性 namespace 迁移
 - 新抽出的正式模块优先直接使用目标 namespace
 - 若旧模块暂时保留历史 namespace，必须在文档或 PR 描述中说明其为过渡状态
 

@@ -25,7 +25,7 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
-namespace ugripper::runtime::record_runtime_detail {
+namespace DA::Ugripper::detail {
 bool writeTextFileAtomically(const fs::path &path, const std::string &content, std::string *errorMessage)
 {
     const fs::path parent = path.parent_path();
@@ -722,4 +722,4 @@ void writeValidationErrorLog(const fs::path &episodeDir, const std::string &erro
     flushEpisodeDirectoriesToDisk(episodeDir, "validation_error");
 }
 
-}  // namespace ugripper::runtime::record_runtime_detail
+}  // namespace DA::Ugripper::detail

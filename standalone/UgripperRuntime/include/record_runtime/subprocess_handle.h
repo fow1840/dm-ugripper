@@ -5,7 +5,7 @@
 
 #include <sys/types.h>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 enum class ProcessStopMode
 {
@@ -27,8 +27,8 @@ public:
     bool SendSignal(int signal_number);
     bool Stop(ProcessStopMode stop_mode, int timeout_ms, std::string* error_message = nullptr);
     void Reset();
-    int LastExitCode() const;
-    int Pid() const;
+    int GetLastExitCode() const;
+    int GetPid() const;
 
 private:
     bool PollExit(bool blocking);
@@ -40,4 +40,4 @@ private:
     int last_exit_code_ = 0;
 };
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

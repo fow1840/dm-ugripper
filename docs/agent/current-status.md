@@ -131,6 +131,7 @@
 - device/recovery 状态由 `DeviceStateManager` 与 `UsbRecoveryCoordinator` 真实持有，`RecordRuntime` 仅保留过渡兼容引用；`EpisodeManager` 已通过中立 DTO 与窄依赖注入解除对 `RecordRuntime` 的 friend/反向依赖
 - `RecordingOrchestrator` 的平铺 callback bag 已按 episode、filesystem、workers、stereo、ego、feedback、logs 七个 capability port 分组
 - CLI 解析已迁入独立 `runtime_cli` 边界；触觉 episode 校验与持久化 helper 已分别迁入独立实现文件
+- `UgripperRuntime` 公开 C++ 类型已统一到 `DA::Ugripper`，内部 helper 使用 `DA::Ugripper::detail`；公开生命周期与访问接口统一使用 `Initialize` / `Run` / `Stop` / `Get` / `Is` 风格，其中 `RecordRuntime::Stop()` 仍保持原有“只设置退出标志”的非阻塞语义
 - `CameraRecorder` 已按 `app 壳 + camera domain` 落地到 `standalone/CameraRecorder`
 - `SensorRecorder` 已按 `protocol + domain + app/runtime 装配` 落地到 `standalone/SensorRecorder`
 - `GripperHmiTool` 已按 `protocol + led effects + driver + tool` 落地到 `standalone/GripperHmiTool`

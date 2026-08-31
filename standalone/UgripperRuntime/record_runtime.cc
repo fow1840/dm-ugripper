@@ -52,7 +52,9 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 using ordered_json = nlohmann::ordered_json;
-using namespace ugripper::runtime::record_runtime_detail;
+using namespace DA::Ugripper::detail;
+
+namespace DA::Ugripper {
 
 GripperLedEffect RecordRuntime::makeLedEffect(LedState state, double progress)
 {
@@ -94,35 +96,35 @@ GripperLedEffect RecordRuntime::makeLedEffect(LedState state, double progress)
     }
 }
 
-RecordRuntime::LedState RecordRuntime::toLedState(ugripper::runtime::RuntimeLedState state)
+RecordRuntime::LedState RecordRuntime::toLedState(DA::Ugripper::RuntimeLedState state)
 {
     switch (state)
     {
-    case ugripper::runtime::RuntimeLedState::Init:
+    case DA::Ugripper::RuntimeLedState::Init:
         return LedState::Init;
-    case ugripper::runtime::RuntimeLedState::Writing:
+    case DA::Ugripper::RuntimeLedState::Writing:
         return LedState::Writing;
-    case ugripper::runtime::RuntimeLedState::Ready:
+    case DA::Ugripper::RuntimeLedState::Ready:
         return LedState::Ready;
-    case ugripper::runtime::RuntimeLedState::Recording:
+    case DA::Ugripper::RuntimeLedState::Recording:
         return LedState::Recording;
-    case ugripper::runtime::RuntimeLedState::Error1:
+    case DA::Ugripper::RuntimeLedState::Error1:
         return LedState::Error1;
-    case ugripper::runtime::RuntimeLedState::Error2:
+    case DA::Ugripper::RuntimeLedState::Error2:
         return LedState::Error2;
-    case ugripper::runtime::RuntimeLedState::Error3:
+    case DA::Ugripper::RuntimeLedState::Error3:
         return LedState::Error3;
-    case ugripper::runtime::RuntimeLedState::Error4:
+    case DA::Ugripper::RuntimeLedState::Error4:
         return LedState::Error4;
-    case ugripper::runtime::RuntimeLedState::Error5:
+    case DA::Ugripper::RuntimeLedState::Error5:
         return LedState::Error5;
-    case ugripper::runtime::RuntimeLedState::CalibPre:
+    case DA::Ugripper::RuntimeLedState::CalibPre:
         return LedState::CalibPre;
-    case ugripper::runtime::RuntimeLedState::CalibRun:
+    case DA::Ugripper::RuntimeLedState::CalibRun:
         return LedState::CalibRun;
-    case ugripper::runtime::RuntimeLedState::CalibDone:
+    case DA::Ugripper::RuntimeLedState::CalibDone:
         return LedState::CalibDone;
-    case ugripper::runtime::RuntimeLedState::Exit:
+    case DA::Ugripper::RuntimeLedState::Exit:
     default:
         return LedState::Exit;
     }
@@ -168,21 +170,21 @@ const char *RecordRuntime::ledStateName(LedState state)
     return "Unknown";
 }
 
-const char *RecordRuntime::hmiEventName(ugripper::runtime::HmiEventType event_type)
+const char *RecordRuntime::hmiEventName(DA::Ugripper::HmiEventType event_type)
 {
     switch (event_type)
     {
-    case ugripper::runtime::HmiEventType::ShortUpPressed:
+    case DA::Ugripper::HmiEventType::ShortUpPressed:
         return "ShortUpPressed";
-    case ugripper::runtime::HmiEventType::ShortDownPressed:
+    case DA::Ugripper::HmiEventType::ShortDownPressed:
         return "ShortDownPressed";
-    case ugripper::runtime::HmiEventType::LongUpPressed:
+    case DA::Ugripper::HmiEventType::LongUpPressed:
         return "LongUpPressed";
-    case ugripper::runtime::HmiEventType::LongDownPressed:
+    case DA::Ugripper::HmiEventType::LongDownPressed:
         return "LongDownPressed";
-    case ugripper::runtime::HmiEventType::ShutdownPromptRequested:
+    case DA::Ugripper::HmiEventType::ShutdownPromptRequested:
         return "ShutdownPromptRequested";
-    case ugripper::runtime::HmiEventType::ShutdownRequested:
+    case DA::Ugripper::HmiEventType::ShutdownRequested:
         return "ShutdownRequested";
     }
     return "Unknown";
@@ -195,7 +197,7 @@ RecordRuntime::RecordRuntime(RecordRuntimeOptions options)
 
 RecordRuntime::~RecordRuntime()
 {
-    requestStop();
+    Stop();
     stopRecording(false, "shutdown");
     closeRecordControlPipe();
     requestStopBackgroundTactileValidation();
@@ -209,7 +211,7 @@ RecordRuntime::~RecordRuntime()
     panelManager_.disconnect();
 }
 
-bool RecordRuntime::initialize()
+bool RecordRuntime::Initialize()
 {
     deviceSn_ = readEnvValue(options_.envFile, "DEVICE_SN");
     if (deviceSn_.empty())
@@ -287,7 +289,7 @@ bool RecordRuntime::initialize()
         hardwareVersion_,
         packageVersion_,
         updaterVersion_,
-        ugripper::runtime::EpisodeManagerDependencies{
+        DA::Ugripper::EpisodeManagerDependencies{
             .currentEpochMs = &RecordRuntime::currentEpochMs,
             .fileExistsAndNotEmpty = &RecordRuntime::fileExistsAndNotEmpty,
         });
@@ -307,8 +309,8 @@ bool RecordRuntime::initialize()
     ledController_->start();
     setLedState(LedState::BootInit);
 
-    hmiController_ = std::make_unique<ugripper::runtime::HmiController>(
-        ugripper::runtime::HmiControllerOptions{
+    hmiController_ = std::make_unique<DA::Ugripper::HmiController>(
+        DA::Ugripper::HmiControllerOptions{
             .press_debounce_ms = kButtonPressDebounceMs,
             .release_debounce_ms = kButtonReleaseDebounceMs,
             .action_debounce_ms = kActionDebounceMs,
@@ -316,14 +318,14 @@ bool RecordRuntime::initialize()
             .dual_long_press_threshold_ms = kDualLongPressThresholdMs,
             .shutdown_prompt_threshold_ms = kShutdownPromptThresholdMs,
         },
-        &utils::CurrentSteadyMs);
-    buttonActionRouter_ = std::make_unique<ugripper::runtime::ButtonActionRouter>(
-        std::vector<ugripper::runtime::ButtonChordDefinition>{
+        &::utils::CurrentSteadyMs);
+    buttonActionRouter_ = std::make_unique<DA::Ugripper::ButtonActionRouter>(
+        std::vector<DA::Ugripper::ButtonChordDefinition>{
             {
-                .action = ugripper::runtime::ButtonAction::ToggleEgoBinding,
+                .action = DA::Ugripper::ButtonAction::ToggleEgoBinding,
                 .required_mask =
-                    ugripper::runtime::ButtonMask(ugripper::runtime::PhysicalButton::LeftUp) |
-                    ugripper::runtime::ButtonMask(ugripper::runtime::PhysicalButton::RightUp),
+                    DA::Ugripper::ButtonMask(DA::Ugripper::PhysicalButton::LeftUp) |
+                    DA::Ugripper::ButtonMask(DA::Ugripper::PhysicalButton::RightUp),
                 .hold_ms = kEgoBindingChordHoldMs,
                 .allowed_while_recording = false,
             },
@@ -331,9 +333,9 @@ bool RecordRuntime::initialize()
 
     std::vector<std::string> audioPlayerArguments = resolvePythonCommand();
     audioPlayerArguments.push_back(options_.audioPlayScript);
-    audioCoordinator_ = std::make_unique<ugripper::runtime::AudioCoordinator>(
+    audioCoordinator_ = std::make_unique<DA::Ugripper::AudioCoordinator>(
         &processSupervisor_,
-        ugripper::runtime::AudioCoordinatorOptions{
+        DA::Ugripper::AudioCoordinatorOptions{
             .player_arguments = std::move(audioPlayerArguments),
             .audio_pipe = options_.audioPipe,
             .audio_ready_file = options_.audioReadyFile,
@@ -342,13 +344,13 @@ bool RecordRuntime::initialize()
             .ready_grace_ms = kAudioPlayerReadyGraceMs,
             .startup_timeout_ms = 5000,
         },
-        &utils::CurrentSteadyMs);
+        &::utils::CurrentSteadyMs);
 
     if (stereoEnabled_)
     {
-        stereoSessionClient_ = std::make_unique<ugripper::runtime::StereoSessionClient>(
+        stereoSessionClient_ = std::make_unique<DA::Ugripper::StereoSessionClient>(
             &processSupervisor_,
-            ugripper::runtime::StereoSessionClientOptions{
+            DA::Ugripper::StereoSessionClientOptions{
                 .daemon_arguments =
                     {
                         options_.faysStereoDaemonScript,
@@ -373,16 +375,16 @@ bool RecordRuntime::initialize()
                 .restart_interval_ms = kStereoDaemonRestartIntervalMs,
                 .finalize_wait_poll_ms = kStereoFinalizeWaitPollMs,
             },
-            &utils::CurrentSteadyMs);
+            &::utils::CurrentSteadyMs);
     }
     shutdownRequestPort_ =
-        ugripper::runtime::CreateFileShutdownRequestPort(
+        DA::Ugripper::CreateFileShutdownRequestPort(
             options_.systemActionRequestFile,
             options_.systemActionResultFile);
 
     const auto criticalDevicePaths = activeCriticalDevicePaths(chestCameraEnabled_, stereoEnabled_);
-    healthMonitor_ = std::make_unique<ugripper::runtime::HealthMonitor>(
-        ugripper::runtime::HealthMonitorOptions{
+    healthMonitor_ = std::make_unique<DA::Ugripper::HealthMonitor>(
+        DA::Ugripper::HealthMonitorOptions{
             .disk_root = options_.diskRoot,
             .stereo_status_file = options_.stereoStatusFile,
             .stereo_enabled = stereoEnabled_,
@@ -392,7 +394,7 @@ bool RecordRuntime::initialize()
             .hmi_active_timeout_ms = kHmiActiveTimeoutMs,
             .stereo_startup_grace_ms = kStereoStartupReadyTimeoutMs,
         },
-        ugripper::runtime::HealthMonitor::Dependencies{
+        DA::Ugripper::HealthMonitor::Dependencies{
             .get_disk_fault =
                 [](const std::string& path) {
                     return detectDiskHealthFault(path);
@@ -402,13 +404,13 @@ bool RecordRuntime::initialize()
                     return fs::exists(path);
                 },
             .get_process_status =
-                [this](ugripper::runtime::WorkerName worker) {
+                [this](DA::Ugripper::WorkerName worker) {
                     return processSupervisor_.GetStatus(worker);
                 },
             .get_hmi_health =
                 [this](uint64_t active_timeout_ms) {
                     const auto health = panelManager_.getHealthSnapshot(active_timeout_ms);
-                    return ugripper::runtime::HmiHealthSnapshot{
+                    return DA::Ugripper::HmiHealthSnapshot{
                         .has_connected_device = health.hasConnectedDevice,
                         .input_connected = health.inputConnected,
                         .input_active = health.inputActive,
@@ -420,10 +422,10 @@ bool RecordRuntime::initialize()
                     };
                 },
         },
-        &utils::CurrentSteadyMs);
+        &::utils::CurrentSteadyMs);
 
-    recordingOrchestrator_ = std::make_unique<ugripper::runtime::RecordingOrchestrator>(
-        ugripper::runtime::RecordingOrchestratorOptions{
+    recordingOrchestrator_ = std::make_unique<DA::Ugripper::RecordingOrchestrator>(
+        DA::Ugripper::RecordingOrchestratorOptions{
             .camera_recorder_bin = options_.cameraRecorderBin,
             .sensor_recorder_bin = options_.sensorRecorderBin,
             .camera_codec = options_.cameraCodec,
@@ -432,12 +434,12 @@ bool RecordRuntime::initialize()
             .worker_stop_timeout_ms = 5000,
             .stereo_finalize_timeout_ms = 10000,
         },
-        ugripper::runtime::RecordingOrchestrator::Dependencies
+        DA::Ugripper::RecordingOrchestrator::Dependencies
         {
             .episode = {
                 .create_next_episode_dir =
                     [this]() {
-                        return episodeManager_ != nullptr ? episodeManager_->createNextEpisodeDir() : std::string();
+                        return episodeManager_ != nullptr ? episodeManager_->CreateNextEpisodeDir() : std::string();
                     },
                 .prepare_episode =
                     [this](const std::string& episode_dir,
@@ -445,7 +447,7 @@ bool RecordRuntime::initialize()
                            const std::string& reset_source_dir,
                            std::string* error_message) {
                         return episodeManager_ != nullptr &&
-                               episodeManager_->prepareEpisode(
+                               episodeManager_->PrepareEpisode(
                                    episode_dir, reset_recording, reset_source_dir, error_message);
                     },
                 .validate_episode =
@@ -456,7 +458,7 @@ bool RecordRuntime::initialize()
                         {
                             return false;
                         }
-                        return episodeManager_->validateEpisode(episode_dir, error_message, error_types, nullptr);
+                        return episodeManager_->ValidateEpisode(episode_dir, error_message, error_types, nullptr);
                     },
                 .attach_pending_pre_audio =
                     [this](const std::string& episode_dir) {
@@ -480,11 +482,11 @@ bool RecordRuntime::initialize()
                         {
                             return;
                         }
-                        episodeManager_->setTaskMarkers(
-                            taskMarkerTracker_.task_start_s(),
-                            taskMarkerTracker_.task_stop_s());
+                        episodeManager_->SetTaskMarkers(
+                            taskMarkerTracker_.GetTaskStartS(),
+                            taskMarkerTracker_.GetTaskStopS());
                         std::string metadataError;
-                        if (!episodeManager_->writeFinalMetadata(
+                        if (!episodeManager_->WriteFinalMetadata(
                                 episode_dir,
                                 quality_ok,
                                 error_message,
@@ -512,7 +514,7 @@ bool RecordRuntime::initialize()
                             }
                             return std::string();
                         }
-                        return episodeManager_->finalizeEpisodeDir(episode_dir, error_message);
+                        return episodeManager_->FinalizeEpisodeDir(episode_dir, error_message);
                     },
                 .detect_recording_hardware_fault =
                     [this](const std::string& episode_dir) {
@@ -542,19 +544,19 @@ bool RecordRuntime::initialize()
                 .prepare_sensor_start = nullptr,
                 .finalize_sensor_start = nullptr,
                 .start_worker =
-                    [this](ugripper::runtime::WorkerName worker,
-                           const ugripper::runtime::ProcessSpec& spec,
+                    [this](DA::Ugripper::WorkerName worker,
+                           const DA::Ugripper::ProcessSpec& spec,
                            std::string* error_message) {
                         return processSupervisor_.Start(worker, spec, error_message);
                     },
                 .stop_worker =
-                    [this](ugripper::runtime::WorkerName worker,
+                    [this](DA::Ugripper::WorkerName worker,
                            const std::string& reason,
                            std::string* error_message) {
                         return processSupervisor_.Stop(worker, reason, error_message);
                     },
                 .get_worker_status =
-                    [this](ugripper::runtime::WorkerName worker) {
+                    [this](DA::Ugripper::WorkerName worker) {
                         return processSupervisor_.GetStatus(worker);
                     },
             },
@@ -629,15 +631,15 @@ bool RecordRuntime::initialize()
                         sendAudioCommand(command);
                     },
                 .set_led_state =
-                    [this](ugripper::runtime::RuntimeLedState state, double progress) {
+                    [this](DA::Ugripper::RuntimeLedState state, double progress) {
                         setLedState(toLedState(state), progress);
                     },
                 .set_hardware_fault_led_state =
-                    [this](const ugripper::runtime::HealthFault& fault) {
+                    [this](const DA::Ugripper::HealthFault& fault) {
                         setHardwareFaultLedState(fault);
                     },
                 .handle_failure_state =
-                    [this](ugripper::runtime::RuntimeLedState state,
+                    [this](DA::Ugripper::RuntimeLedState state,
                            const std::vector<std::string>& error_types,
                            const std::string& detail) {
                         handleFailureState(state, error_types, detail);
@@ -680,7 +682,7 @@ bool RecordRuntime::initialize()
     }
     if (episodeManager_ != nullptr)
     {
-        episodeManager_->setGripperRuntimeStates(gripperRuntimeStates_);
+        episodeManager_->SetGripperRuntimeStates(gripperRuntimeStates_);
     }
     panelManager_.consumeConnectionEvents();
 
@@ -702,7 +704,7 @@ bool RecordRuntime::initialize()
     return true;
 }
 
-int RecordRuntime::run()
+int RecordRuntime::Run()
 {
     if (!initialized_)
     {
@@ -711,7 +713,7 @@ int RecordRuntime::run()
 
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "record_runtime started" << std::endl).str());
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "device_sn=" << deviceSn_ << std::endl).str());
-    DM_LOG_INFO("{}", (::DA::utils::LogString() << "episode_root=" << episodeManager_->dataRoot() << std::endl).str());
+    DM_LOG_INFO("{}", (::DA::utils::LogString() << "episode_root=" << episodeManager_->GetDataRoot() << std::endl).str());
 
     while (!stopRequested_.load(std::memory_order_relaxed))
     {
@@ -739,11 +741,11 @@ int RecordRuntime::run()
             ButtonSnapshot leftButtons;
             const bool hasLeftButtons =
                 panelManager_.getButtonsForPortToken("left_gripper", &leftButtons);
-            ugripper::runtime::ButtonRouteResult route;
+            DA::Ugripper::ButtonRouteResult route;
             if (buttonActionRouter_ != nullptr && hasLeftButtons)
             {
                 route = buttonActionRouter_->Update(
-                    ugripper::runtime::FourButtonSnapshot{
+                    DA::Ugripper::FourButtonSnapshot{
                         .left_up = leftButtons.upPressed,
                         .left_down = leftButtons.downPressed,
                         .right_up = buttons.upPressed,
@@ -777,7 +779,7 @@ int RecordRuntime::run()
 
         if (isRecordingActive() && !checkRecorderProcesses())
         {
-            stopRecording(true, "camera or sensor recorder exited unexpectedly", ugripper::runtime::kErrorTypeRuntimeError);
+            stopRecording(true, "camera or sensor recorder exited unexpectedly", DA::Ugripper::kErrorTypeRuntimeError);
         }
 
         const uint64_t loopElapsedMs = currentSteadyMs() - loopStartMs;
@@ -793,7 +795,7 @@ int RecordRuntime::run()
     return 0;
 }
 
-void RecordRuntime::requestStop() noexcept
+void RecordRuntime::Stop() noexcept
 {
     stopRequested_.store(true, std::memory_order_relaxed);
 }
@@ -812,7 +814,7 @@ bool RecordRuntime::ensureEpisodeManagerInitialized()
         return false;
     }
 
-    if (!episodeManager_->initialize())
+    if (!episodeManager_->Initialize())
     {
         if (!dataStorageWaitLogged_)
         {
@@ -829,13 +831,13 @@ bool RecordRuntime::ensureEpisodeManagerInitialized()
     episodeManagerInitialized_ = true;
     dataStorageWaitLogged_ = false;
     activeHardwareFault_.reset();
-    episodeManager_->setGripperRuntimeStates(gripperRuntimeStates_);
+    episodeManager_->SetGripperRuntimeStates(gripperRuntimeStates_);
     syncMainCameraRuntimeStatesToEpisodeManager();
     syncTactileCameraRuntimeStatesToEpisodeManager();
 
     DM_LOG_INFO("{}", (::DA::utils::LogString()
         << "data storage ready"
-        << " episode_root=" << episodeManager_->dataRoot()
+        << " episode_root=" << episodeManager_->GetDataRoot()
         << std::endl).str());
     if (!isRecordingActive())
     {
@@ -902,7 +904,7 @@ void RecordRuntime::monitorHardwareHealth()
     }
 
     auto handleHardwareFault =
-        [this](const ugripper::runtime::HealthFault &fault, bool shouldNotifyFault) {
+        [this](const DA::Ugripper::HealthFault &fault, bool shouldNotifyFault) {
             activeHardwareFault_ = fault;
             if (isRecordingActive())
             {
@@ -910,7 +912,7 @@ void RecordRuntime::monitorHardwareHealth()
                     "recording hardware fault (" + fault.key + "): " + fault.detail;
                 if (shouldNotifyFault)
                 {
-                    DM_LOG_ERROR_CODE(ugripper::runtime::UgrCodeForErrorType(fault.key), "{}", (::DA::utils::LogString() << stopReason << std::endl).str());
+                    DM_LOG_ERROR_CODE(DA::Ugripper::UgrCodeForErrorType(fault.key), "{}", (::DA::utils::LogString() << stopReason << std::endl).str());
                     DM_LOG_INFO("{}", (::DA::utils::LogString()
                         << "[HMI_DIAG] category=health_fault"
                         << " key=" << fault.key
@@ -949,7 +951,7 @@ void RecordRuntime::monitorHardwareHealth()
             maybeTriggerRestoreUsbForHardwareFault(fault);
             if (shouldNotifyFault)
             {
-                DM_LOG_ERROR_CODE(ugripper::runtime::UgrCodeForErrorType(fault.key), "{}", (::DA::utils::LogString() << "hardware health fault (" << fault.key << "): "
+                DM_LOG_ERROR_CODE(DA::Ugripper::UgrCodeForErrorType(fault.key), "{}", (::DA::utils::LogString() << "hardware health fault (" << fault.key << "): "
                                       << fault.detail << std::endl).str());
                 DM_LOG_INFO("{}", (::DA::utils::LogString()
                     << "[HMI_DIAG] category=health_fault"
@@ -970,9 +972,9 @@ void RecordRuntime::monitorHardwareHealth()
     {
         const std::string errorKey = cameraStartupFault->key + "|" + cameraStartupFault->detail;
         const bool shouldNotifyFault =
-            healthState_.status != ugripper::runtime::HealthStatus::Error ||
+            healthState_.status != DA::Ugripper::HealthStatus::Error ||
             healthState_.last_error_key != errorKey;
-        healthState_.status = ugripper::runtime::HealthStatus::Error;
+        healthState_.status = DA::Ugripper::HealthStatus::Error;
         healthState_.last_error_key = errorKey;
         healthState_.last_check_ms = currentSteadyMs();
         handleHardwareFault(*cameraStartupFault, shouldNotifyFault);
@@ -983,9 +985,9 @@ void RecordRuntime::monitorHardwareHealth()
     {
         const std::string errorKey = cameraHangFault->key + "|" + cameraHangFault->detail;
         const bool shouldNotifyFault =
-            healthState_.status != ugripper::runtime::HealthStatus::Error ||
+            healthState_.status != DA::Ugripper::HealthStatus::Error ||
             healthState_.last_error_key != errorKey;
-        healthState_.status = ugripper::runtime::HealthStatus::Error;
+        healthState_.status = DA::Ugripper::HealthStatus::Error;
         healthState_.last_error_key = errorKey;
         healthState_.last_check_ms = currentSteadyMs();
         handleHardwareFault(*cameraHangFault, shouldNotifyFault);
@@ -993,8 +995,8 @@ void RecordRuntime::monitorHardwareHealth()
     }
 
     const bool becameReadyAfterStartup =
-        previousHealthState.status == ugripper::runtime::HealthStatus::Unknown &&
-        healthState_.status == ugripper::runtime::HealthStatus::Ok;
+        previousHealthState.status == DA::Ugripper::HealthStatus::Unknown &&
+        healthState_.status == DA::Ugripper::HealthStatus::Ok;
     if (result.recovered || becameReadyAfterStartup)
     {
         if (!restoreUsbPendingTriggerKey_.empty())
@@ -1055,7 +1057,7 @@ void RecordRuntime::monitorHardwareHealth()
 
 bool RecordRuntime::isRecordingActive() const
 {
-    return recordingOrchestrator_ != nullptr && recordingOrchestrator_->state().is_recording;
+    return recordingOrchestrator_ != nullptr && recordingOrchestrator_->GetState().is_recording;
 }
 
 const std::string &RecordRuntime::currentEpisodeDir() const
@@ -1065,7 +1067,7 @@ const std::string &RecordRuntime::currentEpisodeDir() const
     {
         return empty;
     }
-    return recordingOrchestrator_->state().current_episode_dir;
+    return recordingOrchestrator_->GetState().current_episode_dir;
 }
 
 const std::string &RecordRuntime::lastEpisodeDir() const
@@ -1075,7 +1077,7 @@ const std::string &RecordRuntime::lastEpisodeDir() const
     {
         return empty;
     }
-    return recordingOrchestrator_->state().last_episode_dir;
+    return recordingOrchestrator_->GetState().last_episode_dir;
 }
 
 void RecordRuntime::setLedState(LedState state, double progress)
@@ -1134,10 +1136,10 @@ void RecordRuntime::setTactileWarningLedState()
     panelManager_.setLedEffectForSide("right", effectForSide(tactileWarningSides_[1]));
 }
 
-void RecordRuntime::setHardwareFaultLedState(const ugripper::runtime::HealthFault &fault)
+void RecordRuntime::setHardwareFaultLedState(const DA::Ugripper::HealthFault &fault)
 {
-    const bool side_specific_error = fault.led_state == ugripper::runtime::RuntimeLedState::Error2 ||
-                                     fault.led_state == ugripper::runtime::RuntimeLedState::Error4;
+    const bool side_specific_error = fault.led_state == DA::Ugripper::RuntimeLedState::Error2 ||
+                                     fault.led_state == DA::Ugripper::RuntimeLedState::Error4;
     if (!side_specific_error || !ledController_)
     {
         setLedState(toLedState(fault.led_state));
@@ -1148,27 +1150,27 @@ void RecordRuntime::setHardwareFaultLedState(const ugripper::runtime::HealthFaul
     const GripperLedEffect unknownEffect{GripperLedEffectState::Error2Unknown, 0.0};
     switch (fault.side)
     {
-    case ugripper::runtime::HardwareFaultSide::Left:
+    case DA::Ugripper::HardwareFaultSide::Left:
         panelManager_.setLedEffectForSide("left", faultEffect);
         panelManager_.setLedColorForSide("right", 255, 0, 0);
         break;
-    case ugripper::runtime::HardwareFaultSide::Right:
+    case DA::Ugripper::HardwareFaultSide::Right:
         panelManager_.setLedColorForSide("left", 255, 0, 0);
         panelManager_.setLedEffectForSide("right", faultEffect);
         break;
-    case ugripper::runtime::HardwareFaultSide::Both:
+    case DA::Ugripper::HardwareFaultSide::Both:
         panelManager_.setLedEffect(faultEffect);
         break;
-    case ugripper::runtime::HardwareFaultSide::Unknown:
+    case DA::Ugripper::HardwareFaultSide::Unknown:
     default:
-        panelManager_.setLedEffect(fault.led_state == ugripper::runtime::RuntimeLedState::Error2
+        panelManager_.setLedEffect(fault.led_state == DA::Ugripper::RuntimeLedState::Error2
                                        ? unknownEffect
                                        : faultEffect);
         break;
     }
 }
 
-void RecordRuntime::maybeTriggerRestoreUsbForHardwareFault(const ugripper::runtime::HealthFault &fault)
+void RecordRuntime::maybeTriggerRestoreUsbForHardwareFault(const DA::Ugripper::HealthFault &fault)
 {
     if (IsDiskHealthFault(fault))
     {
@@ -1177,8 +1179,8 @@ void RecordRuntime::maybeTriggerRestoreUsbForHardwareFault(const ugripper::runti
         return;
     }
 
-    if (fault.led_state != ugripper::runtime::RuntimeLedState::Error2 &&
-        fault.led_state != ugripper::runtime::RuntimeLedState::Error4)
+    if (fault.led_state != DA::Ugripper::RuntimeLedState::Error2 &&
+        fault.led_state != DA::Ugripper::RuntimeLedState::Error4)
     {
         return;
     }
@@ -1201,7 +1203,7 @@ void RecordRuntime::maybeTriggerRestoreUsbForHardwareFault(const ugripper::runti
 
 std::string RecordRuntime::readEnvValue(const std::string &envFile, const std::string &key)
 {
-    return utils::ReadEnvValue(envFile, key);
+    return ::utils::ReadEnvValue(envFile, key);
 }
 
 std::string RecordRuntime::queryPackageVersion(const std::string &packageName)
@@ -1268,17 +1270,17 @@ std::string RecordRuntime::jsonEscape(const std::string &value)
 
 uint64_t RecordRuntime::currentSteadyMs()
 {
-    return utils::CurrentSteadyMs();
+    return ::utils::CurrentSteadyMs();
 }
 
 uint64_t RecordRuntime::currentEpochMs()
 {
-    return utils::CurrentEpochMs();
+    return ::utils::CurrentEpochMs();
 }
 
 int64_t RecordRuntime::currentEpochUs()
 {
-    return utils::CurrentEpochUs();
+    return ::utils::CurrentEpochUs();
 }
 
 bool RecordRuntime::fileExistsAndNotEmpty(const std::string &path)
@@ -1325,3 +1327,5 @@ bool RecordRuntime::runCommandSync(const std::vector<std::string> &arguments)
     }
     return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
+
+}  // namespace DA::Ugripper

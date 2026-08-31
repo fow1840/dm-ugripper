@@ -32,7 +32,9 @@
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
-using namespace ugripper::runtime::record_runtime_detail;
+using namespace DA::Ugripper::detail;
+
+namespace DA::Ugripper {
 
 void RecordRuntime::handleGripperConnectionEvents()
 {
@@ -46,13 +48,13 @@ void RecordRuntime::handleGripperConnectionEvents()
 
         const size_t index = gripperStateIndexForSide(event.side);
         auto &runtimeState = gripperRuntimeStates_[index];
-        ugripper::runtime::GripperRefreshRuntimeView view{
+        DA::Ugripper::GripperRefreshRuntimeView view{
             .side = runtimeState.side,
             .connected = runtimeState.connected,
             .last_error = runtimeState.lastError,
         };
 
-        ugripper::runtime::ApplyGripperConnectionEvent(&view, &pendingGripperRefresh_[index], event.side, event.connected);
+        DA::Ugripper::ApplyGripperConnectionEvent(&view, &pendingGripperRefresh_[index], event.side, event.connected);
         runtimeState.side = view.side;
         runtimeState.connected = view.connected;
         runtimeState.lastError = view.last_error;
@@ -69,7 +71,7 @@ void RecordRuntime::handleGripperConnectionEvents()
 
     if (updatedAny && episodeManager_ != nullptr)
     {
-        episodeManager_->setGripperRuntimeStates(gripperRuntimeStates_);
+        episodeManager_->SetGripperRuntimeStates(gripperRuntimeStates_);
     }
 }
 
@@ -85,12 +87,12 @@ void RecordRuntime::processPendingGripperRefreshes()
         }
 
         auto &state = gripperRuntimeStates_[index];
-        ugripper::runtime::GripperRefreshRuntimeView view{
+        DA::Ugripper::GripperRefreshRuntimeView view{
             .side = state.side,
             .connected = state.connected,
             .last_error = state.lastError,
         };
-        const auto action = ugripper::runtime::AdvancePendingGripperRefresh(
+        const auto action = DA::Ugripper::AdvancePendingGripperRefresh(
             &view,
             &pendingGripperRefresh_[index],
             side,
@@ -100,14 +102,14 @@ void RecordRuntime::processPendingGripperRefreshes()
         state.connected = view.connected;
         state.lastError = view.last_error;
 
-        if (action == ugripper::runtime::GripperRefreshAction::RequestState)
+        if (action == DA::Ugripper::GripperRefreshAction::RequestState)
         {
             panelManager_.requestStateForSide(side);
             updatedAny = true;
             continue;
         }
 
-        if (action == ugripper::runtime::GripperRefreshAction::RefreshRuntimeState)
+        if (action == DA::Ugripper::GripperRefreshAction::RefreshRuntimeState)
         {
             refreshGripperRuntimeStateForSide(side, true);
         }
@@ -116,7 +118,7 @@ void RecordRuntime::processPendingGripperRefreshes()
 
     if (updatedAny && episodeManager_ != nullptr)
     {
-        episodeManager_->setGripperRuntimeStates(gripperRuntimeStates_);
+        episodeManager_->SetGripperRuntimeStates(gripperRuntimeStates_);
     }
 }
 
@@ -164,7 +166,7 @@ void RecordRuntime::refreshGripperRuntimeStateForSide(const std::string &side,
         << " has_sn=" << boolText(hasSerialNumber)
         << " sn=" << state.serialNumber
         << std::endl).str());
-    if (ugripper::runtime::ShouldMarkTactileReferencePending(markTactileReferencePending))
+    if (DA::Ugripper::ShouldMarkTactileReferencePending(markTactileReferencePending))
     {
         markTactileReferencePendingForSide(side, "gripper_reconnected");
     }
@@ -341,7 +343,7 @@ void RecordRuntime::syncMainCameraRuntimeStatesToEpisodeManager()
         target.calibrationPayload = source.calibrationPayload;
         target.lastError = source.lastError;
     }
-    episodeManager_->setMainCameraRuntimeStates(states);
+    episodeManager_->SetMainCameraRuntimeStates(states);
 }
 
 void RecordRuntime::initializeTactileCameraRuntimeStates()
@@ -464,7 +466,7 @@ void RecordRuntime::syncTactileCameraRuntimeStatesToEpisodeManager()
         target.serialNumber = source.serialNumber;
         target.lastError = source.lastError;
     }
-    episodeManager_->setTactileCameraRuntimeStates(states);
+    episodeManager_->SetTactileCameraRuntimeStates(states);
 }
 
 void RecordRuntime::waitForMainCameraRefreshes()
@@ -485,7 +487,7 @@ void RecordRuntime::markTactileReferencePendingForSide(const std::string &side,
     {
         return;
     }
-    episodeManager_->markTactileReferencePendingForSide(side, reason);
+    episodeManager_->MarkTactileReferencePendingForSide(side, reason);
 }
 
 void RecordRuntime::applyTactileValidationFindings(
@@ -603,7 +605,7 @@ void RecordRuntime::maintainBackgroundTactileValidation()
                          << " reason=stop_requested").str());
                 return result;
             }
-            manager->validateTactileEpisode(episodeDir, &result.findings);
+            manager->ValidateTactileEpisode(episodeDir, &result.findings);
             if (stopFlag->load())
             {
                 result.findings.clear();
@@ -657,7 +659,7 @@ void RecordRuntime::applyIdleState()
         setLedState(LedState::Error5);
         return;
     }
-    const std::optional<ugripper::runtime::HealthFault> fault = currentHealthFault();
+    const std::optional<DA::Ugripper::HealthFault> fault = currentHealthFault();
     if (fault.has_value())
     {
         if (isStereoStartupWaiting())
@@ -1383,3 +1385,5 @@ void RecordRuntime::HmiLedController::setState(LedState state, double progress)
     }
     panelManager_->setLedEffect(effect);
 }
+
+}  // namespace DA::Ugripper

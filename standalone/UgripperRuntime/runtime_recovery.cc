@@ -32,9 +32,11 @@
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
-using namespace ugripper::runtime::record_runtime_detail;
+using namespace DA::Ugripper::detail;
 
-void RecordRuntime::handleFailureState(ugripper::runtime::RuntimeLedState state,
+namespace DA::Ugripper {
+
+void RecordRuntime::handleFailureState(DA::Ugripper::RuntimeLedState state,
                                        const std::vector<std::string> &errorTypes,
                                        const std::string &detail)
 {
@@ -70,7 +72,7 @@ void RecordRuntime::handleFailureState(ugripper::runtime::RuntimeLedState state,
     triggerRestoreUsbOnError(reason, checkMainCameraRecovery);
 }
 
-bool RecordRuntime::shouldRestoreUsbForFailure(ugripper::runtime::RuntimeLedState state,
+bool RecordRuntime::shouldRestoreUsbForFailure(DA::Ugripper::RuntimeLedState state,
                                                const std::vector<std::string> &errorTypes,
                                                const std::string &detail,
                                                bool *checkMainCameraRecovery) const
@@ -80,19 +82,19 @@ bool RecordRuntime::shouldRestoreUsbForFailure(ugripper::runtime::RuntimeLedStat
         *checkMainCameraRecovery = false;
     }
 
-    if (state == ugripper::runtime::RuntimeLedState::Error2 ||
-        state == ugripper::runtime::RuntimeLedState::Error4)
+    if (state == DA::Ugripper::RuntimeLedState::Error2 ||
+        state == DA::Ugripper::RuntimeLedState::Error4)
     {
         return true;
     }
 
-    if (state == ugripper::runtime::RuntimeLedState::Error3 ||
-        state == ugripper::runtime::RuntimeLedState::Error5)
+    if (state == DA::Ugripper::RuntimeLedState::Error3 ||
+        state == DA::Ugripper::RuntimeLedState::Error5)
     {
         return false;
     }
 
-    if (state != ugripper::runtime::RuntimeLedState::Error1)
+    if (state != DA::Ugripper::RuntimeLedState::Error1)
     {
         return false;
     }
@@ -110,10 +112,10 @@ bool RecordRuntime::shouldRestoreUsbForFailure(ugripper::runtime::RuntimeLedStat
     }
 
     const bool relevantErrorType =
-        std::find(errorTypes.begin(), errorTypes.end(), ugripper::runtime::kErrorTypeCalibrationError) != errorTypes.end() ||
-        std::find(errorTypes.begin(), errorTypes.end(), ugripper::runtime::kErrorTypeMissingFile) != errorTypes.end() ||
-        std::find(errorTypes.begin(), errorTypes.end(), ugripper::runtime::kErrorTypeFrameLoss) != errorTypes.end() ||
-        std::find(errorTypes.begin(), errorTypes.end(), ugripper::runtime::kErrorTypeCollectionDurationTooShort) != errorTypes.end();
+        std::find(errorTypes.begin(), errorTypes.end(), DA::Ugripper::kErrorTypeCalibrationError) != errorTypes.end() ||
+        std::find(errorTypes.begin(), errorTypes.end(), DA::Ugripper::kErrorTypeMissingFile) != errorTypes.end() ||
+        std::find(errorTypes.begin(), errorTypes.end(), DA::Ugripper::kErrorTypeFrameLoss) != errorTypes.end() ||
+        std::find(errorTypes.begin(), errorTypes.end(), DA::Ugripper::kErrorTypeCollectionDurationTooShort) != errorTypes.end();
     if (!relevantErrorType)
     {
         return false;
@@ -134,7 +136,7 @@ void RecordRuntime::resetCameraRecorderDStateTracking()
     cameraRecorderDStateLastLogMs_ = 0;
 }
 
-std::optional<ugripper::runtime::HealthFault> RecordRuntime::detectCameraRecorderStartupFailure()
+std::optional<DA::Ugripper::HealthFault> RecordRuntime::detectCameraRecorderStartupFailure()
 {
     if (!isRecordingActive())
     {
@@ -150,7 +152,7 @@ std::optional<ugripper::runtime::HealthFault> RecordRuntime::detectCameraRecorde
     return detectCameraRecorderStartupFailureForEpisode(episodeDir);
 }
 
-std::optional<ugripper::runtime::HealthFault> RecordRuntime::detectCameraRecorderStartupFailureForEpisode(const std::string &episodeDir)
+std::optional<DA::Ugripper::HealthFault> RecordRuntime::detectCameraRecorderStartupFailureForEpisode(const std::string &episodeDir)
 {
     if (episodeDir.empty())
     {
@@ -226,15 +228,15 @@ std::optional<ugripper::runtime::HealthFault> RecordRuntime::detectCameraRecorde
     detail << " fault_file=" << faultPath.string();
 
     const std::string sideText = cameraName + " " + device + " " + faultError;
-    return ugripper::runtime::HealthFault{
-        ugripper::runtime::RuntimeLedState::Error2,
+    return DA::Ugripper::HealthFault{
+        DA::Ugripper::RuntimeLedState::Error2,
         restoreUsbSideForText(sideText),
         faultKey,
         detail.str(),
     };
 }
 
-std::optional<ugripper::runtime::HealthFault> RecordRuntime::detectCameraRecorderKernelHang()
+std::optional<DA::Ugripper::HealthFault> RecordRuntime::detectCameraRecorderKernelHang()
 {
     if (!isRecordingActive())
     {
@@ -242,7 +244,7 @@ std::optional<ugripper::runtime::HealthFault> RecordRuntime::detectCameraRecorde
         return std::nullopt;
     }
 
-    const auto status = processSupervisor_.GetStatus(ugripper::runtime::WorkerName::CameraRecorder);
+    const auto status = processSupervisor_.GetStatus(DA::Ugripper::WorkerName::CameraRecorder);
     if (!status.running || status.pid <= 0)
     {
         resetCameraRecorderDStateTracking();
@@ -308,9 +310,9 @@ std::optional<ugripper::runtime::HealthFault> RecordRuntime::detectCameraRecorde
         return std::nullopt;
     }
 
-    return ugripper::runtime::HealthFault{
-        ugripper::runtime::RuntimeLedState::Error2,
-        ugripper::runtime::HardwareFaultSide::Unknown,
+    return DA::Ugripper::HealthFault{
+        DA::Ugripper::RuntimeLedState::Error2,
+        DA::Ugripper::HardwareFaultSide::Unknown,
         kMainCameraV4l2KernelHangKey,
         detail.str(),
     };
@@ -338,7 +340,7 @@ bool RecordRuntime::mainCameraRestoreTargetsHealthy() const
 
 bool RecordRuntime::restoreUsbTargetRecovered() const
 {
-    if (healthState_.status == ugripper::runtime::HealthStatus::Error)
+    if (healthState_.status == DA::Ugripper::HealthStatus::Error)
     {
         return false;
     }
@@ -414,7 +416,7 @@ bool RecordRuntime::sideHasAnyRestoreUsbDevice(const std::string &side) const
     return false;
 }
 
-bool RecordRuntime::shouldDeferRestoreUsbForSide(ugripper::runtime::HardwareFaultSide side,
+bool RecordRuntime::shouldDeferRestoreUsbForSide(DA::Ugripper::HardwareFaultSide side,
                                                  const std::string &reason) const
 {
     const uint64_t nowMs = currentSteadyMs();
@@ -434,17 +436,17 @@ bool RecordRuntime::shouldDeferRestoreUsbForSide(ugripper::runtime::HardwareFaul
 
     switch (side)
     {
-    case ugripper::runtime::HardwareFaultSide::Left:
+    case DA::Ugripper::HardwareFaultSide::Left:
         return sideDeferred("left");
-    case ugripper::runtime::HardwareFaultSide::Right:
+    case DA::Ugripper::HardwareFaultSide::Right:
         return sideDeferred("right");
-    case ugripper::runtime::HardwareFaultSide::Both:
+    case DA::Ugripper::HardwareFaultSide::Both:
     {
         const bool leftDeferred = sideDeferred("left");
         const bool rightDeferred = sideDeferred("right");
         return leftDeferred || rightDeferred;
     }
-    case ugripper::runtime::HardwareFaultSide::Unknown:
+    case DA::Ugripper::HardwareFaultSide::Unknown:
     default:
     {
         const bool leftDeferred = sideDeferred("left");
@@ -701,7 +703,7 @@ bool RecordRuntime::prepareDataDiskForRestoreUsb(const std::string &reason)
             << " reason=" << reason
             << std::endl).str());
         const std::string stopReason = "restore usb preflight before power reset: " + reason;
-        if (!stopRecording(true, stopReason, ugripper::runtime::kErrorTypeRuntimeError))
+        if (!stopRecording(true, stopReason, DA::Ugripper::kErrorTypeRuntimeError))
         {
             if (!allowKernelHangRestore)
             {
@@ -1088,3 +1090,5 @@ void RecordRuntime::triggerRestoreUsbOnError(const std::string &reason, bool che
         inProgress->store(false);
     }).detach();
 }
+
+}  // namespace DA::Ugripper

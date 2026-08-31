@@ -354,12 +354,9 @@ Phase 1 允许：
 主要动作：
 
 - 固定新增公共符号 namespace 目标：
-  - `ugripper::camera`
-  - `ugripper::runtime`
-  - `ugripper::sensor`
-  - `ugripper::hmi`
-  - `ugripper::config`
-  - `ugripper::utils`
+  - `DA::Ugripper`：UgripperRuntime 公共接口与领域类型
+  - `DA::Ugripper::detail`：UgripperRuntime 内部 helper
+  - 其他 recorder/HMI 模块保留各自现有 namespace，后续按独立批次评估，不在 runtime 迁移中顺带改名
 - 固定 include 风格优先使用模块前缀
 - 为 `camera_recorder.yaml` 设计兼容型 schema：
   - 允许旧格式

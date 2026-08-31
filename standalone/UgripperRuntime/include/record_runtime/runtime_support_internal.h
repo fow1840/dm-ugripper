@@ -11,7 +11,7 @@
 #include <system_error>
 #include <vector>
 
-namespace ugripper::runtime::record_runtime_detail {
+namespace DA::Ugripper::detail {
 
 #ifndef UGRIPPER_ENABLE_STEREO
 #define UGRIPPER_ENABLE_STEREO 1
@@ -78,11 +78,11 @@ extern bool g_perfLogEnabled;
 bool IsStereoStartupFaultKey(const std::string &key);
 bool perfLogEnabled();
 bool isFalseLikeValue(const std::string &value);
-bool IsDiskHealthFault(const ugripper::runtime::HealthFault &fault);
-std::optional<ugripper::runtime::HealthFault> detectDiskHealthFault(const std::string &diskRootPath);
+bool IsDiskHealthFault(const DA::Ugripper::HealthFault &fault);
+std::optional<DA::Ugripper::HealthFault> detectDiskHealthFault(const std::string &diskRootPath);
 std::vector<std::string> sessionCameraStreams(bool chestCameraEnabled);
 std::string joinCsv(const std::vector<std::string> &items);
 std::vector<std::string> resolvePythonCommand();
 bool hasAdbUsbInterface();
 
-}  // namespace ugripper::runtime::record_runtime_detail
+}  // namespace DA::Ugripper::detail

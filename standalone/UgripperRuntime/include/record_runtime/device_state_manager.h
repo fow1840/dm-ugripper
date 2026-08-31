@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace ugripper::runtime
+namespace DA::Ugripper
 {
 
 class DeviceStateManager
@@ -75,6 +75,6 @@ private:
     State state_;
 };
 
-} // namespace ugripper::runtime
+} // namespace DA::Ugripper
 
 #endif

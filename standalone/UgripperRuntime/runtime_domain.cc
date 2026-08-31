@@ -34,7 +34,7 @@ std::string JoinStrings(const std::vector<std::string>& items, const char* separ
     return stream.str();
 }
 
-ugripper::runtime::HardwareFaultSide SideForText(const std::string& text)
+DA::Ugripper::HardwareFaultSide SideForText(const std::string& text)
 {
     const bool has_left = text.find("left") != std::string::npos ||
                           text.find("/dev/cam_left") != std::string::npos ||
@@ -48,23 +48,23 @@ ugripper::runtime::HardwareFaultSide SideForText(const std::string& text)
                            text.find("/dev/tcam_right") != std::string::npos;
     if (has_left && has_right)
     {
-        return ugripper::runtime::HardwareFaultSide::Both;
+        return DA::Ugripper::HardwareFaultSide::Both;
     }
     if (has_left)
     {
-        return ugripper::runtime::HardwareFaultSide::Left;
+        return DA::Ugripper::HardwareFaultSide::Left;
     }
     if (has_right)
     {
-        return ugripper::runtime::HardwareFaultSide::Right;
+        return DA::Ugripper::HardwareFaultSide::Right;
     }
-    return ugripper::runtime::HardwareFaultSide::Unknown;
+    return DA::Ugripper::HardwareFaultSide::Unknown;
 }
 
-ugripper::runtime::HardwareFaultSide MergeSides(ugripper::runtime::HardwareFaultSide lhs,
-                                                ugripper::runtime::HardwareFaultSide rhs)
+DA::Ugripper::HardwareFaultSide MergeSides(DA::Ugripper::HardwareFaultSide lhs,
+                                                DA::Ugripper::HardwareFaultSide rhs)
 {
-    using ugripper::runtime::HardwareFaultSide;
+    using DA::Ugripper::HardwareFaultSide;
     if (lhs == rhs)
     {
         return lhs;
@@ -80,7 +80,7 @@ ugripper::runtime::HardwareFaultSide MergeSides(ugripper::runtime::HardwareFault
     return HardwareFaultSide::Both;
 }
 
-void CallLog(const ugripper::runtime::RecordingOrchestrator::LogFn& log_fn, const std::string& message)
+void CallLog(const DA::Ugripper::RecordingOrchestrator::LogFn& log_fn, const std::string& message)
 {
     if (log_fn != nullptr)
     {
@@ -88,7 +88,7 @@ void CallLog(const ugripper::runtime::RecordingOrchestrator::LogFn& log_fn, cons
     }
 }
 
-void CallPerfLog(const ugripper::runtime::RecordingOrchestrator::LogPort& logs,
+void CallPerfLog(const DA::Ugripper::RecordingOrchestrator::LogPort& logs,
                  const std::string& message)
 {
     CallLog(logs.log_perf, message);
@@ -142,12 +142,12 @@ bool IsHardwareErrorType(const std::string& error_type)
            error_type == "main_camera_v4l2_startup_failure" ||
            error_type == "main_camera_v4l2_kernel_hang" ||
            error_type == "main_camera_short_stream" ||
-           error_type == ugripper::runtime::kErrorTypeDeviceDisconnected;
+           error_type == DA::Ugripper::kErrorTypeDeviceDisconnected;
 }
 
 bool IsStereoControlErrorType(const std::string& error_type)
 {
-    return error_type == ugripper::runtime::kErrorTypeStereoControlFailed;
+    return error_type == DA::Ugripper::kErrorTypeStereoControlFailed;
 }
 
 bool ContainsAny(const std::string& text, std::initializer_list<const char*> needles)
@@ -202,17 +202,17 @@ bool IsStereoControlFailureText(const std::string& text)
                        });
 }
 
-std::string StereoControlReconnectHint(ugripper::runtime::HardwareFaultSide side)
+std::string StereoControlReconnectHint(DA::Ugripper::HardwareFaultSide side)
 {
     switch (side)
     {
-    case ugripper::runtime::HardwareFaultSide::Left:
+    case DA::Ugripper::HardwareFaultSide::Left:
         return "left stereo control failed; unplug/replug the left gripper. Software reset is not expected to recover it.";
-    case ugripper::runtime::HardwareFaultSide::Right:
+    case DA::Ugripper::HardwareFaultSide::Right:
         return "right stereo control failed; unplug/replug the right gripper. Software reset is not expected to recover it.";
-    case ugripper::runtime::HardwareFaultSide::Both:
+    case DA::Ugripper::HardwareFaultSide::Both:
         return "both stereo controls failed; unplug/replug the affected grippers. Software reset is not expected to recover it.";
-    case ugripper::runtime::HardwareFaultSide::Unknown:
+    case DA::Ugripper::HardwareFaultSide::Unknown:
     default:
         return "stereo control failed; unplug/replug the affected gripper. Software reset is not expected to recover it.";
     }
@@ -242,16 +242,16 @@ std::string SelectPrimaryErrorType(const std::vector<std::string>& error_types)
         }
     }
     for (const char* preferred : {
-             ugripper::runtime::kErrorTypeEgoDisconnected,
-             ugripper::runtime::kErrorTypeEgoPullIncomplete,
-             ugripper::runtime::kErrorTypeRuntimeError,
-             ugripper::runtime::kErrorTypeStereoControlFailed,
-             ugripper::runtime::kErrorTypeFinalizeError,
-             ugripper::runtime::kErrorTypeCalibrationError,
-             ugripper::runtime::kErrorTypeMissingFile,
-             ugripper::runtime::kErrorTypeCollectionDurationTooShort,
-             ugripper::runtime::kErrorTypeFrameLoss,
-             ugripper::runtime::kErrorTypeUnknown,
+             DA::Ugripper::kErrorTypeEgoDisconnected,
+             DA::Ugripper::kErrorTypeEgoPullIncomplete,
+             DA::Ugripper::kErrorTypeRuntimeError,
+             DA::Ugripper::kErrorTypeStereoControlFailed,
+             DA::Ugripper::kErrorTypeFinalizeError,
+             DA::Ugripper::kErrorTypeCalibrationError,
+             DA::Ugripper::kErrorTypeMissingFile,
+             DA::Ugripper::kErrorTypeCollectionDurationTooShort,
+             DA::Ugripper::kErrorTypeFrameLoss,
+             DA::Ugripper::kErrorTypeUnknown,
          })
     {
         if (HasErrorType(error_types, preferred))
@@ -259,59 +259,59 @@ std::string SelectPrimaryErrorType(const std::vector<std::string>& error_types)
             return preferred;
         }
     }
-    return error_types.empty() ? std::string(ugripper::runtime::kErrorTypeUnknown) : error_types.front();
+    return error_types.empty() ? std::string(DA::Ugripper::kErrorTypeUnknown) : error_types.front();
 }
 
-ugripper::runtime::RuntimeLedState SelectFailureLedState(const std::vector<std::string>& error_types,
+DA::Ugripper::RuntimeLedState SelectFailureLedState(const std::vector<std::string>& error_types,
                                                          bool due_to_error)
 {
     for (const std::string& error_type : error_types)
     {
         if (IsDiskErrorType(error_type))
         {
-            return ugripper::runtime::RuntimeLedState::Error3;
+            return DA::Ugripper::RuntimeLedState::Error3;
         }
     }
     for (const std::string& error_type : error_types)
     {
         if (IsHardwareErrorType(error_type))
         {
-            return ugripper::runtime::RuntimeLedState::Error2;
+            return DA::Ugripper::RuntimeLedState::Error2;
         }
     }
     for (const std::string& error_type : error_types)
     {
         if (IsStereoControlErrorType(error_type))
         {
-            return ugripper::runtime::RuntimeLedState::Error4;
+            return DA::Ugripper::RuntimeLedState::Error4;
         }
     }
-    if (HasErrorType(error_types, ugripper::runtime::kErrorTypeRuntimeError) ||
-        HasErrorType(error_types, ugripper::runtime::kErrorTypeEgoDisconnected) ||
-        HasErrorType(error_types, ugripper::runtime::kErrorTypeEgoPullIncomplete))
+    if (HasErrorType(error_types, DA::Ugripper::kErrorTypeRuntimeError) ||
+        HasErrorType(error_types, DA::Ugripper::kErrorTypeEgoDisconnected) ||
+        HasErrorType(error_types, DA::Ugripper::kErrorTypeEgoPullIncomplete))
     {
-        return ugripper::runtime::RuntimeLedState::Error5;
+        return DA::Ugripper::RuntimeLedState::Error5;
     }
-    return due_to_error ? ugripper::runtime::RuntimeLedState::Error5
-                        : ugripper::runtime::RuntimeLedState::Error1;
+    return due_to_error ? DA::Ugripper::RuntimeLedState::Error5
+                        : DA::Ugripper::RuntimeLedState::Error1;
 }
 
-std::string SelectStopFailureAudioCommand(ugripper::runtime::RuntimeLedState led_state)
+std::string SelectStopFailureAudioCommand(DA::Ugripper::RuntimeLedState led_state)
 {
-    return led_state == ugripper::runtime::RuntimeLedState::Error1 ? "validation_failed" : "error";
+    return led_state == DA::Ugripper::RuntimeLedState::Error1 ? "validation_failed" : "error";
 }
 
-void ApplyFailureLedState(const ugripper::runtime::RecordingOrchestrator::FeedbackPort& feedback,
-                          ugripper::runtime::RuntimeLedState led_state,
-                          ugripper::runtime::HardwareFaultSide side)
+void ApplyFailureLedState(const DA::Ugripper::RecordingOrchestrator::FeedbackPort& feedback,
+                          DA::Ugripper::RuntimeLedState led_state,
+                          DA::Ugripper::HardwareFaultSide side)
 {
-    if (led_state == ugripper::runtime::RuntimeLedState::Error4 &&
+    if (led_state == DA::Ugripper::RuntimeLedState::Error4 &&
         feedback.set_hardware_fault_led_state != nullptr)
     {
-        feedback.set_hardware_fault_led_state(ugripper::runtime::HealthFault{
+        feedback.set_hardware_fault_led_state(DA::Ugripper::HealthFault{
             led_state,
             side,
-            ugripper::runtime::kErrorTypeStereoControlFailed,
+            DA::Ugripper::kErrorTypeStereoControlFailed,
             StereoControlReconnectHint(side),
         });
         return;
@@ -324,7 +324,7 @@ void ApplyFailureLedState(const ugripper::runtime::RecordingOrchestrator::Feedba
 
 }  // namespace
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 HmiController::HmiController(HmiControllerOptions options, NowMsFn now_ms_fn)
     : options_(std::move(options)), now_ms_fn_(now_ms_fn)
@@ -521,7 +521,7 @@ HealthMonitor::PollResult HealthMonitor::Poll(const HealthState& current_state) 
              result.fault->key == "stereo_status_missing" ||
              result.fault->key == "stereo_status_invalid" ||
              result.fault->key == "stereo_not_ready" ||
-             result.fault->key == ugripper::runtime::kErrorTypeStereoControlFailed);
+             result.fault->key == DA::Ugripper::kErrorTypeStereoControlFailed);
         if (startup_grace_active)
         {
             result.fault.reset();
@@ -654,7 +654,7 @@ std::optional<HealthFault> HealthMonitor::EvaluateHealth() const
                     return HealthFault{
                         RuntimeLedState::Error4,
                         control_failure_side,
-                        ugripper::runtime::kErrorTypeStereoControlFailed,
+                        DA::Ugripper::kErrorTypeStereoControlFailed,
                         "Stereo warmup control failed: " +
                             stereo_status.value("service_state", std::string("unknown")) + "; " +
                             StereoControlReconnectHint(control_failure_side),
@@ -848,14 +848,14 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         }
         else
         {
-            if (ego_error_type != ugripper::runtime::kErrorTypeEgoTimeSyncFailed)
+            if (ego_error_type != DA::Ugripper::kErrorTypeEgoTimeSyncFailed)
             {
                 CallLog(dependencies_.logs.log_warn,
                         "ego recording sidecar did not start early: " +
                             (ego_error.empty() ? std::string("unknown error") : ego_error));
             }
             const bool fatal_ego_start_failure =
-                ego_required || ego_error_type == ugripper::runtime::kErrorTypeEgoTimeSyncFailed;
+                ego_required || ego_error_type == DA::Ugripper::kErrorTypeEgoTimeSyncFailed;
             if (fatal_ego_start_failure)
             {
                 if (dependencies_.feedback.set_led_state != nullptr)
@@ -1691,9 +1691,9 @@ bool RecordingOrchestrator::CheckRecorderProcesses() const
     return camera_ok && sensor_ok;
 }
 
-const RecordingState& RecordingOrchestrator::state() const
+const RecordingState& RecordingOrchestrator::GetState() const
 {
     return state_;
 }
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

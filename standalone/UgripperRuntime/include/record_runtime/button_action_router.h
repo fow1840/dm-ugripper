@@ -5,7 +5,7 @@
 #include <optional>
 #include <vector>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 enum class PhysicalButton : uint8_t
 {
@@ -116,12 +116,12 @@ public:
     TaskMarkerResult Mark(double unix_seconds);
     void Reset();
 
-    std::optional<double> task_start_s() const;
-    std::optional<double> task_stop_s() const;
+    std::optional<double> GetTaskStartS() const;
+    std::optional<double> GetTaskStopS() const;
 
 private:
     std::optional<double> task_start_s_;
     std::optional<double> task_stop_s_;
 };
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

@@ -11,7 +11,7 @@
 
 #include <nlohmann/json_fwd.hpp>
 
-namespace ugripper::runtime::record_runtime_detail {
+namespace DA::Ugripper::detail {
 
 struct EpisodeVideoArtifact
 {
@@ -272,4 +272,4 @@ nlohmann::json makeFaysImuCalibrationEntry(const nlohmann::json &faysCalibration
 nlohmann::json makeDefaultFaysImuCalibrationEntry();
 nlohmann::json makeLockedCalibrationInfo(const std::string &calibrationStatus);
 
-}  // namespace ugripper::runtime::record_runtime_detail
+}  // namespace DA::Ugripper::detail

@@ -27,16 +27,16 @@ fs::path MakeTempDir()
     return fs::path(created);
 }
 
-using ugripper::runtime::HealthMonitor;
-using ugripper::runtime::HealthFault;
-using ugripper::runtime::HealthState;
-using ugripper::runtime::HealthStatus;
-using ugripper::runtime::HardwareFaultSide;
-using ugripper::runtime::HmiHealthSnapshot;
-using ugripper::runtime::ProcessState;
-using ugripper::runtime::ProcessStatus;
-using ugripper::runtime::RuntimeLedState;
-using ugripper::runtime::WorkerName;
+using DA::Ugripper::HealthMonitor;
+using DA::Ugripper::HealthFault;
+using DA::Ugripper::HealthState;
+using DA::Ugripper::HealthStatus;
+using DA::Ugripper::HardwareFaultSide;
+using DA::Ugripper::HmiHealthSnapshot;
+using DA::Ugripper::ProcessState;
+using DA::Ugripper::ProcessStatus;
+using DA::Ugripper::RuntimeLedState;
+using DA::Ugripper::WorkerName;
 
 TEST(HealthMonitorTest, ReportsHealthyStateWhenDependenciesAreReady)
 {
@@ -1021,7 +1021,7 @@ TEST(HealthMonitorTest, ReportsRecognizedFaysControlFailureAsError4)
     const auto result = monitor.Poll(HealthState{});
     ASSERT_TRUE(result.checked);
     ASSERT_TRUE(result.fault.has_value());
-    EXPECT_EQ(result.fault->key, ugripper::runtime::kErrorTypeStereoControlFailed);
+    EXPECT_EQ(result.fault->key, DA::Ugripper::kErrorTypeStereoControlFailed);
     EXPECT_EQ(result.fault->led_state, RuntimeLedState::Error4);
     EXPECT_EQ(result.fault->side, HardwareFaultSide::Right);
     EXPECT_NE(result.fault->detail.find("unplug/replug the right gripper"), std::string::npos);

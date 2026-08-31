@@ -22,15 +22,15 @@ int64_t FakeSteadyMs()
     return g_steady_ms;
 }
 
-using ugripper::runtime::ProcessRestartPolicy;
-using ugripper::runtime::ProcessSpec;
-using ugripper::runtime::ProcessState;
-using ugripper::runtime::ProcessStatus;
-using ugripper::runtime::RecordingOrchestrator;
-using ugripper::runtime::RuntimeLedState;
-using ugripper::runtime::HardwareFaultSide;
-using ugripper::runtime::HealthFault;
-using ugripper::runtime::WorkerName;
+using DA::Ugripper::ProcessRestartPolicy;
+using DA::Ugripper::ProcessSpec;
+using DA::Ugripper::ProcessState;
+using DA::Ugripper::ProcessStatus;
+using DA::Ugripper::RecordingOrchestrator;
+using DA::Ugripper::RuntimeLedState;
+using DA::Ugripper::HardwareFaultSide;
+using DA::Ugripper::HealthFault;
+using DA::Ugripper::WorkerName;
 
 struct RecordingHarness
 {
@@ -360,8 +360,8 @@ TEST(RecordingOrchestratorTest, StartRecordingUpdatesStateAndSignalsReadyFlow)
     auto orchestrator = harness.Make();
 
     ASSERT_TRUE(orchestrator.StartRecording(false));
-    EXPECT_TRUE(orchestrator.state().is_recording);
-    EXPECT_EQ(orchestrator.state().current_episode_dir, "/tmp/episode_0001");
+    EXPECT_TRUE(orchestrator.GetState().is_recording);
+    EXPECT_EQ(orchestrator.GetState().current_episode_dir, "/tmp/episode_0001");
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Recording);
     ASSERT_FALSE(harness.audio_commands.empty());
@@ -380,10 +380,10 @@ TEST(RecordingOrchestratorTest, StartRecordingUpdatesStateAndSignalsReadyFlow)
               (std::vector<std::string>{"remove", "write:", "write:/tmp/episode_0001"}));
     ASSERT_TRUE(harness.started_specs.count(WorkerName::CameraRecorder) > 0);
     EXPECT_EQ(harness.started_specs[WorkerName::CameraRecorder].stop_mode,
-              ugripper::runtime::ProcessStopMode::SigTermThenKill);
+              DA::Ugripper::ProcessStopMode::SigTermThenKill);
     ASSERT_TRUE(harness.started_specs.count(WorkerName::SensorRecorder) > 0);
     EXPECT_EQ(harness.started_specs[WorkerName::SensorRecorder].stop_mode,
-              ugripper::runtime::ProcessStopMode::SigTermThenKill);
+              DA::Ugripper::ProcessStopMode::SigTermThenKill);
 }
 
 TEST(RecordingOrchestratorTest, RequiredEgoStartFailureBlocksRecordingWithError5)
@@ -394,7 +394,7 @@ TEST(RecordingOrchestratorTest, RequiredEgoStartFailureBlocksRecordingWithError5
     auto orchestrator = harness.Make();
 
     ASSERT_FALSE(orchestrator.StartRecording(false));
-    EXPECT_FALSE(orchestrator.state().is_recording);
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
     EXPECT_TRUE(harness.started_specs.empty());
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
@@ -405,12 +405,12 @@ TEST(RecordingOrchestratorTest, EgoTimeSyncFailureAlwaysBlocksRecordingWithError
 {
     RecordingHarness harness;
     harness.ego_start_ok = false;
-    harness.ego_start_error_type = ugripper::runtime::kErrorTypeEgoTimeSyncFailed;
+    harness.ego_start_error_type = DA::Ugripper::kErrorTypeEgoTimeSyncFailed;
     harness.ego_error = "ego time sync failed offset_ms=18.500 threshold_ms=15";
     auto orchestrator = harness.Make();
 
     ASSERT_FALSE(orchestrator.StartRecording(false));
-    EXPECT_FALSE(orchestrator.state().is_recording);
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
     EXPECT_TRUE(harness.started_specs.empty());
     EXPECT_EQ(harness.ego_stop_calls, 0);
     ASSERT_FALSE(harness.led_states.empty());
@@ -425,19 +425,19 @@ TEST(RecordingOrchestratorTest, RequiredEgoPullFailureMapsToError5)
     RecordingHarness harness;
     harness.ego_required = true;
     harness.ego_finalize_ok = false;
-    harness.ego_finalize_error_type = ugripper::runtime::kErrorTypeEgoPullIncomplete;
+    harness.ego_finalize_error_type = DA::Ugripper::kErrorTypeEgoPullIncomplete;
     auto orchestrator = harness.Make();
     ASSERT_TRUE(orchestrator.StartRecording(false));
 
     g_steady_ms += 100;
     ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
-    EXPECT_FALSE(orchestrator.state().is_recording);
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
     EXPECT_EQ(harness.ego_cleanup_calls, 0);
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
     ASSERT_FALSE(harness.metadata_error_types.empty());
     EXPECT_EQ(harness.metadata_error_types.back(),
-              ugripper::runtime::kErrorTypeEgoPullIncomplete);
+              DA::Ugripper::kErrorTypeEgoPullIncomplete);
     EXPECT_NE(harness.last_validation_log.find(harness.ego_error), std::string::npos);
 }
 
@@ -446,7 +446,7 @@ TEST(RecordingOrchestratorTest, RequiredEgoDisconnectPreservesDisconnectErrorTyp
     RecordingHarness harness;
     harness.ego_required = true;
     harness.ego_finalize_ok = false;
-    harness.ego_finalize_error_type = ugripper::runtime::kErrorTypeEgoDisconnected;
+    harness.ego_finalize_error_type = DA::Ugripper::kErrorTypeEgoDisconnected;
     harness.ego_error = "bound ego disconnected during stop";
     auto orchestrator = harness.Make();
     ASSERT_TRUE(orchestrator.StartRecording(false));
@@ -455,7 +455,7 @@ TEST(RecordingOrchestratorTest, RequiredEgoDisconnectPreservesDisconnectErrorTyp
     ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
     ASSERT_FALSE(harness.metadata_error_types.empty());
     EXPECT_EQ(harness.metadata_error_types.back(),
-              ugripper::runtime::kErrorTypeEgoDisconnected);
+              DA::Ugripper::kErrorTypeEgoDisconnected);
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
 }
 
@@ -464,7 +464,7 @@ TEST(RecordingOrchestratorTest, RecordedEgoDisconnectIsFatalEvenIfBindingStateWa
     RecordingHarness harness;
     harness.ego_required = false;
     harness.ego_finalize_ok = false;
-    harness.ego_finalize_error_type = ugripper::runtime::kErrorTypeEgoDisconnected;
+    harness.ego_finalize_error_type = DA::Ugripper::kErrorTypeEgoDisconnected;
     harness.ego_error = "ego disconnected after recording started";
     auto orchestrator = harness.Make();
     ASSERT_TRUE(orchestrator.StartRecording(false));
@@ -473,7 +473,7 @@ TEST(RecordingOrchestratorTest, RecordedEgoDisconnectIsFatalEvenIfBindingStateWa
     ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
     ASSERT_FALSE(harness.metadata_error_types.empty());
     EXPECT_EQ(harness.metadata_error_types.back(),
-              ugripper::runtime::kErrorTypeEgoDisconnected);
+              DA::Ugripper::kErrorTypeEgoDisconnected);
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
 }
 
@@ -482,7 +482,7 @@ TEST(RecordingOrchestratorTest, OptionalEgoPullIncompleteRemainsNonFatal)
     RecordingHarness harness;
     harness.ego_required = false;
     harness.ego_finalize_ok = false;
-    harness.ego_finalize_error_type = ugripper::runtime::kErrorTypeEgoPullIncomplete;
+    harness.ego_finalize_error_type = DA::Ugripper::kErrorTypeEgoPullIncomplete;
     auto orchestrator = harness.Make();
     ASSERT_TRUE(orchestrator.StartRecording(false));
 
@@ -506,7 +506,7 @@ TEST(RecordingOrchestratorTest, EgoRemoteCleanupFailureIsNonFatalAfterVerifiedPu
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Ready);
     ASSERT_FALSE(harness.metadata_error_types.empty());
     EXPECT_TRUE(harness.metadata_error_types.back().empty() ||
-                harness.metadata_error_types.back() == ugripper::runtime::kErrorTypeUnknown);
+                harness.metadata_error_types.back() == DA::Ugripper::kErrorTypeUnknown);
 }
 
 TEST(RecordingOrchestratorTest, StereoDisabledSkipsSessionControlAndFinalize)
@@ -537,9 +537,9 @@ TEST(RecordingOrchestratorTest, StopRecordingHandlesValidationFailure)
     harness.validate_ok = false;
     g_steady_ms += 100;
     ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
-    EXPECT_FALSE(orchestrator.state().is_recording);
-    EXPECT_TRUE(orchestrator.state().current_episode_dir.empty());
-    EXPECT_EQ(orchestrator.state().last_episode_dir, "/tmp/episode_0001");
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
+    EXPECT_TRUE(orchestrator.GetState().current_episode_dir.empty());
+    EXPECT_EQ(orchestrator.GetState().last_episode_dir, "/tmp/episode_0001");
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error1);
     ASSERT_FALSE(harness.audio_commands.empty());
@@ -570,9 +570,9 @@ TEST(RecordingOrchestratorTest, StopRecordingSuccessSignalsWritingThenReady)
 
     g_steady_ms += 100;
     ASSERT_TRUE(orchestrator.StopRecording(false, "stop"));
-    EXPECT_FALSE(orchestrator.state().is_recording);
-    EXPECT_TRUE(orchestrator.state().current_episode_dir.empty());
-    EXPECT_EQ(orchestrator.state().last_episode_dir, "/tmp/episode_0001");
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
+    EXPECT_TRUE(orchestrator.GetState().current_episode_dir.empty());
+    EXPECT_EQ(orchestrator.GetState().last_episode_dir, "/tmp/episode_0001");
 
     EXPECT_EQ(harness.flushed_stages,
               (std::vector<std::string>{"pre_stereo_finalize", "final", "ego_cleanup"}));
@@ -601,7 +601,7 @@ TEST(RecordingOrchestratorTest, StartRecordingLockFailureDoesNotLaunchWorkers)
     auto orchestrator = harness.Make();
 
     ASSERT_FALSE(orchestrator.StartRecording(false));
-    EXPECT_FALSE(orchestrator.state().is_recording);
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
     EXPECT_TRUE(harness.started_specs.empty());
     EXPECT_EQ(harness.lock_events,
               (std::vector<std::string>{"remove", "write:"}));
@@ -619,9 +619,9 @@ TEST(RecordingOrchestratorTest, StopRecordingStereoFinalizeFailureMapsToValidati
 
     g_steady_ms += 100;
     ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
-    EXPECT_FALSE(orchestrator.state().is_recording);
-    EXPECT_TRUE(orchestrator.state().current_episode_dir.empty());
-    EXPECT_EQ(orchestrator.state().last_episode_dir, "/tmp/episode_0001");
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
+    EXPECT_TRUE(orchestrator.GetState().current_episode_dir.empty());
+    EXPECT_EQ(orchestrator.GetState().last_episode_dir, "/tmp/episode_0001");
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error1);
     EXPECT_EQ(harness.audio_commands.back(), "validation_failed");
     EXPECT_EQ(harness.recovery_commands.back(), "validation_failed");
@@ -642,18 +642,18 @@ TEST(RecordingOrchestratorTest, StopRecordingRightStereoControlFailureMapsToErro
 
     g_steady_ms += 100;
     ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
-    EXPECT_FALSE(orchestrator.state().is_recording);
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error4);
     ASSERT_FALSE(harness.hardware_fault_led_states.empty());
     EXPECT_EQ(harness.hardware_fault_led_states.back().side, HardwareFaultSide::Right);
     EXPECT_EQ(harness.hardware_fault_led_states.back().key,
-              ugripper::runtime::kErrorTypeStereoControlFailed);
+              DA::Ugripper::kErrorTypeStereoControlFailed);
     EXPECT_EQ(harness.audio_commands.back(), "error");
     EXPECT_EQ(harness.recovery_commands.back(), "error");
     EXPECT_NE(harness.last_validation_log.find("unplug/replug the right gripper"), std::string::npos);
     ASSERT_FALSE(harness.metadata_error_types.empty());
     EXPECT_EQ(harness.metadata_error_types.back(),
-              ugripper::runtime::kErrorTypeStereoControlFailed);
+              DA::Ugripper::kErrorTypeStereoControlFailed);
     EXPECT_EQ(harness.validate_calls, 0);
 }
 
@@ -664,8 +664,8 @@ TEST(RecordingOrchestratorTest, StartRecordingMissingCameraBinaryMapsToError)
     auto orchestrator = harness.Make();
 
     ASSERT_FALSE(orchestrator.StartRecording(false));
-    EXPECT_FALSE(orchestrator.state().is_recording);
-    EXPECT_EQ(orchestrator.state().current_episode_dir, "/tmp/episode_0001");
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
+    EXPECT_EQ(orchestrator.GetState().current_episode_dir, "/tmp/episode_0001");
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
     ASSERT_FALSE(harness.audio_commands.empty());
@@ -681,8 +681,8 @@ TEST(RecordingOrchestratorTest, StartRecordingMissingSensorBinaryMapsToError)
     auto orchestrator = harness.Make();
 
     ASSERT_FALSE(orchestrator.StartRecording(false));
-    EXPECT_FALSE(orchestrator.state().is_recording);
-    EXPECT_EQ(orchestrator.state().current_episode_dir, "/tmp/episode_0001");
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
+    EXPECT_EQ(orchestrator.GetState().current_episode_dir, "/tmp/episode_0001");
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
     ASSERT_FALSE(harness.audio_commands.empty());
@@ -698,8 +698,8 @@ TEST(RecordingOrchestratorTest, StartRecordingWorkerStartupFailureRollsBackStart
     auto orchestrator = harness.Make();
 
     ASSERT_FALSE(orchestrator.StartRecording(false));
-    EXPECT_FALSE(orchestrator.state().is_recording);
-    EXPECT_EQ(orchestrator.state().current_episode_dir, "/tmp/episode_0001");
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
+    EXPECT_EQ(orchestrator.GetState().current_episode_dir, "/tmp/episode_0001");
     EXPECT_EQ(harness.stop_reasons,
               (std::vector<std::string>{"camera_recorder:startup rollback"}));
     ASSERT_FALSE(harness.led_states.empty());
@@ -717,8 +717,8 @@ TEST(RecordingOrchestratorTest, StartRecordingStereoStartFailureStopsWorkersAndS
     auto orchestrator = harness.Make();
 
     ASSERT_FALSE(orchestrator.StartRecording(false));
-    EXPECT_FALSE(orchestrator.state().is_recording);
-    EXPECT_EQ(orchestrator.state().current_episode_dir, "/tmp/episode_0001");
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
+    EXPECT_EQ(orchestrator.GetState().current_episode_dir, "/tmp/episode_0001");
     EXPECT_EQ(harness.stop_reasons,
               (std::vector<std::string>{
                   "camera_recorder:stereo session start failed",
@@ -740,9 +740,9 @@ TEST(RecordingOrchestratorTest, StopRecordingDueToErrorMapsToErrorOutput)
 
     g_steady_ms += 100;
     ASSERT_FALSE(orchestrator.StopRecording(true, "recorder crashed"));
-    EXPECT_FALSE(orchestrator.state().is_recording);
-    EXPECT_TRUE(orchestrator.state().current_episode_dir.empty());
-    EXPECT_EQ(orchestrator.state().last_episode_dir, "/tmp/episode_0001");
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
+    EXPECT_TRUE(orchestrator.GetState().current_episode_dir.empty());
+    EXPECT_EQ(orchestrator.GetState().last_episode_dir, "/tmp/episode_0001");
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
     ASSERT_FALSE(harness.audio_commands.empty());
@@ -765,7 +765,7 @@ TEST(RecordingOrchestratorTest, StopRecordingDueToDiskFaultMapsToError3Output)
         true,
         "recording hardware fault (disk_full): Disk root has no available space: /mnt/data_disk",
         "disk_full"));
-    EXPECT_FALSE(orchestrator.state().is_recording);
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error3);
     ASSERT_FALSE(harness.audio_commands.empty());
@@ -786,7 +786,7 @@ TEST(RecordingOrchestratorTest, StopRecordingDiskValidationFailureMapsToError3Ou
 
     g_steady_ms += 100;
     ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
-    EXPECT_FALSE(orchestrator.state().is_recording);
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error3);
     ASSERT_FALSE(harness.audio_commands.empty());
@@ -803,7 +803,7 @@ TEST(RecordingOrchestratorTest, StopRecordingMissingFileUnderDataDiskMapsToValid
 {
     RecordingHarness harness;
     harness.validate_ok = false;
-    harness.validate_error_types = {ugripper::runtime::kErrorTypeMissingFile};
+    harness.validate_error_types = {DA::Ugripper::kErrorTypeMissingFile};
     harness.validate_error =
         "missing or empty video file: /mnt/data_disk/device/data/episode_0001-temp/cam_left.mkv";
     auto orchestrator = harness.Make();
@@ -811,7 +811,7 @@ TEST(RecordingOrchestratorTest, StopRecordingMissingFileUnderDataDiskMapsToValid
 
     g_steady_ms += 100;
     ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
-    EXPECT_FALSE(orchestrator.state().is_recording);
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error1);
     ASSERT_FALSE(harness.audio_commands.empty());
@@ -821,14 +821,14 @@ TEST(RecordingOrchestratorTest, StopRecordingMissingFileUnderDataDiskMapsToValid
     EXPECT_EQ(harness.last_validation_log,
               "missing or empty video file: /mnt/data_disk/device/data/episode_0001-temp/cam_left.mkv");
     ASSERT_FALSE(harness.metadata_error_types.empty());
-    EXPECT_EQ(harness.metadata_error_types.back(), ugripper::runtime::kErrorTypeMissingFile);
+    EXPECT_EQ(harness.metadata_error_types.back(), DA::Ugripper::kErrorTypeMissingFile);
 }
 
 TEST(RecordingOrchestratorTest, StopRecordingMultipleErrorTypesSelectsMostImportantOutput)
 {
     RecordingHarness harness;
     harness.validate_ok = false;
-    harness.validate_error_types = {ugripper::runtime::kErrorTypeMissingFile};
+    harness.validate_error_types = {DA::Ugripper::kErrorTypeMissingFile};
     harness.validate_error =
         "missing or empty video file: /mnt/data_disk/device/data/episode_0001-temp/cam_left.mkv";
     auto orchestrator = harness.Make();
@@ -839,7 +839,7 @@ TEST(RecordingOrchestratorTest, StopRecordingMultipleErrorTypesSelectsMostImport
         true,
         "recording hardware fault (disk_mount_lost): Disk root is not mounted",
         "disk_mount_lost"));
-    EXPECT_FALSE(orchestrator.state().is_recording);
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error3);
     ASSERT_FALSE(harness.audio_commands.empty());
@@ -863,9 +863,9 @@ TEST(RecordingOrchestratorTest, StopRecordingMergeFailureMapsToValidationFailed)
 
     g_steady_ms += 100;
     ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
-    EXPECT_FALSE(orchestrator.state().is_recording);
-    EXPECT_TRUE(orchestrator.state().current_episode_dir.empty());
-    EXPECT_EQ(orchestrator.state().last_episode_dir, "/tmp/episode_0001");
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
+    EXPECT_TRUE(orchestrator.GetState().current_episode_dir.empty());
+    EXPECT_EQ(orchestrator.GetState().last_episode_dir, "/tmp/episode_0001");
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error1);
     ASSERT_FALSE(harness.audio_commands.empty());

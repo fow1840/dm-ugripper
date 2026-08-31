@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 struct HealthMonitorOptions
 {
@@ -61,4 +61,4 @@ private:
     NowMsFn now_ms_fn_ = nullptr;
 };
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 enum class WorkerName
 {
@@ -86,4 +86,4 @@ private:
     std::array<WorkerSlot, static_cast<size_t>(WorkerName::Count)> workers_{};
 };
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

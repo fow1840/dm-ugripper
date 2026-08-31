@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 enum class ErrorCodeContext {
   Unknown,
@@ -75,4 +75,4 @@ inline std::string_view UgrCodeForErrorType(
   return "UGR-00-01";
 }
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

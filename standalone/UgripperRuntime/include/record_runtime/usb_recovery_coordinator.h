@@ -7,7 +7,7 @@
 #include <memory>
 #include <string>
 
-namespace ugripper::runtime
+namespace DA::Ugripper
 {
 
 class UsbRecoveryCoordinator
@@ -62,6 +62,6 @@ private:
     State state_;
 };
 
-} // namespace ugripper::runtime
+} // namespace DA::Ugripper
 
 #endif

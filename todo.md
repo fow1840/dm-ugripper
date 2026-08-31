@@ -30,11 +30,11 @@ Temporary coordination note for the current maintenance pass. Remove or archive 
 - [x] 4. Further split large support/episode-validation internals by cohesive helper responsibility, without fragmenting trivial code.
 - [x] 5. Replace the oversized `RecordingOrchestrator::Dependencies` callback bag with smaller capability interfaces/ports.
 - [x] 6. Normalize runtime configuration and CLI parsing boundaries while preserving accepted inputs and defaults.
-- [ ] 7. Migrate runtime public code to `DA::Ugripper`; rename public lifecycle/access APIs to `Initialize` / `Stop` / `Get` style.
+- [x] 7. Migrate runtime public code to `DA::Ugripper`; rename public lifecycle/access APIs to `Initialize` / `Stop` / `Get` style.
 
 ## Current execution order
 
 1. [done] Parallel low-overlap extraction: device/recovery ownership, episode/support helper split, orchestrator ports, EpisodeManager dependency removal, CLI boundary.
 2. [done] Integrate and pass host build/tests.
-3. [next] Apply namespace and public API naming migration as one mechanical, reviewable batch.
-4. Rebuild ARM package, install on 240, run second-instance and START/STOP recording gates, update docs/graph, and commit.
+3. [done] Apply namespace and public API naming migration as one mechanical, reviewable batch.
+4. [done] Rebuild ARM package, install on 240, run second-instance and START/STOP recording gates, update docs/graph, and commit.

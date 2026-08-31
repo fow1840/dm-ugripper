@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 struct GripperRuntimeState
 {
@@ -56,4 +56,4 @@ struct EpisodeManagerDependencies
     bool (*fileExistsAndNotEmpty)(const std::string &path);
 };
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

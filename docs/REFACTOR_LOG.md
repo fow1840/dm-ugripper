@@ -4959,3 +4959,36 @@
   - `git diff --check` 通过
 - 后续：
   - 以独立纯机械批次完成 `DA::Ugripper` namespace 与 `Initialize/Stop/Get` 公共 API 命名迁移，再执行 ARM/240 主链门禁
+
+### 2026-08-31 - runtime-namespace-and-public-api-alignment
+
+- 阶段：`Post-A3 Step 8 / pp-main naming alignment`
+- 范围：`standalone/UgripperRuntime`、`test/src/record_runtime`、`test/src/utils`、`docs`、`todo.md`
+- 类型：`namespace migration / public API naming / build wiring correction`
+- 主要改动：
+  - runtime 公共类型从全局或 `ugripper::runtime` 原子迁移到 `DA::Ugripper`
+  - 内部 `record_runtime_detail` helper 迁移到 `DA::Ugripper::detail`
+  - `RecordRuntime` 生命周期统一为 `Initialize/Run/Stop`；`Stop` 仍只设置 stop flag，不改变信号与清理顺序
+  - `EpisodeManager`、audio/stereo/process/orchestrator 等公共访问器统一为 pp-main 风格的 `Initialize/Stop/Get/Is` 命名
+  - 同步更新全部 runtime 单测调用，不保留旧 namespace 或旧 API wrapper
+  - 修正 clean-first 全量构建暴露的 utils 测试接线：测试目标改为链接 `UGripper::utils`，恢复 include/link 传播
+- 行为等价说明：
+  - 不修改状态机、线程模型、进程组策略、FIFO 协议、恢复顺序、阈值、业务日志消息、错误码、metadata schema 或校验算法
+  - namespace/API 改名会改变 C++ mangled symbol 与 logger 的函数标签，这是本批预期的代码规范对齐；业务内容和退出语义不变
+  - 未修改 pp-main 源码
+- host 验证：
+  - `cmake --build build/codex_episode_refactor --clean-first --parallel 8`：全量编译链接通过，确认未复用旧 namespace 对象
+  - `ctest -L record_runtime`：`7/7` 通过
+  - 全量 host-only：`198/208` 通过；7 项为 stereo-off 构建下的既有 health fixture，2 项为既有 process/group 时序用例，1 项 audio bootstrap fixture 在当前主机等待 pipe 超时；对应生产 diff 仅 namespace/accessor 机械替换，未夹带测试修复
+  - domain/control 定向测试 64 项通过；orchestrator `25/25`、LED bridge `5/5`、EgoBindingConfig `1/1`
+  - 旧 `ugripper::runtime`、`record_runtime_detail` 与指定旧公开 API 全仓扫描清零
+- ARM/240 验证：
+  - `./scripts/build_arm_deb_in_pp_arm_dev.sh`：通过，ARM 构建直接链接 pp-main `PP::utils`，生成 `ugripper_2.1.11_arm64.deb`
+  - 覆盖安装到 `ubuntu@192.168.2.240` 成功；数据盘挂载正常，服务进入 `Ready`
+  - journal 显示 `RecordRuntime.Initialize` / `RecordRuntime.Run` 新函数标签
+  - 第二实例退出码 `0`，被 pp-main 单实例机制拒绝，现有服务保持 active
+  - 正式 FIFO `START / STOP` 均 accepted；实录 `episode_20260831_0007`
+  - metadata：`collection_duration_s=18.0`、`quality_check_status=success`、`quality_check_err_type` 为空、`require_files=14`；`validation_error.log` 不存在
+  - 离线深度校验为 `WARN`，全局首帧硬门禁通过：`926.466ms < 1000ms`；视频/MCAP 可解析，无视频时间戳回退或重复，告警仍为既有约 `0.77-0.91s` 起录错峰与单侧 Fays `80ms` gap
+- 门禁结论：
+  - namespace/API 对齐已通过 clean host build、ARM 构建、安装、单实例与 240 实录主链，满足提交条件

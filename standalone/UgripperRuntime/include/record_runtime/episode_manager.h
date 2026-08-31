@@ -7,17 +7,17 @@
 #include <string>
 #include <vector>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 class EpisodeManager
 {
 public:
     // Compatibility aliases keep call sites stable while the DTOs remain
     // independent from EpisodeManager's lifecycle and ownership.
-    using GripperRuntimeState = ugripper::runtime::GripperRuntimeState;
-    using MainCameraRuntimeState = ugripper::runtime::MainCameraRuntimeState;
-    using TactileCameraRuntimeState = ugripper::runtime::TactileCameraRuntimeState;
-    using TactileValidationFinding = ugripper::runtime::TactileValidationFinding;
+    using GripperRuntimeState = DA::Ugripper::GripperRuntimeState;
+    using MainCameraRuntimeState = DA::Ugripper::MainCameraRuntimeState;
+    using TactileCameraRuntimeState = DA::Ugripper::TactileCameraRuntimeState;
+    using TactileValidationFinding = DA::Ugripper::TactileValidationFinding;
 
     EpisodeManager(std::string diskRoot,
                    std::string deviceSn,
@@ -35,32 +35,32 @@ public:
                    std::string updaterVersion,
                    EpisodeManagerDependencies dependencies);
 
-    bool initialize();
-    std::string createNextEpisodeDir();
-    void setGripperRuntimeStates(const std::array<GripperRuntimeState, 2> &states);
-    void setMainCameraRuntimeStates(const std::array<MainCameraRuntimeState, 3> &states);
-    void setTactileCameraRuntimeStates(const std::array<TactileCameraRuntimeState, 4> &states);
-    void setTaskMarkers(std::optional<double> taskStartS,
+    bool Initialize();
+    std::string CreateNextEpisodeDir();
+    void SetGripperRuntimeStates(const std::array<GripperRuntimeState, 2> &states);
+    void SetMainCameraRuntimeStates(const std::array<MainCameraRuntimeState, 3> &states);
+    void SetTactileCameraRuntimeStates(const std::array<TactileCameraRuntimeState, 4> &states);
+    void SetTaskMarkers(std::optional<double> taskStartS,
                         std::optional<double> taskStopS);
-    void markTactileReferencePendingForSide(const std::string &side,
+    void MarkTactileReferencePendingForSide(const std::string &side,
                                             const std::string &reason);
-    bool prepareEpisode(const std::string &episodeDir,
+    bool PrepareEpisode(const std::string &episodeDir,
                         bool resetRecording,
                         const std::string &resetSourceDir,
                         std::string *errorMessage) const;
-    bool validateEpisode(const std::string &episodeDir,
+    bool ValidateEpisode(const std::string &episodeDir,
                          std::string *errorMessage,
                          std::vector<std::string> *errorTypes = nullptr,
                          std::vector<TactileValidationFinding> *tactileFindings = nullptr) const;
-    void validateTactileEpisode(const std::string &episodeDir,
+    void ValidateTactileEpisode(const std::string &episodeDir,
                                 std::vector<TactileValidationFinding> *tactileFindings) const;
-    bool writeFinalMetadata(const std::string &episodeDir,
+    bool WriteFinalMetadata(const std::string &episodeDir,
                             bool qualityOk,
                             const std::string &qualityErrorMessage,
                             const std::string &qualityErrorType,
                             std::string *errorMessage) const;
-    std::string finalizeEpisodeDir(const std::string &episodeDir, std::string *errorMessage) const;
-    const std::string &dataRoot() const;
+    std::string FinalizeEpisodeDir(const std::string &episodeDir, std::string *errorMessage) const;
+    const std::string &GetDataRoot() const;
 
 private:
     bool writeFilteredCalibration(const std::string &episodeDir, std::string *errorMessage) const;
@@ -97,4 +97,4 @@ private:
     std::optional<double> taskStopS_;
 };
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

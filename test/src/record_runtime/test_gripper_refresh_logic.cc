@@ -4,11 +4,11 @@
 
 namespace {
 
-using ugripper::runtime::AdvancePendingGripperRefresh;
-using ugripper::runtime::ApplyGripperConnectionEvent;
-using ugripper::runtime::GripperRefreshAction;
-using ugripper::runtime::GripperRefreshRuntimeView;
-using ugripper::runtime::ShouldMarkTactileReferencePending;
+using DA::Ugripper::AdvancePendingGripperRefresh;
+using DA::Ugripper::ApplyGripperConnectionEvent;
+using DA::Ugripper::GripperRefreshAction;
+using DA::Ugripper::GripperRefreshRuntimeView;
+using DA::Ugripper::ShouldMarkTactileReferencePending;
 
 TEST(GripperRefreshLogicTest, ConnectedEventMarksStateAsReconnectingAndPending)
 {

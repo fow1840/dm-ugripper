@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 struct StereoSessionClientOptions
 {
@@ -44,12 +44,12 @@ public:
     bool WaitForFinalize(const std::string& episode_dir,
                          int timeout_ms,
                          std::string* error_message = nullptr) const;
-    bool LastSessionJson(const std::string& episode_dir,
+    bool GetLastSessionJson(const std::string& episode_dir,
                          std::string* session_json,
                          std::string* error_message = nullptr) const;
 
-    bool daemon_started() const;
-    uint64_t command_seq() const;
+    bool IsDaemonStarted() const;
+    uint64_t GetCommandSequence() const;
 
 private:
     bool WriteControl(bool recording,
@@ -71,4 +71,4 @@ private:
     mutable std::string last_session_json_;
 };
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

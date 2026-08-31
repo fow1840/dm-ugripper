@@ -4,7 +4,7 @@
 #include <string>
 #include <system_error>
 
-namespace ugripper::runtime::record_runtime_detail {
+namespace DA::Ugripper::detail {
 
 bool moveFileWithCrossDeviceFallback(const std::filesystem::path &source,
                                      const std::filesystem::path &target,
@@ -18,4 +18,4 @@ void writeValidationErrorLog(const std::filesystem::path &episodeDir,
                              const std::string &errorMessage);
 std::string makeTimestampString();
 
-}  // namespace ugripper::runtime::record_runtime_detail
+}  // namespace DA::Ugripper::detail

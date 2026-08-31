@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 struct AudioCoordinatorOptions
 {
@@ -37,8 +37,8 @@ public:
     void SendCommand(const std::string& command) const;
     void SetRecoveryCommand(std::string command);
 
-    bool audio_player_started() const;
-    const std::string& recovery_command() const;
+    bool IsAudioPlayerStarted() const;
+    const std::string& GetRecoveryCommand() const;
 
 private:
     ProcessSupervisor* supervisor_ = nullptr;
@@ -50,4 +50,4 @@ private:
     std::string recovery_command_;
 };
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

@@ -4,17 +4,17 @@
 
 namespace {
 
-using ugripper::runtime::ButtonAction;
-using ugripper::runtime::ButtonActionRouter;
-using ugripper::runtime::ButtonChordDefinition;
-using ugripper::runtime::ButtonMask;
-using ugripper::runtime::FourButtonSnapshot;
-using ugripper::runtime::FeedbackPatternFor;
-using ugripper::runtime::HmiFeedbackEvent;
-using ugripper::runtime::HmiFeedbackSide;
-using ugripper::runtime::PhysicalButton;
-using ugripper::runtime::TaskMarkerResult;
-using ugripper::runtime::TaskMarkerTracker;
+using DA::Ugripper::ButtonAction;
+using DA::Ugripper::ButtonActionRouter;
+using DA::Ugripper::ButtonChordDefinition;
+using DA::Ugripper::ButtonMask;
+using DA::Ugripper::FourButtonSnapshot;
+using DA::Ugripper::FeedbackPatternFor;
+using DA::Ugripper::HmiFeedbackEvent;
+using DA::Ugripper::HmiFeedbackSide;
+using DA::Ugripper::PhysicalButton;
+using DA::Ugripper::TaskMarkerResult;
+using DA::Ugripper::TaskMarkerTracker;
 
 ButtonActionRouter MakeRouter()
 {
@@ -114,10 +114,10 @@ TEST(TaskMarkerTrackerTest, RecordsStartThenStopAndRejectsThirdMarker)
     EXPECT_EQ(tracker.Mark(1000.125), TaskMarkerResult::StartMarked);
     EXPECT_EQ(tracker.Mark(1010.875), TaskMarkerResult::StopMarked);
     EXPECT_EQ(tracker.Mark(1020.0), TaskMarkerResult::Rejected);
-    ASSERT_TRUE(tracker.task_start_s().has_value());
-    ASSERT_TRUE(tracker.task_stop_s().has_value());
-    EXPECT_DOUBLE_EQ(*tracker.task_start_s(), 1000.125);
-    EXPECT_DOUBLE_EQ(*tracker.task_stop_s(), 1010.875);
+    ASSERT_TRUE(tracker.GetTaskStartS().has_value());
+    ASSERT_TRUE(tracker.GetTaskStopS().has_value());
+    EXPECT_DOUBLE_EQ(*tracker.GetTaskStartS(), 1000.125);
+    EXPECT_DOUBLE_EQ(*tracker.GetTaskStopS(), 1010.875);
 }
 
 TEST(TaskMarkerTrackerTest, ResetStartsFreshEpisodeMarkers)
@@ -127,8 +127,8 @@ TEST(TaskMarkerTrackerTest, ResetStartsFreshEpisodeMarkers)
     tracker.Mark(1010.0);
     tracker.Reset();
 
-    EXPECT_FALSE(tracker.task_start_s().has_value());
-    EXPECT_FALSE(tracker.task_stop_s().has_value());
+    EXPECT_FALSE(tracker.GetTaskStartS().has_value());
+    EXPECT_FALSE(tracker.GetTaskStopS().has_value());
     EXPECT_EQ(tracker.Mark(2000.0), TaskMarkerResult::StartMarked);
 }
 

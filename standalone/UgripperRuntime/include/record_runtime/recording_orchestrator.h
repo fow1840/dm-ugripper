@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 struct RecordingOrchestratorOptions
 {
@@ -149,7 +149,7 @@ public:
                        std::string* error_message = nullptr);
     bool CheckRecorderProcesses() const;
 
-    const RecordingState& state() const;
+    const RecordingState& GetState() const;
 
 private:
     RecordingOrchestratorOptions options_;
@@ -159,4 +159,4 @@ private:
     RecordingState state_{};
 };
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

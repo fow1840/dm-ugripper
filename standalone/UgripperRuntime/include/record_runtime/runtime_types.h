@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 inline constexpr const char* kErrorTypeUnknown = "unknown";
 inline constexpr const char* kErrorTypeRuntimeError = "runtime_error";
@@ -120,4 +120,4 @@ struct RecordingState
     std::string last_episode_dir;
 };
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

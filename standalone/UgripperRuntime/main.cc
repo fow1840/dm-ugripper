@@ -11,13 +11,13 @@
 #include <utility>
 
 namespace {
-RecordRuntime *g_runtime = nullptr;
+DA::Ugripper::RecordRuntime *g_runtime = nullptr;
 
 void handleSignal(int signal)
 {
     if ((signal == SIGINT || signal == SIGTERM) && g_runtime != nullptr)
     {
-        g_runtime->requestStop();
+        g_runtime->Stop();
     }
 }
 
@@ -52,15 +52,15 @@ int main(int argc, char **argv)
         return cliResult.exitCode;
     }
 
-    RecordRuntime runtime(std::move(cliResult.options));
+    DA::Ugripper::RecordRuntime runtime(std::move(cliResult.options));
     g_runtime = &runtime;
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
 
     int exitCode = 1;
-    if (runtime.initialize())
+    if (runtime.Initialize())
     {
-        exitCode = runtime.run();
+        exitCode = runtime.Run();
     }
 
     std::signal(SIGINT, SIG_DFL);

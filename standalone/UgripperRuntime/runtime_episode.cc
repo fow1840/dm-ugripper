@@ -52,9 +52,9 @@ namespace fs = std::filesystem;
 using json = nlohmann::json;
 using ordered_json = nlohmann::ordered_json;
 
-using namespace ugripper::runtime::record_runtime_detail;
+using namespace DA::Ugripper::detail;
 
-namespace ugripper::runtime::record_runtime_detail {
+namespace DA::Ugripper::detail {
 
 std::string toLowerAscii(std::string text)
 {
@@ -418,9 +418,9 @@ json makeLockedCalibrationInfo(const std::string &calibrationStatus)
     });
 }
 
-}  // namespace ugripper::runtime::record_runtime_detail
+}  // namespace DA::Ugripper::detail
 
-ugripper::runtime::EpisodeManager::EpisodeManager(std::string diskRoot,
+DA::Ugripper::EpisodeManager::EpisodeManager(std::string diskRoot,
                                               std::string deviceSn,
                                               std::string language,
                                               std::string cameraCodec,
@@ -456,7 +456,7 @@ ugripper::runtime::EpisodeManager::EpisodeManager(std::string diskRoot,
     episodeRoot_ = dataRoot_ + "/data";
 }
 
-bool ugripper::runtime::EpisodeManager::initialize()
+bool DA::Ugripper::EpisodeManager::Initialize()
 {
     std::error_code error;
     fs::create_directories(episodeRoot_, error);
@@ -485,26 +485,26 @@ bool ugripper::runtime::EpisodeManager::initialize()
     return true;
 }
 
-void ugripper::runtime::EpisodeManager::setGripperRuntimeStates(
+void DA::Ugripper::EpisodeManager::SetGripperRuntimeStates(
     const std::array<GripperRuntimeState, 2> &states)
 {
     gripperRuntimeStates_ = states;
 }
 
-void ugripper::runtime::EpisodeManager::setMainCameraRuntimeStates(
+void DA::Ugripper::EpisodeManager::SetMainCameraRuntimeStates(
     const std::array<MainCameraRuntimeState, 3> &states)
 {
     mainCameraRuntimeStates_ = states;
 }
 
-void ugripper::runtime::EpisodeManager::setTactileCameraRuntimeStates(
+void DA::Ugripper::EpisodeManager::SetTactileCameraRuntimeStates(
     const std::array<TactileCameraRuntimeState, 4> &states)
 {
     tactileCameraRuntimeStates_ = states;
 }
 
-const ugripper::runtime::EpisodeManager::TactileCameraRuntimeState *
-ugripper::runtime::EpisodeManager::tactileCameraStateForName(const std::string &cameraName) const
+const DA::Ugripper::EpisodeManager::TactileCameraRuntimeState *
+DA::Ugripper::EpisodeManager::tactileCameraStateForName(const std::string &cameraName) const
 {
     const auto it = std::find_if(
         tactileCameraRuntimeStates_.begin(),
@@ -515,13 +515,13 @@ ugripper::runtime::EpisodeManager::tactileCameraStateForName(const std::string &
     return it != tactileCameraRuntimeStates_.end() ? &(*it) : nullptr;
 }
 
-std::string ugripper::runtime::EpisodeManager::cachedTactileSerialForName(const std::string &cameraName) const
+std::string DA::Ugripper::EpisodeManager::cachedTactileSerialForName(const std::string &cameraName) const
 {
     const auto *state = tactileCameraStateForName(cameraName);
     return state != nullptr ? state->serialNumber : std::string();
 }
 
-std::string ugripper::runtime::EpisodeManager::createNextEpisodeDir()
+std::string DA::Ugripper::EpisodeManager::CreateNextEpisodeDir()
 {
     const auto now = std::chrono::system_clock::now();
     const std::time_t nowTime = std::chrono::system_clock::to_time_t(now);
@@ -570,7 +570,7 @@ std::string ugripper::runtime::EpisodeManager::createNextEpisodeDir()
     return episodePath.string();
 }
 
-void ugripper::runtime::EpisodeManager::markTactileReferencePendingForSide(
+void DA::Ugripper::EpisodeManager::MarkTactileReferencePendingForSide(
     const std::string &side,
     const std::string &reason)
 {
@@ -653,7 +653,7 @@ void ugripper::runtime::EpisodeManager::markTactileReferencePendingForSide(
     }
 }
 
-bool ugripper::runtime::EpisodeManager::prepareEpisode(const std::string &episodeDir,
+bool DA::Ugripper::EpisodeManager::PrepareEpisode(const std::string &episodeDir,
                                                    bool resetRecording,
                                                    const std::string &resetSourceDir,
                                                    std::string *errorMessage) const
@@ -769,7 +769,7 @@ std::string jsonStringPath(const json &root, const std::string &path)
 }
 }
 
-bool ugripper::runtime::EpisodeManager::writeFinalMetadata(const std::string &episodeDir,
+bool DA::Ugripper::EpisodeManager::WriteFinalMetadata(const std::string &episodeDir,
                                                        bool qualityOk,
                                                        const std::string &qualityErrorMessage,
                                                        const std::string &qualityErrorType,
@@ -949,7 +949,7 @@ bool ugripper::runtime::EpisodeManager::writeFinalMetadata(const std::string &ep
     metadata["audio_uuid"] = hasAudio ? existingMetadata.value("audio_uuid", generateUuid()) : "";
     metadata["quality_check_status"] = qualityOk ? "success" : "fail";
     metadata["quality_check_err_type"] =
-        qualityOk ? "" : (qualityErrorType.empty() ? ugripper::runtime::kErrorTypeUnknown : qualityErrorType);
+        qualityOk ? "" : (qualityErrorType.empty() ? DA::Ugripper::kErrorTypeUnknown : qualityErrorType);
     metadata["collection_duration_s"] = roundToOneDecimal(collectionDurationS);
     metadata["task_start_s"] = taskStartS_.value_or(0.0);
     metadata["task_stop_s"] = taskStopS_.value_or(0.0);
@@ -970,14 +970,14 @@ bool ugripper::runtime::EpisodeManager::writeFinalMetadata(const std::string &ep
     return true;
 }
 
-void ugripper::runtime::EpisodeManager::setTaskMarkers(std::optional<double> taskStartS,
+void DA::Ugripper::EpisodeManager::SetTaskMarkers(std::optional<double> taskStartS,
                                                    std::optional<double> taskStopS)
 {
     taskStartS_ = taskStartS;
     taskStopS_ = taskStopS;
 }
 
-std::string ugripper::runtime::EpisodeManager::finalizeEpisodeDir(const std::string &episodeDir,
+std::string DA::Ugripper::EpisodeManager::FinalizeEpisodeDir(const std::string &episodeDir,
                                                               std::string *errorMessage) const
 {
     const fs::path sourcePath(episodeDir);
@@ -1021,7 +1021,7 @@ std::string ugripper::runtime::EpisodeManager::finalizeEpisodeDir(const std::str
     return targetPath.string();
 }
 
-bool ugripper::runtime::EpisodeManager::writeFilteredCalibration(const std::string &episodeDir, std::string *errorMessage) const
+bool DA::Ugripper::EpisodeManager::writeFilteredCalibration(const std::string &episodeDir, std::string *errorMessage) const
 {
     ordered_json mainImages = ordered_json::object();
     ordered_json tactileImages = ordered_json::object();
@@ -1168,7 +1168,7 @@ bool ugripper::runtime::EpisodeManager::writeFilteredCalibration(const std::stri
     return true;
 }
 
-bool ugripper::runtime::EpisodeManager::prepareEpisodeOutputs(const std::string &episodeDir, std::string *errorMessage) const
+bool DA::Ugripper::EpisodeManager::prepareEpisodeOutputs(const std::string &episodeDir, std::string *errorMessage) const
 {
     (void)episodeDir;
     (void)errorMessage;

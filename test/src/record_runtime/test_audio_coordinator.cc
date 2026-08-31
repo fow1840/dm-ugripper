@@ -11,7 +11,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-class FakeAudioCommandPort : public ugripper::runtime::AudioCommandPort
+class FakeAudioCommandPort : public DA::Ugripper::AudioCommandPort
 {
 public:
     void ResetReadyState() override
@@ -70,8 +70,8 @@ TEST(AudioCoordinatorTest, StartsPlayerAndSendsCommand)
     const fs::path audio_pipe = temp_dir.path() / "audio.pipe";
     const fs::path ready_file = temp_dir.path() / "audio.ready";
 
-    ugripper::runtime::ProcessSupervisor supervisor;
-    ugripper::runtime::AudioCoordinator coordinator(
+    DA::Ugripper::ProcessSupervisor supervisor;
+    DA::Ugripper::AudioCoordinator coordinator(
         &supervisor,
         {
             .player_arguments =
@@ -91,7 +91,7 @@ TEST(AudioCoordinatorTest, StartsPlayerAndSendsCommand)
 
     std::string error;
     ASSERT_TRUE(coordinator.StartAudioPlayer(&error)) << error;
-    EXPECT_TRUE(coordinator.audio_player_started());
+    EXPECT_TRUE(coordinator.IsAudioPlayerStarted());
 
     coordinator.SendCommand("ready");
 
@@ -102,7 +102,7 @@ TEST(AudioCoordinatorTest, StartsPlayerAndSendsCommand)
     EXPECT_EQ(line, "ready");
 
     coordinator.StopAudioPlayer();
-    EXPECT_FALSE(coordinator.audio_player_started());
+    EXPECT_FALSE(coordinator.IsAudioPlayerStarted());
 }
 
 TEST(AudioCoordinatorTest, TimesOutWhenPipeNeverAppears)
@@ -111,8 +111,8 @@ TEST(AudioCoordinatorTest, TimesOutWhenPipeNeverAppears)
     const fs::path audio_pipe = temp_dir.path() / "missing.pipe";
     const fs::path ready_file = temp_dir.path() / "missing.ready";
 
-    ugripper::runtime::ProcessSupervisor supervisor;
-    ugripper::runtime::AudioCoordinator coordinator(
+    DA::Ugripper::ProcessSupervisor supervisor;
+    DA::Ugripper::AudioCoordinator coordinator(
         &supervisor,
         {
             .player_arguments = {"/bin/sh", "-c", "sleep 1"},
@@ -135,8 +135,8 @@ TEST(AudioCoordinatorTest, SupportsInjectedAudioCommandPort)
     auto port = std::make_unique<FakeAudioCommandPort>();
     FakeAudioCommandPort* port_ptr = port.get();
 
-    ugripper::runtime::ProcessSupervisor supervisor;
-    ugripper::runtime::AudioCoordinator coordinator(
+    DA::Ugripper::ProcessSupervisor supervisor;
+    DA::Ugripper::AudioCoordinator coordinator(
         &supervisor,
         {
             .player_arguments = {"/bin/sh", "-c", "sleep 5"},
@@ -153,7 +153,7 @@ TEST(AudioCoordinatorTest, SupportsInjectedAudioCommandPort)
     std::string error;
     ASSERT_TRUE(coordinator.StartAudioPlayer(&error)) << error;
     EXPECT_TRUE(port_ptr->reset_ready_called);
-    EXPECT_TRUE(coordinator.audio_player_started());
+    EXPECT_TRUE(coordinator.IsAudioPlayerStarted());
 
     coordinator.SendCommand("ready");
     ASSERT_EQ(port_ptr->commands.size(), 1u);

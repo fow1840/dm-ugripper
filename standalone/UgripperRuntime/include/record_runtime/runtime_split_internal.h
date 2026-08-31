@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace ugripper::runtime::record_runtime_detail {
+namespace DA::Ugripper::detail {
 
 struct ProcTaskDState
 {
@@ -53,10 +53,10 @@ extern const std::array<const char *, 6> kRightCriticalDevicePaths;
 
 std::optional<ProcTaskDState> FindFirstDStateTask(int pid);
 bool IsCameraRecorderKernelHangReason(const std::string &reason);
-bool IsCameraRecorderMainCameraFault(const ugripper::runtime::HealthFault &fault);
+bool IsCameraRecorderMainCameraFault(const DA::Ugripper::HealthFault &fault);
 bool IsImmediateRestoreUsbTriggerCause(const std::string &cause);
-ugripper::runtime::HardwareFaultSide restoreUsbSideForText(const std::string &text);
-const char *restoreUsbSideName(ugripper::runtime::HardwareFaultSide side);
+DA::Ugripper::HardwareFaultSide restoreUsbSideForText(const std::string &text);
+const char *restoreUsbSideName(DA::Ugripper::HardwareFaultSide side);
 std::string compactRestoreUsbEvidence(std::string detail);
 bool isCriticalDeviceMissingEvidence(const std::string &detail);
 const char *boolText(bool value);
@@ -75,4 +75,4 @@ std::optional<YuzhouMainCameraIdentity> readYuzhouMainCameraIdentity(
     const std::string &resolvedTarget,
     std::string *detail);
 
-}  // namespace ugripper::runtime::record_runtime_detail
+}  // namespace DA::Ugripper::detail

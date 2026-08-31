@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 struct GripperRefreshRuntimeView
 {
@@ -93,4 +93,4 @@ inline bool ShouldMarkTactileReferencePending(bool refresh_from_reconnect)
     return refresh_from_reconnect;
 }
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

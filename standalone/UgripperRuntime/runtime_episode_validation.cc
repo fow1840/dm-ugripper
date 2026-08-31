@@ -52,9 +52,9 @@ namespace fs = std::filesystem;
 using json = nlohmann::json;
 using ordered_json = nlohmann::ordered_json;
 
-using namespace ugripper::runtime::record_runtime_detail;
+using namespace DA::Ugripper::detail;
 
-namespace ugripper::runtime::record_runtime_detail {
+namespace DA::Ugripper::detail {
 
 fs::path tactileReferenceRawPath(const fs::path &root, const std::string &serial)
 {
@@ -1668,7 +1668,7 @@ bool loadEffectiveVideoDurationSec(const std::string &episodeDir,
     return true;
 }
 
-}  // namespace ugripper::runtime::record_runtime_detail
+}  // namespace DA::Ugripper::detail
 
 namespace
 {
@@ -1692,13 +1692,13 @@ bool setEpisodeValidationFailure(std::string *errorMessage,
 }
 }
 
-bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episodeDir,
+bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir,
                                                     std::string *errorMessage,
                                                     std::vector<std::string> *errorTypes,
                                                     std::vector<TactileValidationFinding> *tactileFindings) const
 {
     const int64_t validateStartMs = steadyNowMs();
-    logPerf((::DA::utils::LogString() << "[PERF] validateEpisode begin: episode_dir=" << episodeDir).str());
+    logPerf((::DA::utils::LogString() << "[PERF] ValidateEpisode begin: episode_dir=" << episodeDir).str());
     json timingRoot = json::object();
     std::string timingLoadError;
     loadJsonFile(episodeTimingPath(episodeDir).string(), &timingRoot, &timingLoadError);
@@ -1718,7 +1718,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
-                ugripper::runtime::kErrorTypeMissingFile,
+                DA::Ugripper::kErrorTypeMissingFile,
                 "missing or empty video file: " + path);
         }
     }
@@ -1731,7 +1731,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
-                ugripper::runtime::kErrorTypeMissingFile,
+                DA::Ugripper::kErrorTypeMissingFile,
                 "missing or empty file: " + path);
         }
     }
@@ -1747,7 +1747,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
-                ugripper::runtime::kErrorTypeCalibrationError,
+                DA::Ugripper::kErrorTypeCalibrationError,
                 "main camera calibration cache invalid: camera=" + state.cameraName +
                     " device=" + state.devicePath + " missing");
         }
@@ -1756,7 +1756,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
-                ugripper::runtime::kErrorTypeCalibrationError,
+                DA::Ugripper::kErrorTypeCalibrationError,
                 "main camera SN cache invalid: camera=" + state.cameraName +
                     " device=" + state.devicePath +
                     " detail=" + (state.lastError.empty() ? "empty SN" : state.lastError));
@@ -1768,7 +1768,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
-                ugripper::runtime::kErrorTypeCalibrationError,
+                DA::Ugripper::kErrorTypeCalibrationError,
                 "main camera calibration cache invalid: camera=" + state.cameraName +
                     " device=" + state.devicePath +
                     " detail=" + (!calibrationDetail.empty()
@@ -1782,7 +1782,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
         return setEpisodeValidationFailure(
             errorMessage,
             errorTypes,
-            ugripper::runtime::kErrorTypeRuntimeError,
+            DA::Ugripper::kErrorTypeRuntimeError,
             "ffprobe is required for episode validation but was not found in PATH");
     }
 
@@ -1794,7 +1794,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
         return setEpisodeValidationFailure(
             errorMessage,
             errorTypes,
-            ugripper::runtime::kErrorTypeMissingFile,
+            DA::Ugripper::kErrorTypeMissingFile,
             "metadata validation failed: " + metadataError);
     }
 
@@ -1815,7 +1815,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
-                ugripper::runtime::kErrorTypeMissingFile,
+                DA::Ugripper::kErrorTypeMissingFile,
                 "video unreadable or missing timing metadata: " + task.probe.fileName +
                     " (" + task.errorMessage + ")");
         }
@@ -1837,7 +1837,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
-                ugripper::runtime::kErrorTypeFrameLoss,
+                DA::Ugripper::kErrorTypeFrameLoss,
                 effectiveSpanError);
         }
 
@@ -1846,7 +1846,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
-                ugripper::runtime::kErrorTypeCollectionDurationTooShort,
+                DA::Ugripper::kErrorTypeCollectionDurationTooShort,
                 "video effective span too short: " + task.probe.fileName +
                     " span=" + formatSeconds(effectiveSpanSec) +
                     "s, source=" + effectiveSpanSource +
@@ -1883,7 +1883,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
-                ugripper::runtime::kErrorTypeFrameLoss,
+                DA::Ugripper::kErrorTypeFrameLoss,
                 "video span gap too large: " + probe.fileName +
                     " span=" + formatSeconds(effectiveSpanSec) +
                     "s, source=" + effectiveSpanSource +
@@ -1994,7 +1994,7 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
-                ugripper::runtime::kErrorTypeFrameLoss,
+                DA::Ugripper::kErrorTypeFrameLoss,
                 result.errorMessage.empty() ? "tail check failed" : result.errorMessage);
         }
         tailDetails.push_back(result.detail);
@@ -2004,13 +2004,13 @@ bool ugripper::runtime::EpisodeManager::validateEpisode(const std::string &episo
              << " elapsed_ms=" << (steadyNowMs() - tailCheckStartMs)
              << " details=" << joinStrings(tailDetails, "; ")).str());
 
-    logPerf((::DA::utils::LogString() << "[PERF] validateEpisode end: episode_dir=" << episodeDir
+    logPerf((::DA::utils::LogString() << "[PERF] ValidateEpisode end: episode_dir=" << episodeDir
               << " elapsed_ms=" << (steadyNowMs() - validateStartMs)
               << " reference_span_sec=" << formatSeconds(referenceSpanSec)).str());
     return true;
 }
 
-const std::string &ugripper::runtime::EpisodeManager::dataRoot() const
+const std::string &DA::Ugripper::EpisodeManager::GetDataRoot() const
 {
     return episodeRoot_;
 }

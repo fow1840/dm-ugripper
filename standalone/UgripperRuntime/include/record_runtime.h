@@ -29,6 +29,8 @@
 #include <thread>
 #include <vector>
 
+namespace DA::Ugripper {
+
 struct RecordRuntimeOptions
 {
     std::vector<std::string> gripperPorts;
@@ -71,9 +73,9 @@ public:
     explicit RecordRuntime(RecordRuntimeOptions options);
     ~RecordRuntime();
 
-    bool initialize();
-    int run();
-    void requestStop() noexcept;
+    bool Initialize();
+    int Run();
+    void Stop() noexcept;
 
 private:
     struct ButtonSnapshot
@@ -197,7 +199,7 @@ private:
         uint64_t readyBreathPhaseOffsetMs_ = 0;
     };
 
-    using EpisodeManager = ugripper::runtime::EpisodeManager;
+    using EpisodeManager = DA::Ugripper::EpisodeManager;
 
     static GripperLedEffect makeLedEffect(LedState state, double progress = 0.0);
     static std::string readEnvValue(const std::string &envFile, const std::string &key);
@@ -210,7 +212,7 @@ private:
     static bool fileExistsAndNotEmpty(const std::string &path);
     static bool runCommandSync(const std::vector<std::string> &arguments);
     static const char *ledStateName(LedState state);
-    static const char *hmiEventName(ugripper::runtime::HmiEventType event_type);
+    static const char *hmiEventName(DA::Ugripper::HmiEventType event_type);
 
     void handleGripperConnectionEvents();
     void processPendingGripperRefreshes();
@@ -234,14 +236,14 @@ private:
     void handleButtons(const ButtonSnapshot &buttons);
     bool handleShortUpAction();
     bool handleShortDownAction();
-    bool handlePhysicalRecordShortPress(ugripper::runtime::HmiEventType eventType);
+    bool handlePhysicalRecordShortPress(DA::Ugripper::HmiEventType eventType);
     void clearPendingPhysicalRecordShortPress(const char *reason, uint64_t nowMs);
     bool handleLongUpAction();
     bool handleLongDownAction();
-    void handleButtonAction(ugripper::runtime::ButtonAction action);
+    void handleButtonAction(DA::Ugripper::ButtonAction action);
     void resetLeftButtonTracking();
     void handleRecordingTaskMarker();
-    void playHmiFeedback(ugripper::runtime::HmiFeedbackEvent event);
+    void playHmiFeedback(DA::Ugripper::HmiFeedbackEvent event);
     void handleDualShutdownAction();
     bool handleLeftDualUmountAction();
     bool handleLeftSingleLongMarkFailedAction();
@@ -262,7 +264,7 @@ private:
     bool startStereoDaemon();
     void stopStereoDaemon();
     void maintainStereoDaemon();
-    std::optional<ugripper::runtime::HealthFault> currentHealthFault() const;
+    std::optional<DA::Ugripper::HealthFault> currentHealthFault() const;
     bool isStereoStartupWaiting() const;
     void maintainRestoreUsbRetry();
     void maintainRestoreUsbFailureAlarm();
@@ -316,28 +318,28 @@ private:
     void cancelBackgroundTactileValidation();
     void requestStopBackgroundTactileValidation();
     void applyTactileValidationFindings(
-        const std::vector<ugripper::runtime::TactileValidationFinding> &findings);
+        const std::vector<DA::Ugripper::TactileValidationFinding> &findings);
     void applyIdleState();
     void setAudioRecoveryCommand(std::string command);
     void sendAudioCommand(const std::string &command) const;
     void setLedState(LedState state, double progress = 0.0);
     void setTactileWarningLedState();
-    void setHardwareFaultLedState(const ugripper::runtime::HealthFault &fault);
-    void maybeTriggerRestoreUsbForHardwareFault(const ugripper::runtime::HealthFault &fault);
-    std::optional<ugripper::runtime::HealthFault> detectCameraRecorderStartupFailure();
-    std::optional<ugripper::runtime::HealthFault> detectCameraRecorderStartupFailureForEpisode(const std::string &episodeDir);
-    std::optional<ugripper::runtime::HealthFault> detectCameraRecorderKernelHang();
+    void setHardwareFaultLedState(const DA::Ugripper::HealthFault &fault);
+    void maybeTriggerRestoreUsbForHardwareFault(const DA::Ugripper::HealthFault &fault);
+    std::optional<DA::Ugripper::HealthFault> detectCameraRecorderStartupFailure();
+    std::optional<DA::Ugripper::HealthFault> detectCameraRecorderStartupFailureForEpisode(const std::string &episodeDir);
+    std::optional<DA::Ugripper::HealthFault> detectCameraRecorderKernelHang();
     void resetCameraRecorderDStateTracking();
-    void handleFailureState(ugripper::runtime::RuntimeLedState state,
+    void handleFailureState(DA::Ugripper::RuntimeLedState state,
                             const std::vector<std::string> &errorTypes,
                             const std::string &detail);
     void logRestoreUsbSkipOnce(const std::string &key, const std::string &message);
     void triggerRestoreUsbOnError(const std::string &reason, bool checkMainCameraRecovery = false);
-    bool shouldRestoreUsbForFailure(ugripper::runtime::RuntimeLedState state,
+    bool shouldRestoreUsbForFailure(DA::Ugripper::RuntimeLedState state,
                                     const std::vector<std::string> &errorTypes,
                                     const std::string &detail,
                                     bool *checkMainCameraRecovery) const;
-    bool shouldDeferRestoreUsbForSide(ugripper::runtime::HardwareFaultSide side,
+    bool shouldDeferRestoreUsbForSide(DA::Ugripper::HardwareFaultSide side,
                                       const std::string &reason) const;
     bool sideHasAnyRestoreUsbDevice(const std::string &side) const;
     bool restoreUsbCriticalSymlinksPresent(std::string *detail) const;
@@ -349,7 +351,7 @@ private:
     bool isRecordingActive() const;
     const std::string &currentEpisodeDir() const;
     const std::string &lastEpisodeDir() const;
-    static LedState toLedState(ugripper::runtime::RuntimeLedState state);
+    static LedState toLedState(DA::Ugripper::RuntimeLedState state);
 
     RecordRuntimeOptions options_;
     std::atomic<bool> stopRequested_{false};
@@ -376,11 +378,11 @@ private:
     bool leftSingleLongHandled_ = false;
     uint64_t recordingRightUpPressedSinceMs_ = 0;
     bool recordingRightUpHandled_ = false;
-    utils::BufferedFifoLineReader recordControlReader_{4096};
+    ::utils::BufferedFifoLineReader recordControlReader_{4096};
     uint64_t lastRecordControlActionMs_ = 0;
     bool hasPendingPhysicalRecordShortPress_ = false;
-    ugripper::runtime::HmiEventType pendingPhysicalRecordShortPress_ =
-        ugripper::runtime::HmiEventType::ShortUpPressed;
+    DA::Ugripper::HmiEventType pendingPhysicalRecordShortPress_ =
+        DA::Ugripper::HmiEventType::ShortUpPressed;
     uint64_t pendingPhysicalRecordShortPressMs_ = 0;
     struct TactileWarningSideState
     {
@@ -393,27 +395,27 @@ private:
     struct BackgroundTactileValidationResult
     {
         std::string episodeDir;
-        std::vector<ugripper::runtime::TactileValidationFinding> findings;
+        std::vector<DA::Ugripper::TactileValidationFinding> findings;
     };
     std::mutex backgroundTactileMutex_;
     std::string pendingBackgroundTactileEpisodeDir_;
     std::future<BackgroundTactileValidationResult> backgroundTactileFuture_;
     std::atomic<bool> stopBackgroundTactileValidation_{false};
-    std::optional<ugripper::runtime::HealthFault> activeHardwareFault_;
+    std::optional<DA::Ugripper::HealthFault> activeHardwareFault_;
     bool episodeManagerInitialized_ = false;
     bool dataStorageWaitLogged_ = false;
     LedState lastLoggedLedState_ = LedState::Init;
     double lastLoggedLedProgress_ = 0.0;
     bool hasLastLoggedLedState_ = false;
-    ugripper::runtime::HealthState healthState_{};
+    DA::Ugripper::HealthState healthState_{};
     std::unique_ptr<EpisodeManager> episodeManager_;
-    using MainCameraRefreshResult = ugripper::runtime::DeviceStateManager::MainCameraRefreshResult;
-    using MainCameraRuntimeCache = ugripper::runtime::DeviceStateManager::MainCameraRuntimeCache;
-    using TactileCameraRuntimeCache = ugripper::runtime::DeviceStateManager::TactileCameraRuntimeCache;
-    ugripper::runtime::DeviceStateManager deviceStateManager_;
+    using MainCameraRefreshResult = DA::Ugripper::DeviceStateManager::MainCameraRefreshResult;
+    using MainCameraRuntimeCache = DA::Ugripper::DeviceStateManager::MainCameraRuntimeCache;
+    using TactileCameraRuntimeCache = DA::Ugripper::DeviceStateManager::TactileCameraRuntimeCache;
+    DA::Ugripper::DeviceStateManager deviceStateManager_;
     // Compatibility views keep the existing cross-file implementation stable;
     // DeviceStateManager owns the referenced state.
-    std::array<ugripper::runtime::GripperRuntimeState, 2> &gripperRuntimeStates_ =
+    std::array<DA::Ugripper::GripperRuntimeState, 2> &gripperRuntimeStates_ =
         deviceStateManager_.GetState().gripperRuntimeStates;
     std::array<bool, 2> &pendingGripperRefresh_ =
         deviceStateManager_.GetState().pendingGripperRefresh;
@@ -421,7 +423,7 @@ private:
         deviceStateManager_.GetState().mainCameraRuntimeStates;
     std::vector<TactileCameraRuntimeCache> &tactileCameraRuntimeStates_ =
         deviceStateManager_.GetState().tactileCameraRuntimeStates;
-    ugripper::runtime::UsbRecoveryCoordinator usbRecoveryCoordinator_;
+    DA::Ugripper::UsbRecoveryCoordinator usbRecoveryCoordinator_;
     // Compatibility views preserve the current recovery sequencing and detached
     // worker captures; UsbRecoveryCoordinator owns the referenced state.
     std::shared_ptr<std::atomic<bool>> &restoreUsbInProgress_ =
@@ -484,15 +486,15 @@ private:
         usbRecoveryCoordinator_.GetState().lastReason;
     GripperPanelManager panelManager_;
     std::unique_ptr<HmiLedController> ledController_;
-    mutable ugripper::runtime::ProcessSupervisor processSupervisor_{};
-    std::unique_ptr<ugripper::runtime::HmiController> hmiController_;
-    std::unique_ptr<ugripper::runtime::ButtonActionRouter> buttonActionRouter_;
-    ugripper::runtime::TaskMarkerTracker taskMarkerTracker_;
-    std::unique_ptr<ugripper::runtime::HealthMonitor> healthMonitor_;
-    std::unique_ptr<ugripper::runtime::AudioCoordinator> audioCoordinator_;
-    std::unique_ptr<ugripper::runtime::StereoSessionClient> stereoSessionClient_;
-    std::unique_ptr<ugripper::runtime::ShutdownRequestPort> shutdownRequestPort_;
-    std::optional<ugripper::runtime::SubprocessHandle> egoRecordingWorker_;
+    mutable DA::Ugripper::ProcessSupervisor processSupervisor_{};
+    std::unique_ptr<DA::Ugripper::HmiController> hmiController_;
+    std::unique_ptr<DA::Ugripper::ButtonActionRouter> buttonActionRouter_;
+    DA::Ugripper::TaskMarkerTracker taskMarkerTracker_;
+    std::unique_ptr<DA::Ugripper::HealthMonitor> healthMonitor_;
+    std::unique_ptr<DA::Ugripper::AudioCoordinator> audioCoordinator_;
+    std::unique_ptr<DA::Ugripper::StereoSessionClient> stereoSessionClient_;
+    std::unique_ptr<DA::Ugripper::ShutdownRequestPort> shutdownRequestPort_;
+    std::optional<DA::Ugripper::SubprocessHandle> egoRecordingWorker_;
     bool egoRecordingAttempted_ = false;
     std::string egoBoundSerial_;
     bool egoBoundConnected_ = true;
@@ -502,7 +504,9 @@ private:
     std::string egoProbeSerial_;
     std::future<bool> egoBindingActionFuture_;
     std::future<bool> egoProbeFuture_;
-    std::unique_ptr<ugripper::runtime::RecordingOrchestrator> recordingOrchestrator_;
+    std::unique_ptr<DA::Ugripper::RecordingOrchestrator> recordingOrchestrator_;
 };
+
+}  // namespace DA::Ugripper
 
 #endif

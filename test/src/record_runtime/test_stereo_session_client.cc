@@ -50,7 +50,7 @@ struct FakeStereoWrite
     uint64_t command_seq = 0;
 };
 
-class FakeStereoSessionPort : public ugripper::runtime::StereoSessionPort
+class FakeStereoSessionPort : public DA::Ugripper::StereoSessionPort
 {
 public:
     void ResetSessionState() override
@@ -79,7 +79,7 @@ public:
         return true;
     }
 
-    bool LoadStatus(ugripper::runtime::StereoSessionStatusSnapshot* status,
+    bool LoadStatus(DA::Ugripper::StereoSessionStatusSnapshot* status,
                     std::string* error_message) const override
     {
         if (statuses.empty())
@@ -101,7 +101,7 @@ public:
     }
 
     mutable std::vector<FakeStereoWrite> writes;
-    mutable std::vector<ugripper::runtime::StereoSessionStatusSnapshot> statuses;
+    mutable std::vector<DA::Ugripper::StereoSessionStatusSnapshot> statuses;
     int reset_count = 0;
 };
 
@@ -111,8 +111,8 @@ TEST(StereoSessionClientTest, WritesControlFifoAndReadsFinalizeStatus)
     const fs::path control_pipe = temp_dir.path() / "stereo_control.pipe";
     const fs::path status_file = temp_dir.path() / "stereo_status.json";
 
-    ugripper::runtime::ProcessSupervisor supervisor;
-    ugripper::runtime::StereoSessionClient client(
+    DA::Ugripper::ProcessSupervisor supervisor;
+    DA::Ugripper::StereoSessionClient client(
         &supervisor,
         {
             .daemon_arguments = {"/bin/sh", "-c", "sleep 5"},
@@ -164,8 +164,8 @@ TEST(StereoSessionClientTest, ReportsFinalizeErrorFromStatusFile)
     const fs::path control_pipe = temp_dir.path() / "stereo_control.pipe";
     const fs::path status_file = temp_dir.path() / "stereo_status.json";
 
-    ugripper::runtime::ProcessSupervisor supervisor;
-    ugripper::runtime::StereoSessionClient client(
+    DA::Ugripper::ProcessSupervisor supervisor;
+    DA::Ugripper::StereoSessionClient client(
         &supervisor,
         {
             .daemon_arguments = {"/bin/sh", "-c", "sleep 5"},
@@ -210,8 +210,8 @@ TEST(StereoSessionClientTest, DirectSideFifosStopAndFinalizeWithoutTopControlPip
     ASSERT_GE(left_fd, 0);
     ASSERT_GE(right_fd, 0);
 
-    ugripper::runtime::ProcessSupervisor supervisor;
-    ugripper::runtime::StereoSessionClient client(
+    DA::Ugripper::ProcessSupervisor supervisor;
+    DA::Ugripper::StereoSessionClient client(
         &supervisor,
         {
             .daemon_arguments = {"/bin/sh", "-c", "sleep 5"},
@@ -259,7 +259,7 @@ TEST(StereoSessionClientTest, DirectSideFifosStopAndFinalizeWithoutTopControlPip
 
     EXPECT_TRUE(client.WaitForFinalize(episode_dir.string(), 200, &error)) << error;
     std::string session_json;
-    ASSERT_TRUE(client.LastSessionJson(episode_dir.string(), &session_json, &error)) << error;
+    ASSERT_TRUE(client.GetLastSessionJson(episode_dir.string(), &session_json, &error)) << error;
     const json session = json::parse(session_json);
     EXPECT_EQ(session.value("episode_dir", std::string()), episode_dir.string());
     EXPECT_EQ(session["cameras"]["left_stereo"].value("record_time_offset_us", 0), 1000);
@@ -282,8 +282,8 @@ TEST(StereoSessionClientTest, ReportsFinalizeErrorWhileDaemonIsStillFinalizing)
         .last_session_episode_dir = "",
     });
 
-    ugripper::runtime::ProcessSupervisor supervisor;
-    ugripper::runtime::StereoSessionClient client(
+    DA::Ugripper::ProcessSupervisor supervisor;
+    DA::Ugripper::StereoSessionClient client(
         &supervisor,
         {
             .daemon_arguments = {"/bin/sh", "-c", "sleep 5"},
@@ -315,8 +315,8 @@ TEST(StereoSessionClientTest, UsesInjectedSessionPortForCommandsAndStatus)
         .last_session_episode_dir = "/tmp/episode-3",
     });
 
-    ugripper::runtime::ProcessSupervisor supervisor;
-    ugripper::runtime::StereoSessionClient client(
+    DA::Ugripper::ProcessSupervisor supervisor;
+    DA::Ugripper::StereoSessionClient client(
         &supervisor,
         {
             .daemon_arguments = {"/bin/sh", "-c", "sleep 5"},

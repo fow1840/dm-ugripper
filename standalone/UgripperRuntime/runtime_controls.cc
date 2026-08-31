@@ -34,7 +34,9 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 using ordered_json = nlohmann::ordered_json;
-using namespace ugripper::runtime::record_runtime_detail;
+using namespace DA::Ugripper::detail;
+
+namespace DA::Ugripper {
 
 void RecordRuntime::sendAudioCommand(const std::string &command) const
 {
@@ -129,7 +131,7 @@ bool RecordRuntime::startRecording(bool resetRecording)
         setLedState(LedState::Init);
         return false;
     }
-    if (const std::optional<ugripper::runtime::HealthFault> fault = currentHealthFault())
+    if (const std::optional<DA::Ugripper::HealthFault> fault = currentHealthFault())
     {
         DM_LOG_WARN("{}", (::DA::utils::LogString()
             << "ignore start recording while hardware health fault is present"
@@ -192,7 +194,7 @@ bool RecordRuntime::handleShortUpAction()
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "BTN_UP short press" << std::endl).str());
     if (!isRecordingActive())
     {
-        if (healthState_.status == ugripper::runtime::HealthStatus::Error)
+        if (healthState_.status == DA::Ugripper::HealthStatus::Error)
         {
             DM_LOG_WARN("{}", (::DA::utils::LogString() << "ignore start recording while hardware health is in error state" << std::endl).str());
             sendAudioCommand("error");
@@ -208,7 +210,7 @@ bool RecordRuntime::handleShortDownAction()
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "BTN_DOWN short press" << std::endl).str());
     if (!isRecordingActive())
     {
-        if (healthState_.status == ugripper::runtime::HealthStatus::Error)
+        if (healthState_.status == DA::Ugripper::HealthStatus::Error)
         {
             DM_LOG_WARN("{}", (::DA::utils::LogString() << "ignore reset recording while hardware health is in error state" << std::endl).str());
             sendAudioCommand("error");
@@ -227,7 +229,7 @@ bool RecordRuntime::handleShortDownAction()
     return stopRecording(false, "BTN_DOWN short stop");
 }
 
-bool RecordRuntime::handlePhysicalRecordShortPress(ugripper::runtime::HmiEventType eventType)
+bool RecordRuntime::handlePhysicalRecordShortPress(DA::Ugripper::HmiEventType eventType)
 {
     const uint64_t nowMs = currentSteadyMs();
     const char *eventName = hmiEventName(eventType);
@@ -246,7 +248,7 @@ bool RecordRuntime::handlePhysicalRecordShortPress(ugripper::runtime::HmiEventTy
                 << " result=accepted"
                 << " elapsed_ms=" << elapsedMs
                 << " window_ms=" << kPhysicalRecordDoubleClickMs).str());
-            if (eventType == ugripper::runtime::HmiEventType::ShortUpPressed)
+            if (eventType == DA::Ugripper::HmiEventType::ShortUpPressed)
             {
                 return handleShortUpAction();
             }
@@ -315,11 +317,11 @@ bool RecordRuntime::handleLongDownAction()
     return recordAudioClip("post", false);
 }
 
-void RecordRuntime::handleButtonAction(ugripper::runtime::ButtonAction action)
+void RecordRuntime::handleButtonAction(DA::Ugripper::ButtonAction action)
 {
     switch (action)
     {
-    case ugripper::runtime::ButtonAction::ToggleEgoBinding:
+    case DA::Ugripper::ButtonAction::ToggleEgoBinding:
         handleEgoBindingToggle();
         break;
     }
@@ -331,32 +333,32 @@ void RecordRuntime::handleRecordingTaskMarker()
     const auto result = taskMarkerTracker_.Mark(unixSeconds);
     switch (result)
     {
-    case ugripper::runtime::TaskMarkerResult::StartMarked:
+    case DA::Ugripper::TaskMarkerResult::StartMarked:
         DM_LOG_INFO("{}", (::DA::utils::LogString()
             << "recording task start marker"
             << " task_start_s=" << unixSeconds << std::endl).str());
-        playHmiFeedback(ugripper::runtime::HmiFeedbackEvent::TaskStartMarked);
+        playHmiFeedback(DA::Ugripper::HmiFeedbackEvent::TaskStartMarked);
         break;
-    case ugripper::runtime::TaskMarkerResult::StopMarked:
+    case DA::Ugripper::TaskMarkerResult::StopMarked:
         DM_LOG_INFO("{}", (::DA::utils::LogString()
             << "recording task stop marker"
             << " task_stop_s=" << unixSeconds << std::endl).str());
-        playHmiFeedback(ugripper::runtime::HmiFeedbackEvent::TaskStopMarked);
+        playHmiFeedback(DA::Ugripper::HmiFeedbackEvent::TaskStopMarked);
         break;
-    case ugripper::runtime::TaskMarkerResult::Rejected:
+    case DA::Ugripper::TaskMarkerResult::Rejected:
         DM_LOG_WARN("{}", (::DA::utils::LogString()
             << "ignore recording task marker after start and stop were already marked"
             << std::endl).str());
-        playHmiFeedback(ugripper::runtime::HmiFeedbackEvent::TaskMarkerRejected);
+        playHmiFeedback(DA::Ugripper::HmiFeedbackEvent::TaskMarkerRejected);
         break;
     }
 }
 
-void RecordRuntime::playHmiFeedback(ugripper::runtime::HmiFeedbackEvent event)
+void RecordRuntime::playHmiFeedback(DA::Ugripper::HmiFeedbackEvent event)
 {
-    const auto pattern = ugripper::runtime::FeedbackPatternFor(event);
+    const auto pattern = DA::Ugripper::FeedbackPatternFor(event);
     const auto setEnabled = [this, &pattern](bool enabled, uint16_t frequencyHz) {
-        if (pattern.led_side == ugripper::runtime::HmiFeedbackSide::Both)
+        if (pattern.led_side == DA::Ugripper::HmiFeedbackSide::Both)
         {
             panelManager_.setLedColor(
                 enabled ? pattern.red : 0,
@@ -378,7 +380,7 @@ void RecordRuntime::playHmiFeedback(ugripper::runtime::HmiFeedbackEvent event)
                                                      frequencyHz,
                                                  }
                                                : GripperBeepState{0, 0};
-        if (pattern.beep_side == ugripper::runtime::HmiFeedbackSide::Both)
+        if (pattern.beep_side == DA::Ugripper::HmiFeedbackSide::Both)
         {
             panelManager_.setBeepStateForSide("left", beepState);
             panelManager_.setBeepStateForSide("right", beepState);
@@ -407,12 +409,12 @@ void RecordRuntime::playHmiFeedback(ugripper::runtime::HmiFeedbackEvent event)
         }
     }
     const bool confirmBindingFeedbackSilence =
-        event == ugripper::runtime::HmiFeedbackEvent::EgoBound ||
-        event == ugripper::runtime::HmiFeedbackEvent::EgoUnbound ||
-        event == ugripper::runtime::HmiFeedbackEvent::EgoBindingFailed;
+        event == DA::Ugripper::HmiFeedbackEvent::EgoBound ||
+        event == DA::Ugripper::HmiFeedbackEvent::EgoUnbound ||
+        event == DA::Ugripper::HmiFeedbackEvent::EgoBindingFailed;
     if (confirmBindingFeedbackSilence)
     {
-        if (pattern.beep_side == ugripper::runtime::HmiFeedbackSide::Both)
+        if (pattern.beep_side == DA::Ugripper::HmiFeedbackSide::Both)
         {
             panelManager_.silenceBeepForSide("left");
             panelManager_.silenceBeepForSide("right");
@@ -558,7 +560,7 @@ bool RecordRuntime::markEpisodeOperatorFailed(const std::string &episodeDir, std
     }
 
     metadata["quality_check_status"] = "fail";
-    metadata["quality_check_err_type"] = ugripper::runtime::kErrorTypeOperatorMarkedFailed;
+    metadata["quality_check_err_type"] = DA::Ugripper::kErrorTypeOperatorMarkedFailed;
 
     std::string writeError;
     if (!writeTextFileAtomically(metadataPath, metadata.dump(2) + "\n", &writeError))
@@ -666,7 +668,7 @@ bool RecordRuntime::recordAudioClip(const std::string &audioType, bool monitorUp
 
     sendAudioCommand(audioType == "pre" ? "pre_audio_recording" : "post_audio_recording");
 
-    ugripper::runtime::SubprocessHandle audioRecorder("audio_recorder");
+    DA::Ugripper::SubprocessHandle audioRecorder("audio_recorder");
     std::vector<std::string> audioRecorderArgs = resolvePythonCommand();
     audioRecorderArgs.push_back(options_.audioRecordScript);
     audioRecorderArgs.push_back("--output");
@@ -699,7 +701,7 @@ bool RecordRuntime::recordAudioClip(const std::string &audioType, bool monitorUp
     audioRecorder.SendSignal(SIGINT);
     if (!audioRecorder.Wait(5000))
     {
-        audioRecorder.Stop(ugripper::runtime::ProcessStopMode::SigTermThenKill, 1000, nullptr);
+        audioRecorder.Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
     }
 
     if (!fileExistsAndNotEmpty(captureFile.string()) || fs::file_size(captureFile) <= 44)
@@ -814,7 +816,7 @@ void RecordRuntime::handleButtons(const ButtonSnapshot &buttons)
     }
 
     const auto events = hmiController_->HandleButtons(
-        ugripper::runtime::ButtonSnapshot{.up_pressed = buttons.upPressed, .down_pressed = buttons.downPressed});
+        DA::Ugripper::ButtonSnapshot{.up_pressed = buttons.upPressed, .down_pressed = buttons.downPressed});
     for (const auto &event : events)
     {
         DM_LOG_INFO("{}", (::DA::utils::LogString()
@@ -824,26 +826,26 @@ void RecordRuntime::handleButtons(const ButtonSnapshot &buttons)
             << " down=" << boolText(buttons.downPressed)).str());
         switch (event.type)
         {
-        case ugripper::runtime::HmiEventType::ShortUpPressed:
+        case DA::Ugripper::HmiEventType::ShortUpPressed:
             handlePhysicalRecordShortPress(event.type);
             break;
-        case ugripper::runtime::HmiEventType::ShortDownPressed:
+        case DA::Ugripper::HmiEventType::ShortDownPressed:
             handlePhysicalRecordShortPress(event.type);
             break;
-        case ugripper::runtime::HmiEventType::LongUpPressed:
+        case DA::Ugripper::HmiEventType::LongUpPressed:
             clearPendingPhysicalRecordShortPress("long_up", currentSteadyMs());
             handleLongUpAction();
             break;
-        case ugripper::runtime::HmiEventType::LongDownPressed:
+        case DA::Ugripper::HmiEventType::LongDownPressed:
             clearPendingPhysicalRecordShortPress("long_down", currentSteadyMs());
             handleLongDownAction();
             break;
-        case ugripper::runtime::HmiEventType::ShutdownPromptRequested:
+        case DA::Ugripper::HmiEventType::ShutdownPromptRequested:
             clearPendingPhysicalRecordShortPress("shutdown_prompt", currentSteadyMs());
             DM_LOG_INFO("{}", (::DA::utils::LogString() << "dual-button chord armed" << std::endl).str());
             sendAudioCommand("shutdown");
             break;
-        case ugripper::runtime::HmiEventType::ShutdownRequested:
+        case DA::Ugripper::HmiEventType::ShutdownRequested:
             clearPendingPhysicalRecordShortPress("shutdown", currentSteadyMs());
             handleDualShutdownAction();
             break;
@@ -1088,3 +1090,5 @@ bool RecordRuntime::processRecordControlCommand(const std::string &rawCommand)
     }
     return true;
 }
+
+}  // namespace DA::Ugripper

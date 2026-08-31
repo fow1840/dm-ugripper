@@ -20,12 +20,12 @@ int64_t FakeSteadyMs()
     return g_steady_ms;
 }
 
-using ugripper::runtime::ProcessSpec;
-using ugripper::runtime::ProcessState;
-using ugripper::runtime::ProcessStatus;
-using ugripper::runtime::RecordingOrchestrator;
-using ugripper::runtime::RuntimeLedState;
-using ugripper::runtime::WorkerName;
+using DA::Ugripper::ProcessSpec;
+using DA::Ugripper::ProcessState;
+using DA::Ugripper::ProcessStatus;
+using DA::Ugripper::RecordingOrchestrator;
+using DA::Ugripper::RuntimeLedState;
+using DA::Ugripper::WorkerName;
 
 struct LedBridgeHarness
 {

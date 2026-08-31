@@ -175,7 +175,7 @@ bool WriteTextFileAtomically(const fs::path& path,
                              const std::string& content,
                              std::string* error_message);
 
-class FileAudioCommandPort : public ugripper::runtime::AudioCommandPort
+class FileAudioCommandPort : public DA::Ugripper::AudioCommandPort
 {
 public:
     FileAudioCommandPort(std::string command_path, std::string ready_path)
@@ -223,7 +223,7 @@ private:
     std::string ready_path_;
 };
 
-class FifoStereoSessionPort : public ugripper::runtime::StereoSessionPort
+class FifoStereoSessionPort : public DA::Ugripper::StereoSessionPort
 {
 public:
     FifoStereoSessionPort(std::string control_path,
@@ -287,7 +287,7 @@ public:
         return true;
     }
 
-    bool LoadStatus(ugripper::runtime::StereoSessionStatusSnapshot* status,
+    bool LoadStatus(DA::Ugripper::StereoSessionStatusSnapshot* status,
                     std::string* error_message) const override
     {
         std::ifstream input(status_path_);
@@ -447,7 +447,7 @@ private:
     fs::path status_path_;
 };
 
-class FileShutdownRequestPort : public ugripper::runtime::ShutdownRequestPort
+class FileShutdownRequestPort : public DA::Ugripper::ShutdownRequestPort
 {
 public:
     FileShutdownRequestPort(std::string request_path, std::string result_path)
@@ -599,7 +599,7 @@ bool WriteTextFileAtomically(const fs::path& path,
 
 }  // namespace
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 std::unique_ptr<AudioCommandPort> CreateFileAudioCommandPort(std::string command_path, std::string ready_path)
 {
@@ -710,7 +710,7 @@ bool SubprocessHandle::Wait(int timeout_ms)
     }
 
     return PollUntilReady(
-        static_cast<uint64_t>(timeout_ms), kProcessPollIntervalMs, &utils::CurrentSteadyMs, [this]() {
+        static_cast<uint64_t>(timeout_ms), kProcessPollIntervalMs, &::utils::CurrentSteadyMs, [this]() {
             return PollExit(false);
         });
 }
@@ -780,12 +780,12 @@ void SubprocessHandle::Reset()
     last_exit_code_ = 0;
 }
 
-int SubprocessHandle::LastExitCode() const
+int SubprocessHandle::GetLastExitCode() const
 {
     return last_exit_code_;
 }
 
-int SubprocessHandle::Pid() const
+int SubprocessHandle::GetPid() const
 {
     return pid_;
 }
@@ -873,8 +873,8 @@ bool ProcessSupervisor::Start(WorkerName worker, const ProcessSpec& spec, std::s
     slot.status.state = ProcessState::Running;
     slot.status.running = true;
     slot.status.ready = true;
-    slot.status.pid = slot.handle->Pid();
-    slot.status.last_exit_code = slot.handle->LastExitCode();
+    slot.status.pid = slot.handle->GetPid();
+    slot.status.last_exit_code = slot.handle->GetLastExitCode();
     slot.status.last_stop_reason.clear();
     return true;
 }
@@ -968,8 +968,8 @@ void ProcessSupervisor::RefreshStatus(WorkerName worker)
     }
 
     const bool running = slot.handle->IsRunning();
-    slot.status.pid = slot.handle->Pid();
-    slot.status.last_exit_code = slot.handle->LastExitCode();
+    slot.status.pid = slot.handle->GetPid();
+    slot.status.last_exit_code = slot.handle->GetLastExitCode();
     slot.status.running = running;
     slot.status.ready = running;
 
@@ -1168,12 +1168,12 @@ void AudioCoordinator::SetRecoveryCommand(std::string command)
     recovery_command_ = std::move(command);
 }
 
-bool AudioCoordinator::audio_player_started() const
+bool AudioCoordinator::IsAudioPlayerStarted() const
 {
     return audio_player_started_;
 }
 
-const std::string& AudioCoordinator::recovery_command() const
+const std::string& AudioCoordinator::GetRecoveryCommand() const
 {
     return recovery_command_;
 }
@@ -1398,7 +1398,7 @@ bool StereoSessionClient::WaitForFinalize(const std::string& episode_dir,
     return false;
 }
 
-bool StereoSessionClient::LastSessionJson(const std::string& episode_dir,
+bool StereoSessionClient::GetLastSessionJson(const std::string& episode_dir,
                                           std::string* session_json,
                                           std::string* error_message) const
 {
@@ -1477,12 +1477,12 @@ bool StereoSessionClient::LastSessionJson(const std::string& episode_dir,
     return false;
 }
 
-bool StereoSessionClient::daemon_started() const
+bool StereoSessionClient::IsDaemonStarted() const
 {
     return daemon_started_;
 }
 
-uint64_t StereoSessionClient::command_seq() const
+uint64_t StereoSessionClient::GetCommandSequence() const
 {
     return command_seq_;
 }
@@ -1508,4 +1508,4 @@ bool StereoSessionClient::WriteControl(bool recording,
     return true;
 }
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

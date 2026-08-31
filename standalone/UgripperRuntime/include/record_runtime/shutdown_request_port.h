@@ -3,7 +3,7 @@
 #include <memory>
 #include <string>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 class ShutdownRequestPort
 {
@@ -24,4 +24,4 @@ public:
 std::unique_ptr<ShutdownRequestPort> CreateFileShutdownRequestPort(std::string request_path,
                                                                    std::string result_path);
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

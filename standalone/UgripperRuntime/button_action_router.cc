@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 HmiFeedbackPattern FeedbackPatternFor(HmiFeedbackEvent event)
 {
@@ -148,14 +148,14 @@ void TaskMarkerTracker::Reset()
     task_stop_s_.reset();
 }
 
-std::optional<double> TaskMarkerTracker::task_start_s() const
+std::optional<double> TaskMarkerTracker::GetTaskStartS() const
 {
     return task_start_s_;
 }
 
-std::optional<double> TaskMarkerTracker::task_stop_s() const
+std::optional<double> TaskMarkerTracker::GetTaskStopS() const
 {
     return task_stop_s_;
 }
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

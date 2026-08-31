@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 struct HmiControllerOptions
 {
@@ -49,4 +49,4 @@ private:
     uint64_t last_button_action_ms_ = 0;
 };
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

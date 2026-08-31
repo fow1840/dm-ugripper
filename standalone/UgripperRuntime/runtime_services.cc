@@ -34,7 +34,9 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 using ordered_json = nlohmann::ordered_json;
-using namespace ugripper::runtime::record_runtime_detail;
+using namespace DA::Ugripper::detail;
+
+namespace DA::Ugripper {
 
 bool RecordRuntime::startAudioPlayer()
 {
@@ -110,7 +112,7 @@ void RecordRuntime::maintainStereoDaemon()
     }
 }
 
-std::optional<ugripper::runtime::HealthFault> RecordRuntime::currentHealthFault() const
+std::optional<DA::Ugripper::HealthFault> RecordRuntime::currentHealthFault() const
 {
     if (healthMonitor_ == nullptr)
     {
@@ -132,7 +134,7 @@ bool RecordRuntime::isStereoStartupWaiting() const
         return false;
     }
 
-    const std::optional<ugripper::runtime::HealthFault> fault = currentHealthFault();
+    const std::optional<DA::Ugripper::HealthFault> fault = currentHealthFault();
     return fault.has_value() && IsStereoStartupFaultKey(fault->key);
 }
 
@@ -300,7 +302,7 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
     {
         std::string ignoredError;
         egoRecordingWorker_->Stop(
-            ugripper::runtime::ProcessStopMode::SigTermThenKill,
+            DA::Ugripper::ProcessStopMode::SigTermThenKill,
             1000,
             &ignoredError);
         egoRecordingWorker_.reset();
@@ -330,7 +332,7 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
         }
         std::string ignoredError;
         egoRecordingWorker_->Stop(
-            ugripper::runtime::ProcessStopMode::SigTermThenKill,
+            DA::Ugripper::ProcessStopMode::SigTermThenKill,
             1000,
             &ignoredError);
         egoRecordingWorker_.reset();
@@ -353,7 +355,7 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
                 if (errorType != nullptr)
                 {
                     *errorType = status.value(
-                        "error_type", std::string(ugripper::runtime::kErrorTypeEgoTimeSyncFailed));
+                        "error_type", std::string(DA::Ugripper::kErrorTypeEgoTimeSyncFailed));
                 }
                 stopEgoStartupWorker();
                 return false;
@@ -447,7 +449,7 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
         timeSync["final_offset_ms"] = nullptr;
     }
     lastStatus["status"] = "time_sync_failed";
-    lastStatus["error_type"] = ugripper::runtime::kErrorTypeEgoTimeSyncFailed;
+    lastStatus["error_type"] = DA::Ugripper::kErrorTypeEgoTimeSyncFailed;
     lastStatus["error"] = syncError;
     lastStatus["time_sync"] = std::move(timeSync);
     std::string writeError;
@@ -465,7 +467,7 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
     }
     if (errorType != nullptr)
     {
-        *errorType = ugripper::runtime::kErrorTypeEgoTimeSyncFailed;
+        *errorType = DA::Ugripper::kErrorTypeEgoTimeSyncFailed;
     }
     return false;
 }
@@ -478,7 +480,7 @@ bool RecordRuntime::stopEgoRecording(const std::string &episodeDir,
     {
         std::string ignoredError;
         egoRecordingWorker_->Stop(
-            ugripper::runtime::ProcessStopMode::SigTermThenKill,
+            DA::Ugripper::ProcessStopMode::SigTermThenKill,
             1500,
             &ignoredError);
         egoRecordingWorker_.reset();
@@ -583,7 +585,7 @@ void RecordRuntime::handleEgoBindingToggle()
         DM_LOG_WARN("{}", (::DA::utils::LogString()
             << "ignore ego binding toggle while another binding action is running"
             << std::endl).str());
-        playHmiFeedback(ugripper::runtime::HmiFeedbackEvent::EgoBindingFailed);
+        playHmiFeedback(DA::Ugripper::HmiFeedbackEvent::EgoBindingFailed);
         return;
     }
 
@@ -593,7 +595,7 @@ void RecordRuntime::handleEgoBindingToggle()
         {
             DM_LOG_ERROR_CODE("UGR-82-05", "{}", (::DA::utils::LogString()
                 << "failed to remove ego binding and publish unbound status" << std::endl).str());
-            playHmiFeedback(ugripper::runtime::HmiFeedbackEvent::EgoBindingFailed);
+            playHmiFeedback(DA::Ugripper::HmiFeedbackEvent::EgoBindingFailed);
             return;
         }
         DM_LOG_INFO("{}", (::DA::utils::LogString()
@@ -602,7 +604,7 @@ void RecordRuntime::handleEgoBindingToggle()
         egoBoundConnected_ = true;
         egoProbeFailureCount_ = 0;
         clearEgoBindingFault();
-        playHmiFeedback(ugripper::runtime::HmiFeedbackEvent::EgoUnbound);
+        playHmiFeedback(DA::Ugripper::HmiFeedbackEvent::EgoUnbound);
         return;
     }
 
@@ -630,12 +632,12 @@ void RecordRuntime::maintainEgoBindingAction()
         egoBoundConnected_ = true;
         DM_LOG_INFO("{}", (::DA::utils::LogString()
             << "ego binding completed serial=" << egoBoundSerial_ << std::endl).str());
-        playHmiFeedback(ugripper::runtime::HmiFeedbackEvent::EgoBound);
+        playHmiFeedback(DA::Ugripper::HmiFeedbackEvent::EgoBound);
         return;
     }
     DM_LOG_ERROR_CODE("UGR-82-03", "{}",
                       (::DA::utils::LogString() << "ego binding failed" << std::endl).str());
-    playHmiFeedback(ugripper::runtime::HmiFeedbackEvent::EgoBindingFailed);
+    playHmiFeedback(DA::Ugripper::HmiFeedbackEvent::EgoBindingFailed);
 }
 
 void RecordRuntime::maintainEgoBindingHealth()
@@ -704,12 +706,12 @@ void RecordRuntime::setEgoBindingFault(const std::string &detail)
         return;
     }
     egoBindingFaultActive_ = true;
-    DM_LOG_ERROR_CODE(ugripper::runtime::UgrCodeForErrorType(
-                          ugripper::runtime::kErrorTypeEgoDisconnected),
+    DM_LOG_ERROR_CODE(DA::Ugripper::UgrCodeForErrorType(
+                          DA::Ugripper::kErrorTypeEgoDisconnected),
                       "{}", (::DA::utils::LogString() << detail << std::endl).str());
     if (isRecordingActive())
     {
-        stopRecording(true, detail, ugripper::runtime::kErrorTypeEgoDisconnected);
+        stopRecording(true, detail, DA::Ugripper::kErrorTypeEgoDisconnected);
     }
     setLedState(LedState::Error5);
     setAudioRecoveryCommand("error");
@@ -748,7 +750,7 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
         }
         if (isEgoRequired() && errorType != nullptr)
         {
-            *errorType = ugripper::runtime::kErrorTypeEgoPullIncomplete;
+            *errorType = DA::Ugripper::kErrorTypeEgoPullIncomplete;
         }
         return !isEgoRequired();
     }
@@ -778,8 +780,8 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
                         *errorType = status.value(
                             "error_type",
                             state == "not_found"
-                                ? std::string(ugripper::runtime::kErrorTypeEgoDisconnected)
-                                : std::string(ugripper::runtime::kErrorTypeEgoPullIncomplete));
+                                ? std::string(DA::Ugripper::kErrorTypeEgoDisconnected)
+                                : std::string(DA::Ugripper::kErrorTypeEgoPullIncomplete));
                     }
                     return false;
                 }
@@ -799,8 +801,8 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
                     *errorType = status.value(
                         "error_type",
                         disconnected
-                            ? std::string(ugripper::runtime::kErrorTypeEgoDisconnected)
-                            : std::string(ugripper::runtime::kErrorTypeEgoPullIncomplete));
+                            ? std::string(DA::Ugripper::kErrorTypeEgoDisconnected)
+                            : std::string(DA::Ugripper::kErrorTypeEgoPullIncomplete));
                 }
                 return false;
             }
@@ -814,7 +816,7 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
     }
     if (errorType != nullptr)
     {
-        *errorType = ugripper::runtime::kErrorTypeEgoPullIncomplete;
+        *errorType = DA::Ugripper::kErrorTypeEgoPullIncomplete;
     }
     return false;
 }
@@ -1237,3 +1239,5 @@ bool RecordRuntime::syncRuntimeLogToDisk(const char *reason) const
                          << " bytes=" << (currentSize - lastPos)).str());
     return true;
 }
+
+}  // namespace DA::Ugripper

@@ -16,9 +16,9 @@ namespace fs = std::filesystem;
 using json = nlohmann::json;
 using ordered_json = nlohmann::ordered_json;
 
-using namespace ugripper::runtime::record_runtime_detail;
+using namespace DA::Ugripper::detail;
 
-void ugripper::runtime::EpisodeManager::validateTactileEpisode(
+void DA::Ugripper::EpisodeManager::ValidateTactileEpisode(
     const std::string &episodeDir,
     std::vector<TactileValidationFinding> *tactileFindings) const
 {
@@ -370,7 +370,7 @@ void ugripper::runtime::EpisodeManager::validateTactileEpisode(
              << " elapsed_ms=" << (steadyNowMs() - tactileValidationStartMs)).str());
 }
 
-bool ugripper::runtime::EpisodeManager::updateTactileDamageMetadata(
+bool DA::Ugripper::EpisodeManager::updateTactileDamageMetadata(
     const std::string &episodeDir,
     const std::vector<TactileValidationFinding> &tactileFindings,
     std::string *errorMessage) const

@@ -11,10 +11,10 @@ uint64_t FakeNowMs()
     return g_now_ms;
 }
 
-using ugripper::runtime::ButtonSnapshot;
-using ugripper::runtime::HmiController;
-using ugripper::runtime::HmiControllerOptions;
-using ugripper::runtime::HmiEventType;
+using DA::Ugripper::ButtonSnapshot;
+using DA::Ugripper::HmiController;
+using DA::Ugripper::HmiControllerOptions;
+using DA::Ugripper::HmiEventType;
 
 TEST(HmiControllerTimingTest, UsesConfiguredDebounceWindowForShortPress)
 {

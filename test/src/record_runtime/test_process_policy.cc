@@ -16,51 +16,51 @@ namespace {
 
 TEST(ProcessSupervisorTest, StopsWorkerWithExpectedExitState)
 {
-    ugripper::runtime::ProcessSupervisor supervisor;
+    DA::Ugripper::ProcessSupervisor supervisor;
     std::string error;
     ASSERT_TRUE(supervisor.Start(
-        ugripper::runtime::WorkerName::AudioPlayer,
+        DA::Ugripper::WorkerName::AudioPlayer,
         {
             .name = "test_worker",
             .argv = {"/bin/sh", "-c", "trap 'exit 0' TERM; while true; do sleep 1; done"},
             .stop_timeout_ms = 500,
-            .stop_mode = ugripper::runtime::ProcessStopMode::SigTermThenKill,
-            .restart_policy = ugripper::runtime::ProcessRestartPolicy::Never,
+            .stop_mode = DA::Ugripper::ProcessStopMode::SigTermThenKill,
+            .restart_policy = DA::Ugripper::ProcessRestartPolicy::Never,
         },
         &error))
         << error;
 
-    EXPECT_TRUE(supervisor.IsRunning(ugripper::runtime::WorkerName::AudioPlayer));
-    ASSERT_TRUE(supervisor.Stop(ugripper::runtime::WorkerName::AudioPlayer, "unit test", &error))
+    EXPECT_TRUE(supervisor.IsRunning(DA::Ugripper::WorkerName::AudioPlayer));
+    ASSERT_TRUE(supervisor.Stop(DA::Ugripper::WorkerName::AudioPlayer, "unit test", &error))
         << error;
 
-    const auto status = supervisor.GetStatus(ugripper::runtime::WorkerName::AudioPlayer);
+    const auto status = supervisor.GetStatus(DA::Ugripper::WorkerName::AudioPlayer);
     EXPECT_FALSE(status.running);
     EXPECT_TRUE(status.expected_exit);
-    EXPECT_EQ(status.state, ugripper::runtime::ProcessState::ExitedExpected);
+    EXPECT_EQ(status.state, DA::Ugripper::ProcessState::ExitedExpected);
 }
 
 TEST(ProcessSupervisorTest, MarksUnexpectedExit)
 {
-    ugripper::runtime::ProcessSupervisor supervisor;
+    DA::Ugripper::ProcessSupervisor supervisor;
     std::string error;
     ASSERT_TRUE(supervisor.Start(
-        ugripper::runtime::WorkerName::CameraRecorder,
+        DA::Ugripper::WorkerName::CameraRecorder,
         {
             .name = "failing_worker",
             .argv = {"/bin/sh", "-c", "exit 7"},
             .stop_timeout_ms = 500,
-            .stop_mode = ugripper::runtime::ProcessStopMode::SigTermThenKill,
-            .restart_policy = ugripper::runtime::ProcessRestartPolicy::Never,
+            .stop_mode = DA::Ugripper::ProcessStopMode::SigTermThenKill,
+            .restart_policy = DA::Ugripper::ProcessRestartPolicy::Never,
         },
         &error))
         << error;
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    EXPECT_FALSE(supervisor.IsRunning(ugripper::runtime::WorkerName::CameraRecorder));
+    EXPECT_FALSE(supervisor.IsRunning(DA::Ugripper::WorkerName::CameraRecorder));
 
-    const auto status = supervisor.GetStatus(ugripper::runtime::WorkerName::CameraRecorder);
-    EXPECT_EQ(status.state, ugripper::runtime::ProcessState::ExitedUnexpected);
+    const auto status = supervisor.GetStatus(DA::Ugripper::WorkerName::CameraRecorder);
+    EXPECT_EQ(status.state, DA::Ugripper::ProcessState::ExitedUnexpected);
     EXPECT_EQ(status.last_exit_code, 7);
 }
 
@@ -72,20 +72,20 @@ TEST(ProcessSupervisorTest, StopSignalsWholeProcessGroup)
                               ("ugripper-process-group-" + std::to_string(::getpid()) + ".pid");
     fs::remove(pid_file);
 
-    ugripper::runtime::ProcessSupervisor supervisor;
+    DA::Ugripper::ProcessSupervisor supervisor;
     std::string error;
     const std::string script = "trap 'exit 0' TERM; "
                                "sleep 30 & child=$!; "
                                "echo $child > \"" + pid_file.string() + "\"; "
                                "wait $child";
     ASSERT_TRUE(supervisor.Start(
-        ugripper::runtime::WorkerName::SensorRecorder,
+        DA::Ugripper::WorkerName::SensorRecorder,
         {
             .name = "group_worker",
             .argv = {"/bin/sh", "-c", script},
             .stop_timeout_ms = 500,
-            .stop_mode = ugripper::runtime::ProcessStopMode::SigTermThenKill,
-            .restart_policy = ugripper::runtime::ProcessRestartPolicy::Never,
+            .stop_mode = DA::Ugripper::ProcessStopMode::SigTermThenKill,
+            .restart_policy = DA::Ugripper::ProcessRestartPolicy::Never,
         },
         &error))
         << error;
@@ -110,7 +110,7 @@ TEST(ProcessSupervisorTest, StopSignalsWholeProcessGroup)
     ASSERT_GT(child_pid, 0);
     ASSERT_EQ(kill(child_pid, 0), 0);
 
-    ASSERT_TRUE(supervisor.Stop(ugripper::runtime::WorkerName::SensorRecorder, "unit test", &error))
+    ASSERT_TRUE(supervisor.Stop(DA::Ugripper::WorkerName::SensorRecorder, "unit test", &error))
         << error;
 
     bool child_exited = false;

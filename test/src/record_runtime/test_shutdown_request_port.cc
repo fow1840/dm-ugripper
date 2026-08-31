@@ -41,7 +41,7 @@ TEST(ShutdownRequestPortTest, WritesShutdownRequestFile)
     const fs::path request_file = temp_dir.path() / "umi_system_action_request";
     const fs::path result_file = temp_dir.path() / "umi_system_action_result";
 
-    auto port = ugripper::runtime::CreateFileShutdownRequestPort(request_file.string(), result_file.string());
+    auto port = DA::Ugripper::CreateFileShutdownRequestPort(request_file.string(), result_file.string());
 
     std::string error;
     ASSERT_TRUE(port->RequestShutdown(&error)) << error;
@@ -64,7 +64,7 @@ TEST(ShutdownRequestPortTest, OverwritesExistingRequestFile)
         output << "stale-content\n";
     }
 
-    auto port = ugripper::runtime::CreateFileShutdownRequestPort(request_file.string(), result_file.string());
+    auto port = DA::Ugripper::CreateFileShutdownRequestPort(request_file.string(), result_file.string());
 
     std::string error;
     ASSERT_TRUE(port->RequestShutdown(&error)) << error;
@@ -82,7 +82,7 @@ TEST(ShutdownRequestPortTest, WaitsForSystemActionResult)
     const fs::path request_file = temp_dir.path() / "umi_system_action_request";
     const fs::path result_file = temp_dir.path() / "umi_system_action_result";
 
-    auto port = ugripper::runtime::CreateFileShutdownRequestPort(request_file.string(), result_file.string());
+    auto port = DA::Ugripper::CreateFileShutdownRequestPort(request_file.string(), result_file.string());
 
     std::thread writer([result_file]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));

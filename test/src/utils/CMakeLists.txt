@@ -6,7 +6,7 @@ function(add_host_only_gtest target_name)
     add_executable(${target_name} ${ARGN})
     target_link_libraries(${target_name}
         PRIVATE
-            utils
+            UGripper::utils
             GTest::gtest_main
     )
     gtest_discover_tests(${target_name}

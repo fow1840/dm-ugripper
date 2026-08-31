@@ -3,7 +3,7 @@
 #include <memory>
 #include <string>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 class AudioCommandPort
 {
@@ -19,4 +19,4 @@ public:
 std::unique_ptr<AudioCommandPort> CreateFileAudioCommandPort(std::string command_path,
                                                              std::string ready_path);
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

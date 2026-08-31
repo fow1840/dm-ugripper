@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-namespace ugripper::runtime {
+namespace DA::Ugripper {
 
 struct StereoSessionStatusSnapshot
 {
@@ -37,4 +37,4 @@ std::unique_ptr<StereoSessionPort> CreateFifoStereoSessionPort(std::string contr
                                                                std::string right_control_fifo,
                                                                std::string status_path);
 
-}  // namespace ugripper::runtime
+}  // namespace DA::Ugripper

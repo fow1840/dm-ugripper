@@ -54,7 +54,7 @@ using json = nlohmann::json;
 using ordered_json = nlohmann::ordered_json;
 
 
-namespace ugripper::runtime::record_runtime_detail {
+namespace DA::Ugripper::detail {
 int ChildFileDescriptorLimit()
 {
     const long openMax = sysconf(_SC_OPEN_MAX);
@@ -102,7 +102,7 @@ bool IsStereoStartupFaultKey(const std::string& key)
            key == "stereo_status_missing" ||
            key == "stereo_status_invalid" ||
            key == "stereo_not_ready" ||
-           key == ugripper::runtime::kErrorTypeStereoControlFailed;
+           key == DA::Ugripper::kErrorTypeStereoControlFailed;
 }
 
 bool g_perfLogEnabled = kPerfLogEnabled;
@@ -139,12 +139,12 @@ void logPerf(const std::string &message)
     DM_LOG_INFO("{}", (::DA::utils::LogString() << message << std::endl).str());
 }
 
-std::optional<ugripper::runtime::HealthFault> MakeDiskHealthFault(const std::string &key,
+std::optional<DA::Ugripper::HealthFault> MakeDiskHealthFault(const std::string &key,
                                                                   const std::string &detail)
 {
-    return ugripper::runtime::HealthFault{
-        .led_state = ugripper::runtime::RuntimeLedState::Error3,
-        .side = ugripper::runtime::HardwareFaultSide::Unknown,
+    return DA::Ugripper::HealthFault{
+        .led_state = DA::Ugripper::RuntimeLedState::Error3,
+        .side = DA::Ugripper::HardwareFaultSide::Unknown,
         .key = key,
         .detail = detail,
     };
@@ -240,20 +240,20 @@ bool IsCameraRecorderKernelHangReason(const std::string &reason)
     return reason.find(kMainCameraV4l2KernelHangKey) != std::string::npos;
 }
 
-bool IsCameraRecorderMainCameraFault(const ugripper::runtime::HealthFault &fault)
+bool IsCameraRecorderMainCameraFault(const DA::Ugripper::HealthFault &fault)
 {
     return fault.key == kMainCameraV4l2KernelHangKey ||
            fault.key == kMainCameraV4l2StartupFailureKey ||
            fault.key == kMainCameraShortStreamKey;
 }
 
-bool IsDiskHealthFault(const ugripper::runtime::HealthFault &fault)
+bool IsDiskHealthFault(const DA::Ugripper::HealthFault &fault)
 {
     return fault.key == "disk_mount_lost" ||
            fault.key == "disk_not_writable" ||
            fault.key == "disk_full" ||
            fault.key == "disk_space_unavailable" ||
-           fault.led_state == ugripper::runtime::RuntimeLedState::Error3;
+           fault.led_state == DA::Ugripper::RuntimeLedState::Error3;
 }
 
 bool IsImmediateRestoreUsbTriggerCause(const std::string &cause)
@@ -294,7 +294,7 @@ bool isMountedDiskRoot(const fs::path &diskRoot)
     return false;
 }
 
-std::optional<ugripper::runtime::HealthFault> detectDiskHealthFault(const std::string &diskRootPath)
+std::optional<DA::Ugripper::HealthFault> detectDiskHealthFault(const std::string &diskRootPath)
 {
     if (diskRootPath.empty())
     {
@@ -381,7 +381,7 @@ extern const std::array<const char *, 6> kRightCriticalDevicePaths = {{
     "/dev/right_encoder",
 }};
 
-ugripper::runtime::HardwareFaultSide restoreUsbSideForText(const std::string &text)
+DA::Ugripper::HardwareFaultSide restoreUsbSideForText(const std::string &text)
 {
     const bool hasLeft = text.find("left") != std::string::npos ||
                          text.find("/dev/cam_left") != std::string::npos ||
@@ -395,30 +395,30 @@ ugripper::runtime::HardwareFaultSide restoreUsbSideForText(const std::string &te
                           text.find("/dev/tcam_right") != std::string::npos;
     if (hasLeft && hasRight)
     {
-        return ugripper::runtime::HardwareFaultSide::Both;
+        return DA::Ugripper::HardwareFaultSide::Both;
     }
     if (hasLeft)
     {
-        return ugripper::runtime::HardwareFaultSide::Left;
+        return DA::Ugripper::HardwareFaultSide::Left;
     }
     if (hasRight)
     {
-        return ugripper::runtime::HardwareFaultSide::Right;
+        return DA::Ugripper::HardwareFaultSide::Right;
     }
-    return ugripper::runtime::HardwareFaultSide::Unknown;
+    return DA::Ugripper::HardwareFaultSide::Unknown;
 }
 
-const char *restoreUsbSideName(ugripper::runtime::HardwareFaultSide side)
+const char *restoreUsbSideName(DA::Ugripper::HardwareFaultSide side)
 {
     switch (side)
     {
-    case ugripper::runtime::HardwareFaultSide::Left:
+    case DA::Ugripper::HardwareFaultSide::Left:
         return "left";
-    case ugripper::runtime::HardwareFaultSide::Right:
+    case DA::Ugripper::HardwareFaultSide::Right:
         return "right";
-    case ugripper::runtime::HardwareFaultSide::Both:
+    case DA::Ugripper::HardwareFaultSide::Both:
         return "both";
-    case ugripper::runtime::HardwareFaultSide::Unknown:
+    case DA::Ugripper::HardwareFaultSide::Unknown:
     default:
         return "unknown";
     }
@@ -1054,4 +1054,4 @@ std::string resolveDeviceNodeTarget(const std::string &devicePath)
     return devicePath;
 }
 
-}  // namespace ugripper::runtime::record_runtime_detail
+}  // namespace DA::Ugripper::detail
