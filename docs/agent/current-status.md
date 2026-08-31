@@ -128,6 +128,9 @@
 - 录制启停、按键动作、音频片段和控制 FIFO 归属 `runtime_controls.cc`
 - `record_runtime.cc` 当前约 `1308` 行，只保留 supervisor 装配、初始化、主循环、健康状态接线和少量顶层入口
 - `UgripperRuntime` 入口复用 pp-main `DA::utils::SingleProcessInstance`，重复实例会在进入 runtime 初始化前安全退出；命令行 `--poll-ms` 的非法值会返回参数错误，不再由 `std::stoi` 异常终止进程
+- device/recovery 状态由 `DeviceStateManager` 与 `UsbRecoveryCoordinator` 真实持有，`RecordRuntime` 仅保留过渡兼容引用；`EpisodeManager` 已通过中立 DTO 与窄依赖注入解除对 `RecordRuntime` 的 friend/反向依赖
+- `RecordingOrchestrator` 的平铺 callback bag 已按 episode、filesystem、workers、stereo、ego、feedback、logs 七个 capability port 分组
+- CLI 解析已迁入独立 `runtime_cli` 边界；触觉 episode 校验与持久化 helper 已分别迁入独立实现文件
 - `CameraRecorder` 已按 `app 壳 + camera domain` 落地到 `standalone/CameraRecorder`
 - `SensorRecorder` 已按 `protocol + domain + app/runtime 装配` 落地到 `standalone/SensorRecorder`
 - `GripperHmiTool` 已按 `protocol + led effects + driver + tool` 落地到 `standalone/GripperHmiTool`

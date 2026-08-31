@@ -5,6 +5,7 @@
 #include "gripper_hmi_led_effects.h"
 #include "record_runtime/audio_coordinator.h"
 #include "record_runtime/button_action_router.h"
+#include "record_runtime/device_state_manager.h"
 #include "record_runtime/episode_manager.h"
 #include "record_runtime/health_monitor.h"
 #include "record_runtime/hmi_controller.h"
@@ -12,6 +13,7 @@
 #include "record_runtime/recording_orchestrator.h"
 #include "record_runtime/shutdown_request_port.h"
 #include "record_runtime/stereo_session_client.h"
+#include "record_runtime/usb_recovery_coordinator.h"
 #include "utils/fifo_utils.h"
 
 #include <array>
@@ -195,7 +197,6 @@ private:
         uint64_t readyBreathPhaseOffsetMs_ = 0;
     };
 
-    friend class ugripper::runtime::EpisodeManager;
     using EpisodeManager = ugripper::runtime::EpisodeManager;
 
     static GripperLedEffect makeLedEffect(LedState state, double progress = 0.0);
@@ -314,7 +315,8 @@ private:
     void maintainBackgroundTactileValidation();
     void cancelBackgroundTactileValidation();
     void requestStopBackgroundTactileValidation();
-    void applyTactileValidationFindings(const std::vector<EpisodeManager::TactileValidationFinding> &findings);
+    void applyTactileValidationFindings(
+        const std::vector<ugripper::runtime::TactileValidationFinding> &findings);
     void applyIdleState();
     void setAudioRecoveryCommand(std::string command);
     void sendAudioCommand(const std::string &command) const;
@@ -391,88 +393,95 @@ private:
     struct BackgroundTactileValidationResult
     {
         std::string episodeDir;
-        std::vector<EpisodeManager::TactileValidationFinding> findings;
+        std::vector<ugripper::runtime::TactileValidationFinding> findings;
     };
     std::mutex backgroundTactileMutex_;
     std::string pendingBackgroundTactileEpisodeDir_;
     std::future<BackgroundTactileValidationResult> backgroundTactileFuture_;
     std::atomic<bool> stopBackgroundTactileValidation_{false};
     std::optional<ugripper::runtime::HealthFault> activeHardwareFault_;
-    std::shared_ptr<std::atomic<bool>> restoreUsbInProgress_ = std::make_shared<std::atomic<bool>>(false);
-    std::shared_ptr<std::atomic<uint64_t>> restoreUsbLastFinishMs_ = std::make_shared<std::atomic<uint64_t>>(0);
-    int restoreUsbAttemptsInCurrentError_ = 0;
-    bool restoreUsbPendingRetryCheck_ = false;
-    bool restoreUsbSymlinkCheckPassed_ = false;
-    uint64_t restoreUsbSymlinkPassedMs_ = 0;
-    uint64_t restoreUsbLastSymlinkProbeMs_ = 0;
-    uint64_t restoreUsbLastMissingLogMs_ = 0;
-    std::string restoreUsbLastMissingDetail_;
-    bool restoreUsbCheckMainCameraRecovery_ = false;
-    bool restoreUsbFailureAlarmActive_ = false;
-    uint64_t restoreUsbFailureAlarmStartMs_ = 0;
-    uint64_t restoreUsbPreflightFailureUntilMs_ = 0;
-    bool restoreUsbStereoDaemonStopped_ = false;
     bool episodeManagerInitialized_ = false;
     bool dataStorageWaitLogged_ = false;
-    int cameraRecorderDStatePid_ = -1;
-    std::string cameraRecorderDStateTaskId_;
-    uint64_t cameraRecorderDStateFirstSeenMs_ = 0;
-    uint64_t cameraRecorderDStateLastLogMs_ = 0;
-    std::array<bool, 2> restoreUsbSidePresent_{};
-    std::array<uint64_t, 2> restoreUsbInsertGraceUntilMs_{};
-    std::string restoreUsbPendingTriggerKey_;
-    std::string restoreUsbPendingTriggerCause_;
-    std::string restoreUsbPendingTriggerEvidence_;
-    std::string restoreUsbPendingTriggerSide_;
-    uint64_t restoreUsbPendingTriggerFirstSeenMs_ = 0;
-    uint64_t restoreUsbPendingTriggerLastSeenMs_ = 0;
-    bool restoreUsbPendingTriggerLogged_ = false;
-    std::string restoreUsbLastSkipLogKey_;
-    std::string restoreUsbLastReason_;
     LedState lastLoggedLedState_ = LedState::Init;
     double lastLoggedLedProgress_ = 0.0;
     bool hasLastLoggedLedState_ = false;
     ugripper::runtime::HealthState healthState_{};
     std::unique_ptr<EpisodeManager> episodeManager_;
-    std::array<EpisodeManager::GripperRuntimeState, 2> gripperRuntimeStates_{};
-    std::array<bool, 2> pendingGripperRefresh_{};
-    struct MainCameraRefreshResult
-    {
-        std::string cameraName;
-        std::string devicePath;
-        std::string resolvedTarget;
-        std::string serialNumber;
-        bool calibrationPayloadCached = false;
-        std::array<uint8_t, 1024> calibrationPayload{};
-        std::string errorMessage;
-    };
-    struct MainCameraRuntimeCache
-    {
-        std::string cameraName;
-        std::string devicePath;
-        bool enabled = true;
-        bool present = false;
-        std::string resolvedTarget;
-        std::string serialNumber;
-        bool calibrationPayloadCached = false;
-        std::array<uint8_t, 1024> calibrationPayload{};
-        std::string lastError;
-        uint64_t nextRefreshAllowedMs = 0;
-        std::future<MainCameraRefreshResult> refreshFuture;
-    };
-    std::vector<MainCameraRuntimeCache> mainCameraRuntimeStates_;
-    struct TactileCameraRuntimeCache
-    {
-        std::string cameraName;
-        std::string side;
-        std::string devicePath;
-        bool present = false;
-        std::string resolvedTarget;
-        std::string serialNumber;
-        std::string lastError;
-        uint64_t nextRefreshAllowedMs = 0;
-    };
-    std::vector<TactileCameraRuntimeCache> tactileCameraRuntimeStates_;
+    using MainCameraRefreshResult = ugripper::runtime::DeviceStateManager::MainCameraRefreshResult;
+    using MainCameraRuntimeCache = ugripper::runtime::DeviceStateManager::MainCameraRuntimeCache;
+    using TactileCameraRuntimeCache = ugripper::runtime::DeviceStateManager::TactileCameraRuntimeCache;
+    ugripper::runtime::DeviceStateManager deviceStateManager_;
+    // Compatibility views keep the existing cross-file implementation stable;
+    // DeviceStateManager owns the referenced state.
+    std::array<ugripper::runtime::GripperRuntimeState, 2> &gripperRuntimeStates_ =
+        deviceStateManager_.GetState().gripperRuntimeStates;
+    std::array<bool, 2> &pendingGripperRefresh_ =
+        deviceStateManager_.GetState().pendingGripperRefresh;
+    std::vector<MainCameraRuntimeCache> &mainCameraRuntimeStates_ =
+        deviceStateManager_.GetState().mainCameraRuntimeStates;
+    std::vector<TactileCameraRuntimeCache> &tactileCameraRuntimeStates_ =
+        deviceStateManager_.GetState().tactileCameraRuntimeStates;
+    ugripper::runtime::UsbRecoveryCoordinator usbRecoveryCoordinator_;
+    // Compatibility views preserve the current recovery sequencing and detached
+    // worker captures; UsbRecoveryCoordinator owns the referenced state.
+    std::shared_ptr<std::atomic<bool>> &restoreUsbInProgress_ =
+        usbRecoveryCoordinator_.GetState().inProgress;
+    std::shared_ptr<std::atomic<uint64_t>> &restoreUsbLastFinishMs_ =
+        usbRecoveryCoordinator_.GetState().lastFinishMs;
+    int &restoreUsbAttemptsInCurrentError_ =
+        usbRecoveryCoordinator_.GetState().attemptsInCurrentError;
+    bool &restoreUsbPendingRetryCheck_ =
+        usbRecoveryCoordinator_.GetState().pendingRetryCheck;
+    bool &restoreUsbSymlinkCheckPassed_ =
+        usbRecoveryCoordinator_.GetState().symlinkCheckPassed;
+    uint64_t &restoreUsbSymlinkPassedMs_ =
+        usbRecoveryCoordinator_.GetState().symlinkPassedMs;
+    uint64_t &restoreUsbLastSymlinkProbeMs_ =
+        usbRecoveryCoordinator_.GetState().lastSymlinkProbeMs;
+    uint64_t &restoreUsbLastMissingLogMs_ =
+        usbRecoveryCoordinator_.GetState().lastMissingLogMs;
+    std::string &restoreUsbLastMissingDetail_ =
+        usbRecoveryCoordinator_.GetState().lastMissingDetail;
+    bool &restoreUsbCheckMainCameraRecovery_ =
+        usbRecoveryCoordinator_.GetState().checkMainCameraRecovery;
+    bool &restoreUsbFailureAlarmActive_ =
+        usbRecoveryCoordinator_.GetState().failureAlarmActive;
+    uint64_t &restoreUsbFailureAlarmStartMs_ =
+        usbRecoveryCoordinator_.GetState().failureAlarmStartMs;
+    uint64_t &restoreUsbPreflightFailureUntilMs_ =
+        usbRecoveryCoordinator_.GetState().preflightFailureUntilMs;
+    bool &restoreUsbStereoDaemonStopped_ =
+        usbRecoveryCoordinator_.GetState().stereoDaemonStopped;
+    int &cameraRecorderDStatePid_ =
+        usbRecoveryCoordinator_.GetState().cameraRecorderDStatePid;
+    std::string &cameraRecorderDStateTaskId_ =
+        usbRecoveryCoordinator_.GetState().cameraRecorderDStateTaskId;
+    uint64_t &cameraRecorderDStateFirstSeenMs_ =
+        usbRecoveryCoordinator_.GetState().cameraRecorderDStateFirstSeenMs;
+    uint64_t &cameraRecorderDStateLastLogMs_ =
+        usbRecoveryCoordinator_.GetState().cameraRecorderDStateLastLogMs;
+    std::array<bool, 2> &restoreUsbSidePresent_ =
+        usbRecoveryCoordinator_.GetState().sidePresent;
+    std::array<uint64_t, 2> &restoreUsbInsertGraceUntilMs_ =
+        usbRecoveryCoordinator_.GetState().insertGraceUntilMs;
+    std::string &restoreUsbPendingTriggerKey_ =
+        usbRecoveryCoordinator_.GetState().pendingTriggerKey;
+    std::string &restoreUsbPendingTriggerCause_ =
+        usbRecoveryCoordinator_.GetState().pendingTriggerCause;
+    std::string &restoreUsbPendingTriggerEvidence_ =
+        usbRecoveryCoordinator_.GetState().pendingTriggerEvidence;
+    std::string &restoreUsbPendingTriggerSide_ =
+        usbRecoveryCoordinator_.GetState().pendingTriggerSide;
+    uint64_t &restoreUsbPendingTriggerFirstSeenMs_ =
+        usbRecoveryCoordinator_.GetState().pendingTriggerFirstSeenMs;
+    uint64_t &restoreUsbPendingTriggerLastSeenMs_ =
+        usbRecoveryCoordinator_.GetState().pendingTriggerLastSeenMs;
+    bool &restoreUsbPendingTriggerLogged_ =
+        usbRecoveryCoordinator_.GetState().pendingTriggerLogged;
+    std::string &restoreUsbLastSkipLogKey_ =
+        usbRecoveryCoordinator_.GetState().lastSkipLogKey;
+    std::string &restoreUsbLastReason_ =
+        usbRecoveryCoordinator_.GetState().lastReason;
     GripperPanelManager panelManager_;
     std::unique_ptr<HmiLedController> ledController_;
     mutable ugripper::runtime::ProcessSupervisor processSupervisor_{};

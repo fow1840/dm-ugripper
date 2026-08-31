@@ -1,13 +1,14 @@
 #include "record_runtime.h"
+#include "record_runtime/runtime_cli.h"
 #include "utils/ugripper_logger.h"
 
 #include <utils/single_process_instance.h>
 
 #include <csignal>
-#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace {
 RecordRuntime *g_runtime = nullptr;
@@ -20,14 +21,6 @@ void handleSignal(int signal)
     }
 }
 
-void printUsage(const char *program)
-{
-    std::cout
-        << "Usage: " << program << " [--port PATH]... [--camera-bin PATH] [--sensor-bin PATH] [--disk-root PATH] [--poll-ms N]\n"
-        << "Defaults:\n"
-        << "  --port /dev/right_gripper\n"
-        << "  --port /dev/left_gripper\n";
-}
 }
 
 int main(int argc, char **argv)
@@ -53,59 +46,13 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    RecordRuntimeOptions options;
-
-    for (int index = 1; index < argc; ++index)
+    auto cliResult = DA::Ugripper::ParseRuntimeCli(argc, argv);
+    if (cliResult.action == DA::Ugripper::RuntimeCliAction::Exit)
     {
-        const std::string argument = argv[index];
-        if (argument == "--help" || argument == "-h")
-        {
-            printUsage(argv[0]);
-            return 0;
-        }
-        if (argument == "--port" && index + 1 < argc)
-        {
-            options.gripperPorts.emplace_back(argv[++index]);
-            continue;
-        }
-        if (argument == "--camera-bin" && index + 1 < argc)
-        {
-            options.cameraRecorderBin = argv[++index];
-            continue;
-        }
-        if (argument == "--sensor-bin" && index + 1 < argc)
-        {
-            options.sensorRecorderBin = argv[++index];
-            continue;
-        }
-        if (argument == "--disk-root" && index + 1 < argc)
-        {
-            options.diskRoot = argv[++index];
-            continue;
-        }
-        if (argument == "--poll-ms" && index + 1 < argc)
-        {
-            try
-            {
-                options.pollMs = std::stoi(argv[++index]);
-            }
-            catch (const std::exception &error)
-            {
-                DM_LOG_ERROR_CODE("UGR-70-01",
-                                  "Invalid --poll-ms value: {}",
-                                  error.what());
-                printUsage(argv[0]);
-                return 1;
-            }
-            continue;
-        }
-
-        DM_LOG_ERROR_CODE("UGR-70-01", "{}", (::DA::utils::LogString() << "Unknown argument: " << argument).str());
-        printUsage(argv[0]);
-        return 1;
+        return cliResult.exitCode;
     }
 
-    RecordRuntime runtime(options);
+    RecordRuntime runtime(std::move(cliResult.options));
     g_runtime = &runtime;
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);

@@ -1,7 +1,8 @@
 #pragma once
 
+#include "record_runtime/episode_types.h"
+
 #include <array>
-#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -11,49 +12,12 @@ namespace ugripper::runtime {
 class EpisodeManager
 {
 public:
-    struct GripperRuntimeState
-    {
-        std::string side;
-        bool connected = false;
-        bool hasSerialNumber = false;
-        std::string serialNumber;
-        std::string lastError;
-    };
-
-    struct MainCameraRuntimeState
-    {
-        std::string cameraName;
-        std::string devicePath;
-        bool enabled = true;
-        bool present = false;
-        std::string serialNumber;
-        bool calibrationPayloadCached = false;
-        std::array<uint8_t, 1024> calibrationPayload{};
-        std::string lastError;
-    };
-
-    struct TactileCameraRuntimeState
-    {
-        std::string cameraName;
-        std::string side;
-        std::string devicePath;
-        bool present = false;
-        std::string serialNumber;
-        std::string lastError;
-    };
-
-    struct TactileValidationFinding
-    {
-        std::string cameraName;
-        std::string serialNumber;
-        std::string side;
-        std::string sensorSlot;
-        bool damaged = false;
-        bool warningActive = false;
-        bool warningTriggered = false;
-        std::string detail;
-        std::string audioCommand;
-    };
+    // Compatibility aliases keep call sites stable while the DTOs remain
+    // independent from EpisodeManager's lifecycle and ownership.
+    using GripperRuntimeState = ugripper::runtime::GripperRuntimeState;
+    using MainCameraRuntimeState = ugripper::runtime::MainCameraRuntimeState;
+    using TactileCameraRuntimeState = ugripper::runtime::TactileCameraRuntimeState;
+    using TactileValidationFinding = ugripper::runtime::TactileValidationFinding;
 
     EpisodeManager(std::string diskRoot,
                    std::string deviceSn,
@@ -68,7 +32,8 @@ public:
                    std::string stereoStatusFile,
                    std::string hardwareVersion,
                    std::string packageVersion,
-                   std::string updaterVersion);
+                   std::string updaterVersion,
+                   EpisodeManagerDependencies dependencies);
 
     bool initialize();
     std::string createNextEpisodeDir();
@@ -122,6 +87,7 @@ private:
     std::string hardwareVersion_;
     std::string packageVersion_;
     std::string updaterVersion_;
+    EpisodeManagerDependencies dependencies_;
     std::string dataRoot_;
     std::string episodeRoot_;
     std::array<GripperRuntimeState, 2> gripperRuntimeStates_{};

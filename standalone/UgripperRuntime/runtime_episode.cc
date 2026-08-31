@@ -1,5 +1,6 @@
-#include "record_runtime.h"
+#include "record_runtime/episode_manager.h"
 #include "record_runtime/runtime_episode_internal.h"
+#include "record_runtime/runtime_types.h"
 #include "main_camera_calibration_data.h"
 #include "record_runtime/error_code_mapping.h"
 #include "utils/ugripper_logger.h"
@@ -54,6 +55,14 @@ using ordered_json = nlohmann::ordered_json;
 using namespace ugripper::runtime::record_runtime_detail;
 
 namespace ugripper::runtime::record_runtime_detail {
+
+std::string toLowerAscii(std::string text)
+{
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return text;
+}
 
 json makeRuntimeTactileCalibrationEntry(const std::string &serial)
 {
@@ -424,10 +433,11 @@ ugripper::runtime::EpisodeManager::EpisodeManager(std::string diskRoot,
                                               std::string stereoStatusFile,
                                               std::string hardwareVersion,
                                               std::string packageVersion,
-                                              std::string updaterVersion)
+                                              std::string updaterVersion,
+                                              EpisodeManagerDependencies dependencies)
     : diskRoot_(std::move(diskRoot)),
       deviceSn_(std::move(deviceSn)),
-      deviceSnLower_(RecordRuntime::toLower(deviceSn_)),
+      deviceSnLower_(toLowerAscii(deviceSn_)),
       language_(std::move(language)),
       cameraCodec_(std::move(cameraCodec)),
       chestCameraEnabled_(chestCameraEnabled),
@@ -439,7 +449,8 @@ ugripper::runtime::EpisodeManager::EpisodeManager(std::string diskRoot,
       stereoStatusFile_(std::move(stereoStatusFile)),
       hardwareVersion_(std::move(hardwareVersion)),
       packageVersion_(std::move(packageVersion)),
-      updaterVersion_(std::move(updaterVersion))
+      updaterVersion_(std::move(updaterVersion)),
+      dependencies_(dependencies)
 {
     dataRoot_ = diskRoot_ + "/" + deviceSnLower_;
     episodeRoot_ = dataRoot_ + "/data";
@@ -590,7 +601,7 @@ void ugripper::runtime::EpisodeManager::markTactileReferencePendingForSide(
     }
 
     bool historyDirty = false;
-    const uint64_t nowMs = RecordRuntime::currentEpochMs();
+    const uint64_t nowMs = dependencies_.currentEpochMs();
     for (const auto &target : kTactileCalibrationTargets)
     {
         if (side != target.side)
@@ -846,7 +857,7 @@ bool ugripper::runtime::EpisodeManager::writeFinalMetadata(const std::string &ep
     for (const auto &artifact : metadataVideoArtifacts(chestCameraEnabled_, stereoEnabled_))
     {
         const fs::path videoPath = episodePath / artifact.fileName;
-        if (!RecordRuntime::fileExistsAndNotEmpty(videoPath.string()))
+        if (!dependencies_.fileExistsAndNotEmpty(videoPath.string()))
         {
             continue;
         }
@@ -920,8 +931,8 @@ bool ugripper::runtime::EpisodeManager::writeFinalMetadata(const std::string &ep
     }
 
     const bool hasAudio =
-        RecordRuntime::fileExistsAndNotEmpty((episodePath / "audio_pre.wav").string()) ||
-        RecordRuntime::fileExistsAndNotEmpty((episodePath / "audio_post.wav").string());
+        dependencies_.fileExistsAndNotEmpty((episodePath / "audio_pre.wav").string()) ||
+        dependencies_.fileExistsAndNotEmpty((episodePath / "audio_post.wav").string());
 
     ordered_json metadata = ordered_json::object();
     metadata["device_sn"] = toUpperAscii(deviceSn_);

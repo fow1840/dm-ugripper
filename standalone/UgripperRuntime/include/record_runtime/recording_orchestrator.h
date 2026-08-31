@@ -62,44 +62,79 @@ public:
     using LogFn = std::function<void(const std::string&)>;
     using SyncRuntimeLogFn = std::function<void(const std::string&)>;
 
-    struct Dependencies
+    struct EpisodePort
     {
         EpisodeDirFn create_next_episode_dir;
         PrepareEpisodeFn prepare_episode;
         ValidateEpisodeFn validate_episode;
-        PrepareSensorStartFn prepare_sensor_start;
-        FinalizeSensorStartFn finalize_sensor_start;
         AttachPendingPreAudioFn attach_pending_pre_audio;
         MergeEpisodeInfoFn merge_episode_info;
-        PathExistsFn path_exists;
-        RecoveryCommandFn set_audio_recovery_command;
-        AudioCommandFn send_audio_command;
-        LedStateFn set_led_state;
-        HardwareFaultLedFn set_hardware_fault_led_state;
-        FailureStateFn handle_failure_state;
-        StereoSessionFn start_stereo_session;
-        StereoSessionFn stop_stereo_session;
-        StartEgoRecordingFn start_ego_recording;
-        StopEgoRecordingFn stop_ego_recording;
-        WaitForEgoFinalizeFn wait_for_ego_finalize;
-        WaitForFinalizeFn wait_for_stereo_finalize;
-        CleanupEgoRemoteFn cleanup_ego_remote;
-        IsEgoRequiredFn is_ego_required;
         FlushEpisodeArtifactsFn flush_episode_artifacts;
         WriteEpisodeMetadataFn write_episode_metadata;
         WriteValidationErrorLogFn write_validation_error_log;
         FinalizeEpisodeDirFn finalize_episode_dir;
         DetectRecordingHardwareFaultFn detect_recording_hardware_fault;
+    };
+
+    struct FileSystemPort
+    {
+        PathExistsFn path_exists;
         WriteRecordingLockFn write_recording_lock;
         RemoveRecordingLockFn remove_recording_lock;
+    };
+
+    struct WorkerPort
+    {
+        PrepareSensorStartFn prepare_sensor_start;
+        FinalizeSensorStartFn finalize_sensor_start;
         StartWorkerFn start_worker;
         StopWorkerFn stop_worker;
         GetWorkerStatusFn get_worker_status;
+    };
+
+    struct StereoPort
+    {
+        StereoSessionFn start_session;
+        StereoSessionFn stop_session;
+        WaitForFinalizeFn wait_for_finalize;
+    };
+
+    struct EgoPort
+    {
+        StartEgoRecordingFn start_recording;
+        StopEgoRecordingFn stop_recording;
+        WaitForEgoFinalizeFn wait_for_finalize;
+        CleanupEgoRemoteFn cleanup_remote;
+        IsEgoRequiredFn is_required;
+    };
+
+    struct FeedbackPort
+    {
+        RecoveryCommandFn set_audio_recovery_command;
+        AudioCommandFn send_audio_command;
+        LedStateFn set_led_state;
+        HardwareFaultLedFn set_hardware_fault_led_state;
+        FailureStateFn handle_failure_state;
+    };
+
+    struct LogPort
+    {
         LogFn log_info;
         LogFn log_perf;
         LogFn log_warn;
         LogFn log_error;
         SyncRuntimeLogFn sync_runtime_log;
+    };
+
+    struct Dependencies
+    {
+        EpisodePort episode;
+        FileSystemPort file_system;
+        WorkerPort workers;
+        StereoPort stereo;
+        EgoPort ego;
+        FeedbackPort feedback;
+        LogPort logs;
     };
 
     RecordingOrchestrator(RecordingOrchestratorOptions options,

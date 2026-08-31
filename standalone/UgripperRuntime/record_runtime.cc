@@ -286,7 +286,11 @@ bool RecordRuntime::initialize()
         options_.stereoStatusFile,
         hardwareVersion_,
         packageVersion_,
-        updaterVersion_);
+        updaterVersion_,
+        ugripper::runtime::EpisodeManagerDependencies{
+            .currentEpochMs = &RecordRuntime::currentEpochMs,
+            .fileExistsAndNotEmpty = &RecordRuntime::fileExistsAndNotEmpty,
+        });
 
     episodeManagerInitialized_ = false;
     initializeMainCameraRuntimeStates();
@@ -428,227 +432,242 @@ bool RecordRuntime::initialize()
             .worker_stop_timeout_ms = 5000,
             .stereo_finalize_timeout_ms = 10000,
         },
-        ugripper::runtime::RecordingOrchestrator::Dependencies{
-            .create_next_episode_dir =
-                [this]() {
-                    return episodeManager_ != nullptr ? episodeManager_->createNextEpisodeDir() : std::string();
-                },
-            .prepare_episode =
-                [this](const std::string& episode_dir,
-                       bool reset_recording,
-                       const std::string& reset_source_dir,
-                       std::string* error_message) {
-                    return episodeManager_ != nullptr &&
-                           episodeManager_->prepareEpisode(
-                               episode_dir, reset_recording, reset_source_dir, error_message);
-                },
-            .validate_episode =
-                [this](const std::string& episode_dir,
-                       std::string* error_message,
-                       std::vector<std::string>* error_types) {
-                    if (episodeManager_ == nullptr)
-                    {
-                        return false;
-                    }
-                    return episodeManager_->validateEpisode(episode_dir, error_message, error_types, nullptr);
-                },
-            .prepare_sensor_start = nullptr,
-            .finalize_sensor_start = nullptr,
-            .attach_pending_pre_audio =
-                [this](const std::string& episode_dir) {
-                    return attachPendingPreAudio(episode_dir);
-                },
-            .merge_episode_info =
-                [this](const std::string& episode_dir, std::string* error_message) {
-                    return mergeEpisodeInfo(episode_dir, error_message);
-                },
-            .path_exists =
-                [](const std::string& path) {
-                    return fs::exists(path);
-                },
-            .set_audio_recovery_command =
-                [this](const std::string& command) {
-                    setAudioRecoveryCommand(command);
-                },
-            .send_audio_command =
-                [this](const std::string& command) {
-                    sendAudioCommand(command);
-                },
-            .set_led_state =
-                [this](ugripper::runtime::RuntimeLedState state, double progress) {
-                    setLedState(toLedState(state), progress);
-                },
-            .set_hardware_fault_led_state =
-                [this](const ugripper::runtime::HealthFault& fault) {
-                    setHardwareFaultLedState(fault);
-                },
-            .handle_failure_state =
-                [this](ugripper::runtime::RuntimeLedState state,
-                       const std::vector<std::string>& error_types,
-                       const std::string& detail) {
-                    handleFailureState(state, error_types, detail);
-                },
-            .start_stereo_session =
-                [this](const std::string& episode_dir, int64_t start_system_time_us, std::string* error_message) {
-                    if (stereoSessionClient_ == nullptr)
-                    {
-                        if (error_message != nullptr)
+        ugripper::runtime::RecordingOrchestrator::Dependencies
+        {
+            .episode = {
+                .create_next_episode_dir =
+                    [this]() {
+                        return episodeManager_ != nullptr ? episodeManager_->createNextEpisodeDir() : std::string();
+                    },
+                .prepare_episode =
+                    [this](const std::string& episode_dir,
+                           bool reset_recording,
+                           const std::string& reset_source_dir,
+                           std::string* error_message) {
+                        return episodeManager_ != nullptr &&
+                               episodeManager_->prepareEpisode(
+                                   episode_dir, reset_recording, reset_source_dir, error_message);
+                    },
+                .validate_episode =
+                    [this](const std::string& episode_dir,
+                           std::string* error_message,
+                           std::vector<std::string>* error_types) {
+                        if (episodeManager_ == nullptr)
                         {
-                            *error_message = "stereo session client not initialized";
+                            return false;
                         }
-                        return false;
-                    }
-                    return stereoSessionClient_->StartSession(
-                        episode_dir, start_system_time_us, error_message);
-                },
-            .stop_stereo_session =
-                [this](const std::string& episode_dir, int64_t stop_system_time_us, std::string* error_message) {
-                    if (stereoSessionClient_ == nullptr)
-                    {
-                        if (error_message != nullptr)
+                        return episodeManager_->validateEpisode(episode_dir, error_message, error_types, nullptr);
+                    },
+                .attach_pending_pre_audio =
+                    [this](const std::string& episode_dir) {
+                        return attachPendingPreAudio(episode_dir);
+                    },
+                .merge_episode_info =
+                    [this](const std::string& episode_dir, std::string* error_message) {
+                        return mergeEpisodeInfo(episode_dir, error_message);
+                    },
+                .flush_episode_artifacts =
+                    [this](const std::string& episode_dir, const char* stage) {
+                        flushEpisodeArtifactsToDisk(
+                            fs::path(episode_dir), chestCameraEnabled_, stereoEnabled_, stage);
+                    },
+                .write_episode_metadata =
+                    [this](const std::string& episode_dir,
+                           bool quality_ok,
+                           const std::string& error_message,
+                           const std::string& error_type) {
+                        if (episodeManager_ == nullptr)
                         {
-                            *error_message = "stereo session client not initialized";
+                            return;
                         }
-                        return false;
-                    }
-                    return stereoSessionClient_->StopSession(
-                        episode_dir, stop_system_time_us, error_message);
-                },
-            .start_ego_recording =
-                [this](const std::string& episode_dir,
-                       int64_t start_system_time_us,
-                       std::string* error_message,
-                       std::string* error_type) {
-                    return startEgoRecording(
-                        episode_dir, start_system_time_us, error_message, error_type);
-                },
-            .stop_ego_recording =
-                [this](const std::string& episode_dir, int64_t stop_system_time_us, std::string* error_message) {
-                    return stopEgoRecording(episode_dir, stop_system_time_us, error_message);
-                },
-            .wait_for_ego_finalize =
-                [this](const std::string& episode_dir,
-                       int timeout_ms,
-                       std::string* error_message,
-                       std::string* error_type) {
-                    return waitForEgoFinalize(episode_dir, timeout_ms, error_message, error_type);
-                },
-            .wait_for_stereo_finalize =
-                [this](const std::string& episode_dir, int timeout_ms, std::string* error_message) {
-                    return waitForStereoFinalize(episode_dir, timeout_ms, error_message);
-                },
-            .cleanup_ego_remote =
-                [this](const std::string& episode_dir, std::string* error_message) {
-                    return cleanupEgoRemote(episode_dir, error_message);
-                },
-            .is_ego_required =
-                [this]() {
-                    return isEgoRequired();
-                },
-            .flush_episode_artifacts =
-                [this](const std::string& episode_dir, const char* stage) {
-                    flushEpisodeArtifactsToDisk(
-                        fs::path(episode_dir), chestCameraEnabled_, stereoEnabled_, stage);
-                },
-            .write_episode_metadata =
-                [this](const std::string& episode_dir,
-                       bool quality_ok,
-                       const std::string& error_message,
-                       const std::string& error_type) {
-                    if (episodeManager_ == nullptr)
-                    {
-                        return;
-                    }
-                    episodeManager_->setTaskMarkers(
-                        taskMarkerTracker_.task_start_s(),
-                        taskMarkerTracker_.task_stop_s());
-                    std::string metadataError;
-                    if (!episodeManager_->writeFinalMetadata(
-                            episode_dir,
-                            quality_ok,
-                            error_message,
-                            error_type,
-                            &metadataError))
-                    {
-                        DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to write metadata.json: "
-                                      << metadataError << std::endl).str());
-                        return;
-                    }
-                    flushEpisodeArtifactsToDisk(
-                        fs::path(episode_dir), chestCameraEnabled_, stereoEnabled_, "metadata_final");
-                },
-            .write_validation_error_log =
-                [](const std::string& episode_dir, const std::string& error_message) {
-                    writeValidationErrorLog(fs::path(episode_dir), error_message);
-                },
-            .finalize_episode_dir =
-                [this](const std::string& episode_dir, std::string* error_message) {
-                    if (episodeManager_ == nullptr)
-                    {
-                        if (error_message != nullptr)
+                        episodeManager_->setTaskMarkers(
+                            taskMarkerTracker_.task_start_s(),
+                            taskMarkerTracker_.task_stop_s());
+                        std::string metadataError;
+                        if (!episodeManager_->writeFinalMetadata(
+                                episode_dir,
+                                quality_ok,
+                                error_message,
+                                error_type,
+                                &metadataError))
                         {
-                            *error_message = "episode manager not initialized";
+                            DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to write metadata.json: "
+                                          << metadataError << std::endl).str());
+                            return;
                         }
-                        return std::string();
-                    }
-                    return episodeManager_->finalizeEpisodeDir(episode_dir, error_message);
-                },
-            .detect_recording_hardware_fault =
-                [this](const std::string& episode_dir) {
-                    const auto fault = detectCameraRecorderStartupFailureForEpisode(episode_dir);
-                    if (fault.has_value())
-                    {
-                        activeHardwareFault_ = *fault;
-                    }
-                    return fault;
-                },
-            .write_recording_lock =
-                [this](const std::string& episode_dir) {
-                    return writeRecordingLock(episode_dir);
-                },
-            .remove_recording_lock =
-                [this]() {
-                    removeRecordingLock();
-                },
-            .start_worker =
-                [this](ugripper::runtime::WorkerName worker,
-                       const ugripper::runtime::ProcessSpec& spec,
-                       std::string* error_message) {
-                    return processSupervisor_.Start(worker, spec, error_message);
-                },
-            .stop_worker =
-                [this](ugripper::runtime::WorkerName worker,
-                       const std::string& reason,
-                       std::string* error_message) {
-                    return processSupervisor_.Stop(worker, reason, error_message);
-                },
-            .get_worker_status =
-                [this](ugripper::runtime::WorkerName worker) {
-                    return processSupervisor_.GetStatus(worker);
-                },
-            .log_info =
-                [](const std::string& message) {
-                    DM_LOG_INFO("{}", (::DA::utils::LogString() << message << std::endl).str());
-                },
-            .log_perf =
-                [this](const std::string& message) {
-                    if (perfLogEnabled_)
-                    {
+                        flushEpisodeArtifactsToDisk(
+                            fs::path(episode_dir), chestCameraEnabled_, stereoEnabled_, "metadata_final");
+                    },
+                .write_validation_error_log =
+                    [](const std::string& episode_dir, const std::string& error_message) {
+                        writeValidationErrorLog(fs::path(episode_dir), error_message);
+                    },
+                .finalize_episode_dir =
+                    [this](const std::string& episode_dir, std::string* error_message) {
+                        if (episodeManager_ == nullptr)
+                        {
+                            if (error_message != nullptr)
+                            {
+                                *error_message = "episode manager not initialized";
+                            }
+                            return std::string();
+                        }
+                        return episodeManager_->finalizeEpisodeDir(episode_dir, error_message);
+                    },
+                .detect_recording_hardware_fault =
+                    [this](const std::string& episode_dir) {
+                        const auto fault = detectCameraRecorderStartupFailureForEpisode(episode_dir);
+                        if (fault.has_value())
+                        {
+                            activeHardwareFault_ = *fault;
+                        }
+                        return fault;
+                    },
+            },
+            .file_system = {
+                .path_exists =
+                    [](const std::string& path) {
+                        return fs::exists(path);
+                    },
+                .write_recording_lock =
+                    [this](const std::string& episode_dir) {
+                        return writeRecordingLock(episode_dir);
+                    },
+                .remove_recording_lock =
+                    [this]() {
+                        removeRecordingLock();
+                    },
+            },
+            .workers = {
+                .prepare_sensor_start = nullptr,
+                .finalize_sensor_start = nullptr,
+                .start_worker =
+                    [this](ugripper::runtime::WorkerName worker,
+                           const ugripper::runtime::ProcessSpec& spec,
+                           std::string* error_message) {
+                        return processSupervisor_.Start(worker, spec, error_message);
+                    },
+                .stop_worker =
+                    [this](ugripper::runtime::WorkerName worker,
+                           const std::string& reason,
+                           std::string* error_message) {
+                        return processSupervisor_.Stop(worker, reason, error_message);
+                    },
+                .get_worker_status =
+                    [this](ugripper::runtime::WorkerName worker) {
+                        return processSupervisor_.GetStatus(worker);
+                    },
+            },
+            .stereo = {
+                .start_session =
+                    [this](const std::string& episode_dir, int64_t start_system_time_us, std::string* error_message) {
+                        if (stereoSessionClient_ == nullptr)
+                        {
+                            if (error_message != nullptr)
+                            {
+                                *error_message = "stereo session client not initialized";
+                            }
+                            return false;
+                        }
+                        return stereoSessionClient_->StartSession(
+                            episode_dir, start_system_time_us, error_message);
+                    },
+                .stop_session =
+                    [this](const std::string& episode_dir, int64_t stop_system_time_us, std::string* error_message) {
+                        if (stereoSessionClient_ == nullptr)
+                        {
+                            if (error_message != nullptr)
+                            {
+                                *error_message = "stereo session client not initialized";
+                            }
+                            return false;
+                        }
+                        return stereoSessionClient_->StopSession(
+                            episode_dir, stop_system_time_us, error_message);
+                    },
+                .wait_for_finalize =
+                    [this](const std::string& episode_dir, int timeout_ms, std::string* error_message) {
+                        return waitForStereoFinalize(episode_dir, timeout_ms, error_message);
+                    },
+            },
+            .ego = {
+                .start_recording =
+                    [this](const std::string& episode_dir,
+                           int64_t start_system_time_us,
+                           std::string* error_message,
+                           std::string* error_type) {
+                        return startEgoRecording(
+                            episode_dir, start_system_time_us, error_message, error_type);
+                    },
+                .stop_recording =
+                    [this](const std::string& episode_dir, int64_t stop_system_time_us, std::string* error_message) {
+                        return stopEgoRecording(episode_dir, stop_system_time_us, error_message);
+                    },
+                .wait_for_finalize =
+                    [this](const std::string& episode_dir,
+                           int timeout_ms,
+                           std::string* error_message,
+                           std::string* error_type) {
+                        return waitForEgoFinalize(episode_dir, timeout_ms, error_message, error_type);
+                    },
+                .cleanup_remote =
+                    [this](const std::string& episode_dir, std::string* error_message) {
+                        return cleanupEgoRemote(episode_dir, error_message);
+                    },
+                .is_required =
+                    [this]() {
+                        return isEgoRequired();
+                    },
+            },
+            .feedback = {
+                .set_audio_recovery_command =
+                    [this](const std::string& command) {
+                        setAudioRecoveryCommand(command);
+                    },
+                .send_audio_command =
+                    [this](const std::string& command) {
+                        sendAudioCommand(command);
+                    },
+                .set_led_state =
+                    [this](ugripper::runtime::RuntimeLedState state, double progress) {
+                        setLedState(toLedState(state), progress);
+                    },
+                .set_hardware_fault_led_state =
+                    [this](const ugripper::runtime::HealthFault& fault) {
+                        setHardwareFaultLedState(fault);
+                    },
+                .handle_failure_state =
+                    [this](ugripper::runtime::RuntimeLedState state,
+                           const std::vector<std::string>& error_types,
+                           const std::string& detail) {
+                        handleFailureState(state, error_types, detail);
+                    },
+            },
+            .logs = {
+                .log_info =
+                    [](const std::string& message) {
                         DM_LOG_INFO("{}", (::DA::utils::LogString() << message << std::endl).str());
-                    }
-                },
-            .log_warn =
-                [](const std::string& message) {
-                    DM_LOG_WARN("{}", (::DA::utils::LogString() << message << std::endl).str());
-                },
-            .log_error =
-                [](const std::string& message) {
-                    DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString() << message << std::endl).str());
-                },
-            .sync_runtime_log =
-                [this](const std::string& reason) {
-                    syncRuntimeLogToDisk(reason.c_str());
-                },
+                    },
+                .log_perf =
+                    [this](const std::string& message) {
+                        if (perfLogEnabled_)
+                        {
+                            DM_LOG_INFO("{}", (::DA::utils::LogString() << message << std::endl).str());
+                        }
+                    },
+                .log_warn =
+                    [](const std::string& message) {
+                        DM_LOG_WARN("{}", (::DA::utils::LogString() << message << std::endl).str());
+                    },
+                .log_error =
+                    [](const std::string& message) {
+                        DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString() << message << std::endl).str());
+                    },
+                .sync_runtime_log =
+                    [this](const std::string& reason) {
+                        syncRuntimeLogToDisk(reason.c_str());
+                    },
+            },
         },
         &currentEpochUs,
         &steadyNowMs);

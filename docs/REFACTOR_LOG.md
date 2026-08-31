@@ -4929,3 +4929,33 @@
   - 已知告警为左右 Fays 最大 `120ms` 设备时间 gap，以及 stereo 相对主摄/触觉约 `0.73-0.85s` 的既有起录错峰；严格行为等价约束下未在本批夹带修复
 - 门禁结论：
   - 本批 host、ARM 构建、安装、单实例和实录主链均通过，满足提交门禁
+
+### 2026-08-31 - runtime-ownership-and-port-boundary-cleanup
+
+- 阶段：`Post-A3 Step 8 / Runtime Domain Split follow-up 4`
+- 范围：`standalone/UgripperRuntime`、`test/src/record_runtime`、`docs`、`todo.md`
+- 类型：`state ownership / dependency inversion / cohesive helper split / CLI boundary`
+- 主要改动：
+  - 新增 `DeviceStateManager` 与 `UsbRecoveryCoordinator`，真实持有 device cache、refresh future、USB 恢复窗口/重试/告警/D-state 等状态；保留兼容引用以维持既有跨实现文件调用顺序
+  - 新增中立 `episode_types.h` 与 `EpisodeManagerDependencies`，移除 `EpisodeManager -> RecordRuntime` include、静态调用和 friend 反向依赖
+  - `RecordingOrchestrator::Dependencies` 的 35 个平铺回调归并为 episode、filesystem、workers、stereo、ego、feedback、logs 七个 capability port
+  - 触觉校验迁入 `runtime_episode_tactile_validation.cc`；JSON/原子写、跨盘移动、fsync、episode artifacts flush 与 validation error 持久化迁入 `runtime_persistence_support.cc`
+  - CLI parsing/usage 迁入 `runtime_cli`，入口只保留 logger、单实例、信号与 runtime 生命周期
+- 行为等价边界：
+  - 不修改 supervisor 多进程拓扑、FIFO 协议、线程模型、恢复顺序、阈值、日志消息、错误映射、metadata schema 或校验算法
+  - CLI 接受参数、默认值、缺失值处理、错误码和退出码保持不变
+  - 不修改 pp-main 源码
+- 规模结果：
+  - `runtime_episode_validation.cc` 从约 2423 行降到约 2015 行，触觉校验文件约 428 行
+  - `runtime_support.cc` 从约 1753 行降到约 1057 行，持久化文件约 726 行
+- 已执行验证：
+  - `UgripperRuntime` 完整 host 构建通过
+  - `ctest -L record_runtime`：`7/7` 通过
+  - `RecordingOrchestratorTest`：`25/25` 通过；`LedStateBridgeTest`：`5/5` 通过
+  - orchestrator 与 episode 相关组合测试：`23/23` 通过
+  - `test_gripper_refresh_logic`：`7/7` 通过
+  - `--help` smoke 通过；`--poll-ms invalid` 返回 `1` 并记录 `UGR-70-01`
+  - 拆分前后 support 全局定义符号集合一致，新增实现均通过对象级编译
+  - `git diff --check` 通过
+- 后续：
+  - 以独立纯机械批次完成 `DA::Ugripper` namespace 与 `Initialize/Stop/Get` 公共 API 命名迁移，再执行 ARM/240 主链门禁

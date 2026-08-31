@@ -110,10 +110,13 @@ target_link_libraries(runtime_control_plane
 add_executable(${APP_NAME}
     main.cc
     record_runtime.cc
+    runtime_cli.cc
     runtime_controls.cc
     runtime_devices.cc
     runtime_episode.cc
+    runtime_episode_tactile_validation.cc
     runtime_episode_validation.cc
+    runtime_persistence_support.cc
     runtime_recovery.cc
     runtime_services.cc
     runtime_support.cc

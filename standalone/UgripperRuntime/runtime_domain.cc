@@ -88,10 +88,10 @@ void CallLog(const ugripper::runtime::RecordingOrchestrator::LogFn& log_fn, cons
     }
 }
 
-void CallPerfLog(const ugripper::runtime::RecordingOrchestrator::Dependencies& dependencies,
+void CallPerfLog(const ugripper::runtime::RecordingOrchestrator::LogPort& logs,
                  const std::string& message)
 {
-    CallLog(dependencies.log_perf, message);
+    CallLog(logs.log_perf, message);
 }
 
 bool HasErrorType(const std::vector<std::string>& error_types, const std::string& target)
@@ -301,14 +301,14 @@ std::string SelectStopFailureAudioCommand(ugripper::runtime::RuntimeLedState led
     return led_state == ugripper::runtime::RuntimeLedState::Error1 ? "validation_failed" : "error";
 }
 
-void ApplyFailureLedState(const ugripper::runtime::RecordingOrchestrator::Dependencies& dependencies,
+void ApplyFailureLedState(const ugripper::runtime::RecordingOrchestrator::FeedbackPort& feedback,
                           ugripper::runtime::RuntimeLedState led_state,
                           ugripper::runtime::HardwareFaultSide side)
 {
     if (led_state == ugripper::runtime::RuntimeLedState::Error4 &&
-        dependencies.set_hardware_fault_led_state != nullptr)
+        feedback.set_hardware_fault_led_state != nullptr)
     {
-        dependencies.set_hardware_fault_led_state(ugripper::runtime::HealthFault{
+        feedback.set_hardware_fault_led_state(ugripper::runtime::HealthFault{
             led_state,
             side,
             ugripper::runtime::kErrorTypeStereoControlFailed,
@@ -316,9 +316,9 @@ void ApplyFailureLedState(const ugripper::runtime::RecordingOrchestrator::Depend
         });
         return;
     }
-    if (dependencies.set_led_state != nullptr)
+    if (feedback.set_led_state != nullptr)
     {
-        dependencies.set_led_state(led_state, 0.0);
+        feedback.set_led_state(led_state, 0.0);
     }
 }
 
@@ -754,27 +754,27 @@ RecordingOrchestrator::RecordingOrchestrator(RecordingOrchestratorOptions option
 
 bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* error_message)
 {
-    const bool ego_required = dependencies_.is_ego_required != nullptr &&
-                              dependencies_.is_ego_required();
-    if (dependencies_.remove_recording_lock != nullptr)
+    const bool ego_required = dependencies_.ego.is_required != nullptr &&
+                              dependencies_.ego.is_required();
+    if (dependencies_.file_system.remove_recording_lock != nullptr)
     {
-        dependencies_.remove_recording_lock();
+        dependencies_.file_system.remove_recording_lock();
     }
-    if (dependencies_.write_recording_lock != nullptr &&
-        !dependencies_.write_recording_lock(""))
+    if (dependencies_.file_system.write_recording_lock != nullptr &&
+        !dependencies_.file_system.write_recording_lock(""))
     {
-        CallLog(dependencies_.log_error, "failed to write recording lock before episode setup");
-        if (dependencies_.set_led_state != nullptr)
+        CallLog(dependencies_.logs.log_error, "failed to write recording lock before episode setup");
+        if (dependencies_.feedback.set_led_state != nullptr)
         {
-            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+            dependencies_.feedback.set_led_state(RuntimeLedState::Error5, 0.0);
         }
-        if (dependencies_.set_audio_recovery_command != nullptr)
+        if (dependencies_.feedback.set_audio_recovery_command != nullptr)
         {
-            dependencies_.set_audio_recovery_command("error");
+            dependencies_.feedback.set_audio_recovery_command("error");
         }
-        if (dependencies_.send_audio_command != nullptr)
+        if (dependencies_.feedback.send_audio_command != nullptr)
         {
-            dependencies_.send_audio_command("error");
+            dependencies_.feedback.send_audio_command("error");
         }
         if (error_message != nullptr)
         {
@@ -784,25 +784,27 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
     }
 
     state_.current_episode_dir =
-        dependencies_.create_next_episode_dir != nullptr ? dependencies_.create_next_episode_dir() : std::string();
+        dependencies_.episode.create_next_episode_dir != nullptr
+            ? dependencies_.episode.create_next_episode_dir()
+            : std::string();
     if (state_.current_episode_dir.empty())
     {
-        CallLog(dependencies_.log_error, "failed to create episode directory");
-        if (dependencies_.set_led_state != nullptr)
+        CallLog(dependencies_.logs.log_error, "failed to create episode directory");
+        if (dependencies_.feedback.set_led_state != nullptr)
         {
-            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+            dependencies_.feedback.set_led_state(RuntimeLedState::Error5, 0.0);
         }
-        if (dependencies_.set_audio_recovery_command != nullptr)
+        if (dependencies_.feedback.set_audio_recovery_command != nullptr)
         {
-            dependencies_.set_audio_recovery_command("error");
+            dependencies_.feedback.set_audio_recovery_command("error");
         }
-        if (dependencies_.send_audio_command != nullptr)
+        if (dependencies_.feedback.send_audio_command != nullptr)
         {
-            dependencies_.send_audio_command("error");
+            dependencies_.feedback.send_audio_command("error");
         }
-        if (dependencies_.remove_recording_lock != nullptr)
+        if (dependencies_.file_system.remove_recording_lock != nullptr)
         {
-            dependencies_.remove_recording_lock();
+            dependencies_.file_system.remove_recording_lock();
         }
         if (error_message != nullptr)
         {
@@ -815,28 +817,28 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
     bool ego_started_for_episode = false;
     auto stop_ego_startup_rollback =
         [&]() {
-            if (!ego_started_for_episode || dependencies_.stop_ego_recording == nullptr)
+            if (!ego_started_for_episode || dependencies_.ego.stop_recording == nullptr)
             {
                 return;
             }
             std::string ego_stop_error;
-            if (!dependencies_.stop_ego_recording(
+            if (!dependencies_.ego.stop_recording(
                     state_.current_episode_dir,
                     epoch_us_fn_ != nullptr ? epoch_us_fn_() : session_start_system_time_us,
                     &ego_stop_error))
             {
-                CallLog(dependencies_.log_warn,
+                CallLog(dependencies_.logs.log_warn,
                         "ego recording startup rollback failed: " +
                             (ego_stop_error.empty() ? std::string("unknown error") : ego_stop_error));
             }
             ego_started_for_episode = false;
         };
 
-    if (dependencies_.start_ego_recording != nullptr)
+    if (dependencies_.ego.start_recording != nullptr)
     {
         std::string ego_error;
         std::string ego_error_type;
-        if (dependencies_.start_ego_recording(
+        if (dependencies_.ego.start_recording(
                 state_.current_episode_dir,
                 session_start_system_time_us,
                 &ego_error,
@@ -848,7 +850,7 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         {
             if (ego_error_type != ugripper::runtime::kErrorTypeEgoTimeSyncFailed)
             {
-                CallLog(dependencies_.log_warn,
+                CallLog(dependencies_.logs.log_warn,
                         "ego recording sidecar did not start early: " +
                             (ego_error.empty() ? std::string("unknown error") : ego_error));
             }
@@ -856,21 +858,21 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
                 ego_required || ego_error_type == ugripper::runtime::kErrorTypeEgoTimeSyncFailed;
             if (fatal_ego_start_failure)
             {
-                if (dependencies_.set_led_state != nullptr)
+                if (dependencies_.feedback.set_led_state != nullptr)
                 {
-                    dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+                    dependencies_.feedback.set_led_state(RuntimeLedState::Error5, 0.0);
                 }
-                if (dependencies_.set_audio_recovery_command != nullptr)
+                if (dependencies_.feedback.set_audio_recovery_command != nullptr)
                 {
-                    dependencies_.set_audio_recovery_command("error");
+                    dependencies_.feedback.set_audio_recovery_command("error");
                 }
-                if (dependencies_.send_audio_command != nullptr)
+                if (dependencies_.feedback.send_audio_command != nullptr)
                 {
-                    dependencies_.send_audio_command("error");
+                    dependencies_.feedback.send_audio_command("error");
                 }
-                if (dependencies_.remove_recording_lock != nullptr)
+                if (dependencies_.file_system.remove_recording_lock != nullptr)
                 {
-                    dependencies_.remove_recording_lock();
+                    dependencies_.file_system.remove_recording_lock();
                 }
                 if (error_message != nullptr)
                 {
@@ -885,26 +887,26 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
 
     std::string local_error;
     const std::string reset_source = reset_recording ? state_.last_episode_dir : std::string();
-    if (dependencies_.prepare_episode == nullptr ||
-        !dependencies_.prepare_episode(state_.current_episode_dir, reset_recording, reset_source, &local_error))
+    if (dependencies_.episode.prepare_episode == nullptr ||
+        !dependencies_.episode.prepare_episode(state_.current_episode_dir, reset_recording, reset_source, &local_error))
     {
-        CallLog(dependencies_.log_error, "prepare episode failed: " + local_error);
+        CallLog(dependencies_.logs.log_error, "prepare episode failed: " + local_error);
         stop_ego_startup_rollback();
-        if (dependencies_.set_led_state != nullptr)
+        if (dependencies_.feedback.set_led_state != nullptr)
         {
-            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+            dependencies_.feedback.set_led_state(RuntimeLedState::Error5, 0.0);
         }
-        if (dependencies_.set_audio_recovery_command != nullptr)
+        if (dependencies_.feedback.set_audio_recovery_command != nullptr)
         {
-            dependencies_.set_audio_recovery_command("error");
+            dependencies_.feedback.set_audio_recovery_command("error");
         }
-        if (dependencies_.send_audio_command != nullptr)
+        if (dependencies_.feedback.send_audio_command != nullptr)
         {
-            dependencies_.send_audio_command("error");
+            dependencies_.feedback.send_audio_command("error");
         }
-        if (dependencies_.remove_recording_lock != nullptr)
+        if (dependencies_.file_system.remove_recording_lock != nullptr)
         {
-            dependencies_.remove_recording_lock();
+            dependencies_.file_system.remove_recording_lock();
         }
         if (error_message != nullptr)
         {
@@ -913,30 +915,30 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         return false;
     }
 
-    if (dependencies_.attach_pending_pre_audio != nullptr)
+    if (dependencies_.episode.attach_pending_pre_audio != nullptr)
     {
-        dependencies_.attach_pending_pre_audio(state_.current_episode_dir);
+        dependencies_.episode.attach_pending_pre_audio(state_.current_episode_dir);
     }
 
-    if (dependencies_.path_exists != nullptr && !dependencies_.path_exists(options_.camera_recorder_bin))
+    if (dependencies_.file_system.path_exists != nullptr && !dependencies_.file_system.path_exists(options_.camera_recorder_bin))
     {
-        CallLog(dependencies_.log_error, "camera recorder binary not found: " + options_.camera_recorder_bin);
+        CallLog(dependencies_.logs.log_error, "camera recorder binary not found: " + options_.camera_recorder_bin);
         stop_ego_startup_rollback();
-        if (dependencies_.set_led_state != nullptr)
+        if (dependencies_.feedback.set_led_state != nullptr)
         {
-            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+            dependencies_.feedback.set_led_state(RuntimeLedState::Error5, 0.0);
         }
-        if (dependencies_.set_audio_recovery_command != nullptr)
+        if (dependencies_.feedback.set_audio_recovery_command != nullptr)
         {
-            dependencies_.set_audio_recovery_command("error");
+            dependencies_.feedback.set_audio_recovery_command("error");
         }
-        if (dependencies_.send_audio_command != nullptr)
+        if (dependencies_.feedback.send_audio_command != nullptr)
         {
-            dependencies_.send_audio_command("error");
+            dependencies_.feedback.send_audio_command("error");
         }
-        if (dependencies_.remove_recording_lock != nullptr)
+        if (dependencies_.file_system.remove_recording_lock != nullptr)
         {
-            dependencies_.remove_recording_lock();
+            dependencies_.file_system.remove_recording_lock();
         }
         if (error_message != nullptr)
         {
@@ -945,25 +947,25 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         return false;
     }
 
-    if (dependencies_.path_exists != nullptr && !dependencies_.path_exists(options_.sensor_recorder_bin))
+    if (dependencies_.file_system.path_exists != nullptr && !dependencies_.file_system.path_exists(options_.sensor_recorder_bin))
     {
-        CallLog(dependencies_.log_error, "sensor recorder binary not found: " + options_.sensor_recorder_bin);
+        CallLog(dependencies_.logs.log_error, "sensor recorder binary not found: " + options_.sensor_recorder_bin);
         stop_ego_startup_rollback();
-        if (dependencies_.set_led_state != nullptr)
+        if (dependencies_.feedback.set_led_state != nullptr)
         {
-            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+            dependencies_.feedback.set_led_state(RuntimeLedState::Error5, 0.0);
         }
-        if (dependencies_.set_audio_recovery_command != nullptr)
+        if (dependencies_.feedback.set_audio_recovery_command != nullptr)
         {
-            dependencies_.set_audio_recovery_command("error");
+            dependencies_.feedback.set_audio_recovery_command("error");
         }
-        if (dependencies_.send_audio_command != nullptr)
+        if (dependencies_.feedback.send_audio_command != nullptr)
         {
-            dependencies_.send_audio_command("error");
+            dependencies_.feedback.send_audio_command("error");
         }
-        if (dependencies_.remove_recording_lock != nullptr)
+        if (dependencies_.file_system.remove_recording_lock != nullptr)
         {
-            dependencies_.remove_recording_lock();
+            dependencies_.file_system.remove_recording_lock();
         }
         if (error_message != nullptr)
         {
@@ -972,27 +974,27 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         return false;
     }
 
-    if (dependencies_.write_recording_lock != nullptr &&
-        !dependencies_.write_recording_lock(state_.current_episode_dir))
+    if (dependencies_.file_system.write_recording_lock != nullptr &&
+        !dependencies_.file_system.write_recording_lock(state_.current_episode_dir))
     {
-        CallLog(dependencies_.log_error,
+        CallLog(dependencies_.logs.log_error,
                 "failed to update recording lock for episode " + state_.current_episode_dir);
         stop_ego_startup_rollback();
-        if (dependencies_.remove_recording_lock != nullptr)
+        if (dependencies_.file_system.remove_recording_lock != nullptr)
         {
-            dependencies_.remove_recording_lock();
+            dependencies_.file_system.remove_recording_lock();
         }
-        if (dependencies_.set_led_state != nullptr)
+        if (dependencies_.feedback.set_led_state != nullptr)
         {
-            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+            dependencies_.feedback.set_led_state(RuntimeLedState::Error5, 0.0);
         }
-        if (dependencies_.set_audio_recovery_command != nullptr)
+        if (dependencies_.feedback.set_audio_recovery_command != nullptr)
         {
-            dependencies_.set_audio_recovery_command("error");
+            dependencies_.feedback.set_audio_recovery_command("error");
         }
-        if (dependencies_.send_audio_command != nullptr)
+        if (dependencies_.feedback.send_audio_command != nullptr)
         {
-            dependencies_.send_audio_command("error");
+            dependencies_.feedback.send_audio_command("error");
         }
         if (error_message != nullptr)
         {
@@ -1016,17 +1018,17 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
     };
     std::vector<std::string> sensor_args_with_extras = sensor_args;
     std::vector<int> sensor_inherited_fds;
-    if (dependencies_.prepare_sensor_start != nullptr)
+    if (dependencies_.workers.prepare_sensor_start != nullptr)
     {
-        dependencies_.prepare_sensor_start(&sensor_args_with_extras, &sensor_inherited_fds);
+        dependencies_.workers.prepare_sensor_start(&sensor_args_with_extras, &sensor_inherited_fds);
     }
 
     bool camera_started = false;
     bool sensor_started = false;
     std::thread camera_thread([&]() {
-        if (dependencies_.start_worker != nullptr)
+        if (dependencies_.workers.start_worker != nullptr)
         {
-            camera_started = dependencies_.start_worker(
+            camera_started = dependencies_.workers.start_worker(
                 WorkerName::CameraRecorder,
                 {
                     .name = "camera_recorder",
@@ -1039,9 +1041,9 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         }
     });
     std::thread sensor_thread([&]() {
-        if (dependencies_.start_worker != nullptr)
+        if (dependencies_.workers.start_worker != nullptr)
         {
-            sensor_started = dependencies_.start_worker(
+            sensor_started = dependencies_.workers.start_worker(
                 WorkerName::SensorRecorder,
                 {
                     .name = "sensor_recorder",
@@ -1056,45 +1058,45 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
     });
     camera_thread.join();
     sensor_thread.join();
-    if (dependencies_.finalize_sensor_start != nullptr)
+    if (dependencies_.workers.finalize_sensor_start != nullptr)
     {
-        dependencies_.finalize_sensor_start();
+        dependencies_.workers.finalize_sensor_start();
     }
 
     if (!camera_started || !sensor_started)
     {
         if (!camera_started)
         {
-            CallLog(dependencies_.log_error, "failed to launch camera recorder");
+            CallLog(dependencies_.logs.log_error, "failed to launch camera recorder");
         }
         if (!sensor_started)
         {
-            CallLog(dependencies_.log_error, "failed to launch sensor recorder");
+            CallLog(dependencies_.logs.log_error, "failed to launch sensor recorder");
         }
-        if (camera_started && dependencies_.stop_worker != nullptr)
+        if (camera_started && dependencies_.workers.stop_worker != nullptr)
         {
-            dependencies_.stop_worker(WorkerName::CameraRecorder, "startup rollback", nullptr);
+            dependencies_.workers.stop_worker(WorkerName::CameraRecorder, "startup rollback", nullptr);
         }
-        if (sensor_started && dependencies_.stop_worker != nullptr)
+        if (sensor_started && dependencies_.workers.stop_worker != nullptr)
         {
-            dependencies_.stop_worker(WorkerName::SensorRecorder, "startup rollback", nullptr);
+            dependencies_.workers.stop_worker(WorkerName::SensorRecorder, "startup rollback", nullptr);
         }
         stop_ego_startup_rollback();
-        if (dependencies_.remove_recording_lock != nullptr)
+        if (dependencies_.file_system.remove_recording_lock != nullptr)
         {
-            dependencies_.remove_recording_lock();
+            dependencies_.file_system.remove_recording_lock();
         }
-        if (dependencies_.set_led_state != nullptr)
+        if (dependencies_.feedback.set_led_state != nullptr)
         {
-            dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+            dependencies_.feedback.set_led_state(RuntimeLedState::Error5, 0.0);
         }
-        if (dependencies_.set_audio_recovery_command != nullptr)
+        if (dependencies_.feedback.set_audio_recovery_command != nullptr)
         {
-            dependencies_.set_audio_recovery_command("error");
+            dependencies_.feedback.set_audio_recovery_command("error");
         }
-        if (dependencies_.send_audio_command != nullptr)
+        if (dependencies_.feedback.send_audio_command != nullptr)
         {
-            dependencies_.send_audio_command("error");
+            dependencies_.feedback.send_audio_command("error");
         }
         if (error_message != nullptr)
         {
@@ -1104,34 +1106,34 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
     }
 
     if (options_.stereo_enabled &&
-        (dependencies_.start_stereo_session == nullptr ||
-         !dependencies_.start_stereo_session(state_.current_episode_dir, session_start_system_time_us, &local_error)))
+        (dependencies_.stereo.start_session == nullptr ||
+         !dependencies_.stereo.start_session(state_.current_episode_dir, session_start_system_time_us, &local_error)))
     {
-        CallLog(dependencies_.log_error,
+        CallLog(dependencies_.logs.log_error,
                 "failed to start stereo session for episode " + state_.current_episode_dir);
         const bool stereo_control_failed = IsStereoControlFailureText(local_error);
         const HardwareFaultSide stereo_failure_side =
             stereo_control_failed ? SideForText(local_error) : HardwareFaultSide::Unknown;
-        if (dependencies_.stop_worker != nullptr)
+        if (dependencies_.workers.stop_worker != nullptr)
         {
-            dependencies_.stop_worker(WorkerName::CameraRecorder, "stereo session start failed", nullptr);
-            dependencies_.stop_worker(WorkerName::SensorRecorder, "stereo session start failed", nullptr);
+            dependencies_.workers.stop_worker(WorkerName::CameraRecorder, "stereo session start failed", nullptr);
+            dependencies_.workers.stop_worker(WorkerName::SensorRecorder, "stereo session start failed", nullptr);
         }
         stop_ego_startup_rollback();
-        if (dependencies_.remove_recording_lock != nullptr)
+        if (dependencies_.file_system.remove_recording_lock != nullptr)
         {
-            dependencies_.remove_recording_lock();
+            dependencies_.file_system.remove_recording_lock();
         }
-        ApplyFailureLedState(dependencies_,
+        ApplyFailureLedState(dependencies_.feedback,
                              stereo_control_failed ? RuntimeLedState::Error4 : RuntimeLedState::Error5,
                              stereo_failure_side);
-        if (dependencies_.set_audio_recovery_command != nullptr)
+        if (dependencies_.feedback.set_audio_recovery_command != nullptr)
         {
-            dependencies_.set_audio_recovery_command("error");
+            dependencies_.feedback.set_audio_recovery_command("error");
         }
-        if (dependencies_.send_audio_command != nullptr)
+        if (dependencies_.feedback.send_audio_command != nullptr)
         {
-            dependencies_.send_audio_command("error");
+            dependencies_.feedback.send_audio_command("error");
         }
         if (error_message != nullptr)
         {
@@ -1141,19 +1143,19 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
     }
 
     state_.is_recording = true;
-    if (dependencies_.set_led_state != nullptr)
+    if (dependencies_.feedback.set_led_state != nullptr)
     {
-        dependencies_.set_led_state(RuntimeLedState::Recording, 0.0);
+        dependencies_.feedback.set_led_state(RuntimeLedState::Recording, 0.0);
     }
-    if (dependencies_.set_audio_recovery_command != nullptr)
+    if (dependencies_.feedback.set_audio_recovery_command != nullptr)
     {
-        dependencies_.set_audio_recovery_command("");
+        dependencies_.feedback.set_audio_recovery_command("");
     }
-    if (dependencies_.send_audio_command != nullptr)
+    if (dependencies_.feedback.send_audio_command != nullptr)
     {
-        dependencies_.send_audio_command(reset_recording ? "reset_recording_start" : "recording_started");
+        dependencies_.feedback.send_audio_command(reset_recording ? "reset_recording_start" : "recording_started");
     }
-    CallLog(dependencies_.log_info, "recording started: " + state_.current_episode_dir);
+    CallLog(dependencies_.logs.log_info, "recording started: " + state_.current_episode_dir);
     return true;
 }
 
@@ -1162,27 +1164,27 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
                                           const std::string& error_type,
                                           std::string* error_message)
 {
-    const bool ego_required = dependencies_.is_ego_required != nullptr &&
-                              dependencies_.is_ego_required();
+    const bool ego_required = dependencies_.ego.is_required != nullptr &&
+                              dependencies_.ego.is_required();
     if (!state_.is_recording)
     {
-        if (dependencies_.remove_recording_lock != nullptr)
+        if (dependencies_.file_system.remove_recording_lock != nullptr)
         {
-            dependencies_.remove_recording_lock();
+            dependencies_.file_system.remove_recording_lock();
         }
         if (due_to_error)
         {
-            if (dependencies_.set_led_state != nullptr)
+            if (dependencies_.feedback.set_led_state != nullptr)
             {
-                dependencies_.set_led_state(RuntimeLedState::Error5, 0.0);
+                dependencies_.feedback.set_led_state(RuntimeLedState::Error5, 0.0);
             }
-            if (dependencies_.set_audio_recovery_command != nullptr)
+            if (dependencies_.feedback.set_audio_recovery_command != nullptr)
             {
-                dependencies_.set_audio_recovery_command("error");
+                dependencies_.feedback.set_audio_recovery_command("error");
             }
-            if (dependencies_.send_audio_command != nullptr)
+            if (dependencies_.feedback.send_audio_command != nullptr)
             {
-                dependencies_.send_audio_command("error");
+                dependencies_.feedback.send_audio_command("error");
             }
         }
         return true;
@@ -1195,20 +1197,20 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     {
         AddErrorType(&error_types, error_type.empty() ? kErrorTypeRuntimeError : error_type);
     }
-    CallLog(dependencies_.log_info, "stopping recording: " + reason);
-    CallPerfLog(dependencies_,
+    CallLog(dependencies_.logs.log_info, "stopping recording: " + reason);
+    CallPerfLog(dependencies_.logs,
             "[PERF] stop phase begin: reason=" + reason + " episode_dir=" + state_.current_episode_dir);
 
     std::string stereo_error;
     bool stereo_stop_ok = true;
     if (options_.stereo_enabled)
     {
-        stereo_stop_ok = dependencies_.stop_stereo_session != nullptr &&
-                         dependencies_.stop_stereo_session(
+        stereo_stop_ok = dependencies_.stereo.stop_session != nullptr &&
+                         dependencies_.stereo.stop_session(
                              state_.current_episode_dir, stop_system_time_us, &stereo_error);
         if (!stereo_stop_ok)
         {
-            CallLog(dependencies_.log_error, "failed to send stereo stop command");
+            CallLog(dependencies_.logs.log_error, "failed to send stereo stop command");
         }
     }
 
@@ -1216,9 +1218,9 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     auto stop_worker_task =
         [this](WorkerName worker, const std::string& name) {
             const int64_t worker_stop_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
-            const bool ok = dependencies_.stop_worker != nullptr &&
-                            dependencies_.stop_worker(worker, "recording stop", nullptr);
-            CallPerfLog(dependencies_,
+            const bool ok = dependencies_.workers.stop_worker != nullptr &&
+                            dependencies_.workers.stop_worker(worker, "recording stop", nullptr);
+            CallPerfLog(dependencies_.logs,
                     "[PERF] stop " + name + " done: ok=" + std::string(ok ? "true" : "false") +
                         " elapsed_ms=" +
                         std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : worker_stop_start_ms) -
@@ -1237,7 +1239,7 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         std::string("sensor_recorder"));
     const bool camera_stop_ok = camera_stop_future.get();
     const bool sensor_stop_ok = sensor_stop_future.get();
-    CallPerfLog(dependencies_,
+    CallPerfLog(dependencies_.logs,
             "[PERF] stop workers done: camera_ok=" + std::string(camera_stop_ok ? "true" : "false") +
                 " sensor_ok=" + std::string(sensor_stop_ok ? "true" : "false") +
                 " elapsed_ms=" +
@@ -1245,10 +1247,10 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
                                workers_stop_start_ms));
 
     std::string recording_hardware_fault_reason;
-    if (dependencies_.detect_recording_hardware_fault != nullptr)
+    if (dependencies_.episode.detect_recording_hardware_fault != nullptr)
     {
         const std::optional<HealthFault> recording_fault =
-            dependencies_.detect_recording_hardware_fault(state_.current_episode_dir);
+            dependencies_.episode.detect_recording_hardware_fault(state_.current_episode_dir);
         if (recording_fault.has_value())
         {
             due_to_error = true;
@@ -1257,17 +1259,17 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
                                            : recording_fault->key);
             recording_hardware_fault_reason =
                 "recording hardware fault (" + recording_fault->key + "): " + recording_fault->detail;
-            CallLog(dependencies_.log_error, recording_hardware_fault_reason);
+            CallLog(dependencies_.logs.log_error, recording_hardware_fault_reason);
         }
     }
 
-    if (dependencies_.set_led_state != nullptr)
+    if (dependencies_.feedback.set_led_state != nullptr)
     {
-        dependencies_.set_led_state(RuntimeLedState::Ready, 0.0);
+        dependencies_.feedback.set_led_state(RuntimeLedState::Ready, 0.0);
     }
-    if (dependencies_.send_audio_command != nullptr)
+    if (dependencies_.feedback.send_audio_command != nullptr)
     {
-        dependencies_.send_audio_command("recording_stop");
+        dependencies_.feedback.send_audio_command("recording_stop");
     }
 
     state_.is_recording = false;
@@ -1276,53 +1278,53 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         state_.last_episode_dir = state_.current_episode_dir;
     }
 
-    if (dependencies_.set_audio_recovery_command != nullptr)
+    if (dependencies_.feedback.set_audio_recovery_command != nullptr)
     {
-        dependencies_.set_audio_recovery_command("writing");
+        dependencies_.feedback.set_audio_recovery_command("writing");
     }
-    if (dependencies_.send_audio_command != nullptr)
+    if (dependencies_.feedback.send_audio_command != nullptr)
     {
-        dependencies_.send_audio_command("writing");
+        dependencies_.feedback.send_audio_command("writing");
     }
-    if (dependencies_.set_led_state != nullptr)
+    if (dependencies_.feedback.set_led_state != nullptr)
     {
-        dependencies_.set_led_state(RuntimeLedState::Writing, 0.0);
+        dependencies_.feedback.set_led_state(RuntimeLedState::Writing, 0.0);
     }
 
     bool ego_stop_ok = true;
     std::string ego_failure_error;
     std::string ego_failure_error_type;
-    if (dependencies_.stop_ego_recording != nullptr)
+    if (dependencies_.ego.stop_recording != nullptr)
     {
         std::string ego_stop_error;
-        ego_stop_ok = dependencies_.stop_ego_recording(
+        ego_stop_ok = dependencies_.ego.stop_recording(
             state_.current_episode_dir, stop_system_time_us, &ego_stop_error);
         if (!ego_stop_ok)
         {
             ego_failure_error = ego_stop_error.empty()
                                     ? std::string("ego recording stop failed")
                                     : ego_stop_error;
-            CallLog(dependencies_.log_warn,
+            CallLog(dependencies_.logs.log_warn,
                     "ego recording stop failed: " +
                         ego_failure_error);
         }
     }
 
     const int64_t write_phase_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
-    CallPerfLog(dependencies_, "[PERF] writing phase begin: episode_dir=" + state_.current_episode_dir);
-    if (dependencies_.flush_episode_artifacts != nullptr)
+    CallPerfLog(dependencies_.logs, "[PERF] writing phase begin: episode_dir=" + state_.current_episode_dir);
+    if (dependencies_.episode.flush_episode_artifacts != nullptr)
     {
-        dependencies_.flush_episode_artifacts(state_.current_episode_dir, "pre_stereo_finalize");
+        dependencies_.episode.flush_episode_artifacts(state_.current_episode_dir, "pre_stereo_finalize");
     }
 
     std::string stereo_finalize_error;
     std::string merge_error;
-    if (dependencies_.wait_for_ego_finalize != nullptr)
+    if (dependencies_.ego.wait_for_finalize != nullptr)
     {
         const int64_t ego_finalize_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
         std::string ego_finalize_error;
         std::string ego_finalize_error_type;
-        if (!dependencies_.wait_for_ego_finalize(
+        if (!dependencies_.ego.wait_for_finalize(
                 state_.current_episode_dir,
                 options_.stereo_finalize_timeout_ms,
                 &ego_finalize_error,
@@ -1333,66 +1335,66 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
                                     ? std::string("ego recording finalize wait failed")
                                     : ego_finalize_error;
             ego_failure_error_type = ego_finalize_error_type;
-            CallLog(dependencies_.log_warn,
+            CallLog(dependencies_.logs.log_warn,
                     "ego recording finalize wait failed: " +
                         ego_failure_error);
         }
-        CallPerfLog(dependencies_,
+        CallPerfLog(dependencies_.logs,
                 "[PERF] ego finalize wait done: ok=" + std::string(ego_stop_ok ? "true" : "false") +
                     " elapsed_ms=" +
                     std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : ego_finalize_start_ms) -
                                    ego_finalize_start_ms));
     }
-    if (options_.stereo_enabled && stereo_stop_ok && dependencies_.wait_for_stereo_finalize != nullptr)
+    if (options_.stereo_enabled && stereo_stop_ok && dependencies_.stereo.wait_for_finalize != nullptr)
     {
         const int64_t stereo_finalize_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
-        if (!dependencies_.wait_for_stereo_finalize(
+        if (!dependencies_.stereo.wait_for_finalize(
                 state_.current_episode_dir, options_.stereo_finalize_timeout_ms, &stereo_finalize_error))
         {
-            CallLog(dependencies_.log_error, "stereo finalize failed: " + stereo_finalize_error);
+            CallLog(dependencies_.logs.log_error, "stereo finalize failed: " + stereo_finalize_error);
             stereo_stop_ok = false;
         }
-        CallPerfLog(dependencies_,
+        CallPerfLog(dependencies_.logs,
                 "[PERF] stereo finalize wait done: ok=" + std::string(stereo_stop_ok ? "true" : "false") +
                     " elapsed_ms=" +
                     std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stereo_finalize_start_ms) -
                                    stereo_finalize_start_ms));
     }
-    if (stereo_stop_ok && dependencies_.merge_episode_info != nullptr)
+    if (stereo_stop_ok && dependencies_.episode.merge_episode_info != nullptr)
     {
         const int64_t stereo_merge_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
-        if (!dependencies_.merge_episode_info(state_.current_episode_dir, &merge_error))
+        if (!dependencies_.episode.merge_episode_info(state_.current_episode_dir, &merge_error))
         {
-            CallLog(dependencies_.log_error, "failed to merge episode info: " + merge_error);
+            CallLog(dependencies_.logs.log_error, "failed to merge episode info: " + merge_error);
             stereo_stop_ok = false;
         }
-        CallPerfLog(dependencies_,
+        CallPerfLog(dependencies_.logs,
                 "[PERF] stereo merge done: ok=" + std::string(stereo_stop_ok ? "true" : "false") +
                     " elapsed_ms=" +
                     std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stereo_merge_start_ms) -
                                    stereo_merge_start_ms));
     }
-    if (dependencies_.flush_episode_artifacts != nullptr)
+    if (dependencies_.episode.flush_episode_artifacts != nullptr)
     {
-        dependencies_.flush_episode_artifacts(state_.current_episode_dir, "final");
+        dependencies_.episode.flush_episode_artifacts(state_.current_episode_dir, "final");
     }
-    if (ego_stop_ok && dependencies_.cleanup_ego_remote != nullptr)
+    if (ego_stop_ok && dependencies_.ego.cleanup_remote != nullptr)
     {
         std::string cleanup_error;
         const bool ego_cleanup_ok =
-            dependencies_.cleanup_ego_remote(state_.current_episode_dir, &cleanup_error);
+            dependencies_.ego.cleanup_remote(state_.current_episode_dir, &cleanup_error);
         if (!ego_cleanup_ok)
         {
-            CallLog(dependencies_.log_warn,
+            CallLog(dependencies_.logs.log_warn,
                     "ego remote cleanup skipped or failed: " +
                         (cleanup_error.empty() ? std::string("unknown cleanup error") : cleanup_error));
         }
-        if (dependencies_.flush_episode_artifacts != nullptr)
+        if (dependencies_.episode.flush_episode_artifacts != nullptr)
         {
-            dependencies_.flush_episode_artifacts(state_.current_episode_dir, "ego_cleanup");
+            dependencies_.episode.flush_episode_artifacts(state_.current_episode_dir, "ego_cleanup");
         }
     }
-    CallPerfLog(dependencies_,
+    CallPerfLog(dependencies_.logs,
             "[PERF] writing phase end: episode_dir=" + state_.current_episode_dir +
                 " elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : write_phase_start_ms) -
@@ -1472,16 +1474,16 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         }
     }
     const int64_t validate_phase_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
-    CallPerfLog(dependencies_, "[PERF] validation phase begin: episode_dir=" + state_.current_episode_dir);
+    CallPerfLog(dependencies_.logs, "[PERF] validation phase begin: episode_dir=" + state_.current_episode_dir);
     const bool skip_episode_validation = !stereo_stop_ok;
     if (skip_episode_validation)
     {
-        CallLog(dependencies_.log_warn,
+        CallLog(dependencies_.logs.log_warn,
                 "skip episode validation because stereo finalize already failed: " + final_error_message);
     }
-    if (dependencies_.write_episode_metadata != nullptr)
+    if (dependencies_.episode.write_episode_metadata != nullptr)
     {
-        dependencies_.write_episode_metadata(
+        dependencies_.episode.write_episode_metadata(
             state_.current_episode_dir,
             !due_to_error && stereo_stop_ok && ego_required_ok,
             final_error_message,
@@ -1490,8 +1492,8 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     std::vector<std::string> episode_validation_error_types;
     const bool episode_valid =
         skip_episode_validation ||
-        (dependencies_.validate_episode != nullptr &&
-         dependencies_.validate_episode(
+        (dependencies_.episode.validate_episode != nullptr &&
+         dependencies_.episode.validate_episode(
              state_.current_episode_dir,
              &episode_validation_error,
              &episode_validation_error_types));
@@ -1513,14 +1515,14 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         }
     }
     const bool valid = !due_to_error && stereo_stop_ok && ego_required_ok && episode_valid;
-    CallPerfLog(dependencies_,
+    CallPerfLog(dependencies_.logs,
             "[PERF] validation phase end: episode_dir=" + state_.current_episode_dir +
                 " valid=" + std::string(valid ? "true" : "false") + " elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : validate_phase_start_ms) -
                                validate_phase_start_ms));
-    if (!valid && dependencies_.write_episode_metadata != nullptr)
+    if (!valid && dependencies_.episode.write_episode_metadata != nullptr)
     {
-        dependencies_.write_episode_metadata(
+        dependencies_.episode.write_episode_metadata(
             state_.current_episode_dir,
             false,
             final_error_message,
@@ -1528,24 +1530,24 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     }
     if (!valid)
     {
-        CallLog(dependencies_.log_error, "episode validation failed: " + final_error_message);
-        if (dependencies_.write_validation_error_log != nullptr)
+        CallLog(dependencies_.logs.log_error, "episode validation failed: " + final_error_message);
+        if (dependencies_.episode.write_validation_error_log != nullptr)
         {
-            dependencies_.write_validation_error_log(state_.current_episode_dir, final_error_message);
+            dependencies_.episode.write_validation_error_log(state_.current_episode_dir, final_error_message);
         }
     }
 
     bool episode_dir_finalized = true;
-    if (dependencies_.finalize_episode_dir != nullptr && !state_.current_episode_dir.empty())
+    if (dependencies_.episode.finalize_episode_dir != nullptr && !state_.current_episode_dir.empty())
     {
         std::string finalize_dir_error;
         const std::string renamed_episode_dir =
-            dependencies_.finalize_episode_dir(state_.current_episode_dir, &finalize_dir_error);
+            dependencies_.episode.finalize_episode_dir(state_.current_episode_dir, &finalize_dir_error);
         if (renamed_episode_dir.empty())
         {
             AddErrorType(&error_types, kErrorTypeFinalizeError);
             episode_dir_finalized = false;
-            CallLog(dependencies_.log_error, "failed to finalize episode directory: " + finalize_dir_error);
+            CallLog(dependencies_.logs.log_error, "failed to finalize episode directory: " + finalize_dir_error);
             if (final_error_message.empty())
             {
                 final_error_message = finalize_dir_error;
@@ -1554,17 +1556,17 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
             {
                 final_error_message += "; " + finalize_dir_error;
             }
-            if (dependencies_.write_episode_metadata != nullptr)
+            if (dependencies_.episode.write_episode_metadata != nullptr)
             {
-                dependencies_.write_episode_metadata(
+                dependencies_.episode.write_episode_metadata(
                     state_.current_episode_dir,
                     false,
                     final_error_message,
                     SelectPrimaryErrorType(error_types));
             }
-            if (dependencies_.write_validation_error_log != nullptr)
+            if (dependencies_.episode.write_validation_error_log != nullptr)
             {
-                dependencies_.write_validation_error_log(state_.current_episode_dir, final_error_message);
+                dependencies_.episode.write_validation_error_log(state_.current_episode_dir, final_error_message);
             }
         }
         else
@@ -1574,14 +1576,14 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     }
 
     const auto finish_stop_cleanup = [this]() {
-        if (dependencies_.sync_runtime_log != nullptr)
+        if (dependencies_.logs.sync_runtime_log != nullptr)
         {
-            dependencies_.sync_runtime_log("video stop");
+            dependencies_.logs.sync_runtime_log("video stop");
         }
         state_.current_episode_dir.clear();
-        if (dependencies_.remove_recording_lock != nullptr)
+        if (dependencies_.file_system.remove_recording_lock != nullptr)
         {
-            dependencies_.remove_recording_lock();
+            dependencies_.file_system.remove_recording_lock();
         }
     };
 
@@ -1590,23 +1592,23 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
 
     if (due_to_error)
     {
-        if (dependencies_.handle_failure_state != nullptr)
+        if (dependencies_.feedback.handle_failure_state != nullptr)
         {
-            dependencies_.handle_failure_state(failure_led_state, error_types, final_error_message);
+            dependencies_.feedback.handle_failure_state(failure_led_state, error_types, final_error_message);
         }
-        if (dependencies_.set_led_state != nullptr)
+        if (dependencies_.feedback.set_led_state != nullptr)
         {
-            ApplyFailureLedState(dependencies_, failure_led_state, stereo_control_failure_side);
+            ApplyFailureLedState(dependencies_.feedback, failure_led_state, stereo_control_failure_side);
         }
-        if (dependencies_.set_audio_recovery_command != nullptr)
+        if (dependencies_.feedback.set_audio_recovery_command != nullptr)
         {
-            dependencies_.set_audio_recovery_command(failure_audio_command);
+            dependencies_.feedback.set_audio_recovery_command(failure_audio_command);
         }
-        if (dependencies_.send_audio_command != nullptr)
+        if (dependencies_.feedback.send_audio_command != nullptr)
         {
-            dependencies_.send_audio_command(failure_audio_command);
+            dependencies_.feedback.send_audio_command(failure_audio_command);
         }
-        CallPerfLog(dependencies_,
+        CallPerfLog(dependencies_.logs,
                 "[PERF] stop phase end: due_to_error=true total_elapsed_ms=" +
                     std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stop_start_ms) - stop_start_ms));
         finish_stop_cleanup();
@@ -1620,23 +1622,23 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     const bool final_valid = valid && episode_dir_finalized;
     if (!final_valid)
     {
-        if (dependencies_.handle_failure_state != nullptr)
+        if (dependencies_.feedback.handle_failure_state != nullptr)
         {
-            dependencies_.handle_failure_state(failure_led_state, error_types, final_error_message);
+            dependencies_.feedback.handle_failure_state(failure_led_state, error_types, final_error_message);
         }
-        if (dependencies_.set_led_state != nullptr)
+        if (dependencies_.feedback.set_led_state != nullptr)
         {
-            ApplyFailureLedState(dependencies_, failure_led_state, stereo_control_failure_side);
+            ApplyFailureLedState(dependencies_.feedback, failure_led_state, stereo_control_failure_side);
         }
-        if (dependencies_.set_audio_recovery_command != nullptr)
+        if (dependencies_.feedback.set_audio_recovery_command != nullptr)
         {
-            dependencies_.set_audio_recovery_command(failure_audio_command);
+            dependencies_.feedback.set_audio_recovery_command(failure_audio_command);
         }
-        if (dependencies_.send_audio_command != nullptr)
+        if (dependencies_.feedback.send_audio_command != nullptr)
         {
-            dependencies_.send_audio_command(failure_audio_command);
+            dependencies_.feedback.send_audio_command(failure_audio_command);
         }
-        CallPerfLog(dependencies_,
+        CallPerfLog(dependencies_.logs,
             "[PERF] stop phase end: valid=false total_elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stop_start_ms) - stop_start_ms));
         finish_stop_cleanup();
@@ -1647,19 +1649,19 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         return false;
     }
 
-    if (dependencies_.set_led_state != nullptr)
+    if (dependencies_.feedback.set_led_state != nullptr)
     {
-        dependencies_.set_led_state(RuntimeLedState::Ready, 0.0);
+        dependencies_.feedback.set_led_state(RuntimeLedState::Ready, 0.0);
     }
-    if (dependencies_.set_audio_recovery_command != nullptr)
+    if (dependencies_.feedback.set_audio_recovery_command != nullptr)
     {
-        dependencies_.set_audio_recovery_command("ready");
+        dependencies_.feedback.set_audio_recovery_command("ready");
     }
-    if (dependencies_.send_audio_command != nullptr)
+    if (dependencies_.feedback.send_audio_command != nullptr)
     {
-        dependencies_.send_audio_command("ready");
+        dependencies_.feedback.send_audio_command("ready");
     }
-    CallPerfLog(dependencies_,
+    CallPerfLog(dependencies_.logs,
             "[PERF] stop phase end: valid=true total_elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stop_start_ms) - stop_start_ms));
     finish_stop_cleanup();
@@ -1668,22 +1670,22 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
 
 bool RecordingOrchestrator::CheckRecorderProcesses() const
 {
-    const ProcessStatus camera_status = dependencies_.get_worker_status != nullptr
-                                            ? dependencies_.get_worker_status(WorkerName::CameraRecorder)
+    const ProcessStatus camera_status = dependencies_.workers.get_worker_status != nullptr
+                                            ? dependencies_.workers.get_worker_status(WorkerName::CameraRecorder)
                                             : ProcessStatus{};
-    const ProcessStatus sensor_status = dependencies_.get_worker_status != nullptr
-                                            ? dependencies_.get_worker_status(WorkerName::SensorRecorder)
+    const ProcessStatus sensor_status = dependencies_.workers.get_worker_status != nullptr
+                                            ? dependencies_.workers.get_worker_status(WorkerName::SensorRecorder)
                                             : ProcessStatus{};
     const bool camera_ok = camera_status.running;
     const bool sensor_ok = sensor_status.running;
     if (!camera_ok)
     {
-        CallLog(dependencies_.log_error,
+        CallLog(dependencies_.logs.log_error,
                 "camera recorder exited, last_exit=" + std::to_string(camera_status.last_exit_code));
     }
     if (!sensor_ok)
     {
-        CallLog(dependencies_.log_error,
+        CallLog(dependencies_.logs.log_error,
                 "sensor recorder exited, last_exit=" + std::to_string(sensor_status.last_exit_code));
     }
     return camera_ok && sensor_ok;

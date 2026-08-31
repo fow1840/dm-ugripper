@@ -1,6 +1,7 @@
 #pragma once
 
 #include "record_runtime.h"
+#include "record_runtime/runtime_persistence_support_internal.h"
 
 #include <array>
 #include <cstdint>
@@ -81,17 +82,6 @@ bool IsDiskHealthFault(const ugripper::runtime::HealthFault &fault);
 std::optional<ugripper::runtime::HealthFault> detectDiskHealthFault(const std::string &diskRootPath);
 std::vector<std::string> sessionCameraStreams(bool chestCameraEnabled);
 std::string joinCsv(const std::vector<std::string> &items);
-bool moveFileWithCrossDeviceFallback(const std::filesystem::path &source,
-                                     const std::filesystem::path &target,
-                                     std::error_code *error);
-bool flushFileToDisk(const std::filesystem::path &path, std::error_code *error);
-void flushEpisodeArtifactsToDisk(const std::filesystem::path &episodeDir,
-                                 bool chestCameraEnabled,
-                                 bool stereoEnabled,
-                                 const char *phaseLabel);
-void writeValidationErrorLog(const std::filesystem::path &episodeDir,
-                             const std::string &errorMessage);
-std::string makeTimestampString();
 std::vector<std::string> resolvePythonCommand();
 bool hasAdbUsbInterface();
 

@@ -97,242 +97,258 @@ struct RecordingHarness
              .stereo_enabled = stereo_enabled,
              .worker_stop_timeout_ms = 5000,
              .stereo_finalize_timeout_ms = 10000},
-            {.create_next_episode_dir =
-                 []() {
-                     return std::string("/tmp/episode_0001");
-                 },
-             .prepare_episode =
-                 [this](const std::string&, bool, const std::string&, std::string* error) {
-                     if (!prepare_ok)
-                     {
-                         if (error != nullptr)
+            {
+             .episode = {
+                 .create_next_episode_dir =
+                     []() {
+                         return std::string("/tmp/episode_0001");
+                     },
+                 .prepare_episode =
+                     [this](const std::string&, bool, const std::string&, std::string* error) {
+                         if (!prepare_ok)
                          {
-                             *error = prepare_error;
+                             if (error != nullptr)
+                             {
+                                 *error = prepare_error;
+                             }
+                             return false;
                          }
-                         return false;
-                     }
-                     return prepare_ok;
-                 },
-             .validate_episode =
-                 [this](const std::string&, std::string* error, std::vector<std::string>* error_types) {
-                     ++validate_calls;
-                     if (!validate_ok && error != nullptr)
-                     {
-                         *error = validate_error;
-                     }
-                     if (!validate_ok && error_types != nullptr)
-                     {
-                         *error_types = validate_error_types;
-                     }
-                     return validate_ok;
-                 },
-             .prepare_sensor_start =
-                 [this](std::vector<std::string>* extra_args, std::vector<int>* inherited_fds) {
-                    if (extra_args != nullptr)
-                    {
-                        extra_args->push_back("--extra-test-fd");
-                        extra_args->push_back("99");
-                    }
-                     if (inherited_fds != nullptr)
-                     {
-                         inherited_fds->push_back(99);
-                     }
-                 },
-             .finalize_sensor_start =
-                 []() {},
-             .attach_pending_pre_audio =
-                 [this](const std::string&) {
-                     return attach_ok;
-                 },
-             .merge_episode_info =
-                 [this](const std::string&, std::string* error) {
-                     if (!merge_ok && error != nullptr)
-                     {
-                         *error = merge_error;
-                     }
-                     return merge_ok;
-                 },
-             .path_exists =
-                 [this](const std::string& path) {
-                     if (path == "/tmp/camera_recorder")
-                     {
-                         return camera_bin_exists;
-                     }
-                     if (path == "/tmp/sensor_recorder")
-                     {
-                         return sensor_bin_exists;
-                     }
-                     return true;
-                 },
-             .set_audio_recovery_command =
-                 [this](const std::string& command) {
-                     recovery_commands.push_back(command);
-                 },
-             .send_audio_command =
-                 [this](const std::string& command) {
-                     audio_commands.push_back(command);
-                 },
-             .set_led_state =
-                 [this](RuntimeLedState state, double) {
-                     led_states.push_back(state);
-                 },
-             .set_hardware_fault_led_state =
-                 [this](const HealthFault& fault) {
-                     hardware_fault_led_states.push_back(fault);
-                     led_states.push_back(fault.led_state);
-                 },
-             .start_stereo_session =
-                 [this](const std::string&, int64_t, std::string* error) {
-                     ++stereo_start_calls;
-                     if (!stereo_start_ok && error != nullptr)
-                     {
-                         *error = stereo_start_error;
-                     }
-                     return stereo_start_ok;
-                 },
-             .stop_stereo_session =
-                 [this](const std::string&, int64_t, std::string*) {
-                     ++stereo_stop_calls;
-                     return stereo_stop_ok;
-                 },
-             .start_ego_recording =
-                 [this](const std::string&, int64_t, std::string* error, std::string* error_type) {
-                     ++ego_start_calls;
-                     if (!ego_start_ok && error != nullptr)
-                     {
-                         *error = ego_error;
-                     }
-                     if (!ego_start_ok && error_type != nullptr)
-                     {
-                         *error_type = ego_start_error_type;
-                     }
-                     return ego_start_ok;
-                 },
-             .stop_ego_recording =
-                 [this](const std::string&, int64_t, std::string* error) {
-                     ++ego_stop_calls;
-                     if (!ego_stop_ok && error != nullptr)
-                     {
-                         *error = ego_error;
-                     }
-                     return ego_stop_ok;
-                 },
-            .wait_for_ego_finalize =
-                 [this](const std::string&, int, std::string* error, std::string* error_type) {
-                     ++ego_finalize_calls;
-                     if (!ego_finalize_ok && error != nullptr)
-                     {
-                         *error = ego_error;
-                     }
-                     if (!ego_finalize_ok && error_type != nullptr)
-                     {
-                         *error_type = ego_finalize_error_type;
-                     }
-                     return ego_finalize_ok;
-                 },
-             .wait_for_stereo_finalize =
-                 [this](const std::string&, int, std::string* error) {
-                     ++stereo_finalize_calls;
-                     if (!wait_finalize_ok && error != nullptr)
-                     {
-                         *error = wait_finalize_error;
-                     }
-                     return wait_finalize_ok;
-                 },
-             .cleanup_ego_remote =
-                 [this](const std::string&, std::string* error) {
-                     ++ego_cleanup_calls;
-                     if (!ego_cleanup_ok && error != nullptr)
-                     {
-                         *error = ego_error;
-                     }
-                     return ego_cleanup_ok;
-                 },
-             .is_ego_required =
-                 [this]() {
-                     return ego_required;
-                 },
-             .flush_episode_artifacts =
-                 [this](const std::string&, const char* stage) {
-                     flushed_stages.emplace_back(stage);
-                 },
-             .write_episode_metadata =
-                 [this](const std::string&, bool, const std::string&, const std::string& error_type) {
-                     metadata_error_types.push_back(error_type);
-                 },
-             .write_validation_error_log =
-                 [this](const std::string&, const std::string& error_message) {
-                     last_validation_log = error_message;
-                 },
-             .write_recording_lock =
-                 [this](const std::string& episode_dir) {
-                     lock_events.push_back("write:" + episode_dir);
-                     return write_lock_ok;
-                 },
-             .remove_recording_lock =
-                 [this]() {
-                     lock_events.push_back("remove");
-                     sync_and_lock_events.push_back("remove");
-                 },
-             .start_worker =
-                 [this](WorkerName worker, const ProcessSpec& spec, std::string*) {
-                     const std::lock_guard<std::mutex> lock(worker_mutex);
-                     started_specs[worker] = spec;
-                     const bool should_start = worker == WorkerName::CameraRecorder ? camera_start_ok : sensor_start_ok;
-                     if (worker == WorkerName::SensorRecorder)
-                     {
-                         sensor_args = spec.argv;
-                         sensor_inherited_fds = spec.inherited_fds;
-                     }
-                     if (!should_start)
-                     {
+                         return prepare_ok;
+                     },
+                 .validate_episode =
+                     [this](const std::string&, std::string* error, std::vector<std::string>* error_types) {
+                         ++validate_calls;
+                         if (!validate_ok && error != nullptr)
+                         {
+                             *error = validate_error;
+                         }
+                         if (!validate_ok && error_types != nullptr)
+                         {
+                             *error_types = validate_error_types;
+                         }
+                         return validate_ok;
+                     },
+                 .attach_pending_pre_audio =
+                     [this](const std::string&) {
+                         return attach_ok;
+                     },
+                 .merge_episode_info =
+                     [this](const std::string&, std::string* error) {
+                         if (!merge_ok && error != nullptr)
+                         {
+                             *error = merge_error;
+                         }
+                         return merge_ok;
+                     },
+                 .flush_episode_artifacts =
+                     [this](const std::string&, const char* stage) {
+                         flushed_stages.emplace_back(stage);
+                     },
+                 .write_episode_metadata =
+                     [this](const std::string&, bool, const std::string&, const std::string& error_type) {
+                         metadata_error_types.push_back(error_type);
+                     },
+                 .write_validation_error_log =
+                     [this](const std::string&, const std::string& error_message) {
+                         last_validation_log = error_message;
+                     },
+             },
+             .file_system = {
+                 .path_exists =
+                     [this](const std::string& path) {
+                         if (path == "/tmp/camera_recorder")
+                         {
+                             return camera_bin_exists;
+                         }
+                         if (path == "/tmp/sensor_recorder")
+                         {
+                             return sensor_bin_exists;
+                         }
+                         return true;
+                     },
+                 .write_recording_lock =
+                     [this](const std::string& episode_dir) {
+                         lock_events.push_back("write:" + episode_dir);
+                         return write_lock_ok;
+                     },
+                 .remove_recording_lock =
+                     [this]() {
+                         lock_events.push_back("remove");
+                         sync_and_lock_events.push_back("remove");
+                     },
+             },
+             .workers = {
+                 .prepare_sensor_start =
+                     [this](std::vector<std::string>* extra_args, std::vector<int>* inherited_fds) {
+                        if (extra_args != nullptr)
+                        {
+                            extra_args->push_back("--extra-test-fd");
+                            extra_args->push_back("99");
+                        }
+                         if (inherited_fds != nullptr)
+                         {
+                             inherited_fds->push_back(99);
+                         }
+                     },
+                 .finalize_sensor_start =
+                     []() {},
+                 .start_worker =
+                     [this](WorkerName worker, const ProcessSpec& spec, std::string*) {
+                         const std::lock_guard<std::mutex> lock(worker_mutex);
+                         started_specs[worker] = spec;
+                         const bool should_start = worker == WorkerName::CameraRecorder ? camera_start_ok : sensor_start_ok;
+                         if (worker == WorkerName::SensorRecorder)
+                         {
+                             sensor_args = spec.argv;
+                             sensor_inherited_fds = spec.inherited_fds;
+                         }
+                         if (!should_start)
+                         {
+                             worker_status[worker] = ProcessStatus{
+                                 .state = ProcessState::ExitedUnexpected,
+                                 .running = false,
+                                 .pid = 0,
+                             };
+                             return false;
+                         }
                          worker_status[worker] = ProcessStatus{
-                             .state = ProcessState::ExitedUnexpected,
-                             .running = false,
-                             .pid = 0,
+                             .state = ProcessState::Running,
+                             .running = true,
+                             .pid = spec.name == "camera_recorder" ? 101 : 202,
                          };
-                         return false;
-                     }
-                     worker_status[worker] = ProcessStatus{
-                         .state = ProcessState::Running,
-                         .running = true,
-                         .pid = spec.name == "camera_recorder" ? 101 : 202,
-                     };
-                     return true;
-                 },
-             .stop_worker =
-                 [this](WorkerName worker, const std::string& reason, std::string*) {
-                     const std::lock_guard<std::mutex> lock(worker_mutex);
-                     const char* worker_name =
-                         worker == WorkerName::CameraRecorder ? "camera_recorder" : "sensor_recorder";
-                     stop_reasons.push_back(std::string(worker_name) + ":" + reason);
-                     worker_status[worker].running = false;
-                     worker_status[worker].state = ProcessState::ExitedExpected;
-                     return true;
-                 },
-             .get_worker_status =
-                 [this](WorkerName worker) {
-                     const std::lock_guard<std::mutex> lock(worker_mutex);
-                     const auto it = worker_status.find(worker);
-                     return it == worker_status.end() ? ProcessStatus{} : it->second;
-                 },
-             .log_info =
-                 [this](const std::string& message) {
-                     logs.push_back("I:" + message);
-                 },
-             .log_warn =
-                 [this](const std::string& message) {
-                     logs.push_back("W:" + message);
-                 },
-             .log_error =
-                 [this](const std::string& message) {
-                     logs.push_back("E:" + message);
-                 },
-             .sync_runtime_log =
-                 [this](const std::string& reason) {
-                     sync_reason = reason;
-                     sync_and_lock_events.push_back("sync:" + reason);
-                 }},
+                         return true;
+                     },
+                 .stop_worker =
+                     [this](WorkerName worker, const std::string& reason, std::string*) {
+                         const std::lock_guard<std::mutex> lock(worker_mutex);
+                         const char* worker_name =
+                             worker == WorkerName::CameraRecorder ? "camera_recorder" : "sensor_recorder";
+                         stop_reasons.push_back(std::string(worker_name) + ":" + reason);
+                         worker_status[worker].running = false;
+                         worker_status[worker].state = ProcessState::ExitedExpected;
+                         return true;
+                     },
+                 .get_worker_status =
+                     [this](WorkerName worker) {
+                         const std::lock_guard<std::mutex> lock(worker_mutex);
+                         const auto it = worker_status.find(worker);
+                         return it == worker_status.end() ? ProcessStatus{} : it->second;
+                     },
+             },
+             .stereo = {
+                 .start_session =
+                     [this](const std::string&, int64_t, std::string* error) {
+                         ++stereo_start_calls;
+                         if (!stereo_start_ok && error != nullptr)
+                         {
+                             *error = stereo_start_error;
+                         }
+                         return stereo_start_ok;
+                     },
+                 .stop_session =
+                     [this](const std::string&, int64_t, std::string*) {
+                         ++stereo_stop_calls;
+                         return stereo_stop_ok;
+                     },
+                 .wait_for_finalize =
+                     [this](const std::string&, int, std::string* error) {
+                         ++stereo_finalize_calls;
+                         if (!wait_finalize_ok && error != nullptr)
+                         {
+                             *error = wait_finalize_error;
+                         }
+                         return wait_finalize_ok;
+                     },
+             },
+             .ego = {
+                 .start_recording =
+                     [this](const std::string&, int64_t, std::string* error, std::string* error_type) {
+                         ++ego_start_calls;
+                         if (!ego_start_ok && error != nullptr)
+                         {
+                             *error = ego_error;
+                         }
+                         if (!ego_start_ok && error_type != nullptr)
+                         {
+                             *error_type = ego_start_error_type;
+                         }
+                         return ego_start_ok;
+                     },
+                 .stop_recording =
+                     [this](const std::string&, int64_t, std::string* error) {
+                         ++ego_stop_calls;
+                         if (!ego_stop_ok && error != nullptr)
+                         {
+                             *error = ego_error;
+                         }
+                         return ego_stop_ok;
+                     },
+                 .wait_for_finalize =
+                     [this](const std::string&, int, std::string* error, std::string* error_type) {
+                         ++ego_finalize_calls;
+                         if (!ego_finalize_ok && error != nullptr)
+                         {
+                             *error = ego_error;
+                         }
+                         if (!ego_finalize_ok && error_type != nullptr)
+                         {
+                             *error_type = ego_finalize_error_type;
+                         }
+                         return ego_finalize_ok;
+                     },
+                 .cleanup_remote =
+                     [this](const std::string&, std::string* error) {
+                         ++ego_cleanup_calls;
+                         if (!ego_cleanup_ok && error != nullptr)
+                         {
+                             *error = ego_error;
+                         }
+                         return ego_cleanup_ok;
+                     },
+                 .is_required =
+                     [this]() {
+                         return ego_required;
+                     },
+             },
+             .feedback = {
+                 .set_audio_recovery_command =
+                     [this](const std::string& command) {
+                         recovery_commands.push_back(command);
+                     },
+                 .send_audio_command =
+                     [this](const std::string& command) {
+                         audio_commands.push_back(command);
+                     },
+                 .set_led_state =
+                     [this](RuntimeLedState state, double) {
+                         led_states.push_back(state);
+                     },
+                 .set_hardware_fault_led_state =
+                     [this](const HealthFault& fault) {
+                         hardware_fault_led_states.push_back(fault);
+                         led_states.push_back(fault.led_state);
+                     },
+             },
+             .logs = {
+                 .log_info =
+                     [this](const std::string& message) {
+                         logs.push_back("I:" + message);
+                     },
+                 .log_warn =
+                     [this](const std::string& message) {
+                         logs.push_back("W:" + message);
+                     },
+                 .log_error =
+                     [this](const std::string& message) {
+                         logs.push_back("E:" + message);
+                     },
+                 .sync_runtime_log =
+                     [this](const std::string& reason) {
+                         sync_reason = reason;
+                         sync_and_lock_events.push_back("sync:" + reason);
+                     },
+             },
+            },
             &FakeEpochUs,
             &FakeSteadyMs);
     }

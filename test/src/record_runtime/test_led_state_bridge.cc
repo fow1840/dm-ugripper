@@ -44,104 +44,118 @@ struct LedBridgeHarness
              .sensor_recorder_bin = "/tmp/sensor_recorder",
              .camera_codec = "h264",
              .session_camera_streams_csv = "left,right"},
-            {.create_next_episode_dir =
-                 []() {
-                     return std::string("/tmp/episode_0001");
-                 },
-             .prepare_episode =
-                 [](const std::string&, bool, const std::string&, std::string*) {
-                     return true;
-                 },
-             .validate_episode =
-                 [this](const std::string&, std::string* error, std::vector<std::string>* error_types) {
-                     if (!validate_ok && error != nullptr)
-                     {
-                         *error = validate_error;
-                     }
-                     if (!validate_ok && error_types != nullptr)
-                     {
-                         *error_types = validate_error_types;
-                     }
-                     return validate_ok;
-                 },
-             .prepare_sensor_start =
-                 [](std::vector<std::string>*, std::vector<int>*) {},
-             .finalize_sensor_start =
-                 []() {},
-             .attach_pending_pre_audio =
-                 [](const std::string&) {
-                     return true;
-                 },
-             .merge_episode_info =
-                 [](const std::string&, std::string*) {
-                     return true;
-                 },
-             .path_exists =
-                 [this](const std::string& path) {
-                     if (path == "/tmp/camera_recorder")
-                     {
-                         return camera_bin_exists;
-                     }
-                     return true;
-                 },
-             .set_audio_recovery_command =
-                 [this](const std::string& command) {
-                     recovery_commands.push_back(command);
-                 },
-             .send_audio_command =
-                 [this](const std::string& command) {
-                     audio_commands.push_back(command);
-                 },
-             .set_led_state =
-                 [this](RuntimeLedState state, double) {
-                     led_states.push_back(state);
-                 },
-             .start_stereo_session =
-                 [](const std::string&, int64_t, std::string*) {
-                     return true;
-                 },
-             .stop_stereo_session =
-                 [](const std::string&, int64_t, std::string*) {
-                     return true;
-                 },
-             .wait_for_stereo_finalize =
-                 [](const std::string&, int, std::string*) {
-                     return true;
-                 },
-             .flush_episode_artifacts =
-                 [](const std::string&, const char*) {},
-             .write_episode_metadata =
-                 [](const std::string&, bool, const std::string&, const std::string&) {},
-             .write_validation_error_log =
-                 [](const std::string&, const std::string&) {},
-             .write_recording_lock =
-                 [](const std::string&) {
-                     return true;
-                 },
-             .remove_recording_lock =
-                 []() {},
-             .start_worker =
-                 [](WorkerName worker, const ProcessSpec& spec, std::string*) {
-                     (void)worker;
-                     (void)spec;
-                     return true;
-                 },
-             .stop_worker =
-                 [](WorkerName, const std::string&, std::string*) {
-                     return true;
-                 },
-             .get_worker_status =
-                 [](WorkerName worker) {
-                     return ProcessStatus{
-                         .state = ProcessState::Running,
-                         .running = true,
-                         .pid = worker == WorkerName::CameraRecorder ? 101 : 202,
-                     };
-                 },
-             .log_info = [](const std::string&) {},
-             .log_warn = [](const std::string&) {},
-             .log_error = [](const std::string&) {},
-             .sync_runtime_log = [](const std::string&) {}},
+            {
+             .episode = {
+                 .create_next_episode_dir =
+                     []() {
+                         return std::string("/tmp/episode_0001");
+                     },
+                 .prepare_episode =
+                     [](const std::string&, bool, const std::string&, std::string*) {
+                         return true;
+                     },
+                 .validate_episode =
+                     [this](const std::string&, std::string* error, std::vector<std::string>* error_types) {
+                         if (!validate_ok && error != nullptr)
+                         {
+                             *error = validate_error;
+                         }
+                         if (!validate_ok && error_types != nullptr)
+                         {
+                             *error_types = validate_error_types;
+                         }
+                         return validate_ok;
+                     },
+                 .attach_pending_pre_audio =
+                     [](const std::string&) {
+                         return true;
+                     },
+                 .merge_episode_info =
+                     [](const std::string&, std::string*) {
+                         return true;
+                     },
+                 .flush_episode_artifacts =
+                     [](const std::string&, const char*) {},
+                 .write_episode_metadata =
+                     [](const std::string&, bool, const std::string&, const std::string&) {},
+                 .write_validation_error_log =
+                     [](const std::string&, const std::string&) {},
+             },
+             .file_system = {
+                 .path_exists =
+                     [this](const std::string& path) {
+                         if (path == "/tmp/camera_recorder")
+                         {
+                             return camera_bin_exists;
+                         }
+                         return true;
+                     },
+                 .write_recording_lock =
+                     [](const std::string&) {
+                         return true;
+                     },
+                 .remove_recording_lock =
+                     []() {},
+             },
+             .workers = {
+                 .prepare_sensor_start =
+                     [](std::vector<std::string>*, std::vector<int>*) {},
+                 .finalize_sensor_start =
+                     []() {},
+                 .start_worker =
+                     [](WorkerName worker, const ProcessSpec& spec, std::string*) {
+                         (void)worker;
+                         (void)spec;
+                         return true;
+                     },
+                 .stop_worker =
+                     [](WorkerName, const std::string&, std::string*) {
+                         return true;
+                     },
+                 .get_worker_status =
+                     [](WorkerName worker) {
+                         return ProcessStatus{
+                             .state = ProcessState::Running,
+                             .running = true,
+                             .pid = worker == WorkerName::CameraRecorder ? 101 : 202,
+                         };
+                     },
+             },
+             .stereo = {
+                 .start_session =
+                     [](const std::string&, int64_t, std::string*) {
+                         return true;
+                     },
+                 .stop_session =
+                     [](const std::string&, int64_t, std::string*) {
+                         return true;
+                     },
+                 .wait_for_finalize =
+                     [](const std::string&, int, std::string*) {
+                         return true;
+                     },
+             },
+             .feedback = {
+                 .set_audio_recovery_command =
+                     [this](const std::string& command) {
+                         recovery_commands.push_back(command);
+                     },
+                 .send_audio_command =
+                     [this](const std::string& command) {
+                         audio_commands.push_back(command);
+                     },
+                 .set_led_state =
+                     [this](RuntimeLedState state, double) {
+                         led_states.push_back(state);
+                     },
+             },
+             .logs = {
+                 .log_info = [](const std::string&) {},
+                 .log_warn = [](const std::string&) {},
+                 .log_error = [](const std::string&) {},
+                 .sync_runtime_log = [](const std::string&) {},
+             },
+            },
             &FakeEpochUs,
             &FakeSteadyMs);
     }
