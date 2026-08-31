@@ -1,8 +1,12 @@
 #include "record_runtime.h"
 #include "utils/ugripper_logger.h"
 
+#include <utils/single_process_instance.h>
+
 #include <csignal>
 #include <iostream>
+#include <memory>
+#include <stdexcept>
 #include <string>
 
 namespace {
@@ -36,6 +40,19 @@ int main(int argc, char **argv)
                 3,
                 false);
 
+    std::unique_ptr<DA::utils::SingleProcessInstance> single_process_instance;
+    try
+    {
+        single_process_instance = std::make_unique<DA::utils::SingleProcessInstance>(app_name);
+    }
+    catch (const std::runtime_error &error)
+    {
+        DM_LOG_WARN("{} is already running or cannot acquire the single-process lock: {}",
+                    app_name,
+                    error.what());
+        return 0;
+    }
+
     RecordRuntimeOptions options;
 
     for (int index = 1; index < argc; ++index)
@@ -68,7 +85,18 @@ int main(int argc, char **argv)
         }
         if (argument == "--poll-ms" && index + 1 < argc)
         {
-            options.pollMs = std::stoi(argv[++index]);
+            try
+            {
+                options.pollMs = std::stoi(argv[++index]);
+            }
+            catch (const std::exception &error)
+            {
+                DM_LOG_ERROR_CODE("UGR-70-01",
+                                  "Invalid --poll-ms value: {}",
+                                  error.what());
+                printUsage(argv[0]);
+                return 1;
+            }
             continue;
         }
 

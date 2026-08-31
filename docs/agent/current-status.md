@@ -101,7 +101,7 @@
 - C++、Python、Shell 和子进程输出均经过同一日志入口。
 - 错误日志末尾统一保留一个显式 `error_code=UGR-xx-xx`。
 - 业务标签保持原样，错误码不按消息关键词猜测。
-- 日志后端真源为 `PP_MAIN_ROOT/src/utils`；本仓仅保留适配和兜底 helper。
+- ARM/pp-main 构建直接链接主仓库既有 `PP::utils` 静态库；host 无对应产物时，才从同一真源编译最小兼容桥接。本仓业务侧统一链接 `PP::utils`，本地通用工具目标使用 `UGripper::utils`。
 - stereo 离线同步和物理 USB power reset 仍为后续项，暂停时 SSH 状态抓取失败。
 
 ## 5. 当前模块总览
@@ -119,7 +119,15 @@
 | 校准执行 | `auto_calibration/run_calibration.sh` | 左右编码器 zeroing | `bin/SensorRecorder/zeroing` |
 
 ## 6. 当前实现结构结论
-- `UgripperRuntime` 已按 `app 壳 + process boundary + control plane` 落地到 `standalone/UgripperRuntime`
+- `UgripperRuntime` 已按 `app 壳 + process boundary + control plane + episode domain` 落地到 `standalone/UgripperRuntime`
+- episode 创建、标定、元数据与 finalize 归属 `runtime_episode.cc`，视频 / MCAP / tactile 停录校验归属 `runtime_episode_validation.cc`
+- gripper、主摄、触觉设备状态与 HMI panel/LED I/O 归属 `runtime_devices.cc`
+- camera recorder 故障识别、数据盘预处理与 USB restore/retry 归属 `runtime_recovery.cc`
+- 自由函数、常量和系统 helper 归属 `runtime_support.cc`
+- audio、stereo、ego 外部服务协调和 episode info/log 合并归属 `runtime_services.cc`
+- 录制启停、按键动作、音频片段和控制 FIFO 归属 `runtime_controls.cc`
+- `record_runtime.cc` 当前约 `1308` 行，只保留 supervisor 装配、初始化、主循环、健康状态接线和少量顶层入口
+- `UgripperRuntime` 入口复用 pp-main `DA::utils::SingleProcessInstance`，重复实例会在进入 runtime 初始化前安全退出；命令行 `--poll-ms` 的非法值会返回参数错误，不再由 `std::stoi` 异常终止进程
 - `CameraRecorder` 已按 `app 壳 + camera domain` 落地到 `standalone/CameraRecorder`
 - `SensorRecorder` 已按 `protocol + domain + app/runtime 装配` 落地到 `standalone/SensorRecorder`
 - `GripperHmiTool` 已按 `protocol + led effects + driver + tool` 落地到 `standalone/GripperHmiTool`

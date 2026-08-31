@@ -110,6 +110,13 @@ target_link_libraries(runtime_control_plane
 add_executable(${APP_NAME}
     main.cc
     record_runtime.cc
+    runtime_controls.cc
+    runtime_devices.cc
+    runtime_episode.cc
+    runtime_episode_validation.cc
+    runtime_recovery.cc
+    runtime_services.cc
+    runtime_support.cc
 )
 set_target_properties(${APP_NAME} PROPERTIES
     CXX_STANDARD 20
@@ -125,6 +132,7 @@ target_include_directories(${APP_NAME}
 )
 target_link_libraries(${APP_NAME}
     PRIVATE
+        PP::utils
         runtime_control_plane
         runtime_process_boundary
         ugripperruntime_mcap

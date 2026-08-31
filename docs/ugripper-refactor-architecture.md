@@ -113,6 +113,7 @@
 - 保留 `record_runtime -> camera_recorder / sensor_recorder` 的多进程 supervisor 关系
 - 不把系统改成单进程大应用
 - 把 process boundary 和 control-plane 从顶层运行时壳里拆出来
+- 把 episode 生命周期和停录数据校验从巨型 supervisor 实现中拆成独立领域文件
 
 当前已落地实现：
 
@@ -123,6 +124,25 @@
   - `standalone/UgripperRuntime/runtime_process.cc`
 - runtime domain / control plane：
   - `standalone/UgripperRuntime/runtime_domain.cc`
+- episode domain：
+  - `standalone/UgripperRuntime/runtime_episode.cc`
+  - `standalone/UgripperRuntime/runtime_episode_validation.cc`
+- device state / HMI I/O：
+  - `standalone/UgripperRuntime/runtime_devices.cc`
+- hardware recovery：
+  - `standalone/UgripperRuntime/runtime_recovery.cc`
+- runtime support：
+  - `standalone/UgripperRuntime/runtime_support.cc`
+- external services：
+  - `standalone/UgripperRuntime/runtime_services.cc`
+- recording controls：
+  - `standalone/UgripperRuntime/runtime_controls.cc`
+- episode internal boundary：
+  - `standalone/UgripperRuntime/include/record_runtime/episode_manager.h`
+  - `standalone/UgripperRuntime/include/record_runtime/runtime_episode_internal.h`
+- runtime split internal declarations：
+  - `standalone/UgripperRuntime/include/record_runtime/runtime_split_internal.h`
+  - `standalone/UgripperRuntime/include/record_runtime/runtime_support_internal.h`
 
 当前 `CMake` 结构也已经明确体现为：
 
@@ -131,6 +151,12 @@
 - `UgripperRuntime`
 
 这说明 runtime 的边界已经不再只是设计稿，而是现行实现结构。
+
+其中 episode 拆分严格保持原有算法、阈值、调用顺序和错误映射：`runtime_episode.cc` 负责目录创建、标定、metadata 与 finalize，`runtime_episode_validation.cc` 负责视频、MCAP 和 tactile 校验；`record_runtime.cc` 仍是 supervisor 主控。由于 episode 校验本身规模较大，本轮经明确评审允许突破旧的“职责实现文件 3 个”建议上限，以职责完整性优先，避免重新把校验细节塞回 `runtime_domain.cc` 或 supervisor 壳。
+
+第二轮继续按领域物理拆分：`runtime_devices.cc` 承载设备缓存、刷新和 HMI I/O，`runtime_recovery.cc` 承载 camera recorder 故障识别及 USB restore 状态机。两者仍是 `RecordRuntime` 成员函数实现，不引入新的生命周期、线程模型或控制通道；共享声明集中在 internal header，常量仍由原实现单点定义。
+
+第三轮进一步把函数堆积迁出：`runtime_support.cc` 收口自由函数和系统 helper，`runtime_services.cc` 收口外部服务协调，`runtime_controls.cc` 收口录制与按键控制。完成后 `record_runtime.cc` 从初始约 `11365` 行降到约 `1308` 行，职责收敛为 supervisor 壳；各新增实现文件除独立的大体量 episode validation 外均控制在约 `1800` 行以内。
 
 ### 4.2 `CameraRecorder`
 

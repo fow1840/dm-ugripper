@@ -822,6 +822,7 @@ Phase 1 允许：
 - 同样默认按“`main.cpp` 不计入职责实现文件数量”理解
 - 也就是说，`record_runtime` 的职责实现文件收成 `3` 个，含入口总数约 `4` 个
 - 若后续实际收口后 `runtime_domain.cpp` 仍过大，再内部重排，但不继续向更多碎片 `.cpp` 扩张
+- 2026-08-31 episode 域继续拆分时，经明确评审允许突破上述历史建议上限：新增 `runtime_episode.cc` 与 `runtime_episode_validation.cc`，以隔离 episode 生命周期和大体量停录校验；该例外不改变 supervisor 多进程模型，也不意味着可无约束碎片化
 
 这样做的理由是：
 
@@ -858,6 +859,19 @@ Phase 1 允许：
   - 删除 `health_monitor.cpp`
   - 删除 `recording_orchestrator.cpp`
   - 新增 `runtime_process.cpp`
+- 已完成 episode 域的第二轮职责拆分：
+  - 新增 `runtime_episode.cc`
+  - 新增 `runtime_episode_validation.cc`
+  - `EpisodeManager` 从 `record_runtime.cpp` 内部实现迁出，但保留原算法、阈值、顺序和错误语义
+- 已完成设备与恢复域的第三轮职责拆分：
+  - 新增 `runtime_devices.cc`，承载设备状态缓存、刷新和 HMI panel/LED I/O
+  - 新增 `runtime_recovery.cc`，承载 camera recorder 故障识别及 USB restore/retry
+  - `record_runtime.cc` 继续保留 supervisor、主循环和录制控制，不改变原调用顺序
+- 已完成 supervisor 壳的第四轮函数级收口：
+  - 新增 `runtime_support.cc`，承载自由函数、常量和系统 helper
+  - 新增 `runtime_services.cc`，承载 audio、stereo、ego 外部服务协调
+  - 新增 `runtime_controls.cc`，承载录制、按键、音频片段和控制 FIFO
+  - `record_runtime.cc` 当前约 `1308` 行，仅保留 supervisor 初始化、主循环和顶层状态接线
   - 新增 `runtime_domain.cpp`
 - `runtime_process_boundary` 与 `runtime_control_plane` 两个库目标保留不变，只调整为单一实现文件
 

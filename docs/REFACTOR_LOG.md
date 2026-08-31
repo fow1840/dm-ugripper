@@ -4784,3 +4784,148 @@
   - `git diff --check`
 - 未执行测试与原因：
   - 新建 host 配置因本机 `/opt/openrobots` 的 GTest 导入目标引用缺失 `libgmock.so.1.11.0`，未能从零配置；复用现有 host 测试构建目录已完成目标编译和两项测试
+
+### 2026-08-31 - ugripper-runtime-episode-domain-extraction
+
+- 阶段：`Post-A3 Step 8 / Runtime Domain Split follow-up`
+- 范围：`standalone/UgripperRuntime`、`docs`
+- 类型：`episode domain extraction / behavior-equivalent refactor`
+- 主要改动：
+  - 新增 `runtime_episode.cc`，承载 episode 创建、标定、metadata 与 finalize
+  - 新增 `runtime_episode_validation.cc`，承载视频、MCAP、tactile 校验及其内部 helper
+  - 新增 `include/record_runtime/episode_manager.h` 与 `runtime_episode_internal.h`，明确 episode 对外管理边界和跨实现文件内部边界
+  - `record_runtime.cc` 保留 supervisor 装配、主状态机和顶层生命周期，不再承载 episode 实现细节
+  - `CMakeLists.txt` 将两个 episode 实现文件接入 `UgripperRuntime`
+  - 经明确评审允许本阶段突破旧的“职责实现文件 3 个”建议上限，以大体量完整领域职责为拆分依据
+- 风险与行为等价说明：
+  - 保留 supervisor 多进程模型，不引入 `TaskScheduler`、ZMQ 或单进程化
+  - 不调整算法、阈值、调用顺序、文件命名、日志文本和错误映射
+  - 本阶段不夹带 episode 校验功能修复
+- 已执行验证：
+  - 新建 host Debug 构建目录 `build/codex_episode_refactor` 并完成全目标编译
+  - `cmake --build build/codex_episode_refactor`：通过
+  - `ctest --test-dir build/codex_episode_refactor --output-on-failure -L record_runtime`：`7/7` 通过
+  - `build/codex_episode_refactor/standalone/UgripperRuntime/UgripperRuntime --help`：通过
+  - `git diff --check`：通过
+  - `./scripts/build_arm_deb_in_pp_arm_dev.sh`：通过，生成 `ugripper_2.1.11_arm64.deb`
+  - `./usb_updater_build.sh`：通过，生成 `das-usb-updater_1.0.4_all.deb`
+  - 包内 `CameraRecorder` 与 `UgripperRuntime` 均经 `file` 确认为 ARM aarch64 ELF
+- 非本次回归的全量测试观察：
+  - `ctest -L host-only` 共 `208` 项，`199` 项通过、`9` 项失败
+  - 失败集中在未修改的 `runtime_process.cc` 进程时序测试和 `runtime_domain.cc` stereo health 测试；隔离复跑仍失败
+  - 本阶段不修改这些既有行为，定向 episode / record-runtime 门禁已通过
+- 240 板端验证：
+  - 安装顺序：先安装 `ugripper 2.1.11`，再安装 `das-usb-updater 1.0.4`
+  - `/mnt/data_disk` 挂载正常，`ugripper.service` 安装后进入 `Ready`
+  - 通过 `/dev/shm/ugripper/umi_record_control.pipe` 发送正常 `START / STOP`
+  - 实录 episode：`/mnt/data_disk/dap921265c00163b/data/episode_20260831_0003`
+  - 实录时长：`74.9s`；板上存在多个历史 data root，首次监控误选旧根目录，发现后立即通过同一控制 FIFO 正常停止，因此录制时长长于原计划，但 episode 主链未被异常中断
+  - metadata：`quality_check_status=success`、`data_version=3.2`、`software_version=v2.1.11`
+  - `require_files` 中 14 个产物全部存在，`validation_error.log` 不存在
+  - journal 确认 `START`、`STOP` 均被 accepted，停录后触觉校验执行，服务回到 `Ready`，录制锁清除
+- 后续待验证：
+  - 本阶段关键本地门禁与 ARM 实机主链均已通过，可以独立提交；不建议在同一改动中继续拆下一领域
+
+### 2026-08-31 - ugripper-runtime-device-recovery-extraction
+
+- 阶段：`Post-A3 Step 8 / Runtime Domain Split follow-up 2`
+- 范围：`standalone/UgripperRuntime`、`docs`
+- 类型：`device state extraction / recovery state-machine extraction / behavior-equivalent refactor`
+- 主要改动：
+  - 新增 `runtime_devices.cc`，迁入 gripper、主摄、触觉设备状态缓存与刷新、后台触觉校验接线，以及 `GripperPanelManager / HmiLedController` 实现
+  - 新增 `runtime_recovery.cc`，迁入 camera recorder 启动/D-state 故障识别、数据盘卸载预处理、USB restore/retry 与失败告警
+  - 新增 `runtime_split_internal.h`，集中跨实现文件所需的内部类型、常量和 helper 声明；定义仍保持单点归属
+  - `record_runtime.cc` 从约 `262KB / 7741` 行进一步降到约 `178KB / 5321` 行
+- 风险与行为等价说明：
+  - 仅移动既有 `RecordRuntime` 成员函数定义，不增加新类或改变对象所有权
+  - 不调整线程、定时阈值、恢复次数、设备路径、日志文本、错误映射和调用顺序
+  - 不夹带 USB restore、camera 或 HMI 功能修复
+- 已执行验证：
+  - `cmake --build build/codex_episode_refactor --target UgripperRuntime --parallel 8`：通过
+  - `ctest --test-dir build/codex_episode_refactor --output-on-failure -L record_runtime`：`7/7` 通过
+  - `build/codex_episode_refactor/standalone/UgripperRuntime/UgripperRuntime --help`：通过
+  - `git diff --check`：通过
+  - `./scripts/build_arm_deb_in_pp_arm_dev.sh`：通过，`runtime_devices.cc` 与 `runtime_recovery.cc` 完成 aarch64 编译并生成 `ugripper_2.1.11_arm64.deb`
+- 240 板端验证：
+  - 覆盖安装 `ugripper 2.1.11` 成功，既有 `das-usb-updater 1.0.4` 保持安装
+  - `/mnt/data_disk` 挂载正常，服务启动后进入 `Ready`
+  - 通过正式控制 FIFO 完成 `START / STOP`，两条命令均被 accepted
+  - 实录 episode：`/mnt/data_disk/dap921265c00163b/data/episode_20260831_0004`
+  - `collection_duration_s=16.0`、`quality_check_status=success`、`quality_check_err_type` 为空
+  - episode 顶层 `14` 个文件齐全，`validation_error.log` 不存在
+  - 停录后服务回到 `Ready`，录制锁清除，`ugripper.service` 保持 active
+- 后续待验证：
+  - 本轮设备与恢复域拆分的本地和 ARM 主链门禁均已通过；建议先提交本次完整 runtime 拆分，再决定是否继续迁出录制控制域
+
+### 2026-08-31 - ugripper-runtime-supervisor-shell-reduction
+
+- 阶段：`Post-A3 Step 8 / Runtime Domain Split follow-up 3`
+- 范围：`standalone/UgripperRuntime`、`docs`
+- 类型：`free-function extraction / service extraction / recording-control extraction`
+- 主要改动：
+  - 新增 `runtime_support.cc`，迁入原文件顶部的自由函数、常量、文件系统/进程/设备 helper
+  - 新增 `runtime_services.cc`，迁入 audio、stereo、ego 协调以及 episode info 和 runtime log 合并
+  - 新增 `runtime_controls.cc`，迁入录制启停、按键动作、音频片段、operator mark 和控制 FIFO
+  - 新增 `runtime_support_internal.h`，集中跨实现文件声明和只读常量
+  - `record_runtime.cc` 从约 `5321` 行进一步降到约 `1308` 行；初始基线约为 `11365` 行
+- 当前实现文件规模：
+  - `record_runtime.cc`：约 `1308` 行
+  - `runtime_support.cc`：约 `1753` 行
+  - `runtime_services.cc`：约 `1241` 行
+  - `runtime_controls.cc`：约 `1094` 行
+  - `runtime_devices.cc`：约 `1385` 行
+  - `runtime_recovery.cc`：约 `1091` 行
+  - `runtime_episode.cc`：约 `1165` 行
+  - `runtime_episode_validation.cc`：约 `2423` 行，作为独立的大体量校验域保留
+- 风险与行为等价说明：
+  - 保留原函数体、调用顺序、常量值和对象所有权，仅改变编译单元归属
+  - 不修改 supervisor 多进程模型、控制通道、线程语义或错误处理
+- 已执行验证：
+  - `cmake --build build/codex_episode_refactor --target UgripperRuntime --parallel 8`：通过
+  - `ctest --test-dir build/codex_episode_refactor --output-on-failure -L record_runtime`：`7/7` 通过
+  - `UgripperRuntime --help`：通过
+  - `git diff --check`：通过
+  - `./scripts/build_arm_deb_in_pp_arm_dev.sh`：通过，生成 `ugripper_2.1.11_arm64.deb`
+- 240 板端验证：
+  - 覆盖安装 `ugripper 2.1.11` 成功，既有 `das-usb-updater 1.0.4` 保持安装
+  - `/mnt/data_disk` 挂载正常，`ugripper.service` 启动后进入 `Ready`
+  - 通过 `/dev/shm/ugripper/umi_record_control.pipe` 完成 `START / STOP`，两条命令均被 accepted
+  - 实录 episode：`/mnt/data_disk/dap921265c00163b/data/episode_20260831_0005`
+  - `collection_duration_s=16.0`、`quality_check_status=success`、`quality_check_err_type` 为空
+  - episode 顶层 `14` 个产物文件齐全，`validation_error.log` 不存在
+  - 停录后服务回到 `Ready`，`ugripper.service` 保持 active
+- 后续待验证：
+  - 本轮主 supervisor 壳层收缩的 host、ARM 构建和 240 实录主链门禁均已通过；建议以当前职责边界收口，不在本次行为等价重构中继续改状态机或进程模型
+
+### 2026-08-31 - pp-main-utils-and-single-instance-alignment
+
+- 阶段：`Post-A3 Step 8 / low-risk framework alignment`
+- 范围：`src/utils`、`standalone/UgripperRuntime`、`docs`
+- 类型：`build boundary cleanup / lifecycle guard / behavior-equivalent refactor`
+- 主要改动：
+  - ARM/pp-main 构建直接导入并链接主仓库现有 `PP::utils` 静态库，同时沿用其 fmt、spdlog、yaml-cpp 与 nlohmann_json 的匹配 Conan 依赖，避免跨版本 ABI 混用
+  - host 缺少对应 x86 `PP::utils` 产物时，从 pp-main 同一真源编译 logger 与 `SingleProcessInstance` 的最小兼容桥接；未修改 pp-main 任何源码
+  - 本仓原本名为 `utils` 的目标改为 `ugripper_utils`，保留 `UGripper::utils` 别名，消除把本地 logger-only 目标伪装成 `PP::utils` 的歧义
+  - `UgripperRuntime` 入口复用 `DA::utils::SingleProcessInstance("UgripperRuntime")`，重复实例在 runtime 初始化前安全退出
+  - `--poll-ms` 非法值改为明确参数错误返回，避免 `std::stoi` 未捕获异常导致进程终止
+- 风险与行为等价说明：
+  - 不修改 supervisor 多进程模型、状态机、控制 FIFO、设备恢复、录制时序或 episode 校验逻辑
+  - logger 调用语义保持不变；ARM 链接的是 pp-main 已构建实现，host fallback 仅用于开发测试
+  - 本批不处理实录中观察到的既有起录错峰或 Fays 设备 gap
+- host 验证：
+  - CMake configure 与 `UgripperRuntime` 编译通过
+  - `ctest -L record_runtime`：`7/7` 通过
+  - `env -u LD_LIBRARY_PATH UgripperRuntime --help`：通过；本机继承环境中的 `/opt/openrobots/lib/libuuid.so.1` 异常与本次修改无关
+  - `--poll-ms invalid`：返回 `1` 并记录 `UGR-70-01`
+- ARM/240 验证：
+  - `./scripts/build_arm_deb_in_pp_arm_dev.sh`：通过，生成 `ugripper_2.1.11_arm64.deb`
+  - 包内 `UgripperRuntime` 确认为 aarch64，且未新增 fmt、spdlog 或 TBB 动态依赖
+  - 覆盖安装到 `ubuntu@192.168.2.240` 成功，`/mnt/data_disk` 挂载正常，`ugripper.service` 保持 active 并进入 `Ready`
+  - 第二实例被 pp-main 单实例机制拒绝，退出码为 `0`，运行中的服务不受影响
+  - 通过正式控制 FIFO 完成 `START / STOP`，两条命令均被 accepted
+  - 实录 episode：`/mnt/data_disk/dap921265c00163b/data/episode_20260831_0006`
+  - `collection_duration_s=17.9`、`quality_check_status=success`、`quality_check_err_type` 为空；14 个必需产物齐全，`validation_error.log` 不存在
+  - 离线深度校验结论为 `WARN`：全局首帧硬门禁通过，最大误差 `897.302ms < 1000ms`；全部视频/MCAP 可解析，无视频时间戳重复或回退，sensor 无大 gap
+  - 已知告警为左右 Fays 最大 `120ms` 设备时间 gap，以及 stereo 相对主摄/触觉约 `0.73-0.85s` 的既有起录错峰；严格行为等价约束下未在本批夹带修复
+- 门禁结论：
+  - 本批 host、ARM 构建、安装、单实例和实录主链均通过，满足提交门禁
