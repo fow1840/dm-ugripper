@@ -1,8 +1,8 @@
 #!/bin/sh
 
 # Resolve the logical UGripper symlink for a CH9344 tty node.
-# udev passes DEVPATH (%p) and KERNEL (%k). Keep this helper small because it
-# runs in the udev hot path.
+# External hubs add one or more nested USB path segments. Match the board-side
+# root route here; the sibling rank below selects gripper/encoder UARTs.
 
 if [ "$#" -ne 2 ]; then
     exit 1
@@ -26,7 +26,7 @@ case "$devpath" in
     */1-1.[124]/*|*/1-1.[124]:*)
         side="right"
         ;;
-    */9-1.[124]/*|*/9-1.[124]:*)
+    */5-1.[124]/*|*/5-1.[124]:*|*/9-1.[124]/*|*/9-1.[124]:*|*/11-1.[124]/*|*/11-1.[124]:*)
         side="left"
         ;;
     *)

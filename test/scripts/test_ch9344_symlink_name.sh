@@ -16,7 +16,8 @@ check_group() {
     route="$1"
     first_num="$2"
     side="$3"
-    tty_dir="$TMP_ROOT/devices/$route/${route}:1.0/tty"
+    leaf_route="${route##*/}"
+    tty_dir="$TMP_ROOT/devices/$route/${leaf_route}:1.0/tty"
     first="ttyCH9344USB$first_num"
     second="ttyCH9344USB$((first_num + 1))"
     third="ttyCH9344USB$((first_num + 2))"
@@ -40,7 +41,8 @@ check_group() {
 check_rejected_group() {
     route="$1"
     first_num="$2"
-    tty_dir="$TMP_ROOT/devices/$route/${route}:1.0/tty"
+    leaf_route="${route##*/}"
+    tty_dir="$TMP_ROOT/devices/$route/${leaf_route}:1.0/tty"
     first="ttyCH9344USB$first_num"
     second="ttyCH9344USB$((first_num + 1))"
 
@@ -56,11 +58,10 @@ check_rejected_group() {
     fi
 }
 
-check_group "1-1.2" 0 right
-check_group "9-1.2" 8 left
-check_group "1-1.4" 16 right
-check_group "9-1.4" 24 left
-check_rejected_group "5-1.4" 32
-check_rejected_group "11-1.4" 40
+check_group "1-1/1-1.2/1-1.2.2" 0 right
+check_group "5-1/5-1.2/5-1.2.2" 8 left
+check_group "9-1/9-1.4/9-1.4.2" 16 left
+check_group "11-1/11-1.4/11-1.4.2" 24 left
+check_rejected_group "6-1/6-1.2/6-1.2.2" 32
 
-echo "PASS: CH9344 symlink topology mappings and bus5/bus11 rejection"
+echo "PASS: external-hub CH9344 symlink topology mappings"
