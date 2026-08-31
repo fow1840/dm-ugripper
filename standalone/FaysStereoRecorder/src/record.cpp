@@ -32,6 +32,7 @@
 #include <limits.h>
 #include <stdexcept>
 #include <opencv2/imgproc.hpp>
+#include "fays_stereo_recorder/camera_timestamp_offsets.h"
 #include "utils/fifo_utils.h"
 #include "utils/ugripper_logger.h"
 #include "fays_atrak/fays_atrak_types.h"
@@ -2154,7 +2155,10 @@ private:
                           static_cast<size_t>(std::max(0, vf.channels));
                 vf.bytes.assign(mImgData_.data, mImgData_.data + frameBytes);
                 vf.faysTsNs = mImgData_.timestamp;
-                vf.publishTimeNs = AlignFaysTsToSystem(mImgData_.timestamp);
+                // Compensate only the camera Unix publishTime before it enters the MCAP queue.
+                // Raw Fays logTime and IMU timestamps must remain unchanged.
+                vf.publishTimeNs = fays_stereo_recorder::camera_time::AddStereoCameraLatencyNs(
+                    AlignFaysTsToSystem(mImgData_.timestamp));
                 videoFrameQueue_.Push(std::move(vf));
                 TryDumpCalibrationJson("stereo_frame");
                 WriteRuntimeStatus(false);

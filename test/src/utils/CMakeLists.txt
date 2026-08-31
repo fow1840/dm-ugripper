@@ -27,6 +27,15 @@ add_host_only_gtest(test_time_utils
     test_time_utils.cc
 )
 
+add_host_only_gtest(test_camera_timestamp_offsets
+    test_camera_timestamp_offsets.cc
+)
+target_include_directories(test_camera_timestamp_offsets
+    PRIVATE
+        ${PROJECT_SOURCE_DIR}/standalone/CameraRecorder/include
+        ${PROJECT_SOURCE_DIR}/standalone/FaysStereoRecorder/include
+)
+
 add_host_only_gtest(test_logging_v3
     test_logging_v3.cc
 )

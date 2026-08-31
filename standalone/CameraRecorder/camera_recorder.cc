@@ -3,6 +3,7 @@
 #include "camera_recorder/camera_config.h"
 #include "camera_recorder/camera_registry.h"
 #include "camera_recorder/camera_timing.h"
+#include "camera_recorder/camera_timestamp_offsets.h"
 #include "camera_recorder/stereo_control_json.h"
 #include "utils/ugripper_logger.h"
 
@@ -621,6 +622,18 @@ bool IsMainCamera(const CameraConfig& config) {
     return config.name == "left_cam_main" ||
            config.name == "right_cam_main" ||
            config.name == "chest_cam_main";
+}
+
+std::optional<camera_recorder::camera_time::CameraTimestampSource> TimestampSourceForLatencyCompensation(
+    const CameraConfig& config) {
+    if (IsMainCamera(config) || config.role == ugripper::camera::CameraRole::Main) {
+        return camera_recorder::camera_time::CameraTimestampSource::Main;
+    }
+    if (config.name.find("tcam") != std::string::npos ||
+        config.role == ugripper::camera::CameraRole::Tactile) {
+        return camera_recorder::camera_time::CameraTimestampSource::Tactile;
+    }
+    return std::nullopt;
 }
 
 bool IsMainCameraStartupHardwareFailure(const CameraConfig& config, const std::string& error_message) {
@@ -4461,6 +4474,23 @@ bool CameraRecorderManager::WriteInfoJson(bool allow_missing_offsets) const {
             offset_us = boot_time_offset_us;
             DM_LOG_WARN("{}", (::DA::utils::LogString() << "[camera_recorder] fallback to boot_time_offset_us for main camera "
                                  << config.name << " in h265 direct-stream mode").str());
+        }
+        if (offset_us.has_value()) {
+            const auto timestamp_source = TimestampSourceForLatencyCompensation(config);
+            if (timestamp_source.has_value()) {
+                const int64_t raw_offset_us = *offset_us;
+                const auto source = *timestamp_source;
+                const int64_t latency_us = camera_recorder::camera_time::CameraLatencyUs(source);
+                // Main/tactile compensation changes only the absolute PTS=0 Unix anchor.
+                // Video PTS and duration remain untouched.
+                offset_us = camera_recorder::camera_time::AddCameraLatencyUs(raw_offset_us, source);
+                DM_LOG_INFO("{}", (::DA::utils::LogString()
+                                   << "[camera_recorder] applied start offset latency compensation"
+                                   << " camera=" << config.name
+                                   << " raw_offset_us=" << raw_offset_us
+                                   << " latency_us=" << latency_us
+                                   << " compensated_offset_us=" << *offset_us).str());
+            }
         }
         output << ",\n"
                << "  \"" << config.name << "_record_time_offset_us\": ";

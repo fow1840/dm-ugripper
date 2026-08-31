@@ -80,6 +80,7 @@ set_target_properties(fays_record_example PROPERTIES
 )
 target_include_directories(fays_record_example
     PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${FAYS_INCLUDE_DIR}"
         "${FAYS_OPENCV_INCLUDE_DIR}"
 )

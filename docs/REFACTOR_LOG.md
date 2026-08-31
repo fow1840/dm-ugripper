@@ -4763,3 +4763,24 @@
 - 后续待验证：
   - 继续补 `GripperHmiDriver` 更贴近 I/O 本体的 timeout / drain / status read 路径
   - 视优先级转入 `T15`，把 gripper/hmi/button 主动刺激脚本标准化
+
+### 2026-08-31 - camera-timestamp-offset-header-localization
+
+- 阶段：`Post-A3 Step 6 / Camera Pure Logic Extraction`
+- 范围：`standalone/CameraRecorder`、`standalone/FaysStereoRecorder`、`test`、`docs`
+- 类型：`camera timestamp compensation ownership cleanup`
+- 主要改动：
+  - 主摄与 tcam 补偿常量迁移到 `standalone/CameraRecorder/include/camera_recorder/camera_timestamp_offsets.h`
+  - stereo 补偿常量迁移到 `standalone/FaysStereoRecorder/include/fays_stereo_recorder/camera_timestamp_offsets.h`
+  - 更新两个 recorder 的 include、命名空间和 CMake include 路径，移除 `src/utils` 下的旧头文件
+  - 同步更新 host-only 测试与时间同步文档，保留实验值的明确可改位置
+- 风险与行为等价说明：
+  - 只调整头文件归属和调用命名空间，当前补偿数值及时间轴语义不变
+  - 主摄/tcam 仍只调整 `start_offset_us`，stereo 仍只调整 MCAP camera `publishTime`
+- 已执行验证：
+  - `cmake --build build/arm_container_release --target CameraRecorder fays_record_example --parallel 8`
+  - `cmake --build build/codex_host_tests --target test_camera_timestamp_offsets --parallel 8`
+  - `ctest --test-dir build/codex_host_tests -R CameraTimestampOffsetsTest --output-on-failure`
+  - `git diff --check`
+- 未执行测试与原因：
+  - 新建 host 配置因本机 `/opt/openrobots` 的 GTest 导入目标引用缺失 `libgmock.so.1.11.0`，未能从零配置；复用现有 host 测试构建目录已完成目标编译和两项测试
