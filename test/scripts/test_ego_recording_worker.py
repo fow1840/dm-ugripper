@@ -23,13 +23,16 @@ SPEC.loader.exec_module(WORKER)
 
 
 class FakeAdb:
-    def __init__(self, roots):
+    def __init__(self, roots, serial=""):
         self.roots = roots
+        self.serial = serial
+        self.commands = []
 
     def run(self, *args, **kwargs):
+        self.commands.append(args)
         if args[:2] == ("shell", "test"):
             return subprocess.CompletedProcess(args, 0 if args[-1] in self.roots else 1, "", "")
-        if len(args) == 2 and args[0] == "shell" and str(args[1]).startswith("find "):
+        if len(args) == 2 and args[0] == "shell" and "find " in str(args[1]):
             return subprocess.CompletedProcess(args, 0, "\n".join(self.roots) + "\n", "")
         raise AssertionError(f"unexpected adb command: {args}")
 
@@ -172,6 +175,32 @@ class EgoRecordingWorkerTest(unittest.TestCase):
         root = "/sdcard/Android/data/com.ssnwt.helloxr/files/1150063703226061200012/data/dataset"
         with mock.patch.dict(WORKER.os.environ, {}, clear=True):
             self.assertEqual(WORKER.list_dataset_roots(FakeAdb([root])), [root])
+
+    def test_stale_preferred_root_does_not_hide_active_fallback_root(self):
+        serial = "1150063703226061200012"
+        stale_root = f"{WORKER.LEGACY_REMOTE_ROOT}/{serial}/data"
+        active_root = "/sdcard/Android/data/com.ssnwt.helloxr/files/another/data/dataset"
+        adb = FakeAdb([stale_root, active_root], serial=serial)
+
+        with mock.patch.dict(WORKER.os.environ, {}, clear=True):
+            roots = WORKER.list_dataset_roots(adb)
+            with mock.patch.object(
+                WORKER,
+                "list_temp_episodes",
+                side_effect=lambda _adb, root: {
+                    stale_root: [],
+                    active_root: ["episode_20260828_0001-temp"],
+                }[root],
+            ):
+                candidates = WORKER.find_new_temp_episodes(
+                    adb, {stale_root: set(), active_root: set()}
+                )
+
+        self.assertEqual(roots, [active_root, stale_root])
+        self.assertEqual(candidates, [(active_root, "episode_20260828_0001-temp")])
+        discovery_commands = [args[1] for args in adb.commands if len(args) == 2 and args[0] == "shell"]
+        self.assertTrue(discovery_commands)
+        self.assertTrue(all("exit 0" not in command for command in discovery_commands))
 
     def test_explicit_root_override_wins(self):
         override = "/custom/ego/dataset"
@@ -451,6 +480,244 @@ class EgoRecordingWorkerTest(unittest.TestCase):
                 component="ego",
                 error_code="UGR-82-02",
             )
+
+    def test_stop_retries_at_exactly_one_hundred_ms_until_success(self):
+        for success_attempt in (1, 2, 3):
+            with self.subTest(success_attempt=success_attempt), tempfile.TemporaryDirectory() as temp_dir:
+                root = Path(temp_dir)
+                episode_dir = root / "episode_0001-temp"
+                status_file = episode_dir / "ego" / "ego_sync.json"
+                status_file.parent.mkdir(parents=True)
+                status_file.write_text(
+                    json.dumps(
+                        {
+                            "status": "recording",
+                            "serial": "ego-001",
+                            "remote_root": "/remote/dataset",
+                            "remote_episode": "episode_0001-temp",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                args = argparse.Namespace(
+                    serial="ego-001",
+                    episode_dir=episode_dir,
+                    status_file=status_file,
+                    finalize_timeout=1.0,
+                    interval=0.01,
+                )
+                adb = mock.Mock(serial="ego-001")
+                adb.run.side_effect = [
+                    subprocess.CompletedProcess([], 1, "", "broadcast failed")
+                    for _ in range(success_attempt - 1)
+                ] + [subprocess.CompletedProcess([], 0, "Broadcast completed", "")]
+
+                with mock.patch.object(WORKER, "Adb", return_value=adb), mock.patch.object(
+                    WORKER, "adb_device_ready", return_value=(True, "")
+                ), mock.patch.object(
+                    WORKER, "remote_dir_exists", side_effect=[False, True]
+                ), mock.patch.object(
+                    WORKER, "sync_episode_once", return_value={}
+                ), mock.patch.object(
+                    WORKER,
+                    "recover_finalized_episode_files",
+                    return_value=(True, {"status": "complete", "attempts": []}, "", ""),
+                ), mock.patch.object(
+                    WORKER, "refresh_final_mp4_headers", return_value={}
+                ), mock.patch.object(
+                    WORKER, "repair_mp4_files", return_value={}
+                ), mock.patch.object(WORKER.time, "sleep") as sleep:
+                    self.assertEqual(WORKER.run_stop(args), 0)
+
+                self.assertEqual(adb.run.call_count, success_attempt)
+                self.assertEqual(
+                    sleep.call_args_list,
+                    [mock.call(WORKER.STOP_BROADCAST_RETRY_INTERVAL_SEC)] * (success_attempt - 1),
+                )
+                status = json.loads(status_file.read_text(encoding="utf-8"))
+                self.assertEqual(status["status"], "finalized")
+                self.assertEqual(len(status["stop_attempts"]), success_attempt)
+
+    def test_stop_broadcast_nonzero_three_times_reports_ego_disconnected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            episode_dir = root / "episode_0001-temp"
+            status_file = episode_dir / "ego" / "ego_sync.json"
+            status_file.parent.mkdir(parents=True)
+            status_file.write_text(
+                json.dumps(
+                    {
+                        "status": "recording",
+                        "serial": "ego-001",
+                        "remote_root": "/remote/dataset",
+                        "remote_episode": "episode_0001-temp",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                serial="ego-001",
+                episode_dir=episode_dir,
+                status_file=status_file,
+                finalize_timeout=1.0,
+                interval=0.01,
+            )
+            adb = mock.Mock(serial="ego-001")
+            adb.run.return_value = subprocess.CompletedProcess([], 1, "", "broadcast failed")
+
+            with mock.patch.object(WORKER, "Adb", return_value=adb), mock.patch.object(
+                WORKER, "adb_device_ready", return_value=(True, "")
+            ), mock.patch.object(WORKER.time, "sleep") as sleep, mock.patch.object(
+                WORKER, "ugripper_log"
+            ) as log:
+                self.assertEqual(WORKER.run_stop(args), 1)
+
+            self.assertEqual(adb.run.call_count, WORKER.STOP_BROADCAST_ATTEMPTS)
+            self.assertEqual(
+                sleep.call_args_list,
+                [mock.call(WORKER.STOP_BROADCAST_RETRY_INTERVAL_SEC)] * 2,
+            )
+            status = json.loads(status_file.read_text(encoding="utf-8"))
+            self.assertEqual(status["status"], "stop_failed")
+            self.assertEqual(status["error_type"], "ego_disconnected")
+            log.assert_called_with(
+                "ERROR", "broadcast failed", component="ego", error_code="UGR-82-01"
+            )
+
+    def test_sync_one_file_resumes_from_current_local_size(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            local_dir = Path(temp_dir)
+            local_file = local_dir / "sensor.mcap"
+            local_file.write_bytes(b"abcd")
+            adb = mock.Mock()
+            adb.exec_out_bytes.return_value = b"efghij"
+
+            with mock.patch.object(WORKER, "remote_file_size", return_value=10):
+                copied = WORKER.sync_one_file(
+                    adb,
+                    "/remote/dataset",
+                    "episode_0001",
+                    local_dir,
+                    "sensor.mcap",
+                )
+
+            self.assertEqual(copied, 6)
+            adb.exec_out_bytes.assert_called_once_with(
+                "/remote/dataset/episode_0001/sensor.mcap", 4, 6
+            )
+            self.assertEqual(local_file.read_bytes(), b"abcdefghij")
+
+    def test_interrupted_append_resumes_again_without_duplicate_bytes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            local_dir = Path(temp_dir)
+            local_file = local_dir / "sensor.mcap"
+            local_file.write_bytes(b"abcd")
+            adb = mock.Mock()
+            adb.exec_out_bytes.side_effect = [b"ef", b"ghij"]
+
+            with mock.patch.object(WORKER, "remote_file_size", return_value=10):
+                self.assertEqual(
+                    WORKER.sync_one_file(
+                        adb, "/remote/dataset", "episode_0001", local_dir, "sensor.mcap"
+                    ),
+                    2,
+                )
+                self.assertEqual(
+                    WORKER.sync_one_file(
+                        adb, "/remote/dataset", "episode_0001", local_dir, "sensor.mcap"
+                    ),
+                    4,
+                )
+
+            self.assertEqual(
+                adb.exec_out_bytes.call_args_list,
+                [
+                    mock.call("/remote/dataset/episode_0001/sensor.mcap", 4, 6),
+                    mock.call("/remote/dataset/episode_0001/sensor.mcap", 6, 4),
+                ],
+            )
+            self.assertEqual(local_file.read_bytes(), b"abcdefghij")
+
+    def test_finalized_remote_shrink_restarts_only_affected_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            local_dir = Path(temp_dir)
+            local_file = local_dir / "sensor.mcap"
+            other_file = local_dir / "metadata.json"
+            local_file.write_bytes(b"stale-data")
+            other_file.write_bytes(b"keep")
+            adb = mock.Mock()
+            adb.exec_out_bytes.return_value = b"new"
+
+            with mock.patch.object(WORKER, "remote_file_size", return_value=3):
+                copied = WORKER.sync_one_file(
+                    adb,
+                    "/remote/dataset",
+                    "episode_0001",
+                    local_dir,
+                    "sensor.mcap",
+                    replace_shrunk=True,
+                )
+
+            self.assertEqual(copied, 3)
+            self.assertEqual(local_file.read_bytes(), b"new")
+            self.assertEqual(other_file.read_bytes(), b"keep")
+
+    def test_recovery_retries_size_mismatch_then_succeeds(self):
+        adb = mock.Mock()
+        mismatch = {"sensor.mcap": {"ok": False, "local_size": 4, "remote_size": 10}}
+        matched = {"sensor.mcap": {"ok": True, "local_size": 10, "remote_size": 10}}
+        with mock.patch.object(WORKER, "adb_device_ready", return_value=(True, "")), mock.patch.object(
+            WORKER, "sync_episode_once", return_value={"sensor.mcap": {"delta": 6}}
+        ) as sync, mock.patch.object(
+            WORKER,
+            "verify_remote_and_local_file_sizes",
+            side_effect=[(False, mismatch), (True, matched)],
+        ), mock.patch.object(WORKER.time, "sleep") as sleep:
+            ok, detail, error, error_type = WORKER.recover_finalized_episode_files(
+                adb, "/remote/dataset", "episode_0001", Path("/tmp/local"), attempts=2
+            )
+
+        self.assertTrue(ok)
+        self.assertEqual(error, "")
+        self.assertEqual(error_type, "")
+        self.assertEqual(len(detail["attempts"]), 2)
+        self.assertEqual(sync.call_count, 2)
+        sleep.assert_called_once_with(WORKER.FINAL_SYNC_RETRY_INTERVAL_SEC)
+
+    def test_recovery_missing_remote_data_reports_pull_incomplete(self):
+        adb = mock.Mock()
+        missing = {"sensor.mcap": {"ok": False, "local_size": 4, "remote_size": None}}
+        with mock.patch.object(WORKER, "adb_device_ready", return_value=(True, "")), mock.patch.object(
+            WORKER, "sync_episode_once", return_value={"sensor.mcap": {"delta": 0}}
+        ), mock.patch.object(
+            WORKER, "verify_remote_and_local_file_sizes", return_value=(False, missing)
+        ), mock.patch.object(WORKER.time, "sleep"):
+            ok, detail, error, error_type = WORKER.recover_finalized_episode_files(
+                adb, "/remote/dataset", "episode_0001", Path("/tmp/local"), attempts=2
+            )
+
+        self.assertFalse(ok)
+        self.assertEqual(detail["status"], "failed")
+        self.assertEqual(error_type, "ego_pull_incomplete")
+        self.assertIn("missing or incomplete", error)
+
+    def test_recovery_device_unavailable_reports_ego_disconnected(self):
+        adb = mock.Mock()
+        with mock.patch.object(
+            WORKER, "adb_device_ready", return_value=(False, "device offline")
+        ), mock.patch.object(WORKER, "sync_episode_once") as sync, mock.patch.object(
+            WORKER.time, "sleep"
+        ) as sleep:
+            ok, detail, error, error_type = WORKER.recover_finalized_episode_files(
+                adb, "/remote/dataset", "episode_0001", Path("/tmp/local"), attempts=2
+            )
+
+        self.assertFalse(ok)
+        self.assertEqual(detail["status"], "failed")
+        self.assertEqual(error, "device offline")
+        self.assertEqual(error_type, "ego_disconnected")
+        sync.assert_not_called()
+        sleep.assert_called_once_with(WORKER.FINAL_SYNC_RETRY_INTERVAL_SEC)
 
 
 if __name__ == "__main__":

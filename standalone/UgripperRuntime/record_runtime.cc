@@ -4418,8 +4418,11 @@ bool RecordRuntime::initialize()
                     return stopEgoRecording(episode_dir, stop_system_time_us, error_message);
                 },
             .wait_for_ego_finalize =
-                [this](const std::string& episode_dir, int timeout_ms, std::string* error_message) {
-                    return waitForEgoFinalize(episode_dir, timeout_ms, error_message);
+                [this](const std::string& episode_dir,
+                       int timeout_ms,
+                       std::string* error_message,
+                       std::string* error_type) {
+                    return waitForEgoFinalize(episode_dir, timeout_ms, error_message, error_type);
                 },
             .wait_for_stereo_finalize =
                 [this](const std::string& episode_dir, int timeout_ms, std::string* error_message) {
@@ -5364,13 +5367,22 @@ void RecordRuntime::clearEgoBindingFault()
 
 bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
                                        int timeoutMs,
-                                       std::string *errorMessage)
+                                       std::string *errorMessage,
+                                       std::string *errorType)
 {
+    if (errorType != nullptr)
+    {
+        errorType->clear();
+    }
     if (!egoRecordingAttempted_)
     {
         if (isEgoRequired() && errorMessage != nullptr)
         {
             *errorMessage = "required ego recording was not attempted";
+        }
+        if (isEgoRequired() && errorType != nullptr)
+        {
+            *errorType = ugripper::runtime::kErrorTypeEgoPullIncomplete;
         }
         return !isEgoRequired();
     }
@@ -5395,15 +5407,34 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
                     {
                         *errorMessage = status.value("error", state);
                     }
+                    if (errorType != nullptr)
+                    {
+                        *errorType = status.value(
+                            "error_type",
+                            state == "not_found"
+                                ? std::string(ugripper::runtime::kErrorTypeEgoDisconnected)
+                                : std::string(ugripper::runtime::kErrorTypeEgoPullIncomplete));
+                    }
                     return false;
                 }
                 return true;
             }
-            if (state == "finalize_timeout" || state == "error")
+            if (state == "device_disconnected" || state == "stop_failed" ||
+                state == "pull_incomplete" || state == "stop_no_remote_root" ||
+                state == "finalize_timeout" || state == "error")
             {
                 if (errorMessage != nullptr)
                 {
                     *errorMessage = status.value("error", state);
+                }
+                if (errorType != nullptr)
+                {
+                    const bool disconnected = state == "device_disconnected" || state == "stop_failed";
+                    *errorType = status.value(
+                        "error_type",
+                        disconnected
+                            ? std::string(ugripper::runtime::kErrorTypeEgoDisconnected)
+                            : std::string(ugripper::runtime::kErrorTypeEgoPullIncomplete));
                 }
                 return false;
             }
@@ -5414,6 +5445,10 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
     if (errorMessage != nullptr)
     {
         *errorMessage = "timed out waiting for ego finalize status";
+    }
+    if (errorType != nullptr)
+    {
+        *errorType = ugripper::runtime::kErrorTypeEgoPullIncomplete;
     }
     return false;
 }

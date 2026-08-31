@@ -48,6 +48,10 @@ TIME_SYNC_SET_AHEAD_MS = float(os.environ.get("UGRIPPER_EGO_TIME_SYNC_SET_AHEAD_
 TIME_SYNC_MAX_CORRECTIONS = min(
     3, max(0, int(os.environ.get("UGRIPPER_EGO_TIME_SYNC_MAX_CORRECTIONS", "3")))
 )
+STOP_BROADCAST_ATTEMPTS = 3
+STOP_BROADCAST_RETRY_INTERVAL_SEC = 0.1
+FINAL_SYNC_ATTEMPTS = 3
+FINAL_SYNC_RETRY_INTERVAL_SEC = 0.1
 SXR_PROPS = {
     "ro.product.manufacturer": "SXR",
     "ro.product.model": "SXR_1",
@@ -432,29 +436,27 @@ def list_dataset_roots(adb: Adb) -> list[str]:
 
     external_root_q = shell_quote(APP_EXTERNAL_ROOT)
     fallback_pattern_q = shell_quote(f"{LEGACY_REMOTE_ROOT}/*/data")
-    fast_path_checks = ""
+    explicit_roots = [LEGACY_REMOTE_ROOT]
     adb_serial = str(getattr(adb, "serial", "") or "")
     if adb_serial:
-        preferred_roots = (
-            f"{LEGACY_REMOTE_ROOT}/{adb_serial}/data",
-            f"{APP_EXTERNAL_ROOT}/{adb_serial}/data/dataset",
+        explicit_roots.extend(
+            (
+                f"{LEGACY_REMOTE_ROOT}/{adb_serial}/data",
+                f"{APP_EXTERNAL_ROOT}/{adb_serial}/data/dataset",
+            )
         )
-        fast_path_checks = "".join(
-            f"if [ -d {shell_quote(root)} ]; then printf '%s\\n' {shell_quote(root)}; exit 0; fi; "
-            for root in preferred_roots
-        )
+    explicit_root_checks = "".join(
+        f"if [ -d {shell_quote(root)} ]; then printf '%s\\n' {shell_quote(root)}; fi; "
+        for root in explicit_roots
+    )
     command = (
-        f"{fast_path_checks}"
+        f"{{ {explicit_root_checks}"
         f"find {external_root_q} -mindepth 1 -maxdepth 4 -type d "
         f"\\( -name dataset -o -path {fallback_pattern_q} \\) -print "
-        "2>/dev/null | sort"
+        "2>/dev/null; } | sort -u"
     )
     result = adb.run("shell", command, timeout=8)
     roots = [line.strip().replace("\r", "") for line in result.stdout.splitlines() if line.strip()]
-    if not roots:
-        legacy = adb.run("shell", "test", "-d", LEGACY_REMOTE_ROOT, timeout=8)
-        if legacy.returncode == 0:
-            roots.append(LEGACY_REMOTE_ROOT)
     return sorted(set(roots))
 
 
@@ -680,6 +682,18 @@ def remote_file_size(adb: Adb, remote_file: str) -> int | None:
     return int(text) if text.isdigit() else None
 
 
+def adb_device_ready(adb: Adb) -> tuple[bool, str]:
+    try:
+        result = adb.run("get-state", timeout=5)
+    except Exception as exc:
+        return False, str(exc)
+    state = (result.stdout or "").strip().replace("\r", "")
+    if result.returncode == 0 and state == "device":
+        return True, ""
+    error = ((result.stderr or result.stdout) or "").strip()
+    return False, error or f"adb get-state returned {result.returncode} state={state or 'unknown'}"
+
+
 def sync_one_file(
     adb: Adb,
     remote_root: str,
@@ -704,6 +718,8 @@ def sync_one_file(
     data = adb.exec_out_bytes(remote_file, local_size, delta)
     with local_file.open("ab") as output:
         output.write(data)
+        output.flush()
+        os.fsync(output.fileno())
     return len(data)
 
 
@@ -977,8 +993,11 @@ def summarize_finalize_repair(header_refresh_detail: dict, repair_detail: dict) 
 
 def cleanup_status(status: str, remote_episode: str = "", error: str = "", **extra: object) -> dict:
     detail = {"status": status}
+    if remote_episode:
+        detail["remote_episode"] = remote_episode
     if error:
         detail["error"] = error
+    detail.update(extra)
     return detail
 
 
@@ -1004,6 +1023,76 @@ def verify_remote_and_local_file_sizes(
             "remote_size": remote_size,
         }
     return ok, details
+
+
+def recover_finalized_episode_files(
+    adb: Adb,
+    remote_root: str,
+    remote_episode: str,
+    local_episode_dir: Path,
+    attempts: int = FINAL_SYNC_ATTEMPTS,
+    retry_interval_sec: float = FINAL_SYNC_RETRY_INTERVAL_SEC,
+) -> tuple[bool, dict, str, str]:
+    history = []
+    last_error = "remote/local ego file sizes do not match"
+    last_error_type = "ego_pull_incomplete"
+    for attempt in range(1, max(1, attempts) + 1):
+        ready, ready_error = adb_device_ready(adb)
+        detail = {
+            "attempt": attempt,
+            "device_ready": ready,
+        }
+        if not ready:
+            detail["error"] = ready_error or "ego adb device unavailable"
+            history.append(detail)
+            last_error = detail["error"]
+            last_error_type = "ego_disconnected"
+        else:
+            copied = sync_episode_once(
+                adb,
+                remote_root,
+                remote_episode,
+                local_episode_dir,
+                replace_shrunk=True,
+            )
+            try:
+                sizes_ok, size_details = verify_remote_and_local_file_sizes(
+                    adb, remote_root, remote_episode, local_episode_dir
+                )
+            except Exception as exc:
+                sizes_ok = False
+                size_details = {}
+                detail["verify_error"] = str(exc)
+            detail.update(
+                {
+                    "copied": copied,
+                    "files": size_details,
+                    "sizes_ok": sizes_ok,
+                }
+            )
+            history.append(detail)
+            if sizes_ok:
+                return True, {"status": "complete", "attempts": history}, "", ""
+
+            still_ready, disconnect_error = adb_device_ready(adb)
+            if not still_ready:
+                last_error = disconnect_error or "ego disconnected while verifying finalized files"
+                last_error_type = "ego_disconnected"
+                detail["device_ready_after_verify"] = False
+                detail["error"] = last_error
+            else:
+                last_error = "ego finalized files are missing or incomplete after resumable pull"
+                last_error_type = "ego_pull_incomplete"
+
+        if attempt < max(1, attempts):
+            time.sleep(retry_interval_sec)
+
+    return (
+        False,
+        {"status": "failed", "attempts": history, "error": last_error},
+        last_error,
+        last_error_type,
+    )
 
 
 def remove_remote_episode(adb: Adb, remote_root: str, remote_episode: str) -> tuple[bool, str]:
@@ -1060,7 +1149,36 @@ def run_cleanup(args: argparse.Namespace) -> int:
             return finish(cleanup_status("already_missing", remote_episode, deleted_at_ms=now_ms()))
         sizes_ok, size_details = verify_remote_and_local_file_sizes(adb, remote_root, remote_episode, local_episode_dir)
         if not sizes_ok:
-            return finish(cleanup_status("skipped", remote_episode, "remote/local file sizes do not match", files=size_details), False)
+            recovered, recovery_detail, recovery_error, _ = recover_finalized_episode_files(
+                adb,
+                remote_root,
+                remote_episode,
+                local_episode_dir,
+            )
+            status["cleanup_pull_recovery"] = recovery_detail
+            if not recovered:
+                return finish(
+                    cleanup_status(
+                        "skipped",
+                        remote_episode,
+                        recovery_error or "remote/local file sizes do not match",
+                        files=size_details,
+                    ),
+                    False,
+                )
+            sizes_ok, size_details = verify_remote_and_local_file_sizes(
+                adb, remote_root, remote_episode, local_episode_dir
+            )
+            if not sizes_ok:
+                return finish(
+                    cleanup_status(
+                        "skipped",
+                        remote_episode,
+                        "remote/local file sizes still do not match after recovery",
+                        files=size_details,
+                    ),
+                    False,
+                )
         deleted, error = remove_remote_episode(adb, remote_root, remote_episode)
         if not deleted:
             return finish(cleanup_status("error", remote_episode, error, files=size_details), False)
@@ -1202,26 +1320,76 @@ def run_stop(args: argparse.Namespace) -> int:
     serial = str(status.get("serial") or args.serial or "")
     remote_root = str(status.get("remote_root") or "").rstrip("/")
     remote_episode = str(status.get("remote_episode") or "")
-    try:
-        if not serial:
-            adb, _ = detect_ego(args.serial)
+    recording_started = bool(remote_episode)
+    adb = Adb(serial) if serial else None
+    stop_attempts = []
+    stop_succeeded = False
+    last_failure_status = "not_found"
+    last_error = "no SXR/SXR_1 ego device found during stop"
+    for attempt in range(1, STOP_BROADCAST_ATTEMPTS + 1):
+        detail = {"attempt": attempt, "started_at_ms": now_ms()}
+        try:
             if adb is None:
-                status["status"] = "not_found"
-                status["error"] = "no SXR/SXR_1 ego device found during stop"
-                write_status(args.status_file, status)
-                ugripper_log("WARN", status["error"], component="ego")
-                return 0
-        else:
-            adb = Adb(serial)
-
-        adb.run("shell", "am", "broadcast", "-a", f"{PACKAGE}.STOP_RECORDING", timeout=10)
-    except Exception as exc:
-        status["status"] = "error"
-        status["error"] = str(exc)
-        status["stop_broadcast_error"] = str(exc)
+                adb, _ = detect_ego(args.serial)
+            if adb is None:
+                detail.update({"status": "device_unavailable", "error": last_error})
+                last_failure_status = "device_disconnected"
+            else:
+                ready, ready_error = adb_device_ready(adb)
+                if not ready:
+                    last_error = ready_error or "ego adb device unavailable during stop"
+                    detail.update({"status": "device_unavailable", "error": last_error})
+                    last_failure_status = "device_disconnected"
+                else:
+                    result = adb.run(
+                        "shell",
+                        "am",
+                        "broadcast",
+                        "-a",
+                        f"{PACKAGE}.STOP_RECORDING",
+                        timeout=10,
+                    )
+                    detail.update(
+                        {
+                            "returncode": result.returncode,
+                            "stdout": (result.stdout or "").strip(),
+                            "stderr": (result.stderr or "").strip(),
+                        }
+                    )
+                    if result.returncode == 0:
+                        detail["status"] = "ok"
+                        stop_succeeded = True
+                    else:
+                        last_error = ((result.stderr or result.stdout) or "").strip() or (
+                            f"ego STOP_RECORDING broadcast returned {result.returncode}"
+                        )
+                        detail.update({"status": "broadcast_failed", "error": last_error})
+                        last_failure_status = "stop_failed"
+        except Exception as exc:
+            last_error = str(exc)
+            detail.update({"status": "exception", "error": last_error})
+            last_failure_status = "device_disconnected"
+        detail["finished_at_ms"] = now_ms()
+        stop_attempts.append(detail)
+        status["stop_attempts"] = stop_attempts
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
-        ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-05")
+        if stop_succeeded:
+            break
+        if attempt < STOP_BROADCAST_ATTEMPTS:
+            time.sleep(STOP_BROADCAST_RETRY_INTERVAL_SEC)
+
+    if not stop_succeeded:
+        status["status"] = last_failure_status if recording_started else "not_found"
+        status["error"] = last_error
+        if recording_started:
+            status["error_type"] = "ego_disconnected"
+        status["updated_at_ms"] = now_ms()
+        write_status(args.status_file, status)
+        if recording_started:
+            ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-01")
+            return 1
+        ugripper_log("WARN", status["error"], component="ego")
         return 0
 
     if not remote_episode:
@@ -1244,8 +1412,33 @@ def run_stop(args: argparse.Namespace) -> int:
     final_local_dir = args.episode_dir / "ego"
     deadline = time.monotonic() + args.finalize_timeout
     while time.monotonic() < deadline:
-        current_remote = remote_episode if remote_dir_exists(adb, remote_root, remote_episode) else final_episode
-        if remote_dir_exists(adb, remote_root, current_remote):
+        try:
+            temp_exists = remote_dir_exists(adb, remote_root, remote_episode)
+            final_exists = remote_dir_exists(adb, remote_root, final_episode)
+        except Exception as exc:
+            status.update(
+                {
+                    "status": "device_disconnected",
+                    "error_type": "ego_disconnected",
+                    "error": str(exc),
+                    "updated_at_ms": now_ms(),
+                }
+            )
+            write_status(args.status_file, status)
+            ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-01")
+            return 1
+        if temp_exists:
+            current_remote = remote_episode
+            current_exists = True
+        elif final_exists:
+            current_remote = final_episode
+            current_exists = True
+        else:
+            status["updated_at_ms"] = now_ms()
+            write_status(args.status_file, status)
+            time.sleep(args.interval)
+            continue
+        if current_exists:
             sync_episode_once(
                 adb,
                 remote_root,
@@ -1254,6 +1447,35 @@ def run_stop(args: argparse.Namespace) -> int:
                 replace_shrunk=(current_remote == final_episode),
             )
         if current_remote == final_episode:
+            recovered, recovery_detail, recovery_error, recovery_error_type = recover_finalized_episode_files(
+                adb,
+                remote_root,
+                final_episode,
+                final_local_dir,
+            )
+            status["pull_recovery"] = recovery_detail
+            if not recovered:
+                status.update(
+                    {
+                        "status": "device_disconnected"
+                        if recovery_error_type == "ego_disconnected"
+                        else "pull_incomplete",
+                        "phase": "done",
+                        "remote_episode": final_episode,
+                        "local_episode": str(final_local_dir),
+                        "error_type": recovery_error_type,
+                        "error": recovery_error,
+                        "updated_at_ms": now_ms(),
+                    }
+                )
+                write_status(args.status_file, status)
+                ugripper_log(
+                    "ERROR",
+                    status["error"],
+                    component="ego",
+                    error_code="UGR-82-01" if recovery_error_type == "ego_disconnected" else "UGR-82-04",
+                )
+                return 1
             header_refresh_detail = refresh_final_mp4_headers(adb, remote_root, final_episode, final_local_dir)
             repair_detail = repair_mp4_files(final_local_dir)
             status.update(
@@ -1266,6 +1488,8 @@ def run_stop(args: argparse.Namespace) -> int:
                     "updated_at_ms": now_ms(),
                 }
             )
+            status.pop("error_type", None)
+            status["error"] = ""
             write_status(args.status_file, status)
             return 0
         status["updated_at_ms"] = now_ms()
@@ -1273,6 +1497,7 @@ def run_stop(args: argparse.Namespace) -> int:
         time.sleep(args.interval)
 
     status["status"] = "finalize_timeout"
+    status["error_type"] = "ego_pull_incomplete"
     status["error"] = "ego episode did not finalize before timeout"
     status["updated_at_ms"] = now_ms()
     write_status(args.status_file, status)

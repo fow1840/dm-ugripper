@@ -1291,6 +1291,7 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
 
     bool ego_stop_ok = true;
     std::string ego_failure_error;
+    std::string ego_failure_error_type;
     if (dependencies_.stop_ego_recording != nullptr)
     {
         std::string ego_stop_error;
@@ -1320,13 +1321,18 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     {
         const int64_t ego_finalize_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
         std::string ego_finalize_error;
+        std::string ego_finalize_error_type;
         if (!dependencies_.wait_for_ego_finalize(
-                state_.current_episode_dir, options_.stereo_finalize_timeout_ms, &ego_finalize_error))
+                state_.current_episode_dir,
+                options_.stereo_finalize_timeout_ms,
+                &ego_finalize_error,
+                &ego_finalize_error_type))
         {
             ego_stop_ok = false;
             ego_failure_error = ego_finalize_error.empty()
                                     ? std::string("ego recording finalize wait failed")
                                     : ego_finalize_error;
+            ego_failure_error_type = ego_finalize_error_type;
             CallLog(dependencies_.log_warn,
                     "ego recording finalize wait failed: " +
                         ego_failure_error);
@@ -1370,19 +1376,16 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     {
         dependencies_.flush_episode_artifacts(state_.current_episode_dir, "final");
     }
-    bool ego_cleanup_ok = true;
     if (ego_stop_ok && dependencies_.cleanup_ego_remote != nullptr)
     {
         std::string cleanup_error;
-        ego_cleanup_ok = dependencies_.cleanup_ego_remote(state_.current_episode_dir, &cleanup_error);
+        const bool ego_cleanup_ok =
+            dependencies_.cleanup_ego_remote(state_.current_episode_dir, &cleanup_error);
         if (!ego_cleanup_ok)
         {
-            ego_failure_error = cleanup_error.empty()
-                                    ? std::string("ego pull verification or remote cleanup failed")
-                                    : cleanup_error;
             CallLog(dependencies_.log_warn,
-                    "ego remote cleanup failed: " +
-                        ego_failure_error);
+                    "ego remote cleanup skipped or failed: " +
+                        (cleanup_error.empty() ? std::string("unknown cleanup error") : cleanup_error));
         }
         if (dependencies_.flush_episode_artifacts != nullptr)
         {
@@ -1401,10 +1404,16 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
                                                  ? reason
                                                  : recording_hardware_fault_reason)
                                           : std::string();
-    const bool ego_required_ok = !ego_required || (ego_stop_ok && ego_cleanup_ok);
-    if (!ego_required_ok)
+    const bool fatal_ego_failure =
+        !ego_stop_ok &&
+        (ego_required || ego_failure_error_type == kErrorTypeEgoDisconnected);
+    const bool ego_required_ok = !fatal_ego_failure;
+    if (fatal_ego_failure)
     {
-        AddErrorType(&error_types, kErrorTypeEgoPullIncomplete);
+        AddErrorType(&error_types,
+                     ego_failure_error_type.empty()
+                         ? std::string(kErrorTypeEgoPullIncomplete)
+                         : ego_failure_error_type);
         const std::string ego_error = ego_failure_error.empty()
                                           ? std::string("required ego pull did not complete")
                                           : ego_failure_error;

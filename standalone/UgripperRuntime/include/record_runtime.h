@@ -404,7 +404,10 @@ private:
                            std::string *errorMessage,
                            std::string *errorType);
     bool stopEgoRecording(const std::string &episodeDir, int64_t stopSystemTimeUs, std::string *errorMessage);
-    bool waitForEgoFinalize(const std::string &episodeDir, int timeoutMs, std::string *errorMessage);
+    bool waitForEgoFinalize(const std::string &episodeDir,
+                            int timeoutMs,
+                            std::string *errorMessage,
+                            std::string *errorType);
     bool cleanupEgoRemote(const std::string &episodeDir, std::string *errorMessage);
     bool loadEgoBinding();
     bool clearEgoBindingState();

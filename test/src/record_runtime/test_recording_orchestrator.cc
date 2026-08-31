@@ -72,6 +72,7 @@ struct RecordingHarness
     std::string ego_start_error_type;
     bool ego_stop_ok = true;
     bool ego_finalize_ok = true;
+    std::string ego_finalize_error_type;
     bool ego_cleanup_ok = true;
     bool attach_ok = true;
     bool camera_bin_exists = true;
@@ -216,12 +217,16 @@ struct RecordingHarness
                      }
                      return ego_stop_ok;
                  },
-             .wait_for_ego_finalize =
-                 [this](const std::string&, int, std::string* error) {
+            .wait_for_ego_finalize =
+                 [this](const std::string&, int, std::string* error, std::string* error_type) {
                      ++ego_finalize_calls;
                      if (!ego_finalize_ok && error != nullptr)
                      {
                          *error = ego_error;
+                     }
+                     if (!ego_finalize_ok && error_type != nullptr)
+                     {
+                         *error_type = ego_finalize_error_type;
                      }
                      return ego_finalize_ok;
                  },
@@ -403,20 +408,89 @@ TEST(RecordingOrchestratorTest, RequiredEgoPullFailureMapsToError5)
 {
     RecordingHarness harness;
     harness.ego_required = true;
-    harness.ego_cleanup_ok = false;
+    harness.ego_finalize_ok = false;
+    harness.ego_finalize_error_type = ugripper::runtime::kErrorTypeEgoPullIncomplete;
     auto orchestrator = harness.Make();
     ASSERT_TRUE(orchestrator.StartRecording(false));
 
     g_steady_ms += 100;
     ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
     EXPECT_FALSE(orchestrator.state().is_recording);
-    EXPECT_EQ(harness.ego_cleanup_calls, 1);
+    EXPECT_EQ(harness.ego_cleanup_calls, 0);
     ASSERT_FALSE(harness.led_states.empty());
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
     ASSERT_FALSE(harness.metadata_error_types.empty());
     EXPECT_EQ(harness.metadata_error_types.back(),
               ugripper::runtime::kErrorTypeEgoPullIncomplete);
     EXPECT_NE(harness.last_validation_log.find(harness.ego_error), std::string::npos);
+}
+
+TEST(RecordingOrchestratorTest, RequiredEgoDisconnectPreservesDisconnectErrorType)
+{
+    RecordingHarness harness;
+    harness.ego_required = true;
+    harness.ego_finalize_ok = false;
+    harness.ego_finalize_error_type = ugripper::runtime::kErrorTypeEgoDisconnected;
+    harness.ego_error = "bound ego disconnected during stop";
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+
+    g_steady_ms += 100;
+    ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
+    ASSERT_FALSE(harness.metadata_error_types.empty());
+    EXPECT_EQ(harness.metadata_error_types.back(),
+              ugripper::runtime::kErrorTypeEgoDisconnected);
+    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
+}
+
+TEST(RecordingOrchestratorTest, RecordedEgoDisconnectIsFatalEvenIfBindingStateWasLost)
+{
+    RecordingHarness harness;
+    harness.ego_required = false;
+    harness.ego_finalize_ok = false;
+    harness.ego_finalize_error_type = ugripper::runtime::kErrorTypeEgoDisconnected;
+    harness.ego_error = "ego disconnected after recording started";
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+
+    g_steady_ms += 100;
+    ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
+    ASSERT_FALSE(harness.metadata_error_types.empty());
+    EXPECT_EQ(harness.metadata_error_types.back(),
+              ugripper::runtime::kErrorTypeEgoDisconnected);
+    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
+}
+
+TEST(RecordingOrchestratorTest, OptionalEgoPullIncompleteRemainsNonFatal)
+{
+    RecordingHarness harness;
+    harness.ego_required = false;
+    harness.ego_finalize_ok = false;
+    harness.ego_finalize_error_type = ugripper::runtime::kErrorTypeEgoPullIncomplete;
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+
+    g_steady_ms += 100;
+    ASSERT_TRUE(orchestrator.StopRecording(false, "stop"));
+    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Ready);
+}
+
+TEST(RecordingOrchestratorTest, EgoRemoteCleanupFailureIsNonFatalAfterVerifiedPull)
+{
+    RecordingHarness harness;
+    harness.ego_required = true;
+    harness.ego_cleanup_ok = false;
+    harness.ego_error = "remote cleanup skipped";
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+
+    g_steady_ms += 100;
+    ASSERT_TRUE(orchestrator.StopRecording(false, "stop"));
+    EXPECT_EQ(harness.ego_cleanup_calls, 1);
+    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Ready);
+    ASSERT_FALSE(harness.metadata_error_types.empty());
+    EXPECT_TRUE(harness.metadata_error_types.back().empty() ||
+                harness.metadata_error_types.back() == ugripper::runtime::kErrorTypeUnknown);
 }
 
 TEST(RecordingOrchestratorTest, StereoDisabledSkipsSessionControlAndFinalize)

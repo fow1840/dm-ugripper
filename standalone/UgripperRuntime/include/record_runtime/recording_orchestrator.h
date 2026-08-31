@@ -44,6 +44,8 @@ public:
     using StartEgoRecordingFn =
         std::function<bool(const std::string&, int64_t, std::string*, std::string*)>;
     using StopEgoRecordingFn = std::function<bool(const std::string&, int64_t, std::string*)>;
+    using WaitForEgoFinalizeFn =
+        std::function<bool(const std::string&, int, std::string*, std::string*)>;
     using WaitForFinalizeFn = std::function<bool(const std::string&, int, std::string*)>;
     using CleanupEgoRemoteFn = std::function<bool(const std::string&, std::string*)>;
     using IsEgoRequiredFn = std::function<bool()>;
@@ -79,7 +81,7 @@ public:
         StereoSessionFn stop_stereo_session;
         StartEgoRecordingFn start_ego_recording;
         StopEgoRecordingFn stop_ego_recording;
-        WaitForFinalizeFn wait_for_ego_finalize;
+        WaitForEgoFinalizeFn wait_for_ego_finalize;
         WaitForFinalizeFn wait_for_stereo_finalize;
         CleanupEgoRemoteFn cleanup_ego_remote;
         IsEgoRequiredFn is_ego_required;
