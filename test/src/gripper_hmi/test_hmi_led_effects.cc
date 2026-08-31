@@ -88,6 +88,22 @@ TEST(GripperLedEffectRendererTest, ReadyBreathStartsBright)
     EXPECT_EQ(readyHalfCycle.blue, 0);
 }
 
+TEST(GripperLedEffectRendererTest, ReadyBreathEntryOffsetStartsAtSeventyPercentAndRises)
+{
+    GripperLedEffectRenderer renderer;
+    constexpr uint64_t entrySteadyMs = 123456;
+    GripperLedEffect ready{GripperLedEffectState::Ready, 0.0};
+    ready.phaseOffsetMs = GripperLedEffectRenderer::readyBreathEntryPhaseOffsetMs(entrySteadyMs);
+
+    const auto entry = renderer.render(ready, entrySteadyMs, 0);
+    EXPECT_EQ(entry.red, 0);
+    EXPECT_EQ(entry.green, 84);
+    EXPECT_EQ(entry.blue, 6);
+
+    const auto shortlyAfter = renderer.render(ready, entrySteadyMs + 20, 0);
+    EXPECT_GT(shortlyAfter.green, entry.green);
+}
+
 TEST(GripperLedEffectRendererTest, SameMonotonicClockKeepsRecordingSidesInPhase)
 {
     GripperLedEffectRenderer leftRenderer;

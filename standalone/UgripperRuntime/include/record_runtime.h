@@ -150,6 +150,7 @@ private:
 
         static std::string sideForPort(const std::string &port);
         int findDriverIndexForSide(const std::string &side) const;
+        bool confirmBeepSilenced(size_t index, const std::string &side);
         void recordConnectionEventIfChanged(size_t index, bool connected);
         void maybeReconnectDriver(size_t index);
         std::vector<std::unique_ptr<GripperHmiDriver>> drivers_;
@@ -188,6 +189,9 @@ private:
 
     private:
         GripperPanelManager *panelManager_ = nullptr;
+        bool hasState_ = false;
+        LedState currentState_ = LedState::Exit;
+        uint64_t readyBreathPhaseOffsetMs_ = 0;
     };
 
     class EpisodeManager

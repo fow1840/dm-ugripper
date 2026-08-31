@@ -8039,6 +8039,22 @@ void RecordRuntime::playHmiFeedback(ugripper::runtime::HmiFeedbackEvent event)
             std::this_thread::sleep_for(std::chrono::milliseconds(pattern.off_ms));
         }
     }
+    const bool confirmBindingFeedbackSilence =
+        event == ugripper::runtime::HmiFeedbackEvent::EgoBound ||
+        event == ugripper::runtime::HmiFeedbackEvent::EgoUnbound ||
+        event == ugripper::runtime::HmiFeedbackEvent::EgoBindingFailed;
+    if (confirmBindingFeedbackSilence)
+    {
+        if (pattern.beep_side == ugripper::runtime::HmiFeedbackSide::Both)
+        {
+            panelManager_.silenceBeepForSide("left");
+            panelManager_.silenceBeepForSide("right");
+        }
+        else
+        {
+            panelManager_.silenceBeepForSide("right");
+        }
+    }
     if (isRecordingActive())
     {
         setLedState(LedState::Recording);
@@ -9622,7 +9638,84 @@ bool RecordRuntime::GripperPanelManager::setBeepStateForSide(
 
 bool RecordRuntime::GripperPanelManager::silenceBeepForSide(const std::string &side)
 {
-    return setBeepStateForSide(side, GripperBeepState{0, 0});
+    bool found = false;
+    bool allSilenced = true;
+    for (size_t index = 0; index < drivers_.size(); ++index)
+    {
+        auto &driver = drivers_[index];
+        if (driver == nullptr || sideForPort(driver->getPort()) != side)
+        {
+            continue;
+        }
+        found = true;
+        if (index < currentDriverBeepStates_.size())
+        {
+            currentDriverBeepStates_[index] = GripperBeepState{0, 0};
+        }
+        allSilenced = confirmBeepSilenced(index, side) && allSilenced;
+    }
+    return found && allSilenced;
+}
+
+bool RecordRuntime::GripperPanelManager::confirmBeepSilenced(size_t index,
+                                                              const std::string &side)
+{
+    if (index >= drivers_.size() || drivers_[index] == nullptr)
+    {
+        return false;
+    }
+
+    auto &driver = drivers_[index];
+    if (!driver->isConnected())
+    {
+        driver->silenceBeep();
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << "cannot confirm hmi beep silence while disconnected"
+            << " side=" << side
+            << " port=" << driver->getPort()
+            << std::endl).str());
+        return false;
+    }
+
+    GripperHmiSnapshot lastSnapshot = driver->getSnapshot();
+    for (int attempt = 1; attempt <= kBeepSilenceRetryLimit; ++attempt)
+    {
+        const uint64_t previousStateCount = lastSnapshot.beepStateCount;
+        const bool commandOk = driver->silenceBeep();
+        const bool requestOk = driver->requestState();
+        bool receivedNewState = false;
+
+        const auto deadline = std::chrono::steady_clock::now() +
+                              std::chrono::milliseconds(kBeepSilenceConfirmMs);
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            driver->pollOnce(10);
+            lastSnapshot = driver->getSnapshot();
+            if (lastSnapshot.beepStateCount > previousStateCount)
+            {
+                receivedNewState = true;
+                if (lastSnapshot.beepState.duty == 0 && lastSnapshot.beepState.frequency == 0)
+                {
+                    return true;
+                }
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        DM_LOG_WARN("{}", (::DA::utils::LogString()
+            << "failed to confirm hmi beep silence"
+            << " side=" << side
+            << " port=" << driver->getPort()
+            << " attempt=" << attempt
+            << " command_ok=" << boolText(commandOk)
+            << " request_ok=" << boolText(requestOk)
+            << " new_state=" << boolText(receivedNewState)
+            << " beep_duty=" << lastSnapshot.beepState.duty
+            << " beep_frequency=" << lastSnapshot.beepState.frequency
+            << std::endl).str());
+    }
+    return false;
 }
 
 void RecordRuntime::GripperPanelManager::silenceBeep()
@@ -9633,40 +9726,9 @@ void RecordRuntime::GripperPanelManager::silenceBeep()
         {
             currentDriverBeepStates_[index] = GripperBeepState{0, 0};
         }
-        auto &driver = drivers_[index];
-        if (driver != nullptr)
+        if (drivers_[index] != nullptr)
         {
-            bool silenced = false;
-            for (int attempt = 1; attempt <= kBeepSilenceRetryLimit; ++attempt)
-            {
-                const uint64_t previousStateCount = driver->getSnapshot().beepStateCount;
-                const bool commandOk = driver->silenceBeep();
-                driver->requestState();
-
-                const auto deadline = std::chrono::steady_clock::now() +
-                                      std::chrono::milliseconds(kBeepSilenceConfirmMs);
-                while (std::chrono::steady_clock::now() < deadline)
-                {
-                    driver->pollOnce(10);
-                    const auto snapshot = driver->getSnapshot();
-                    if (snapshot.beepStateCount > previousStateCount)
-                    {
-                        silenced = snapshot.beepState.duty == 0 && snapshot.beepState.frequency == 0;
-                        break;
-                    }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                }
-                if (silenced)
-                {
-                    break;
-                }
-                DM_LOG_WARN("{}", (::DA::utils::LogString()
-                    << "failed to confirm hmi beep silence"
-                    << " port=" << driver->getPort()
-                    << " attempt=" << attempt
-                    << " command_ok=" << boolText(commandOk)
-                    << std::endl).str());
-            }
+            confirmBeepSilenced(index, sideForPort(drivers_[index]->getPort()));
         }
     }
 }
@@ -9780,7 +9842,21 @@ void RecordRuntime::HmiLedController::setState(LedState state, double progress)
     {
         return;
     }
-    panelManager_->setLedEffect(makeLedEffect(state, progress));
+
+    if (state == LedState::Ready && (!hasState_ || currentState_ != LedState::Ready))
+    {
+        readyBreathPhaseOffsetMs_ =
+            GripperLedEffectRenderer::readyBreathEntryPhaseOffsetMs(RecordRuntime::currentSteadyMs());
+    }
+    currentState_ = state;
+    hasState_ = true;
+
+    GripperLedEffect effect = makeLedEffect(state, progress);
+    if (state == LedState::Ready)
+    {
+        effect.phaseOffsetMs = readyBreathPhaseOffsetMs_;
+    }
+    panelManager_->setLedEffect(effect);
 }
 
 RecordRuntime::EpisodeManager::EpisodeManager(std::string diskRoot,

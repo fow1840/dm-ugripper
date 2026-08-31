@@ -7,6 +7,7 @@
 namespace
 {
 constexpr uint64_t kReadyBreathPeriodMs = 4500;
+constexpr double kReadyBreathEntryBrightnessRatio = 0.70;
 constexpr uint64_t kRecordingBlinkPeriodMs = 1000;
 constexpr uint64_t kCalibBlinkPeriodMs = 1000;
 constexpr uint64_t kErrorLongOnMs = 700;
@@ -249,6 +250,17 @@ std::string GripperLedEffectRenderer::stateText(const GripperLedEffect &effect)
     }
 }
 
+uint64_t GripperLedEffectRenderer::readyBreathEntryPhaseOffsetMs(uint64_t steadyMs)
+{
+    const double entryPulse = std::cbrt(kReadyBreathEntryBrightnessRatio);
+    const double entryPhase = 1.0 -
+                              (std::acos(2.0 * entryPulse - 1.0) / (2.0 * kPi));
+    const uint64_t entryPhaseMs = static_cast<uint64_t>(std::llround(
+        static_cast<double>(kReadyBreathPeriodMs) * entryPhase));
+    const uint64_t currentPhaseMs = steadyMs % kReadyBreathPeriodMs;
+    return (entryPhaseMs + kReadyBreathPeriodMs - currentPhaseMs) % kReadyBreathPeriodMs;
+}
+
 GripperLedColor GripperLedEffectRenderer::render(const GripperLedEffect &effect, uint64_t steadyMs, uint64_t epochMs) const
 {
     switch (effect.state)
@@ -269,7 +281,10 @@ GripperLedColor GripperLedEffectRenderer::render(const GripperLedEffect &effect,
         return GripperLedColor{255, 255, 255};
     case GripperLedEffectState::Ready:
     {
-        const double phase = static_cast<double>(steadyMs % kReadyBreathPeriodMs) /
+        const uint64_t phaseMs =
+            ((steadyMs % kReadyBreathPeriodMs) + (effect.phaseOffsetMs % kReadyBreathPeriodMs)) %
+            kReadyBreathPeriodMs;
+        const double phase = static_cast<double>(phaseMs) /
                              static_cast<double>(kReadyBreathPeriodMs);
         const double pulse = 0.5 + 0.5 * std::cos(2.0 * kPi * phase);
         const double shaped = pulse * pulse * pulse;

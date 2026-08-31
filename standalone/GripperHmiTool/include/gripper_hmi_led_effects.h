@@ -34,6 +34,7 @@ struct GripperLedEffect
 {
     GripperLedEffectState state = GripperLedEffectState::Init;
     double progress = 0.0;
+    uint64_t phaseOffsetMs = 0;
 };
 
 class GripperLedEffectRenderer
@@ -43,6 +44,7 @@ public:
 
     static bool parseStateText(const std::string &text, GripperLedEffect *effect);
     static std::string stateText(const GripperLedEffect &effect);
+    static uint64_t readyBreathEntryPhaseOffsetMs(uint64_t steadyMs);
 
     GripperLedColor render(const GripperLedEffect &effect, uint64_t steadyMs, uint64_t epochMs) const;
 
