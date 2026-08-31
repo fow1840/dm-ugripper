@@ -2,11 +2,15 @@
 
 ## Unreleased
 
-- Fays VIKit SDK 从 `3.8.1` 更新到上游 `feat-v3.8.2`（`44573844547c5dfbe93e86445b458a211388282e`），修复 IMU 帧时间戳小概率回退导致的丢帧问题；同步 aarch64/x86_64 运行库与版本头，FT602 `1.0.17` 保持不变。
+- 相机全局时间加入集中式实验延迟补偿：主摄与 tcam 的 `start_offset_us` 增加 `36ms`，stereo camera 的 Fays MCAP `publishTime` 在采集阶段逐帧增加 `3ms`；视频 PTS、Fays 原始 `logTime` 与 IMU 时间保持不变，补偿值统一收口到单一头文件便于后续实验调整。
+- 停止录制并完成写盘后切回 READY 绿色呼吸灯时，左右灯从最大绿灯亮度约 `70%` 的上升段同步开始，不再可能从全灭阶段逐渐亮起；持续 READY 与夹爪重连不会重复重置呼吸相位。
+- Fays VIKit SDK 从 `3.8.1` 更新到上游 `v3.8.3`（`8e2d91a08b065bde247a2283ecaa4bb7fd3aa419`）：保留 `3.8.2` 对 IMU 帧时间戳小概率回退的修复，并进一步优化数据流初始化稳定性；同步 aarch64/x86_64 运行库与版本头，FT602 `1.0.17` 保持不变。
 - GripperHmiTool 新增绝对只读的 HMI 双版本字段读取：依次发送 `0x52/0x56` 与 `0x52/0x57`，单路 `F2` 不阻断另一通道，并通过 `version_56` / `version_57` 稳定输出供生产强检选择有效固件版本；另新增显式高风险命令 `--initialize-version-preserve-payload`，初始化前完整缓存 `32-byte` SN 与 `1024-byte` 标定 payload，初始化后逐字节原样写回并回读比对，写入或回读失败最多执行 3 轮完整恢复。
 - metadata schema 更新到 `data_version=3.2`：在 `task_stop_s` 后依次新增 Unix 秒开机时间 `boot_time_s` 和触觉损坏 SN 列表 `tactile_damage_sn_list`；后台触觉校验按本条 episode 单次 `damaged=true` 原子回写对应 SN，无损坏保持空列表。停录收尾调整为先同步 `video stop` 运行日志，再释放录制锁；离线 episode 校验器同步支持 3.2，并兼容历史 3.1/3.0。
-- 新增 PC 端外部秒表录制联动测试脚本：自动下发到 240 板端，以 GPIO139 触发/停止秒表，并通过 runtime 软件录制 FIFO 执行正常起停；执行前同步覆盖收紧版 CH9344 helper，只允许 bus1/bus9 分别映射右/左夹爪并排除 bus5/bus11，同时校验四个逻辑链接的唯一性和物理来源，失败时不触发测试；停录收尾后在对应 episode 写入 `stopwatch_timing.json`，记录 GPIO 与录制命令的 Unix/monotonic 时间及延迟。
+- 新增 PC 端外部秒表录制联动测试脚本：自动下发到 240 板端，先通过 runtime 软件录制 FIFO 启动正常录制，默认等待 `2s` 后再以 GPIO139 触发秒表；默认总录制时长为 `15s`，触发延迟可配置且必须小于总时长。GPIO 初始化通过 sysfs `direction=high/low` 原子设置方向和空闲电平，避免写 `out` 时的瞬时低电平在正式测试前误触发秒表；执行前同步覆盖收紧版 CH9344 helper，只允许 bus1/bus9 分别映射右/左夹爪并排除 bus5/bus11，同时校验四个逻辑链接的唯一性和物理来源，失败时不触发测试；停录收尾后在对应 episode 写入 `stopwatch_timing.json`，记录 GPIO 与录制命令的 Unix/monotonic 时间及延迟。
 - Ego 起录前时间同步增加严格 `<15ms` 误差门限：每次绝对授时固定补偿实测 ADB 生效延迟 `20ms`，未达标时最多按同一策略重试三次；连续失败以 `UGR-82-02` 中止本条录制并进入 `ERROR_5`。
+- 修复 Ego dataset 路径发现被旧 serial 目录提前截断的问题：绑定 serial 的精确路径、legacy root 与 fallback 扫描结果现在统一汇总去重，空的旧目录不再遮蔽 Ego App 新建 episode 所在目录。
+- Ego 停录改为最多 `3` 次 STOP 广播并固定 `100ms` 重试间隔，实际进入 recording 后的设备消失统一上报 `ego_disconnected/ERROR_5`；finalize 文件大小不一致时复用 offset 断点续传有限重拉，远端 cleanup 跳过不再覆盖主结果。Ego 绑定、解绑及绑定失败提示音结束后按侧回读确认蜂鸣器为 `0/0`，未关闭时最多重试 `5` 次。
 
 ## v2.1.11 - 2026-08-12
 

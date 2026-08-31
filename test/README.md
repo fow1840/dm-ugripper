@@ -45,12 +45,14 @@
 - `test/scripts/validate_episode_data.sh`
   - 测试工程师离线 episode 校验入口，自动选择可用 Python 环境并调用深度校验器。
   - 报告首先列出全部视频、本机 MCAP 中实际发现的全部 sensor topic、左右 Fays IMU/camera，以及存在时 `ego/sensor.mcap` 全部 topic 的 Unix 首帧时间、换算方式及相对最早流的误差；最大首帧误差达到 `1000ms` 时返回失败。
-  - Fays 全局时间使用 MCAP `publishTime`，设备原始 `logTime` 仅用于 gap 和回退分析；Ego 单调时钟 topic 使用 `head_pose_details.start_offset_us` 计算固定 offset，已是 Unix 时间的 metainfo 不重复换算；`+nostereo` profile 自动跳过 Fays。
-  - 主相机逐帧 Unix 时间按 `metadata.video_details[].start_offset_us + packet_pts_sec * 1000000` 计算；主相机 PTS 必须保留 V4L2 真实 gap，丢帧后不得压紧后续时间轴。Stereo 逐帧时间只使用 Fays MCAP camera `publishTime`，不使用 Stereo MKV PTS 做同步真值。
+  - Fays 全局时间使用 MCAP `publishTime`，其中 stereo camera `publishTime` 已逐帧包含 `+3ms` 延迟补偿；设备原始 `logTime` 和 Fays IMU 不应用该补偿，`logTime` 仅用于 gap 和回退分析。Ego 单调时钟 topic 使用 `head_pose_details.start_offset_us` 计算固定 offset，已是 Unix 时间的 metainfo 不重复换算；`+nostereo` profile 自动跳过 Fays。
+  - 主相机和 tcam 的 `metadata.video_details[].start_offset_us` 已包含 `+36ms` 延迟补偿，逐帧 Unix 时间仍按 `start_offset_us + packet_pts_sec * 1000000` 计算；主相机 PTS 必须保留 V4L2 真实 gap，丢帧后不得压紧后续时间轴。Stereo 逐帧时间只使用已补偿的 Fays MCAP camera `publishTime`，不使用 Stereo MKV PTS 做同步真值，也不得在 metadata 上重复加 `3ms`。
+  - 主摄/tcam 补偿值定义在 `standalone/CameraRecorder/include/camera_recorder/camera_timestamp_offsets.h`，stereo 补偿值定义在 `standalone/FaysStereoRecorder/include/fays_stereo_recorder/camera_timestamp_offsets.h`；实验值调整后需要重新编译并重新录制数据验证。
 - `test/scripts/board_stopwatch_record_test.sh`
-  - 在 PC 上一键连接 `ubuntu@192.168.2.240`，把脚本自身传到板端 `/tmp` 后执行外部秒表与正常 UGripper 录制联动测试；默认 GPIO139 低电平启动秒表，并立即通过运行时软件录制 FIFO 发送 `START`。
-  - 默认录制 `10s`，到时通过同一 FIFO 发送 `STOP` 并恢复 GPIO 高电平；等待 runtime 完成正常停录、校验和 episode rename 后，在对应最终 episode 中原子写入 `stopwatch_timing.json`。
+  - 在 PC 上一键连接 `ubuntu@192.168.2.240`，把脚本自身传到板端 `/tmp` 后执行外部秒表与正常 UGripper 录制联动测试；先通过运行时软件录制 FIFO 发送 `START`，默认等待 `2s` 后再以 GPIO139 低电平启动秒表。
+  - 默认总录制 `15s`，因此秒表默认运行约 `13s`；到时通过同一 FIFO 发送 `STOP` 并恢复 GPIO 高电平，等待 runtime 完成正常停录、校验和 episode rename 后，在对应最终 episode 中原子写入 `stopwatch_timing.json`。延迟可通过 `--stopwatch-delay-sec` 调整，且必须小于总录制时长。
   - JSON 保存 GPIO 写入前后、录制 `START/STOP` 命令的 Unix/monotonic 时间及延迟计算。异常退出时脚本会尽力停录并恢复 GPIO 待机电平。
+  - GPIO 初始化使用 sysfs `direction=high/low` 原子设置输出方向与空闲电平，避免先写 `out` 产生短暂低电平并在正式测试前误触发秒表。
 - `test/scripts/board_gripper_hmi_link_stress.sh`
   - 停止 `ugripper.service` 后反复独占连接左右 HMI，执行 RGB、蜂鸣器开关和状态回读，统计合法回复、蜂鸣器状态确认、最大回复年龄与失败轮次。
   - 默认在整个压力窗口并行运行 `SensorRecorder`，持续记录左右 encoder，以区分 HMI 单 UART/控制板异常和整颗 CH9344 或 USB 上行链路异常。

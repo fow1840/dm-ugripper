@@ -54,7 +54,7 @@
    - `CAMERA_CODEC`：非法值会回退到 `h264`。
    - `UGRIPPER_LANG`：决定提示音语言。
 10. 运行时连接左右夹爪 HMI、启动 LED 渲染线程、尝试拉起音频守护进程。
-- HMI 状态查询、LED RGB 与蜂鸣指令会在单个 gripper 串口内由驱动 owner 线程统一调度；`record_runtime` 只切换灯效模式，不再跨线程推送录制态的 500ms 亮灭边沿。所有周期灯效直接使用同一个绝对单调时钟计算相位，左右夹爪不会因状态恢复时刻或单侧重连而独立重新计时。当前驱动参考旧版 `driver_origin/led_manager` 的职责分离思路做了收敛：按键输入仍以 HMI 主动上报 `KeyReport` 为主，串口主动查询已降为约 `1s` 一次的低频探活/状态刷新；LED 仅在颜色变化、状态切换或低频补发时下发，避免高频状态查询与 RGB 指令互相抢占；蜂鸣开启和关闭状态切换都会以 `20ms` 间隔连续下发 `5` 次，开启后仍维持原有保活，HMI 连接建立和驱动退出时也会主动重发关闭状态，避免单个关闭帧丢失后蜂鸣持续。若有专项诊断或直控需求，仍可走 direct RGB 通道覆盖当前效果。
+- HMI 状态查询、LED RGB 与蜂鸣指令会在单个 gripper 串口内由驱动 owner 线程统一调度；`record_runtime` 只切换灯效模式，不再跨线程推送录制态的 500ms 亮灭边沿。所有周期灯效直接使用同一个绝对单调时钟计算相位，左右夹爪不会因状态恢复时刻或单侧重连而独立重新计时。当前驱动参考旧版 `driver_origin/led_manager` 的职责分离思路做了收敛：按键输入仍以 HMI 主动上报 `KeyReport` 为主，串口主动查询已降为约 `1s` 一次的低频探活/状态刷新；LED 仅在颜色变化、状态切换或低频补发时下发，避免高频状态查询与 RGB 指令互相抢占；蜂鸣开启和关闭状态切换都会以 `20ms` 间隔连续下发 `5` 次，开启后仍维持原有保活，HMI 连接建立和驱动退出时也会主动重发关闭状态。Ego 绑定、解绑和绑定失败反馈结束后还会按侧请求最新蜂鸣状态，只有回读 `duty/frequency=0/0` 才确认关闭，否则最多重试 `5` 次，避免最后一个关闭帧丢失后长期蜂鸣。若有专项诊断或直控需求，仍可走 direct RGB 通道覆盖当前效果。
 - `standalone/GripperHmiTool` 当前新增了 UMI SN / 标定参数协议封装：SN 固定为 32-byte 字段（当前现场 SN 文本示例为 16-char，尾部补 `0x00`），标定参数固定为 `1024 byte` 严格对齐结构；当前 payload 已覆盖 RGB 主相机、双目 `cam0/cam1`、`cam->imu` 外参、IMU 离散噪声/随机游走与残差统计，其中 header 会保留内部有效数据长度，但当前 `V1.1` 固件写入时仍必须补满 `64 x 16B` 数据包，具体协议见 `docs/umi_calibration_protocol.md`。
 - UMI 标定写入当前增加了异常恢复口径：若写入阶段收到 `0xFE`（当前 chunk 零数据校验错误），驱动会优先重发当前 chunk；若连续出现 `0xFE`，或后续读 SN / 读标定返回 `0xF3/0xFE`，则会发送一次 `AbortWriteInData` 清理固件残留写入状态后再重试。
 11. 初始化成功后进入空闲状态机；默认包要求数据盘和 Fays recorder ready 才进入 `READY`。`+nostereo` 变体只要求数据盘与非双目关键设备 ready，不等待 Fays。
@@ -86,7 +86,7 @@
 | 右上 + 右下 | `2000ms` 提示，`4000ms` 执行 | 播放 `shutdown` 提示后进入 `EXIT`，写系统关机请求 | 必要时先停录，再执行同一关机流程 |
 | 左上 + 左下 | `4000ms` | 进入 `writing`、刷写日志并请求卸载 `/mnt/data_disk`；成功播放 `umount`，失败播放 `error` | 忽略并播报 `error` |
 
-左右上键采用精确按键掩码路由：两键形成组合后会抢占并重置各自的单键状态，额外按下左下或右下时不匹配该组合；组合执行后必须全部释放才允许下一次动作。这样第二键可在普通长按的 `1000ms` 容错窗口内加入，而不会同时触发 pre audio、人工失败标记或短按录制动作。组合绑定成功为双手三次亮黄色短闪，并依次播放 `1000/2000/4000Hz` 升调；解绑成功为双手三次紫色短闪，并依次播放 `4000/2000/1000Hz` 降调；绑定失败保持双手三次红色长闪与三次长蜂鸣。临时反馈结束后恢复当前 `READY`、`RECORDING` 或错误灯效。
+左右上键采用精确按键掩码路由：两键形成组合后会抢占并重置各自的单键状态，额外按下左下或右下时不匹配该组合；组合执行后必须全部释放才允许下一次动作。这样第二键可在普通长按的 `1000ms` 容错窗口内加入，而不会同时触发 pre audio、人工失败标记或短按录制动作。组合绑定成功为双手三次亮黄色短闪，并依次播放 `1000/2000/4000Hz` 升调；解绑成功为双手三次紫色短闪，并依次播放 `4000/2000/1000Hz` 降调；绑定失败保持双手三次红色长闪与三次长蜂鸣。三类反馈结束时都会逐侧回读确认蜂鸣器已关闭，再恢复当前 `READY`、`RECORDING` 或错误灯效。
 
 Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周期内重启 `ugripper.service` 或重装软件仍保留绑定，整机重启或断电开机后 `/dev/shm` 清空，因此自动恢复为未绑定状态。`ego_binding_status.json` 使用 `bound / connected / disconnected / unbound` 表示绑定完成、在线、离线和已解绑；服务启动时若没有有效 binding，会主动发布 `unbound`，清理旧版本遗留的 `connected / disconnected` 快照。解绑不依赖 ADB 在线，即使 Ego 已拔出并进入 `disconnected / ERROR_5`，仍可通过左右上键组合解除绑定并清除该故障。解绑会在共享锁保护下删除 binding 并原子发布不带旧 serial 的 `unbound`，在途的旧 probe 在发布结果前会重新核对当前 binding，不能把状态覆盖回旧 serial 的 `connected`。解绑后不再探测 Ego，因此随后物理拔出不会改变 `unbound`。安装新版本时会清理旧 `/var/lib/ugripper/ego/binding.json`，避免历史持久化绑定被重新加载。
 
@@ -115,7 +115,7 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
    - `video_probes`：停录校验阶段并行 `ffprobe` 后写入的内部缓存，仅供同次 `metadata.json` 生成复用，不进入最终 episode。
    - 若现场日志出现 timing 打开失败，优先按日志里的真实 `/dev/shm/ugripper_recording_timing_*.json` 路径排查；旧字符串 `.recording_timing.json` 只保留为兼容性提示，不代表当前会在 episode 目录生成该文件。
 6. 若已准备 pre audio，则移动到本次 episode 的 `audio_pre.wav`。
-7. Ego 未绑定时，起录前 `record_runtime` 保持原可选联动：先用随包 ADB 做短窗口在线设备预检，明确无在线设备时直接跳过 sidecar；预检发现设备或结果不确定时拉起 worker，短等待内未拿到远端 episode 只记录告警，不阻塞 UGripper。Ego 已绑定时只允许使用持久化 serial，绑定设备不在线或未成功拿到本次远端 episode 会阻止起录并进入 `ERROR_5`。worker 默认优先使用随包安装的 `bin/UgripperRuntime/adb/adb`：设备识别要求 `ro.product.manufacturer=SXR` 且 `ro.product.model/ro.product.device/ro.product.name/ro.build.product` 均为 `SXR_1`。起录前通过 `cmd alarm set-time` 将 Ego 绝对时间设为 `host_now + 20ms`；随后读取三次 Ego Unix 毫秒时间，以最低 RTT 样本的主机请求中点估算 offset，严格要求绝对误差 `<15ms`。未达标时仍按固定 `+20ms` 策略重新绝对授时，最多重试三次，不把上一轮残余 offset 直接反向叠加，避免 ADB 生效延迟变化导致正负振荡；任一轮达标立即继续。固定补偿可通过 `UGRIPPER_EGO_TIME_SYNC_SET_AHEAD_MS` 调整，`ego/ego_sync.json.attempts` 保留每次 `set_ahead_ms`、offset 和 set-time 结果。连续四次尝试仍不达标时，worker 不发送 `START_RECORDING`，写入 `time_sync_failed`/`ego_time_sync_failed`，输出带 `UGR-82-02` 的 V3 错误日志；无论 Ego 是否已绑定，本条 UGripper 起录都会终止、清理录制锁并进入 `ERROR_5`，本机 camera/sensor 不会继续录制。校时通过后才按 `CAMERA_CODEC` 广播 `SET_VIDEO_CODEC`（`h264 -> avc`，`h265 -> hevc`），再向已运行的 `com.ssnwt.helloxr` app 广播 `START_RECORDING`。worker 从 app external-files 根目录发现新建的 `episode_*-temp`：显式配置的 `UGRIPPER_EGO_REMOTE_ROOT` 优先级最高；未配置时先按绑定 serial 精确检查新版 `/files/dataset/<ego_serial>/data`，命中后立即返回，再检查 `/files/<ego_serial>/data/dataset`，均未命中才 fallback 扫描并兼容旧 `/files/dataset`。远端文件增量同步到本条 episode 的 `ego/`，当前仍不主动启动 Ego app。
+7. Ego 未绑定时，起录前 `record_runtime` 保持原可选联动：先用随包 ADB 做短窗口在线设备预检，明确无在线设备时直接跳过 sidecar；预检发现设备或结果不确定时拉起 worker，短等待内未拿到远端 episode 只记录告警，不阻塞 UGripper。Ego 已绑定时只允许使用持久化 serial，绑定设备不在线或未成功拿到本次远端 episode 会阻止起录并进入 `ERROR_5`。worker 默认优先使用随包安装的 `bin/UgripperRuntime/adb/adb`：设备识别要求 `ro.product.manufacturer=SXR` 且 `ro.product.model/ro.product.device/ro.product.name/ro.build.product` 均为 `SXR_1`。起录前通过 `cmd alarm set-time` 将 Ego 绝对时间设为 `host_now + 20ms`；随后读取三次 Ego Unix 毫秒时间，以最低 RTT 样本的主机请求中点估算 offset，严格要求绝对误差 `<15ms`。未达标时仍按固定 `+20ms` 策略重新绝对授时，最多重试三次，不把上一轮残余 offset 直接反向叠加，避免 ADB 生效延迟变化导致正负振荡；任一轮达标立即继续。固定补偿可通过 `UGRIPPER_EGO_TIME_SYNC_SET_AHEAD_MS` 调整，`ego/ego_sync.json.attempts` 保留每次 `set_ahead_ms`、offset 和 set-time 结果。连续四次尝试仍不达标时，worker 不发送 `START_RECORDING`，写入 `time_sync_failed`/`ego_time_sync_failed`，输出带 `UGR-82-02` 的 V3 错误日志；无论 Ego 是否已绑定，本条 UGripper 起录都会终止、清理录制锁并进入 `ERROR_5`，本机 camera/sensor 不会继续录制。校时通过后才按 `CAMERA_CODEC` 广播 `SET_VIDEO_CODEC`（`h264 -> avc`，`h265 -> hevc`），再向已运行的 `com.ssnwt.helloxr` app 广播 `START_RECORDING`。worker 从 app external-files 根目录发现新建的 `episode_*-temp`：显式配置的 `UGRIPPER_EGO_REMOTE_ROOT` 优先级最高；未配置时把绑定 serial 的新版 `/files/dataset/<ego_serial>/data`、旧版 `/files/<ego_serial>/data/dataset`、legacy `/files/dataset` 与 fallback 扫描结果统一汇总去重，再从全部候选 root 查找本次新增 episode，避免空的旧目录遮蔽实际写入路径。远端文件增量同步到本条 episode 的 `ego/`，当前仍不主动启动 Ego app。
    - 240 实测依据：`-10..60ms` 八档补偿各 6 次的梯度拟合为 `offset=0.9858*补偿-18.885ms`（`R²=0.9694`），对应有效生效延迟约 `19.2ms`。部署固定 `+20ms` 实现后连续 50 轮均首次授时达标，随后独立复测也 `50/50` 满足 `<15ms`；同步平均 `112.0ms`、P95 `127ms`，内部绝对误差均值 `3.57ms`、P95 `7.05ms`、最大 `8ms`，独立复测最大 `9.5ms`。
 8. 并行启动：
    - `camera_recorder --codec <codec> --output-dir <episode> --only left_cam_main,right_cam_main[,chest_cam_main],left_tcam_l,left_tcam_r,right_tcam_l,right_tcam_r`
@@ -136,7 +136,7 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
 - 普通 `camera_recorder` 直接启动主摄与触觉；默认包另行启动双目 warmup daemon，`+nostereo` 变体不启动。
 - 夹爪热插拔恢复完成后，`record_runtime` 当前会在该侧关键设备全部 ready、并完成 gripper runtime refresh 之后，只按 tactile 相机 USB `serial` 标记该侧实时参考帧待更新；服务初始化阶段不会直接打开触觉相机抓参考帧。待更新实时参考帧统一由后续首个可用 episode 的触觉视频截帧生成，若该 episode 缺失、损坏或截帧失败则顺延到下一条 episode。持久化 baseline 不因夹爪重连刷新，避免覆盖关机期间发生的盖板损坏。
 以下 stereo warmup、session writer 与热插拔内容适用于默认包；`+nostereo` 变体不会执行：
-- 当前随包 vendored Fays VIKit SDK 为 `3.8.2`，来源为上游分支 `feat-v3.8.2` 提交 `44573844547c5dfbe93e86445b458a211388282e`；修复 IMU 帧时间戳小概率回退导致的丢帧问题。aarch64/x86_64 的 `libfays_vikit.so` 与版本头保持同一上游版本，FT602 运行库仍为 `1.0.17`。具体来源记录见 `src/third_party/fays_lib/UPSTREAM.md`。
+- 当前随包 vendored Fays VIKit SDK 为 `3.8.3`，来源为上游 tag `v3.8.3` 提交 `8e2d91a08b065bde247a2283ecaa4bb7fd3aa419`；保留 `3.8.2` 对 IMU 帧时间戳小概率回退的修复，并优化数据流初始化稳定性。aarch64/x86_64 的 `libfays_vikit.so` 与版本头保持同一上游版本，FT602 运行库仍为 `1.0.17`。具体来源记录见 `src/third_party/fays_lib/UPSTREAM.md`。
 - warmup daemon 常驻消费左右双目 `MJPEG 60fps` 预热流，并在录制时建立 session writer；主摄在普通录制阶段直接采集并写入最终文件。
 - warmup daemon 当前按单实例口径运行；若服务内 daemon 尚未退出又手工再起第二个 `camera_recorder --stereo-daemon` 去抢同一批双目设备，可能诱发设备忙、节点缺失或整条 USB 链路重枚举。当前实现已增加 `/tmp/umi_camera_warmup_daemon.lock` 单实例锁，第二个 warmup daemon 会直接拒绝启动。
 - 停录阶段也会并发向各路相机子进程发 stop，并在全部 stop 返回后统一 poll 状态，降低多路顺序收尾导致内部 timing 文件缺失或容器未 finalize 的风险。
@@ -187,7 +187,7 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
 1. `record_runtime` 并发停止普通录制模式下的 `camera_recorder` 与 `sensor_recorder`，降低两条独立链路顺序收尾带来的蓝灯等待。
 2. 默认包同时发送 Fays `STOP` 并等待 stereo/Fays finalize；`+nostereo` 变体跳过这些动作。
 3. 先发送 `recording_stop`，随后立即切到 `writing`；`writing` 会抢占仍在播放的上一条提示。
-4. 若本条 episode 已拉起 Ego sidecar，则停止增量同步并完成 Ego finalize。未绑定模式下失败仍只更新 `ego/ego_sync.json` 与日志；绑定模式下必须完成 finalize、全部远端文件拉取及远端/本地大小一致性核对，任一步失败均写 `ego_pull_incomplete`、使 episode 失败并进入 `ERROR_5`。核对通过后才清理远端文件，不新增 MP4/MCAP 深度内容校验。
+4. 若本条 episode 已拉起 Ego sidecar，则停止增量同步并完成 Ego finalize。STOP 广播最多发送 `3` 次，失败重试固定间隔 `100ms`，每次 ADB 状态、广播返回码和结果写入 `ego/ego_sync.json`；只要 Ego 已实际进入 recording，三次 STOP 全失败或设备消失都写 `ego_disconnected`，即使运行时绑定快照丢失也会使 episode 失败并进入 `ERROR_5`。finalize 后先按本地文件长度从 Ego 远端 offset 续传，落盘后核对全部远端/本地文件大小；不一致时重新检查远端数据并有限重试，远端缩小或本地大于远端时仅重拉异常文件。设备不可用归类 `ego_disconnected`，设备在线但远端文件缺失或重复拉取仍不一致归类 `ego_pull_incomplete`；绑定模式下两者均为录制硬失败。只有最终大小一致才尝试清理远端 episode，远端删除失败或 cleanup 跳过只记录状态，不覆盖主结果，也不单独使 episode 失败；不新增 MP4/MCAP 深度内容校验。
 5. `writing` 阶段分阶段 flush 普通相机、左右 sensor、`calibration.json`、可选音频、ego 文件和最终 metadata；默认包还会 flush stereo/Fays 产物，`+nostereo` 变体不会。
 6. 生成最终 `metadata.json` 后执行稳定校验；视频探测结果尽量写入 `/dev/shm` timing 缓存供 metadata 复用。
 7. 停录硬校验完成后异步执行触觉实时 reference 与持久化 baseline 的单帧比较，不阻塞 stop 返回，也不反改本条 episode 的 `quality_check_status`。
@@ -233,10 +233,23 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
 - `hardware_list` 保持固定 schema：左右 gripper、左右主摄、可选胸部主摄、四路 tactile 与左右 stereo 字段始终存在；默认包从 Fays 状态写 stereo SN，`+nostereo` 变体写空字符串。
 - `quality_check_status` 取值为 `success` / `fail` / 空字符串；`quality_check_err_type` 保持单字段兼容，只写本次失败的主 `error_type`。常见取值包括 `missing_file`、`collection_duration_too_short`、`frame_loss`、`finalize_error`、`stereo_control_failed`、`calibration_error`、`runtime_error`、`device_disconnected`、人工补标的 `operator_marked_failed`，以及健康监控直接上报的 `disk_mount_lost`、`disk_not_writable`、`disk_full`、`critical_devices_missing`、`stereo_not_ready`、`hmi_*` 等 fault key；无法归类时写 `unknown`。
 - `collection_duration_s` 取有效视频时长最大值；默认包包含 stereo，`+nostereo` 只统计主摄/触觉。stereo 的有效时长固定使用 Fays MCAP 中首末 camera `publishTime` 的跨度，因此 Fays 设备侧 gap 会保留在实际采集时长内，不使用被固定 `25fps` 压紧的 MKV 容器 duration；`video_details` 复用停录 timing 缓存。
-- `video_details[].start_offset_us` 直接保存各路绝对 `record_time_offset_us`，单位为 Unix 微秒，语义为“该视频 `PTS=0` 对应的主机 Unix 时间”，不再减去本 episode 最早视频 offset。主相机任意包的 V4L2 Unix 时间按 `start_offset_us + packet_pts_sec * 1000000` 计算，主相机 PTS 会保留实际 V4L2 时间洞；触觉相机仍由 FFmpeg 录制链生成 PTS 和首帧 offset，目前只保证处于 Unix 时间域并执行单调/gap 校验，不把它表述为硬件曝光时间真值。
-- stereo MKV packet 与 Fays MCAP `c` topic 通过 `frameIndex`/顺序一一对应；stereo 精确逐帧 Unix 时间只使用对应 `c.publishTime`，`video_details[].start_offset_us` 仅与首个 camera `publishTime/1000` 对齐。Stereo MKV 保持固定帧率播放时间轴，设备 gap 不要求由 MKV PTS 表达，也不得用 `start_offset_us+stereo PTS` 替代 MCAP `publishTime`。Fays 原始 `logTime` 只用于设备侧 gap/回退分析，不能作为全局 Unix 时间。
+- `video_details[].start_offset_us` 保存各路补偿后的绝对 `record_time_offset_us`，单位为 Unix 微秒，语义为“该视频 `PTS=0` 对应的补偿后主机 Unix 时间”，不再减去本 episode 最早视频 offset。主相机任意包的 V4L2 Unix 时间按 `start_offset_us + packet_pts_sec * 1000000` 计算，主相机 PTS 会保留实际 V4L2 时间洞；触觉相机仍由 FFmpeg 录制链生成 PTS 和首帧 offset，目前只保证处于 Unix 时间域并执行单调/gap 校验，不把它表述为硬件曝光时间真值。
+- stereo MKV packet 与 Fays MCAP `c` topic 通过 `frameIndex`/顺序一一对应；stereo 精确逐帧 Unix 时间只使用对应已补偿的 `c.publishTime`，`video_details[].start_offset_us` 仅与首个 camera `publishTime/1000` 对齐。Stereo MKV 保持固定帧率播放时间轴，设备 gap 不要求由 MKV PTS 表达，也不得用 `start_offset_us+stereo PTS` 替代 MCAP `publishTime`。Fays 原始 `logTime` 只用于设备侧 gap/回退分析，不能作为全局 Unix 时间。
 - 默认包的 `require_files` 包含 stereo/Fays 文件；`+nostereo` 变体只包含 metadata、calibration、左右主摄、四路 tactile 与左右 sensor。启用胸部主摄时两种变体都追加 `cam_chest.mkv`。
 - 离线 episode 深度校验以 `software_version` 中的 `+nostereo` 为构建 profile 标记，并交叉核对 `require_files`、`video_details` 与实际文件；普通版本缺失 stereo/Fays 仍判失败，不能通过删减 `require_files` 自动降级。当前标准版本为 `3.1`，历史 `3.0` 作为兼容数据允许分析，其他未知版本给出告警。
+
+#### 7.2.1 相机时间戳与延迟补偿
+
+相机延迟补偿按 recorder 模块分别维护：主摄与 tcam 的数值入口是 `standalone/CameraRecorder/include/camera_recorder/camera_timestamp_offsets.h`，stereo 的数值入口是 `standalone/FaysStereoRecorder/include/fays_stereo_recorder/camera_timestamp_offsets.h`。后续实验接受新的延迟值时，只修改对应头文件中的微秒常量并重新编译；业务代码不得再写独立的补偿数字。补偿值为正时统一加到对应的全局 Unix 时间上。
+
+| 相机 | 原始时间来源 | 全局时间表达 | 补偿位置 | 当前值 |
+| --- | --- | --- | --- | --- |
+| 左右/胸部主摄 | V4L2 buffer 时间 | `start_offset_us + PTS` | CameraRecorder 写 `<camera>_record_time_offset_us` 时只调整绝对起点 | `+36,000us` |
+| 四路 tcam | recorder 首帧系统时间与 PTS | `start_offset_us + PTS` | CameraRecorder 写 `<camera>_record_time_offset_us` 时只调整绝对起点 | `+36,000us` |
+| 左右 stereo camera | Fays camera 设备时间换算到 Unix | Fays MCAP `c.publishTime` | 图像采集后、进入 MCAP 队列前逐帧调整 | `+3,000us` |
+| 左右 Fays IMU | Fays IMU 设备时间换算到 Unix | Fays MCAP `i.publishTime` | 不补偿 | `0us` |
+
+主摄和 tcam 的补偿不会修改 MKV packet PTS、帧间 gap 或 duration。Stereo 补偿只修改 camera topic 的 Unix `publishTime`；原始设备域 `logTime`、Fays IMU 时间戳和 stereo MKV 固定帧率 PTS 均保持不变。`record_runtime` 从首个已补偿的 stereo camera `publishTime` 生成 stereo `start_offset_us`，因此 metadata 阶段禁止再次叠加 `3ms`。
 
 ### 7.3 停录强校验
 停录后当前按以下层次校验：
@@ -264,7 +277,7 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
 ### 8.1 当前状态灯语义
 - `INIT`：初始化或等待 Fays recorder ready，蓝灯闪烁。
 - `WRITING`：停录收尾、文件 flush、左手双键卸载数据盘等写盘/收尾阶段，蓝灯常亮。
-- `READY`：可录制，绿色呼吸灯；所有周期灯效均基于左右共享的绝对单调时钟渲染，避免系统校时、单侧反馈恢复或重连导致相位突变。
+- `READY`：可录制，绿色呼吸灯；从录制/写盘等其他状态切回 READY 时，左右灯以最大绿灯亮度约 `70%` 的上升段作为呼吸起点，避免先全灭再缓慢亮起。进入后继续按左右共享的单调时钟与同一相位偏移渲染，重复设置 READY 不会重置呼吸周期，单侧反馈恢复或重连也沿用当前相位。
 - `WARNING`：触觉软告警，黄灯按侧别与传感器位置编码闪烁；当前用于同一 tactile serial 的实时 reference 窗口或 persistent baseline 窗口连续 `3` 个 episode 异常。故障侧夹爪显示黄灯：`*_tcam_l` 为一长一短，`*_tcam_r` 为一长两短，同侧两路都异常为两长；左右侧都异常时两侧分别显示各自编码，未异常侧保持 READY 绿呼吸。若后续连续 `3` 次 clean，相关窗口会清除告警并回到 READY。
 - `RECORDING`：录制中，左右同步绿色闪烁；任务标记的双手青色提示结束后继续按全局单调时钟相位显示。当前只在亮灭边沿和低频补发时下发 RGB，避免高频重复写串口造成丢闪。
 - `CALIB_PRE` / `CALIB_RUN` / `CALIB_DONE`：供 USB 导入、deb 安装与校准脚本复用；deb 安装窗口使用 `CALIB_RUN` 表示安装中、`CALIB_DONE` 表示全部包处理完成。
@@ -306,7 +319,7 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
   - `echo START > /dev/shm/ugripper/umi_record_control.pipe`
   - `echo STOP > /dev/shm/ugripper/umi_record_control.pipe`
   - 如需严格模拟按键：`echo SHORT_UP > /dev/shm/ugripper/umi_record_control.pipe`、`echo SHORT_DOWN > /dev/shm/ugripper/umi_record_control.pipe`
-- `test/scripts/board_stopwatch_record_test.sh` 是面向测试交付的 PC 端外部秒表联动入口：默认连接 `ubuntu@192.168.2.240`，将自身及仓库内收紧版 CH9344 helper 下发到板端 `/tmp`，覆盖安装 `/usr/local/bin/ugripper_ch9344_symlink_name` 并重放已枚举 CH9344 tty 的 udev 事件。helper 只允许 bus1 生成右手链接、bus9 生成左手链接，拒绝 bus5/bus11；脚本还会在 GPIO 和 `START` 前校验四个逻辑链接各自只有一个声明者且来自预期物理 bus，失败时不开始测试。校验通过后以 GPIO139 低电平触发秒表并立即写 `START`，到达指定时长后写 `STOP` 并恢复 GPIO 高电平。它只使用上述 runtime FIFO，不直接启停 camera/sensor/Fays 子进程；等待正常停录收尾和 episode rename 完成后，在对应最终 episode 中额外写入 `stopwatch_timing.json`，保存 GPIO 写入边界、录制命令时间和测得延迟。helper 覆盖修改在测试结束后持久保留；时间文件属于测试辅助证据，不进入 `metadata.json` schema、`require_files` 或运行时质量校验范围。
+- `test/scripts/board_stopwatch_record_test.sh` 是面向测试交付的 PC 端外部秒表联动入口：默认连接 `ubuntu@192.168.2.240`，将自身及仓库内收紧版 CH9344 helper 下发到板端 `/tmp`，覆盖安装 `/usr/local/bin/ugripper_ch9344_symlink_name` 并重放已枚举 CH9344 tty 的 udev 事件。helper 只允许 bus1 生成右手链接、bus9 生成左手链接，拒绝 bus5/bus11；脚本还会在 GPIO 和 `START` 前校验四个逻辑链接各自只有一个声明者且来自预期物理 bus，失败时不开始测试。GPIO 初始化通过 sysfs `direction=high/low` 原子设置输出方向与空闲电平，避免低电平有效时因先写 `out` 产生瞬时误触发；正式时序为先写 `START` 开始正常录制，默认等待 `2s` 后再拉低 GPIO139 启动秒表。默认总录制时长为 `15s`，秒表因此运行约 `13s`；延迟可通过 `--stopwatch-delay-sec` 调整且必须小于总录制时长。达到总时长后写 `STOP` 并恢复 GPIO 高电平。它只使用上述 runtime FIFO，不直接启停 camera/sensor/Fays 子进程；等待正常停录收尾和 episode rename 完成后，在对应最终 episode 中额外写入 `stopwatch_timing.json`，保存 GPIO 写入边界、录制命令时间和测得延迟。helper 覆盖修改在测试结束后持久保留；时间文件属于测试辅助证据，不进入 `metadata.json` schema、`require_files` 或运行时质量校验范围。
 
 ### 8.4 PERF 日志
 - 停录收尾、文件 flush、视频探测和 episode validation 会输出 `[PERF]` 耗时日志，用于现场拆分蓝灯延迟。
