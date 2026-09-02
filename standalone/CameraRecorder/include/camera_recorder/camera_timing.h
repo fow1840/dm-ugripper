@@ -13,7 +13,7 @@ struct MainCameraPtsResult {
     bool timestamp_rollback = false;
 };
 
-MainCameraPtsResult MainCameraPtsFromV4l2TimeUs(
+MainCameraPtsResult MainCameraPtsFromFrameTimeUs(
     int64_t first_frame_system_time_us,
     int64_t current_frame_system_time_us,
     std::optional<int64_t> last_frame_pts_us);

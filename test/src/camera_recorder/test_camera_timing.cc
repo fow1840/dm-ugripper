@@ -2,9 +2,9 @@
 
 #include <gtest/gtest.h>
 
-TEST(CameraTimingTest, UsesV4l2ElapsedTimeForPts)
+TEST(CameraTimingTest, UsesFrameElapsedTimeForPts)
 {
-    const auto result = ugripper::camera::MainCameraPtsFromV4l2TimeUs(
+    const auto result = ugripper::camera::MainCameraPtsFromFrameTimeUs(
         1'785'296'245'838'786,
         1'785'296'245'872'120,
         16'667);
@@ -15,7 +15,7 @@ TEST(CameraTimingTest, UsesV4l2ElapsedTimeForPts)
 
 TEST(CameraTimingTest, PreservesRealCaptureGap)
 {
-    const auto result = ugripper::camera::MainCameraPtsFromV4l2TimeUs(
+    const auto result = ugripper::camera::MainCameraPtsFromFrameTimeUs(
         1'000'000,
         1'100'000,
         33'334);
@@ -26,7 +26,7 @@ TEST(CameraTimingTest, PreservesRealCaptureGap)
 
 TEST(CameraTimingTest, MinimallyClampsDuplicateTimestamp)
 {
-    const auto result = ugripper::camera::MainCameraPtsFromV4l2TimeUs(
+    const auto result = ugripper::camera::MainCameraPtsFromFrameTimeUs(
         1'000'000,
         1'016'667,
         16'667);
@@ -40,7 +40,7 @@ TEST(CameraTimingTest, MinimallyClampsDuplicateTimestamp)
 
 TEST(CameraTimingTest, MinimallyClampsTimestampRollback)
 {
-    const auto result = ugripper::camera::MainCameraPtsFromV4l2TimeUs(
+    const auto result = ugripper::camera::MainCameraPtsFromFrameTimeUs(
         1'000'000,
         1'010'000,
         16'667);

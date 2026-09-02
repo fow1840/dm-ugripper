@@ -15,6 +15,19 @@ function(add_host_only_camera_gtest target_name)
     )
 endfunction()
 
+function(add_host_only_camera_xu_gtest target_name)
+    add_executable(${target_name} ${ARGN})
+    target_link_libraries(${target_name}
+        PRIVATE
+            main_camera_xu_rtc
+            GTest::gtest_main
+    )
+    gtest_discover_tests(${target_name}
+        PROPERTIES
+            LABELS "host-only;unit;camera"
+    )
+endfunction()
+
 add_host_only_camera_gtest(test_camera_config
     test_camera_config.cc
 )
@@ -25,6 +38,10 @@ add_host_only_camera_gtest(test_camera_command_builder
 
 add_host_only_camera_gtest(test_camera_timing
     test_camera_timing.cc
+)
+
+add_host_only_camera_xu_gtest(test_main_camera_xu_rtc
+    test_main_camera_xu_rtc.cc
 )
 
 add_host_only_camera_gtest(test_stereo_control_json

@@ -4,6 +4,7 @@
 #include "camera_recorder/camera_registry.h"
 #include "camera_recorder/camera_timing.h"
 #include "camera_recorder/camera_timestamp_offsets.h"
+#include "camera_recorder/main_camera_xu_rtc.h"
 #include "camera_recorder/stereo_control_json.h"
 #include "utils/ugripper_logger.h"
 
@@ -1545,6 +1546,45 @@ private:
             return false;
         }
 
+        v4l2_queryctrl power_line_query{};
+        power_line_query.id = V4L2_CID_POWER_LINE_FREQUENCY;
+        if (RetryIoctl(fd_, VIDIOC_QUERYCTRL, &power_line_query)) {
+            if ((power_line_query.flags & V4L2_CTRL_FLAG_DISABLED) == 0) {
+                const std::string configured = ReadEnvFileValue("UGRIPPER_POWER_LINE_FREQUENCY");
+                const int frequency_hz = configured == "60" ? 60 : 50;
+                if (!configured.empty() && configured != "50" && configured != "60") {
+                    DM_LOG_WARN("{}", (::DA::utils::LogString()
+                                       << "[camera_recorder][v4l2_control]"
+                                       << " invalid UGRIPPER_POWER_LINE_FREQUENCY="
+                                       << configured << ", fallback=50Hz").str());
+                }
+                v4l2_control power_line_control{};
+                power_line_control.id = V4L2_CID_POWER_LINE_FREQUENCY;
+                power_line_control.value = frequency_hz == 60
+                                                ? V4L2_CID_POWER_LINE_FREQUENCY_60HZ
+                                                : V4L2_CID_POWER_LINE_FREQUENCY_50HZ;
+                if (!RetryIoctl(fd_, VIDIOC_S_CTRL, &power_line_control)) {
+                    if (error_message != nullptr) {
+                        *error_message = "failed to set power_line_frequency=" +
+                                         std::to_string(frequency_hz) + "Hz for " +
+                                         config_.device + ": " + std::strerror(errno);
+                    }
+                    return false;
+                }
+                DM_LOG_INFO("{}", (::DA::utils::LogString()
+                                   << "[camera_recorder][v4l2_control]"
+                                   << " name=" << config_.name
+                                   << " device=" << config_.device
+                                   << " power_line_frequency=" << frequency_hz << "Hz").str());
+            }
+        } else if (errno != EINVAL && errno != ENOTTY) {
+            if (error_message != nullptr) {
+                *error_message = "failed to query power_line_frequency for " +
+                                 config_.device + ": " + std::strerror(errno);
+            }
+            return false;
+        }
+
         v4l2_streamparm streamparm{};
         streamparm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         streamparm.parm.capture.timeperframe.numerator = 1;
@@ -1673,6 +1713,45 @@ private:
             return false;
         }
 
+        if (options_.codec == "h265") {
+            const int64_t host_time_us = CurrentSystemTimeUs();
+            const auto write_time_us = ugripper::camera::MainCameraRtcWriteTimeUs(host_time_us);
+            if (!write_time_us.has_value()) {
+                if (error_message != nullptr) {
+                    *error_message = "failed to calculate main camera RTC write timestamp";
+                }
+                return false;
+            }
+            std::string rtc_error;
+            if (!ugripper::camera::SetMainCameraRtcUs(
+                    fd_, static_cast<uint64_t>(*write_time_us), &rtc_error)) {
+                if (error_message != nullptr) {
+                    *error_message = "failed to synchronize main camera RTC for " +
+                                     config_.device + ": " + rtc_error;
+                }
+                return false;
+            }
+            const auto pset_us = ugripper::camera::GetMainCameraRtcPsetUs(fd_, &rtc_error);
+            if (!pset_us.has_value()) {
+                if (error_message != nullptr) {
+                    *error_message = "failed to read main camera RTC Pset for " +
+                                     config_.device + ": " + rtc_error;
+                }
+                return false;
+            }
+            rtc_tset_us_ = static_cast<uint64_t>(*write_time_us);
+            rtc_pset_us_ = *pset_us;
+            DM_LOG_INFO("{}", (::DA::utils::LogString()
+                               << "[camera_recorder][main_rtc_sync]"
+                               << " name=" << config_.name
+                               << " device=" << config_.device
+                               << " host_time_us=" << host_time_us
+                               << " write_ahead_us="
+                               << ugripper::camera::kMainCameraRtcWriteAheadUs
+                               << " tset_us=" << *write_time_us
+                               << " pset_us=" << *pset_us).str());
+        }
+
         v4l2_buf_type buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         if (!RetryIoctl(fd_, VIDIOC_STREAMON, &buffer_type)) {
             if (error_message != nullptr) {
@@ -1732,8 +1811,55 @@ private:
                 continue;
             }
 
-            const int64_t system_time_us =
-                V4l2BufferSystemTimeUs(buffer, boot_time_offset_us_).value_or(CurrentSystemTimeUs());
+            int64_t system_time_us = 0;
+            if (options_.codec == "h265") {
+                const auto xu_timestamp = ugripper::camera::ParseMainCameraXuTimestamp(
+                    static_cast<const uint8_t*>(buffers_[buffer.index].data),
+                    buffer.bytesused);
+                if (!xu_timestamp.has_value()) {
+                    SetFailure("missing or invalid XU2 SEI timestamp for " + config_.name);
+                    RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
+                    break;
+                }
+                if (!rtc_tset_us_.has_value() || !rtc_pset_us_.has_value()) {
+                    SetFailure("missing synchronized XU RTC Tset/Pset for " + config_.name);
+                    RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
+                    break;
+                }
+                if (xu_timestamp->xu_time_us != *rtc_tset_us_) {
+                    SetFailure("XU2 SEI Tset does not match the synchronized value for " +
+                               config_.name);
+                    RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
+                    break;
+                }
+                const auto frame_unix_time_us =
+                    ugripper::camera::MainCameraFrameUnixTimeUs(
+                        *xu_timestamp, *rtc_pset_us_);
+                if (!frame_unix_time_us.has_value()) {
+                    SetFailure("invalid XU2 SEI Unix timestamp for " + config_.name);
+                    RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
+                    break;
+                }
+                if (!first_encoder_pts_us_.has_value()) {
+                    first_encoder_pts_us_ = xu_timestamp->encoder_pts_us;
+                    DM_LOG_INFO("{}", (::DA::utils::LogString()
+                                       << "[camera_recorder][main_timestamp_source]"
+                                       << " name=" << config_.name
+                                       << " source=xu2_sei"
+                                       << " xu_time_us=" << xu_timestamp->xu_time_us
+                                       << " encoder_pts_us=" << xu_timestamp->encoder_pts_us
+                                       << " frame_unix_time_us=" << *frame_unix_time_us
+                                       << " tset_us=" << *rtc_tset_us_
+                                       << " pset_us=" << *rtc_pset_us_
+                                       << " encoder_elapsed_since_set_us="
+                                       << (xu_timestamp->encoder_pts_us - *rtc_pset_us_)).str());
+                }
+                system_time_us = *frame_unix_time_us;
+            } else {
+                system_time_us =
+                    V4l2BufferSystemTimeUs(buffer, boot_time_offset_us_)
+                        .value_or(CurrentSystemTimeUs());
+            }
             const int64_t pts_us = UpdateFrameTimingFromCapture(system_time_us);
 
             GstBuffer* gst_buffer = gst_buffer_new_allocate(nullptr, buffer.bytesused, nullptr);
@@ -1896,7 +2022,7 @@ private:
             return 0;
         }
 
-        const auto timing = ugripper::camera::MainCameraPtsFromV4l2TimeUs(
+        const auto timing = ugripper::camera::MainCameraPtsFromFrameTimeUs(
             *first_frame_system_time_us_, system_time_us, last_frame_pts_us_);
         const int64_t next_pts_us = timing.pts_us;
         if (timing.clamped) {
@@ -2258,6 +2384,9 @@ private:
     std::optional<int64_t> last_frame_pts_us_;
     std::optional<int64_t> last_frame_system_time_us_;
     std::optional<int64_t> record_time_offset_us_;
+    std::optional<uint64_t> rtc_tset_us_;
+    std::optional<uint64_t> rtc_pset_us_;
+    std::optional<uint64_t> first_encoder_pts_us_;
     uint64_t frame_count_ = 0;
     uint64_t timestamp_clamp_count_ = 0;
     uint64_t timestamp_rollback_count_ = 0;
@@ -2653,7 +2782,7 @@ private:
             return 0;
         }
 
-        const auto timing = ugripper::camera::MainCameraPtsFromV4l2TimeUs(
+        const auto timing = ugripper::camera::MainCameraPtsFromFrameTimeUs(
             *first_frame_system_time_us_, system_time_us, last_frame_pts_us_);
         const int64_t next_pts_us = timing.pts_us;
         if (timing.clamped) {

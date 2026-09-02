@@ -16,6 +16,19 @@ set(CAMERA_DOMAIN_SOURCES
     camera_domain.cc
 )
 
+add_library(main_camera_xu_rtc STATIC
+    main_camera_xu_rtc.cc
+)
+set_target_properties(main_camera_xu_rtc PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF
+)
+target_include_directories(main_camera_xu_rtc
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
 add_library(camera_domain STATIC ${CAMERA_DOMAIN_SOURCES})
 set_target_properties(camera_domain PROPERTIES
     CXX_STANDARD 20
@@ -47,6 +60,7 @@ target_include_directories(${APP_NAME}
 target_link_libraries(${APP_NAME}
     PRIVATE
         camera_domain
+        main_camera_xu_rtc
         UGripper::utils
         yaml-cpp::yaml-cpp
         nlohmann_json::nlohmann_json
@@ -79,6 +93,7 @@ target_include_directories(main_camera_xu_tool
 )
 target_link_libraries(main_camera_xu_tool
     PRIVATE
+        main_camera_xu_rtc
         Threads::Threads
 )
 

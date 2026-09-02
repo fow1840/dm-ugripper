@@ -1,4 +1,5 @@
 #include "main_camera_calibration_data.h"
+#include "camera_recorder/main_camera_xu_rtc.h"
 
 #include <fcntl.h>
 #include <linux/usb/video.h>
@@ -15,9 +16,13 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -47,8 +52,14 @@ struct Options
     bool setBandwidth = false;
     bool dumpRaw = false;
     bool writeRaw = false;
+    bool rtcGet = false;
+    bool rtcSet = false;
+    bool rtcSyncNow = false;
+    bool parseH265Timestamps = false;
     std::string dumpPath;
     std::string writeRawPath;
+    std::string parseH265Path;
+    uint64_t rtcSetUs = 0;
     BandwidthMode bandwidthMode = BandwidthMode::kHighBandwidth;
 };
 
@@ -117,6 +128,26 @@ public:
         std::array<uint8_t, kXuPacketSize> command = {0x96, 0x96, 0x96, 0x96, 0x96, 0x96, 0x96, 0x96, 0x96};
         xuSet(command);
         std::this_thread::sleep_for(std::chrono::seconds(3));
+    }
+
+    void setRtcUs(uint64_t timestampUs)
+    {
+        std::string error;
+        if (!ugripper::camera::SetMainCameraRtcUs(fd_, timestampUs, &error))
+        {
+            throw std::runtime_error(error + " on " + devicePath_);
+        }
+    }
+
+    uint64_t getRtcPsetUs()
+    {
+        std::string error;
+        const auto timestamp = ugripper::camera::GetMainCameraRtcPsetUs(fd_, &error);
+        if (!timestamp.has_value())
+        {
+            throw std::runtime_error(error + " on " + devicePath_);
+        }
+        return *timestamp;
     }
 
 private:
@@ -282,6 +313,98 @@ std::array<uint8_t, main_camera::kCalibrationPayloadSize> readBinaryFile(const s
     return payload;
 }
 
+uint64_t parseUint64(const std::string &text, const std::string &fieldName)
+{
+    size_t consumed = 0;
+    try
+    {
+        const uint64_t value = std::stoull(text, &consumed, 0);
+        if (consumed != text.size() || value == 0)
+        {
+            throw std::runtime_error("invalid " + fieldName + ": " + text);
+        }
+        return value;
+    }
+    catch (const std::exception &)
+    {
+        throw std::runtime_error("invalid " + fieldName + ": " + text);
+    }
+}
+
+int64_t currentSystemTimeUs()
+{
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
+std::optional<std::pair<size_t, size_t>> findStartCode(
+    const uint8_t *data, size_t size, size_t from)
+{
+    for (size_t index = from; index + 3 <= size; ++index)
+    {
+        if (data[index] == 0 && data[index + 1] == 0 && data[index + 2] == 1)
+        {
+            return std::make_pair(index, size_t{3});
+        }
+        if (index + 4 <= size && data[index] == 0 && data[index + 1] == 0 &&
+            data[index + 2] == 0 && data[index + 3] == 1)
+        {
+            return std::make_pair(index, size_t{4});
+        }
+    }
+    return std::nullopt;
+}
+
+void parseH265TimestampFile(const std::string &path)
+{
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    if (!input)
+    {
+        throw std::runtime_error("failed to open H.265 file: " + path);
+    }
+    const std::streamsize size = input.tellg();
+    if (size <= 0)
+    {
+        throw std::runtime_error("H.265 file is empty: " + path);
+    }
+    input.seekg(0, std::ios::beg);
+    std::vector<uint8_t> stream(static_cast<size_t>(size));
+    input.read(reinterpret_cast<char *>(stream.data()), size);
+    if (!input)
+    {
+        throw std::runtime_error("failed to read H.265 file: " + path);
+    }
+
+    size_t matches = 0;
+    auto current = findStartCode(stream.data(), stream.size(), 0);
+    while (current.has_value())
+    {
+        const size_t nalBegin = current->first + current->second;
+        const auto next = findStartCode(stream.data(), stream.size(), nalBegin);
+        const size_t nalEnd = next.has_value() ? next->first : stream.size();
+        if (nalEnd > nalBegin + 2)
+        {
+            const auto timestamp = ugripper::camera::ParseMainCameraXuTimestamp(
+                stream.data() + current->first, nalEnd - current->first);
+            if (timestamp.has_value())
+            {
+                std::cout << "sei=" << matches++
+                          << " nal_offset=" << current->first
+                          << " encoder_pts_us=" << timestamp->encoder_pts_us
+                          << " xu_time_us=" << timestamp->xu_time_us
+                          << '\n';
+            }
+        }
+        current = next;
+    }
+    std::cout << "parsed_xu2_sei_records=" << matches << std::endl;
+    if (matches == 0)
+    {
+        throw std::runtime_error("no matching XU2 SEI timestamp found");
+    }
+}
+
 void printCalibrationSummary(const main_camera::MainCameraCalibrationDataV1 &data)
 {
     const std::string sn(reinterpret_cast<const char *>(data.header.reserved), kSnLength);
@@ -318,7 +441,11 @@ void printUsage(const char *program)
         << "  --validate\n"
         << "  --dump-raw /tmp/right_main_camera_calib.bin\n"
         << "  --write-raw /tmp/right_main_camera_calib.bin\n"
-        << "  --set-bandwidth high|low\n";
+        << "  --set-bandwidth high|low\n"
+        << "  --rtc-get                         Read encoder PTS latched at the last SET\n"
+        << "  --rtc-set-us UNIX_TIMESTAMP_US\n"
+        << "  --rtc-sync-now\n"
+        << "  --parse-h265-timestamps FILE.h265\n";
 }
 
 bool parseOptions(int argc, char **argv, Options *options)
@@ -361,6 +488,28 @@ bool parseOptions(int argc, char **argv, Options *options)
         {
             options->writeRaw = true;
             options->writeRawPath = argv[++index];
+            continue;
+        }
+        if (arg == "--rtc-get")
+        {
+            options->rtcGet = true;
+            continue;
+        }
+        if (arg == "--rtc-set-us" && index + 1 < argc)
+        {
+            options->rtcSet = true;
+            options->rtcSetUs = parseUint64(argv[++index], "RTC timestamp");
+            continue;
+        }
+        if (arg == "--rtc-sync-now")
+        {
+            options->rtcSyncNow = true;
+            continue;
+        }
+        if (arg == "--parse-h265-timestamps" && index + 1 < argc)
+        {
+            options->parseH265Timestamps = true;
+            options->parseH265Path = argv[++index];
             continue;
         }
         if (arg == "--set-bandwidth" && index + 1 < argc)
@@ -408,7 +557,64 @@ int main(int argc, char **argv)
             return 0;
         }
 
+        if (options.parseH265Timestamps)
+        {
+            parseH265TimestampFile(options.parseH265Path);
+        }
+
+        const bool needsDevice = options.setBandwidth || options.writeRaw ||
+                                 options.readSn || options.readCalibration ||
+                                 options.dumpRaw || options.validate ||
+                                 options.rtcGet || options.rtcSet || options.rtcSyncNow;
+        if (!needsDevice)
+        {
+            return 0;
+        }
+
         CameraXuDevice device(options.devicePath);
+
+        if (options.rtcSyncNow)
+        {
+            const int64_t setBeginUs = currentSystemTimeUs();
+            const auto writeTimeUs = ugripper::camera::MainCameraRtcWriteTimeUs(setBeginUs);
+            if (!writeTimeUs.has_value())
+            {
+                throw std::runtime_error("failed to calculate RTC sync timestamp");
+            }
+            device.setRtcUs(static_cast<uint64_t>(*writeTimeUs));
+            const int64_t setEndUs = currentSystemTimeUs();
+            const int64_t getBeginUs = currentSystemTimeUs();
+            const uint64_t psetUs = device.getRtcPsetUs();
+            const int64_t getEndUs = currentSystemTimeUs();
+            const int64_t setMidpointUs = setBeginUs + (setEndUs - setBeginUs) / 2;
+            const int64_t getMidpointUs = getBeginUs + (getEndUs - getBeginUs) / 2;
+            std::cout << "rtc_sync=ok set_begin_us=" << setBeginUs
+                      << " set_end_us=" << setEndUs
+                      << " set_duration_us=" << (setEndUs - setBeginUs)
+                      << " get_begin_us=" << getBeginUs
+                      << " get_end_us=" << getEndUs
+                      << " get_duration_us=" << (getEndUs - getBeginUs)
+                      << " write_ahead_us=" << ugripper::camera::kMainCameraRtcWriteAheadUs
+                      << " tset_us=" << *writeTimeUs
+                      << " pset_us=" << psetUs
+                      << " write_offset_from_set_midpoint_us="
+                      << (*writeTimeUs - setMidpointUs)
+                      << " pset_read_age_from_set_midpoint_us="
+                      << (getMidpointUs - setMidpointUs)
+                      << std::endl;
+        }
+        if (options.rtcSet)
+        {
+            device.setRtcUs(options.rtcSetUs);
+            const uint64_t psetUs = device.getRtcPsetUs();
+            std::cout << "rtc_set=ok tset_us=" << options.rtcSetUs
+                      << " pset_us=" << psetUs
+                      << std::endl;
+        }
+        if (options.rtcGet)
+        {
+            std::cout << "rtc_get=ok pset_us=" << device.getRtcPsetUs() << std::endl;
+        }
 
         if (options.setBandwidth)
         {

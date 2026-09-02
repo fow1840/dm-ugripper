@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- 相机全局时间加入集中式实验延迟补偿：主摄与 tcam 的 `start_offset_us` 增加 `36ms`，stereo camera 的 Fays MCAP `publishTime` 在采集阶段逐帧增加 `3ms`；视频 PTS、Fays 原始 `logTime` 与 IMU 时间保持不变，补偿值统一收口到单一头文件便于后续实验调整。
+- H.265 主摄改用 UVC XU RTC 与码流 XU2 SEI 建立 Unix 时间轴：起流前写入主机 Unix 时间 `Tset` 加 `200us`，GET 读取固件在 SET 时锁存的 encoder `Pset`，每帧 Unix 时间按 `Tset + Pframe - Pset` 计算；首个实际写入的 clean keyframe 以其换算后的 Unix 时间写入 metadata `start_offset_us`，后续 PTS 保留 encoder 实际间隔。主摄原 `36ms` 后处理补偿暂置为 `0`，H.264 继续使用 V4L2 时间；tcam 改为向前校正 `-36ms`，stereo camera `publishTime` 改为向前校正 `-3ms`。
 - 停止录制并完成写盘后切回 READY 绿色呼吸灯时，左右灯从最大绿灯亮度约 `70%` 的上升段同步开始，不再可能从全灭阶段逐渐亮起；持续 READY 与夹爪重连不会重复重置呼吸相位。
 - Fays VIKit SDK 从 `3.8.1` 更新到上游 `v3.8.3`（`8e2d91a08b065bde247a2283ecaa4bb7fd3aa419`）：保留 `3.8.2` 对 IMU 帧时间戳小概率回退的修复，并进一步优化数据流初始化稳定性；同步 aarch64/x86_64 运行库与版本头，FT602 `1.0.17` 保持不变。
 - GripperHmiTool 新增绝对只读的 HMI 双版本字段读取：依次发送 `0x52/0x56` 与 `0x52/0x57`，单路 `F2` 不阻断另一通道，并通过 `version_56` / `version_57` 稳定输出供生产强检选择有效固件版本；另新增显式高风险命令 `--initialize-version-preserve-payload`，初始化前完整缓存 `32-byte` SN 与 `1024-byte` 标定 payload，初始化后逐字节原样写回并回读比对，写入或回读失败最多执行 3 轮完整恢复。
