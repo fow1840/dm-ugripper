@@ -4,9 +4,9 @@
 
 namespace fays_stereo_recorder::camera_time {
 
-// Measured Fays stereo camera latency compensation.
+// Fays stereo camera latency compensation is currently disabled.
 // Update this value when a new experiment is accepted, then rebuild.
-inline constexpr int64_t kStereoCameraLatencyUs = 3'000;
+inline constexpr int64_t kStereoCameraLatencyUs = 0;
 
 constexpr uint64_t AddStereoCameraLatencyNs(uint64_t timestampNs)
 {

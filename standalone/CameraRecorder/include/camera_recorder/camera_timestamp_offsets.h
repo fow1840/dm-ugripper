@@ -4,10 +4,10 @@
 
 namespace camera_recorder::camera_time {
 
-// Measured host-camera latency compensation for CameraRecorder streams.
+// Host-camera latency compensation is currently disabled.
 // Update these values when a new experiment is accepted, then rebuild.
-inline constexpr int64_t kMainCameraLatencyUs = 36'000;
-inline constexpr int64_t kTactileCameraLatencyUs = 36'000;
+inline constexpr int64_t kMainCameraLatencyUs = 0;
+inline constexpr int64_t kTactileCameraLatencyUs = 0;
 
 enum class CameraTimestampSource {
     Main,

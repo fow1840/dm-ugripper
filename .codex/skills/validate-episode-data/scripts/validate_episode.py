@@ -631,11 +631,12 @@ class EpisodeValidator:
     def validate_metadata_fields(self) -> None:
         data_version = safe_str(self.metadata.get("data_version"))
         legacy_schema = data_version in {"3.0", "3.1"}
+        historical_32_schema = data_version == "3.2"
         version_specific_keys = {"boot_time_s", "tactile_damage_sn_list"}
         schema_key_order = [
             key
             for key in EXPECTED_METADATA_KEY_ORDER
-            if not legacy_schema or key not in version_specific_keys
+            if historical_32_schema or key not in version_specific_keys
         ]
         metadata_key_order = list(self.metadata.keys())
         expected_metadata_key_order = [
@@ -672,7 +673,7 @@ class EpisodeValidator:
         required_metadata_fields = [
             field_name
             for field_name in REQUIRED_METADATA_FIELDS
-            if not legacy_schema or field_name not in version_specific_keys
+            if historical_32_schema or field_name not in version_specific_keys
         ]
         for field_name in required_metadata_fields:
             value = self.metadata.get(field_name)
@@ -811,18 +812,25 @@ class EpisodeValidator:
                         "metadata_hardware_sn",
                         f"metadata.json.hardware_list.{key} 为空",
                     )
-        if data_version in {"3.0", "3.1"}:
+        if data_version == "3.0":
             self.add_finding(
                 "INFO",
                 "metadata_data_version_legacy",
                 f"metadata.json 使用兼容的历史 data_version {data_version}",
                 data_version=data_version,
             )
-        elif data_version is not None and data_version != "3.2":
+        elif data_version == "3.2":
+            self.add_finding(
+                "INFO",
+                "metadata_data_version_legacy",
+                "metadata.json 使用已停止生成的历史 data_version 3.2",
+                data_version=data_version,
+            )
+        elif data_version is not None and data_version != "3.1":
             self.add_finding(
                 "WARN",
                 "metadata_data_version",
-                "metadata.json 的 data_version 不是当前版本 3.2",
+                "metadata.json 的 data_version 不是当前版本 3.1",
                 data_version=data_version,
             )
         self.validate_task_markers()

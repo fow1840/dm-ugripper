@@ -10784,73 +10784,8 @@ void RecordRuntime::EpisodeManager::validateTactileEpisode(
             DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to persist tactile history: " << writeError << std::endl).str());
         }
     }
-    if (tactileFindings != nullptr)
-    {
-        std::string metadataError;
-        if (!updateTactileDamageMetadata(episodeDir, *tactileFindings, &metadataError))
-        {
-            DM_LOG_WARN("{}", (::DA::utils::LogString()
-                << "failed to update tactile damage metadata: episode=" << episodeDir
-                << " error=" << metadataError << std::endl).str());
-        }
-    }
     logPerf((::DA::utils::LogString() << "[PERF] tactile validation done: episode_dir=" << episodeDir
              << " elapsed_ms=" << (steadyNowMs() - tactileValidationStartMs)).str());
-}
-
-bool RecordRuntime::EpisodeManager::updateTactileDamageMetadata(
-    const std::string &episodeDir,
-    const std::vector<TactileValidationFinding> &tactileFindings,
-    std::string *errorMessage) const
-{
-    const fs::path metadataPath = fs::path(episodeDir) / "metadata.json";
-    ordered_json metadata;
-    try
-    {
-        std::ifstream input(metadataPath);
-        if (!input.is_open())
-        {
-            if (errorMessage != nullptr)
-            {
-                *errorMessage = "cannot open metadata file: " + metadataPath.string();
-            }
-            return false;
-        }
-        input >> metadata;
-    }
-    catch (const std::exception &ex)
-    {
-        if (errorMessage != nullptr)
-        {
-            *errorMessage = "failed to parse metadata file: " + std::string(ex.what());
-        }
-        return false;
-    }
-
-    if (!metadata.is_object() ||
-        !metadata.contains("tactile_damage_sn_list") ||
-        !metadata["tactile_damage_sn_list"].is_array())
-    {
-        if (errorMessage != nullptr)
-        {
-            *errorMessage = "metadata tactile_damage_sn_list field is missing or invalid";
-        }
-        return false;
-    }
-
-    ordered_json damagedSerialNumbers = ordered_json::array();
-    std::set<std::string> seenSerialNumbers;
-    for (const auto &finding : tactileFindings)
-    {
-        if (finding.damaged &&
-            !finding.serialNumber.empty() &&
-            seenSerialNumbers.insert(finding.serialNumber).second)
-        {
-            damagedSerialNumbers.push_back(finding.serialNumber);
-        }
-    }
-    metadata["tactile_damage_sn_list"] = std::move(damagedSerialNumbers);
-    return writeTextFileAtomically(metadataPath, metadata.dump(2) + "\n", errorMessage);
 }
 
 const std::string &RecordRuntime::EpisodeManager::dataRoot() const
@@ -11131,7 +11066,7 @@ bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episod
     metadata["hardware_version"] = hardwareVersion_;
     metadata["software_version"] = addVersionPrefix(packageVersion_);
     metadata["das_usb_updater_version"] = updaterVersion_;
-    metadata["data_version"] = "3.2";
+    metadata["data_version"] = "3.1";
     metadata["hardware_list"] = std::move(hardwareList);
     metadata["episode_name"] = stripEpisodeTempSuffix(episodePath.filename().string());
     metadata["data_uuid"] = existingMetadata.value("data_uuid", generateUuid());
@@ -11142,13 +11077,6 @@ bool RecordRuntime::EpisodeManager::writeFinalMetadata(const std::string &episod
     metadata["collection_duration_s"] = roundToOneDecimal(collectionDurationS);
     metadata["task_start_s"] = taskStartS_.value_or(0.0);
     metadata["task_stop_s"] = taskStopS_.value_or(0.0);
-    const double bootTimeS =
-        infoRoot.contains("boot_time_offset") && infoRoot["boot_time_offset"].is_number()
-            ? infoRoot["boot_time_offset"].get<double>()
-            : std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count() -
-                  std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    metadata["boot_time_s"] = bootTimeS;
-    metadata["tactile_damage_sn_list"] = ordered_json::array();
     metadata["require_files"] = std::move(requiredFiles);
     metadata["video_details"] = std::move(videoDetails);
 
