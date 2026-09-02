@@ -4,10 +4,14 @@
 
 namespace camera_recorder::camera_time {
 
-// Measured host-camera latency compensation for CameraRecorder streams.
-// Update these values when a new experiment is accepted, then rebuild.
-inline constexpr int64_t kMainCameraLatencyUs = 36'000;
-inline constexpr int64_t kTactileCameraLatencyUs = 36'000;
+// Signed timestamp offsets for CameraRecorder streams. Positive values move
+// timestamps later; negative values compensate observation latency by moving
+// timestamps earlier. Update these values when a new experiment is accepted,
+// then rebuild.
+// Main-camera absolute time now comes from the camera XU RTC plus the frame
+// encoder PTS, so no host-observation latency is added after capture.
+inline constexpr int64_t kMainCameraLatencyUs = 8'000;
+inline constexpr int64_t kTactileCameraLatencyUs = -35'000;
 
 enum class CameraTimestampSource {
     Main,
