@@ -36,8 +36,8 @@
 #   --finalize-timeout-sec N     等待 episode 收尾完成的超时时间，单位秒（默认：180）
 #
 # 输出：
-#   最终 episode 会新增 stopwatch_timing.json，其中包含 GPIO 触发/停止的
-#   时间边界、START/STOP FIFO 时间戳、实测命令延迟、指定时长和 episode 路径。
+#   最终 episode 会新增 stopwatch_timing.json，其中包含预打开 GPIO fd 后的
+#   微秒级触发/停止边界、START/STOP FIFO 时间戳、指定时长和 episode 路径。
 #
 # CH9344 串口保护：
 #   - 每次执行都会覆盖板端 /usr/local/bin/ugripper_ch9344_symlink_name；该修改
@@ -50,13 +50,15 @@
 # 安全机制：
 #   GPIO 初始化会原子设置输出方向和空闲电平，避免低电平有效场景在正式触发前
 #   因 direction=out 的瞬时低电平误启动秒表。
+#   初始化确认后由单个常驻 Python helper 预打开 GPIO value fd；open 不写电平，
+#   正式触发只执行 clock_gettime -> write -> clock_gettime，不再启动 sudo/tee/date。
 #   START 后如遇中断或失败，板端 trap 会发送 STOP 并将 GPIO 恢复为空闲电平。
 #   如已存在录制锁，脚本会拒绝开始新测试。
 
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
-SCRIPT_VERSION="5"
+SCRIPT_VERSION="6"
 
 DEFAULT_HOST="192.168.2.240"
 DEFAULT_USER="ubuntu"
@@ -142,12 +144,133 @@ capture_time() {
     printf -v "${prefix}_monotonic_sec" '%s' "${monotonic_sec}"
 }
 
-write_gpio_value() {
-    local value="$1"
-    printf '%s\n' "${value}" | sudo -n tee "/sys/class/gpio/gpio${GPIO}/value" >/dev/null
+start_gpio_helper() {
+    local python_bin=""
+    local candidate
+    for candidate in /opt/ugripper/.venv/bin/python3 python3; do
+        if command -v "${candidate}" >/dev/null 2>&1 || [[ -x "${candidate}" ]]; then
+            python_bin="${candidate}"
+            break
+        fi
+    done
+    [[ -n "${python_bin}" ]] || die "python3 is required for precise GPIO triggering"
+
+    local gpio_helper_code
+    read -r -d '' gpio_helper_code <<'PY' || true
+import os
+import sys
+import time
+
+
+gpio_path = sys.argv[1]
+write_fd = os.open(gpio_path, os.O_WRONLY | os.O_CLOEXEC)
+read_fd = os.open(gpio_path, os.O_RDONLY | os.O_CLOEXEC)
+
+
+def read_value():
+    os.lseek(read_fd, 0, os.SEEK_SET)
+    return os.read(read_fd, 8).strip().decode("ascii")
+
+
+print(f"READY\t{read_value()}", flush=True)
+try:
+    for raw_line in sys.stdin:
+        fields = raw_line.rstrip("\n").split("\t")
+        command = fields[0]
+        if command == "CLOSE":
+            print("BYE", flush=True)
+            break
+        if command != "WRITE" or len(fields) != 2 or fields[1] not in ("0", "1"):
+            print("ERROR\tinvalid command", flush=True)
+            continue
+
+        value = fields[1]
+        before_unix_ns = time.clock_gettime_ns(time.CLOCK_REALTIME)
+        before_monotonic_ns = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+        os.lseek(write_fd, 0, os.SEEK_SET)
+        written = os.write(write_fd, value.encode("ascii"))
+        after_monotonic_ns = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+        after_unix_ns = time.clock_gettime_ns(time.CLOCK_REALTIME)
+        if written != 1:
+            print(f"ERROR\tshort write: {written}", flush=True)
+            continue
+        actual = read_value()
+        for _ in range(100):
+            if actual == value:
+                break
+            actual = read_value()
+        print(
+            "\t".join(
+                [
+                    "OK",
+                    value,
+                    actual,
+                    str(before_unix_ns),
+                    str(after_unix_ns),
+                    str(before_monotonic_ns),
+                    str(after_monotonic_ns),
+                ]
+            ),
+            flush=True,
+        )
+finally:
+    os.close(read_fd)
+    os.close(write_fd)
+PY
+
+    coproc GPIO_TRIGGER_HELPER {
+        exec sudo -n "${python_bin}" -c "${gpio_helper_code}" "${GPIO_VALUE_PATH}"
+    }
+    GPIO_HELPER_READ_FD="${GPIO_TRIGGER_HELPER[0]}"
+    GPIO_HELPER_WRITE_FD="${GPIO_TRIGGER_HELPER[1]}"
+    GPIO_HELPER_PID="${GPIO_TRIGGER_HELPER_PID}"
+
+    local status
     local actual
-    actual="$(<"/sys/class/gpio/gpio${GPIO}/value")"
-    [[ "${actual}" == "${value}" ]] || die "GPIO${GPIO} readback mismatch: wrote ${value}, read ${actual}"
+    IFS=$'\t' read -r status actual <&"${GPIO_HELPER_READ_FD}" || die "precise GPIO helper exited during startup"
+    [[ "${status}" == "READY" ]] || die "precise GPIO helper startup failed: ${status} ${actual}"
+    [[ "${actual}" == "${IDLE_LEVEL}" ]] || die "GPIO${GPIO} changed while opening helper: expected ${IDLE_LEVEL}, got ${actual}"
+}
+
+write_gpio_precise() {
+    local prefix="$1"
+    local value="$2"
+    local status
+    local requested
+    local actual
+    local before_unix_ns
+    local after_unix_ns
+    local before_monotonic_ns
+    local after_monotonic_ns
+
+    printf 'WRITE\t%s\n' "${value}" >&"${GPIO_HELPER_WRITE_FD}" || return 1
+    IFS=$'\t' read -r status requested actual before_unix_ns after_unix_ns \
+        before_monotonic_ns after_monotonic_ns <&"${GPIO_HELPER_READ_FD}" || return 1
+    if [[ "${status}" != "OK" ]]; then
+        echo "ERROR: precise GPIO helper write failed: ${status} ${requested} ${actual}" >&2
+        return 1
+    fi
+    if [[ "${requested}" != "${value}" || "${actual}" != "${value}" ]]; then
+        echo "ERROR: GPIO${GPIO} readback mismatch: wrote ${value}, read ${actual}" >&2
+        return 1
+    fi
+
+    printf -v "${prefix}_before_unix_ns" '%s' "${before_unix_ns}"
+    printf -v "${prefix}_after_unix_ns" '%s' "${after_unix_ns}"
+    printf -v "${prefix}_before_monotonic_ns" '%s' "${before_monotonic_ns}"
+    printf -v "${prefix}_after_monotonic_ns" '%s' "${after_monotonic_ns}"
+}
+
+stop_gpio_helper() {
+    [[ -n "${GPIO_HELPER_PID:-}" ]] || return 0
+    if kill -0 "${GPIO_HELPER_PID}" 2>/dev/null; then
+        printf 'CLOSE\n' >&"${GPIO_HELPER_WRITE_FD}" 2>/dev/null || true
+        local status=""
+        IFS=$'\t' read -r status <&"${GPIO_HELPER_READ_FD}" 2>/dev/null || true
+        [[ "${status}" == "BYE" ]] || true
+        wait "${GPIO_HELPER_PID}" 2>/dev/null || true
+    fi
+    GPIO_HELPER_PID=""
 }
 
 snapshot_episode_names() {
@@ -216,9 +339,9 @@ write_timing_json() {
     export UGRIPPER_STOPWATCH_ACTIVE_LEVEL="${ACTIVE_LEVEL}"
     export UGRIPPER_STOPWATCH_IDLE_LEVEL="${IDLE_LEVEL}"
     export UGRIPPER_STOPWATCH_GPIO_START_BEFORE_UNIX_NS="${gpio_start_before_unix_ns}"
-    export UGRIPPER_STOPWATCH_GPIO_START_BEFORE_MONOTONIC_SEC="${gpio_start_before_monotonic_sec}"
+    export UGRIPPER_STOPWATCH_GPIO_START_BEFORE_MONOTONIC_NS="${gpio_start_before_monotonic_ns}"
     export UGRIPPER_STOPWATCH_GPIO_START_AFTER_UNIX_NS="${gpio_start_after_unix_ns}"
-    export UGRIPPER_STOPWATCH_GPIO_START_AFTER_MONOTONIC_SEC="${gpio_start_after_monotonic_sec}"
+    export UGRIPPER_STOPWATCH_GPIO_START_AFTER_MONOTONIC_NS="${gpio_start_after_monotonic_ns}"
     export UGRIPPER_STOPWATCH_RECORD_START_BEFORE_UNIX_NS="${record_start_before_unix_ns}"
     export UGRIPPER_STOPWATCH_RECORD_START_BEFORE_MONOTONIC_SEC="${record_start_before_monotonic_sec}"
     export UGRIPPER_STOPWATCH_RECORD_START_AFTER_UNIX_NS="${record_start_after_unix_ns}"
@@ -229,8 +352,10 @@ write_timing_json() {
     export UGRIPPER_STOPWATCH_RECORD_STOP_BEFORE_MONOTONIC_SEC="${record_stop_before_monotonic_sec}"
     export UGRIPPER_STOPWATCH_RECORD_STOP_AFTER_UNIX_NS="${record_stop_after_unix_ns}"
     export UGRIPPER_STOPWATCH_RECORD_STOP_AFTER_MONOTONIC_SEC="${record_stop_after_monotonic_sec}"
+    export UGRIPPER_STOPWATCH_GPIO_STOP_BEFORE_UNIX_NS="${gpio_stop_before_unix_ns}"
+    export UGRIPPER_STOPWATCH_GPIO_STOP_BEFORE_MONOTONIC_NS="${gpio_stop_before_monotonic_ns}"
     export UGRIPPER_STOPWATCH_GPIO_STOP_AFTER_UNIX_NS="${gpio_stop_after_unix_ns}"
-    export UGRIPPER_STOPWATCH_GPIO_STOP_AFTER_MONOTONIC_SEC="${gpio_stop_after_monotonic_sec}"
+    export UGRIPPER_STOPWATCH_GPIO_STOP_AFTER_MONOTONIC_NS="${gpio_stop_after_monotonic_ns}"
 
     "${python_bin}" - "${final_episode}/${TIMING_FILE_NAME}" <<'PY'
 import datetime
@@ -266,19 +391,24 @@ record_start_after = ns("RECORD_START_AFTER_UNIX_NS")
 episode_observed = ns("EPISODE_OBSERVED_UNIX_NS")
 record_stop_before = ns("RECORD_STOP_BEFORE_UNIX_NS")
 record_stop_after = ns("RECORD_STOP_AFTER_UNIX_NS")
+gpio_stop_before = ns("GPIO_STOP_BEFORE_UNIX_NS")
 gpio_stop_after = ns("GPIO_STOP_AFTER_UNIX_NS")
 
-gpio_start_before_mono = mono_ns("GPIO_START_BEFORE_MONOTONIC_SEC")
-gpio_start_after_mono = mono_ns("GPIO_START_AFTER_MONOTONIC_SEC")
+gpio_start_before_mono = ns("GPIO_START_BEFORE_MONOTONIC_NS")
+gpio_start_after_mono = ns("GPIO_START_AFTER_MONOTONIC_NS")
 record_start_before_mono = mono_ns("RECORD_START_BEFORE_MONOTONIC_SEC")
 record_start_after_mono = mono_ns("RECORD_START_AFTER_MONOTONIC_SEC")
 episode_observed_mono = mono_ns("EPISODE_OBSERVED_MONOTONIC_SEC")
 record_stop_before_mono = mono_ns("RECORD_STOP_BEFORE_MONOTONIC_SEC")
 record_stop_after_mono = mono_ns("RECORD_STOP_AFTER_MONOTONIC_SEC")
-gpio_stop_after_mono = mono_ns("GPIO_STOP_AFTER_MONOTONIC_SEC")
+gpio_stop_before_mono = ns("GPIO_STOP_BEFORE_MONOTONIC_NS")
+gpio_stop_after_mono = ns("GPIO_STOP_AFTER_MONOTONIC_NS")
+
+gpio_start_estimate = (gpio_start_before + gpio_start_after) // 2
+gpio_stop_estimate = (gpio_stop_before + gpio_stop_after) // 2
 
 payload = {
-    "schema_version": 1,
+    "schema_version": 2,
     "test": "normal_recording_then_external_stopwatch",
     "script_version": env("SCRIPT_VERSION"),
     "target": env("TARGET_LABEL"),
@@ -289,6 +419,7 @@ payload = {
         "number": int(env("GPIO")),
         "active_level": int(env("ACTIVE_LEVEL")),
         "idle_level": int(env("IDLE_LEVEL")),
+        "trigger_method": "persistent_preopened_sysfs_fd",
     },
     "events": {
         "stopwatch_start_write_before": {
@@ -300,6 +431,10 @@ payload = {
             "unix_ns": gpio_start_after,
             "iso8601_utc": iso8601(gpio_start_after),
             "monotonic_ns": gpio_start_after_mono,
+        },
+        "stopwatch_start_estimate": {
+            "unix_ns": gpio_start_estimate,
+            "iso8601_utc": iso8601(gpio_start_estimate),
         },
         "record_start_command_before": {
             "unix_ns": record_start_before,
@@ -326,28 +461,44 @@ payload = {
             "iso8601_utc": iso8601(record_stop_after),
             "monotonic_ns": record_stop_after_mono,
         },
+        "stopwatch_stop_write_before": {
+            "unix_ns": gpio_stop_before,
+            "iso8601_utc": iso8601(gpio_stop_before),
+            "monotonic_ns": gpio_stop_before_mono,
+        },
         "stopwatch_stop_write_after": {
             "unix_ns": gpio_stop_after,
             "iso8601_utc": iso8601(gpio_stop_after),
             "monotonic_ns": gpio_stop_after_mono,
         },
+        "stopwatch_stop_estimate": {
+            "unix_ns": gpio_stop_estimate,
+            "iso8601_utc": iso8601(gpio_stop_estimate),
+        },
     },
     "measurements": {
-        "clock": "unix_ns",
+        "clock": "CLOCK_REALTIME_ns",
         "stopwatch_start_write_window_ms": (gpio_start_after - gpio_start_before) / 1_000_000,
+        "stopwatch_start_write_window_us": (gpio_start_after - gpio_start_before) / 1_000,
         "record_start_write_window_ms": (record_start_after - record_start_before) / 1_000_000,
         "record_start_command_to_stopwatch_start_min_ms": (gpio_start_before - record_start_after) / 1_000_000,
         "record_start_command_to_stopwatch_start_max_ms": (gpio_start_after - record_start_before) / 1_000_000,
         "record_start_command_to_episode_observed_ms": (episode_observed - record_start_after) / 1_000_000,
         "record_command_window_ms": (record_stop_before - record_start_after) / 1_000_000,
         "record_stop_write_window_ms": (record_stop_after - record_stop_before) / 1_000_000,
+        "record_stop_command_to_stopwatch_stop_min_ms": (gpio_stop_before - record_stop_after) / 1_000_000,
         "record_stop_command_to_stopwatch_stop_max_ms": (gpio_stop_after - record_stop_before) / 1_000_000,
-        "stopwatch_active_min_ms": (gpio_stop_after - gpio_start_after) / 1_000_000,
+        "stopwatch_stop_write_window_ms": (gpio_stop_after - gpio_stop_before) / 1_000_000,
+        "stopwatch_stop_write_window_us": (gpio_stop_after - gpio_stop_before) / 1_000,
+        "stopwatch_active_estimate_ms": (gpio_stop_estimate - gpio_start_estimate) / 1_000_000,
+        "stopwatch_active_min_ms": (gpio_stop_before - gpio_start_after) / 1_000_000,
         "stopwatch_active_max_ms": (gpio_stop_after - gpio_start_before) / 1_000_000,
     },
     "notes": [
-        "The physical GPIO edge occurred between each write_before/write_after timestamp pair.",
-        "Millisecond measurements use the nanosecond-resolution Unix timestamps; monotonic timestamps are retained as raw diagnostic evidence.",
+        "The sysfs write() occurred between each write_before/write_after timestamp pair; an oscilloscope is required to verify the physical pin edge.",
+        "The estimate event is the midpoint of its write_before/write_after interval.",
+        "GPIO trigger timestamps are captured inside one persistent root helper around write() on a pre-opened sysfs value fd.",
+        "CLOCK_REALTIME provides Unix timestamps; CLOCK_MONOTONIC_RAW timestamps are retained as raw diagnostic evidence.",
         "GPIO direction and idle level were initialized atomically before the trigger to avoid an active-low initialization glitch.",
         "START and STOP were sent through the normal UGripper runtime recording control FIFO.",
         "Recording START was sent before the stopwatch trigger; the configured delay is included in requested_stopwatch_delay_sec.",
@@ -483,9 +634,12 @@ board_cleanup() {
         RECORD_STOP_SENT=1
     fi
     if [[ "${GPIO_ACTIVE:-0}" == "1" && -e "/sys/class/gpio/gpio${GPIO:-}/value" ]]; then
-        printf '%s\n' "${IDLE_LEVEL}" | sudo -n tee "/sys/class/gpio/gpio${GPIO}/value" >/dev/null
+        if ! write_gpio_precise gpio_cleanup "${IDLE_LEVEL}"; then
+            printf '%s\n' "${IDLE_LEVEL}" | sudo -n tee "/sys/class/gpio/gpio${GPIO}/value" >/dev/null
+        fi
         GPIO_ACTIVE=0
     fi
+    stop_gpio_helper
     [[ -n "${WORK_DIR:-}" && -d "${WORK_DIR}" ]] && rm -rf "${WORK_DIR}"
 
     exit "${exit_code}"
@@ -559,6 +713,7 @@ run_board() {
     printf '%s\n' "${idle_direction}" | sudo -n tee "/sys/class/gpio/gpio${GPIO}/direction" >/dev/null
     [[ "$(<"/sys/class/gpio/gpio${GPIO}/direction")" == "out" ]] || die "GPIO${GPIO} is not configured as output"
     [[ "$(<"/sys/class/gpio/gpio${GPIO}/value")" == "${IDLE_LEVEL}" ]] || die "GPIO${GPIO} idle-level initialization failed"
+    GPIO_VALUE_PATH="/sys/class/gpio/gpio${GPIO}/value"
 
     WORK_DIR="$(mktemp -d "/tmp/ugripper_stopwatch_record.XXXXXX")"
     BASELINE_FILE="${WORK_DIR}/baseline.txt"
@@ -570,8 +725,12 @@ run_board() {
     RECORD_START_SENT=0
     RECORD_STOP_SENT=0
     GPIO_ACTIVE=0
+    GPIO_HELPER_PID=""
+    GPIO_HELPER_READ_FD=""
+    GPIO_HELPER_WRITE_FD=""
     MONITOR_PID=""
     trap board_cleanup EXIT HUP INT TERM
+    start_gpio_helper
 
     echo "target=${TARGET_LABEL}"
     echo "episode_root=${EPISODE_ROOT}"
@@ -590,10 +749,8 @@ run_board() {
 
     sleep "${STOPWATCH_DELAY_SEC}"
 
-    capture_time gpio_start_before
-    write_gpio_value "${ACTIVE_LEVEL}"
+    write_gpio_precise gpio_start "${ACTIVE_LEVEL}" || die "failed to trigger stopwatch through precise GPIO helper"
     GPIO_ACTIVE=1
-    capture_time gpio_start_after
 
     sleep "$((DURATION_SEC - STOPWATCH_DELAY_SEC))"
 
@@ -601,14 +758,18 @@ run_board() {
     printf 'STOP\n' > "${RECORD_CONTROL_PIPE}"
     RECORD_STOP_SENT=1
     capture_time record_stop_after
-    write_gpio_value "${IDLE_LEVEL}"
+    write_gpio_precise gpio_stop "${IDLE_LEVEL}" || die "failed to stop stopwatch through precise GPIO helper"
     GPIO_ACTIVE=0
-    capture_time gpio_stop_after
+    stop_gpio_helper
 
-    echo "stopwatch_started_unix_ns=${gpio_start_after_unix_ns}"
+    echo "stopwatch_start_before_unix_ns=${gpio_start_before_unix_ns}"
+    echo "stopwatch_start_after_unix_ns=${gpio_start_after_unix_ns}"
+    echo "stopwatch_start_window_us=$(((gpio_start_after_unix_ns - gpio_start_before_unix_ns) / 1000))"
     echo "record_start_command_unix_ns=${record_start_after_unix_ns}"
     echo "record_stop_command_unix_ns=${record_stop_after_unix_ns}"
-    echo "stopwatch_stopped_unix_ns=${gpio_stop_after_unix_ns}"
+    echo "stopwatch_stop_before_unix_ns=${gpio_stop_before_unix_ns}"
+    echo "stopwatch_stop_after_unix_ns=${gpio_stop_after_unix_ns}"
+    echo "stopwatch_stop_window_us=$(((gpio_stop_after_unix_ns - gpio_stop_before_unix_ns) / 1000))"
 
     # Keep the monitor alive until the configured START acceptance window ends.
     # A FIFO write only proves delivery to the pipe; an episode proves that the
