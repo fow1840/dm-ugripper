@@ -1,5 +1,7 @@
 # Changelog
 
+- 主摄新增通用命名的 `UGRIPPER_POWER_LINE_FREQUENCY` 环境配置，安装时默认写入 `50` Hz，可改为 `60` Hz 以匹配供电频率；当前仅主摄启动时按配置下发 V4L2 防频闪参数。
+
 ## Unreleased
 
 - H.265 主摄改用 UVC XU RTC 与码流 XU2 SEI 建立 Unix 时间轴：起流前写入主机 Unix 时间 `Tset` 加 `200us`，GET 读取固件在 SET 时锁存的 encoder `Pset`，每帧 Unix 时间按 `Tset + Pframe - Pset` 计算；首个实际写入的 clean keyframe 以其换算后的 Unix 时间写入 metadata `start_offset_us`，后续 PTS 保留 encoder 实际间隔。主摄原 `36ms` 后处理补偿暂置为 `0`，H.264 继续使用 V4L2 时间；tcam 改为向前校正 `-36ms`，stereo camera `publishTime` 改为向前校正 `-3ms`。

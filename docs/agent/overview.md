@@ -244,12 +244,15 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
 
 | 相机 | 原始时间来源 | 全局时间表达 | 补偿位置 | 当前值 |
 | --- | --- | --- | --- | --- |
-| 左右/胸部主摄 | V4L2 buffer 时间 | `start_offset_us + PTS` | CameraRecorder 写 `<camera>_record_time_offset_us` 时只调整绝对起点 | `+36,000us` |
-| 四路 tcam | recorder 首帧系统时间与 PTS | `start_offset_us + PTS` | CameraRecorder 写 `<camera>_record_time_offset_us` 时只调整绝对起点 | `+36,000us` |
-| 左右 stereo camera | Fays camera 设备时间换算到 Unix | Fays MCAP `c.publishTime` | 图像采集后、进入 MCAP 队列前逐帧调整 | `+3,000us` |
+| 左右/胸部主摄 | H.265：XU `Tset/Pset` + XU2 SEI `Pframe`；H.264：V4L2 buffer 时间 | `start_offset_us + PTS` | CameraRecorder 写 `<camera>_record_time_offset_us` 时只调整绝对起点 | `0us` |
+| 四路 tcam | recorder 首帧系统时间与 PTS | `start_offset_us + PTS` | CameraRecorder 写 `<camera>_record_time_offset_us` 时只调整绝对起点 | `-36,000us` |
+| 左右 stereo camera | Fays camera 设备时间换算到 Unix | Fays MCAP `c.publishTime` | 图像采集后、进入 MCAP 队列前逐帧调整 | `-3,000us` |
 | 左右 Fays IMU | Fays IMU 设备时间换算到 Unix | Fays MCAP `i.publishTime` | 不补偿 | `0us` |
 
-主摄和 tcam 的补偿不会修改 MKV packet PTS、帧间 gap 或 duration。Stereo 补偿只修改 camera topic 的 Unix `publishTime`；原始设备域 `logTime`、Fays IMU 时间戳和 stereo MKV 固定帧率 PTS 均保持不变。`record_runtime` 从首个已补偿的 stereo camera `publishTime` 生成 stereo `start_offset_us`，因此 metadata 阶段禁止再次叠加 `3ms`。
+H.265 主摄在 `VIDIOC_STREAMON` 前向 UVC XU selector `0x19` 写入当前主机 Unix 微秒 `Tset` 加 `200us`，优先使用板端实测有效的 unit `3`，并保留 README 原协议 unit `2` fallback；写入后立即 GET 固件锁存的 SET 时刻 encoder PTS `Pset`。码流必须为每个实际写入 access unit 提供合法 XU2 SEI，SEI 中 `xu_time_us` 必须等于本次 `Tset`，首个通过 startup gate 的 clean keyframe encoder PTS 冻结为 MKV 相对零点，且录制期间 `Tset` 不得变化。任意帧 Unix 时间按 `Tset + Pframe - Pset` 计算；主摄后处理补偿当前为 `0`，数值入口仍保留，后续有新的实验结论时可单独调整。H.264 不含该 SEI，继续使用现有 V4L2 时间路径。
+主摄打开设备后读取 `/etc/environment` 中的通用配置 `UGRIPPER_POWER_LINE_FREQUENCY`，支持 `50`/`60` Hz 并映射到标准 V4L2 `power_line_frequency` 控制；安装包在缺少该变量时写入默认值 `50`，已有值不覆盖。参数命名保持通用，当前仅主摄录制链使用，不改变录制 PTS 计算。
+
+主摄和 tcam 的后处理补偿不会修改 MKV packet PTS、帧间 gap 或 duration。tcam 将主机观测时间向前校正 `36ms`；Stereo 补偿只将 camera topic 的 Unix `publishTime` 向前校正 `3ms`，原始设备域 `logTime`、Fays IMU 时间戳和 stereo MKV 固定帧率 PTS 均保持不变。`record_runtime` 从首个已补偿的 stereo camera `publishTime` 生成 stereo `start_offset_us`，因此 metadata 阶段禁止再次应用 `3ms`。
 
 ### 7.3 停录强校验
 停录后当前按以下层次校验：
@@ -541,6 +544,7 @@ PY
   - `board_gripper_hmi_link_stress.sh`：停止主服务后反复独占连接左右 HMI，验证状态回复、RGB 和蜂鸣器开关回读，并并行运行 `SensorRecorder` 检查同颗 CH9344 上的 encoder UART 是否持续产出；默认将 encoder 最大相邻时间戳 gap 限制为 `100ms`，避免平均频率掩盖秒级数据洞；结果默认写入 `/dev/shm`，便于在加密环境中中转部署和回收。
   - `board_ch9344_interference_matrix.sh`：按空载、原始 open/close、termios 配置、`TCIOFLUSH`、`TIOCEXCL`、原始状态/RGB/蜂鸣器帧、完整 HMI 重连和长连接分阶段施加干扰，每阶段独立记录左右 encoder MCAP 与 gap 事件，用于定位 CH9344 多 UART 相互影响的具体触发操作。
   - `board_encoder_to_hmi_interference_matrix.sh`：反向保持左右 HMI 长连接和状态查询，同时对指定 encoder UART 高频执行 open/close、配置、flush 与真实 1Mbps 请求，统计同侧/异侧 HMI 回复年龄和 inactive 样本，确认 encoder 操作是否会触发 HMI 无响应。
+- 安装后的 `bin/CameraRecorder/main_camera_xu_tool` 支持 `--rtc-get`、`--rtc-set-us`、`--rtc-sync-now` 与 `--parse-h265-timestamps`，用于独立验证主摄 XU RTC 与 H.265 XU2 SEI；`--rtc-get` 输出固件在最近一次 SET 时锁存的 encoder `Pset`，`--rtc-sync-now` 使用与录制链相同的 `+200us` 写入 `Tset` 并输出 `Pset`，逐帧时间按 `Tset + Pframe - Pset` 换算。
 - 建议从仓库根目录显式执行 `bash test/scripts/<script>.sh`；详细参数与注意事项见 `test/README.md`。
 - 单条 episode 可执行 `bash test/scripts/validate_episode_data.sh <episode_dir>`；父目录下校验最新一条可追加 `--latest`，机器消费结果可追加 `--json`。
 - `py_script/read_ugripper_mcap.txt` 是给数据使用者参考的通用 MCAP 读取示例；文件后缀使用 `.txt`，方便在会拦截或加密 `.py` 的环境中发送，但内容仍是 Python 代码。它可直接输入单个 `.mcap` 或完整 episode 目录；episode 模式会自动读取 `sensor_left/right.mcap`、`fays_data_left/right.mcap` 与可选 `ego/sensor.mcap`，并解码当前 UGripper encoder 与 Fays `i/c` 二进制 payload。配套说明见 `py_script/README_read_ugripper_mcap.txt`。示例：

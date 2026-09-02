@@ -251,6 +251,17 @@ ensure_persist_calibration() {
     cp -f "$fallback_file" "$CALIB_PERSIST_FILE"
 }
 
+ensure_main_camera_power_line_frequency() {
+    local env_file="/etc/environment"
+    local env_key="UGRIPPER_POWER_LINE_FREQUENCY"
+
+    touch "$env_file"
+    if grep -Eq "^[[:space:]]*${env_key}=" "$env_file"; then
+        return 0
+    fi
+    printf '\n%s=50\n' "$env_key" >> "$env_file"
+}
+
 ensure_exfat_autoload() {
     local kernel_release
     local module_dest_dir
@@ -333,6 +344,7 @@ apply_service_user_override "$SERVICE_RUN_USER"
 # 初始化持久化标定目录：缺失、空文件或非法 JSON 时写入默认 fake calibration
 mkdir -p "$CALIB_PERSIST_DIR"
 ensure_persist_calibration
+ensure_main_camera_power_line_frequency
 if id ubuntu >/dev/null 2>&1; then
     chown ubuntu:ubuntu "$CALIB_PERSIST_DIR" >/dev/null 2>&1 || true
     chmod 0775 "$CALIB_PERSIST_DIR" >/dev/null 2>&1 || true
