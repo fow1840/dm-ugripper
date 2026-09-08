@@ -266,11 +266,12 @@ H.265 主摄在 `VIDIOC_STREAMON` 前向 UVC XU selector `0x19` 写入当前主�
 - 时长合理性：每路启用视频都必须满足跨度阈值；默认包的 stereo 时长复用停录时由 Fays MCAP 首尾 `publishTime` 写入的 timing 缓存，并继续执行既有 Fays MCAP footer/head-tail 检查；`+nostereo` 跳过。
 - 条件产物：若执行了 pre/post 音频录制，对应 wav 仍需存在。
 - 触觉软校验：
-  - 每路 tactile 只取起录附近单帧；预处理只裁掉左侧约 `12%` 光源区域，不裁上边、右边和下边，也不做额外模糊，避免漏掉上方或右上方盖板损坏。若同 `serial` 实时参考帧缺失或处于夹爪重连待更新状态，则用本帧建立参考帧并跳过本轮实时 damaged 对比，失败则顺延到下一条 episode。已有实时参考帧时，按 baseline 对当前帧做全局亮度/对比度配准，再做直接 residual 差分；residual mask 经过 `3x3` 邻域投票、连通域过滤，以及“小连通域 + 低频变化小”的边界纹理误差过滤，单次异常不让当前 episode 失败，仅用于连续 `3` 个 episode 的损坏提示。
+  - 每路 tactile 只取起录附近单帧；预处理只裁掉左侧约 `18%` 光源区域，不裁上边、右边和下边。若同 `serial` 实时参考帧缺失或处于夹爪重连待更新状态，则用本帧建立参考帧并跳过本轮实时 damaged 对比，失败则顺延到下一条 episode。已有实时参考帧时，先在 `5x5` 低频图上搜索 `x/y` 各 `±2 px` 的全局整数平移，使当前帧对齐 baseline，再做全局亮度/对比度配准和直接 residual 差分；仅在 baseline 与当前帧都接近 Sobel 纹理边缘的位置，允许双向 `1 px` 局部匹配，并要求低频差异小于 `8` 才抑制该边缘残差。之后 residual mask 继续经过 `3x3` 邻域投票、连通域过滤，以及“小连通域 + 低频变化小”的边界纹理误差过滤。该组合用于消除 `1~2 px` 整体漂移和长纹理边缘的 `1 px` 局部错位，同时避免对整幅图开放 `2 px` 容差而吞掉真实损坏；单次异常不让当前 episode 失败，仅用于连续 `3` 个 episode 的损坏提示。
   - 同时还会与同 `serial` 的持久化 baseline 比较；若 baseline 缺失，则用本帧初始化 baseline 并跳过本轮 persistent 对比，失败则顺延到下一条 episode。已有 baseline 不会因为夹爪重连或时间到期刷新；persistent 比较独立维护最近 `3` 次窗口，连续 `3` 次异常才播放对应 damaged 语音并置位，并登记“下次重新开关机后允许刷新 baseline”。重新开关机后，下一条可用 episode 会刷新该路持久化 baseline；连续 `3` 次 clean 后清除告警但不刷新 baseline。
 - 当前运行时轻量阈值口径：
   - `robust_residual_area >= 0.003`
   - 动态残差阈值为 `max(10, median(residual) + 6 * 1.4826 * MAD(residual))`
+  - 全局空间配准搜索范围为 `x/y ±2 px`；边缘局部容差固定为双向 `1 px`，Sobel magnitude 门限为 `24`，低频差门限为 `8`
   - residual mask 过滤为：`3x3` 内异常像素数至少 `3`，且 `8` 连通域面积至少 `8 px`；其中面积不超过 `25 px` 且 `5x5` 低频差分均值小于 `5` 的连通域会作为高反差纹理边缘误差丢弃
   - 该口径用于过滤轻微灰度波动、孤立点和边缘残差；不再启用 small-damage 兜底，避免边线清晰或光源残留图像误触发。
 

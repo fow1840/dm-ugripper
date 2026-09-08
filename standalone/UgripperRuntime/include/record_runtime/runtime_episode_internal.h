@@ -1,5 +1,7 @@
 #pragma once
 
+#include "record_runtime/tactile_residual.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -108,23 +110,6 @@ struct CommandCaptureResult
     std::string output;
 };
 
-struct TactileFrameMetrics
-{
-    double robustResidualArea = 0.0;
-    double rawResidualArea = 0.0;
-    double residualThreshold = 0.0;
-    double residualMedian = 0.0;
-    double residualMad = 0.0;
-    double residualMean = 0.0;
-    double residualP99 = 0.0;
-    double gain = 1.0;
-    double offset = 0.0;
-    size_t maxResidualComponentPixels = 0;
-    size_t droppedArtifactComponentPixels = 0;
-    size_t droppedArtifactComponentCount = 0;
-    bool damaged = false;
-};
-
 struct TactileCalibrationTarget
 {
     const char *cameraName;
@@ -156,18 +141,6 @@ inline constexpr double kMinReasonableVideoSpanSec = 0.2;
 inline constexpr double kMaxVideoSpanGapSec = 5.0;
 inline constexpr size_t kTactileHistoryWindow = 3;
 inline constexpr double kTactileEpisodeProbeSec = 0.12;
-inline constexpr size_t kTactileFrameBytes = 160U * 120U;
-inline constexpr int kTactileFrameWidth = 160;
-inline constexpr int kTactileFrameHeight = 120;
-inline constexpr double kTactileRobustResidualAreaThreshold = 0.003;
-inline constexpr double kTactileResidualFloorThreshold = 10.0;
-inline constexpr double kTactileResidualMadMultiplier = 6.0;
-inline constexpr double kTactileMadToSigma = 1.4826;
-inline constexpr int kTactileResidualMinNeighborCount = 3;
-inline constexpr size_t kTactileResidualMinComponentPixels = 8;
-inline constexpr int kTactileResidualLowFrequencyBlurRadius = 2;
-inline constexpr size_t kTactileResidualArtifactMaxComponentPixels = 25;
-inline constexpr double kTactileResidualArtifactLowFrequencyMeanThreshold = 5.0;
 inline constexpr int kTactileSnapshotTimeoutMs = 2500;
 inline constexpr int kVideoProbeTimeoutMs = 1500;
 
@@ -241,9 +214,6 @@ bool readBinaryFileExact(const std::filesystem::path &path,
 bool writeBinaryFile(const std::filesystem::path &path,
                      const std::vector<uint8_t> &bytes,
                      std::string *errorMessage);
-TactileFrameMetrics computeTactileFrameMetrics(const std::vector<uint8_t> &baseline,
-                                                const std::vector<uint8_t> &current);
-std::string formatTactileMetrics(const TactileFrameMetrics &metrics);
 std::string currentDateString();
 bool writeTactileReferenceMeta(const std::filesystem::path &root,
                                const std::string &serial,

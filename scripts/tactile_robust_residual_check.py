@@ -31,13 +31,18 @@ MIN_COMPONENT_PIXELS = 8
 ARTIFACT_MAX_COMPONENT_PIXELS = 25
 ARTIFACT_LOWFREQ_MEAN_THRESHOLD = 5.0
 LOWFREQ_BLUR_RADIUS = 2
+ALIGNMENT_SEARCH_RADIUS = 2
+ALIGNMENT_BLUR_RADIUS = 2
+EDGE_LOCAL_TOLERANCE_RADIUS = 1
+EDGE_MAGNITUDE_THRESHOLD = 24.0
+EDGE_LOWFREQ_THRESHOLD = 8.0
 
 
 def _resampling_filter() -> int:
     return getattr(getattr(Image, "Resampling", Image), "BILINEAR")
 
 
-def load_tactile_frame(path: Path) -> np.ndarray:
+def load_tactile_frame(path: Path, preprocessed: bool = False) -> np.ndarray:
     if path.suffix.lower() == ".gray":
         data = path.read_bytes()
         if len(data) != FRAME_BYTES:
@@ -46,6 +51,10 @@ def load_tactile_frame(path: Path) -> np.ndarray:
 
     image = Image.open(path)
     if image.mode == "L" and image.size == (FRAME_WIDTH, FRAME_HEIGHT):
+        return np.asarray(image, dtype=np.float32)
+
+    if preprocessed:
+        image = image.convert("L").resize((FRAME_WIDTH, FRAME_HEIGHT), getattr(getattr(Image, "Resampling", Image), "NEAREST"))
         return np.asarray(image, dtype=np.float32)
 
     image = image.convert("RGB")
@@ -66,6 +75,78 @@ def box_blur(image: np.ndarray, radius: int = LOWFREQ_BLUR_RADIUS) -> np.ndarray
         for x_offset in range(size):
             blurred += padded[y_offset : y_offset + image.shape[0], x_offset : x_offset + image.shape[1]]
     return blurred / float(size * size)
+
+
+def shift_with_edge(image: np.ndarray, shift_y: int, shift_x: int) -> np.ndarray:
+    source_y = np.clip(np.arange(image.shape[0]) - shift_y, 0, image.shape[0] - 1)
+    source_x = np.clip(np.arange(image.shape[1]) - shift_x, 0, image.shape[1] - 1)
+    return image[np.ix_(source_y, source_x)]
+
+
+def best_integer_translation(baseline: np.ndarray, current: np.ndarray) -> Tuple[np.ndarray, int, int, float]:
+    baseline_blur = box_blur(baseline, ALIGNMENT_BLUR_RADIUS)
+    current_blur = box_blur(current, ALIGNMENT_BLUR_RADIUS)
+    margin = ALIGNMENT_SEARCH_RADIUS + 4
+    best_score = float("inf")
+    best_shift_x = 0
+    best_shift_y = 0
+    best_distance = 0
+    roi = np.s_[margin:-margin, margin:-margin]
+    for shift_y in range(-ALIGNMENT_SEARCH_RADIUS, ALIGNMENT_SEARCH_RADIUS + 1):
+        for shift_x in range(-ALIGNMENT_SEARCH_RADIUS, ALIGNMENT_SEARCH_RADIUS + 1):
+            shifted = shift_with_edge(current_blur, shift_y, shift_x)
+            score = float(np.mean(np.abs(baseline_blur[roi] - shifted[roi])))
+            distance = abs(shift_x) + abs(shift_y)
+            if score < best_score - 1e-9 or (abs(score - best_score) <= 1e-9 and distance < best_distance):
+                best_score = score
+                best_shift_x = shift_x
+                best_shift_y = shift_y
+                best_distance = distance
+    return shift_with_edge(current, best_shift_y, best_shift_x), best_shift_x, best_shift_y, best_score
+
+
+def sobel_edge_mask(image: np.ndarray) -> np.ndarray:
+    padded = np.pad(image, 1, mode="edge")
+    top_left = padded[:-2, :-2]
+    top = padded[:-2, 1:-1]
+    top_right = padded[:-2, 2:]
+    left = padded[1:-1, :-2]
+    right = padded[1:-1, 2:]
+    bottom_left = padded[2:, :-2]
+    bottom = padded[2:, 1:-1]
+    bottom_right = padded[2:, 2:]
+    gx = -top_left + top_right - 2.0 * left + 2.0 * right - bottom_left + bottom_right
+    gy = -top_left - 2.0 * top - top_right + bottom_left + 2.0 * bottom + bottom_right
+    return np.hypot(gx, gy) >= EDGE_MAGNITUDE_THRESHOLD
+
+
+def dilate_mask(mask: np.ndarray, radius: int) -> np.ndarray:
+    padded = np.pad(mask, radius, mode="edge")
+    dilated = np.zeros(mask.shape, dtype=bool)
+    size = radius * 2 + 1
+    for y_offset in range(size):
+        for x_offset in range(size):
+            dilated |= padded[y_offset : y_offset + mask.shape[0], x_offset : x_offset + mask.shape[1]]
+    return dilated
+
+
+def local_symmetric_residual(baseline: np.ndarray, current: np.ndarray, radius: int) -> np.ndarray:
+    padded_current = np.pad(current, radius, mode="edge")
+    padded_baseline = np.pad(baseline, radius, mode="edge")
+    forward = np.full(baseline.shape, np.inf, dtype=np.float32)
+    reverse = np.full(baseline.shape, np.inf, dtype=np.float32)
+    size = radius * 2 + 1
+    for y_offset in range(size):
+        for x_offset in range(size):
+            current_window = padded_current[
+                y_offset : y_offset + baseline.shape[0], x_offset : x_offset + baseline.shape[1]
+            ]
+            baseline_window = padded_baseline[
+                y_offset : y_offset + baseline.shape[0], x_offset : x_offset + baseline.shape[1]
+            ]
+            np.minimum(forward, np.abs(baseline - current_window), out=forward)
+            np.minimum(reverse, np.abs(current - baseline_window), out=reverse)
+    return np.maximum(forward, reverse)
 
 
 def filter_residual_mask(mask: np.ndarray, lowfreq_diff: np.ndarray | None = None) -> Tuple[np.ndarray, int, int, int]:
@@ -115,19 +196,31 @@ def robust_residual_area(baseline: np.ndarray, current: np.ndarray) -> Tuple[flo
     if baseline.shape != current.shape:
         raise ValueError(f"shape mismatch: baseline={baseline.shape} current={current.shape}")
 
+    aligned, alignment_shift_x, alignment_shift_y, alignment_score = best_integer_translation(baseline, current)
     base_p5, base_p50, base_p95 = np.percentile(baseline, [5, 50, 95])
-    current_p5, current_p50, current_p95 = np.percentile(current, [5, 50, 95])
+    current_p5, current_p50, current_p95 = np.percentile(aligned, [5, 50, 95])
     current_span = max(float(current_p95 - current_p5), 1e-6)
     gain = float((base_p95 - base_p5) / current_span)
     offset = float(base_p50 - gain * current_p50)
 
-    corrected = np.clip(current * gain + offset, 0.0, 255.0)
-    residual = np.abs(corrected - baseline)
-    median = float(np.median(residual))
-    mad = float(np.median(np.abs(residual - median)))
+    corrected = np.clip(aligned * gain + offset, 0.0, 255.0)
+    direct_residual = np.abs(corrected - baseline)
+    median = float(np.median(direct_residual))
+    mad = float(np.median(np.abs(direct_residual - median)))
     residual_threshold = max(RESIDUAL_FLOOR, median + MAD_MULTIPLIER * MAD_TO_SIGMA * mad)
-    raw_mask = residual >= residual_threshold
-    lowfreq_diff = np.abs(box_blur(corrected) - box_blur(baseline))
+    lowfreq_diff = np.abs(
+        box_blur(corrected, LOWFREQ_BLUR_RADIUS) - box_blur(baseline, LOWFREQ_BLUR_RADIUS)
+    )
+    local_residual = local_symmetric_residual(baseline, corrected, EDGE_LOCAL_TOLERANCE_RADIUS)
+    near_baseline_edge = dilate_mask(sobel_edge_mask(baseline), EDGE_LOCAL_TOLERANCE_RADIUS)
+    near_current_edge = dilate_mask(sobel_edge_mask(corrected), EDGE_LOCAL_TOLERANCE_RADIUS)
+    shift_like = (
+        near_baseline_edge
+        & near_current_edge
+        & (local_residual < residual_threshold)
+        & (lowfreq_diff < EDGE_LOWFREQ_THRESHOLD)
+    )
+    raw_mask = (direct_residual >= residual_threshold) & ~shift_like
     filtered_mask, max_component_pixels, dropped_artifact_pixels, dropped_artifact_components = filter_residual_mask(
         raw_mask,
         lowfreq_diff,
@@ -139,11 +232,15 @@ def robust_residual_area(baseline: np.ndarray, current: np.ndarray) -> Tuple[flo
         "residual_threshold": residual_threshold,
         "residual_median": median,
         "residual_mad": mad,
-        "residual_mean": float(np.mean(residual)),
-        "residual_p95": float(np.percentile(residual, 95)),
-        "residual_p99": float(np.percentile(residual, 99)),
+        "residual_mean": float(np.mean(direct_residual)),
+        "residual_p95": float(np.percentile(direct_residual, 95)),
+        "residual_p99": float(np.percentile(direct_residual, 99)),
         "gain": gain,
         "offset": offset,
+        "alignment_shift_x": alignment_shift_x,
+        "alignment_shift_y": alignment_shift_y,
+        "alignment_score": alignment_score,
+        "edge_tolerance_suppressed_pixels": int(np.sum((direct_residual >= residual_threshold) & shift_like)),
         "residual_floor": RESIDUAL_FLOOR,
         "mad_multiplier": MAD_MULTIPLIER,
         "min_neighbor_count": MIN_NEIGHBOR_COUNT,
@@ -160,10 +257,20 @@ def robust_residual_area(baseline: np.ndarray, current: np.ndarray) -> Tuple[flo
 def save_overlay(path: Path, current: np.ndarray, baseline: np.ndarray, detail: dict) -> None:
     gain = float(detail["gain"])
     offset = float(detail["offset"])
-    corrected = np.clip(current * gain + offset, 0.0, 255.0)
+    aligned = shift_with_edge(current, int(detail["alignment_shift_y"]), int(detail["alignment_shift_x"]))
+    corrected = np.clip(aligned * gain + offset, 0.0, 255.0)
     residual = np.abs(corrected - baseline)
-    raw_mask = residual >= float(detail["residual_threshold"])
-    lowfreq_diff = np.abs(box_blur(corrected) - box_blur(baseline))
+    lowfreq_diff = np.abs(
+        box_blur(corrected, LOWFREQ_BLUR_RADIUS) - box_blur(baseline, LOWFREQ_BLUR_RADIUS)
+    )
+    local_residual = local_symmetric_residual(baseline, corrected, EDGE_LOCAL_TOLERANCE_RADIUS)
+    shift_like = (
+        dilate_mask(sobel_edge_mask(baseline), EDGE_LOCAL_TOLERANCE_RADIUS)
+        & dilate_mask(sobel_edge_mask(corrected), EDGE_LOCAL_TOLERANCE_RADIUS)
+        & (local_residual < float(detail["residual_threshold"]))
+        & (lowfreq_diff < EDGE_LOWFREQ_THRESHOLD)
+    )
+    raw_mask = (residual >= float(detail["residual_threshold"])) & ~shift_like
     mask, _, _, _ = filter_residual_mask(raw_mask, lowfreq_diff)
     overlay = np.stack([corrected, corrected, corrected], axis=2).astype(np.uint8)
     overlay[mask] = (overlay[mask] * 0.4 + np.array([0, 255, 0]) * 0.6).astype(np.uint8)
@@ -175,6 +282,8 @@ def save_overlay(path: Path, current: np.ndarray, baseline: np.ndarray, detail: 
 def main() -> int:
     global RESIDUAL_FLOOR, MAD_MULTIPLIER, MIN_NEIGHBOR_COUNT, MIN_COMPONENT_PIXELS
     global ARTIFACT_MAX_COMPONENT_PIXELS, ARTIFACT_LOWFREQ_MEAN_THRESHOLD, LOWFREQ_BLUR_RADIUS
+    global ALIGNMENT_SEARCH_RADIUS, EDGE_LOCAL_TOLERANCE_RADIUS
+    global EDGE_MAGNITUDE_THRESHOLD, EDGE_LOWFREQ_THRESHOLD
 
     parser = argparse.ArgumentParser(description="Run tactile robust residual damage check.")
     parser.add_argument("--baseline", required=True, type=Path, help="Baseline image or 160x120 .gray file.")
@@ -187,8 +296,13 @@ def main() -> int:
     parser.add_argument("--artifact-max-component-pixels", type=int, default=ARTIFACT_MAX_COMPONENT_PIXELS, help="Drop retained components at or below this size when their low-frequency change is small.")
     parser.add_argument("--artifact-lowfreq-mean-threshold", type=float, default=ARTIFACT_LOWFREQ_MEAN_THRESHOLD, help="Drop small components whose mean low-frequency difference is below this threshold.")
     parser.add_argument("--lowfreq-blur-radius", type=int, default=LOWFREQ_BLUR_RADIUS, help="Box blur radius for low-frequency difference used by artifact filtering.")
+    parser.add_argument("--alignment-search-radius", type=int, default=ALIGNMENT_SEARCH_RADIUS, help="Integer global translation search radius in pixels.")
+    parser.add_argument("--edge-local-tolerance-radius", type=int, default=EDGE_LOCAL_TOLERANCE_RADIUS, help="Local bidirectional tolerance radius near texture edges.")
+    parser.add_argument("--edge-magnitude-threshold", type=float, default=EDGE_MAGNITUDE_THRESHOLD, help="Sobel magnitude threshold used to identify texture edges.")
+    parser.add_argument("--edge-lowfreq-threshold", type=float, default=EDGE_LOWFREQ_THRESHOLD, help="Maximum low-frequency difference for edge-shift suppression.")
     parser.add_argument("--json", action="store_true", help="Print JSON only.")
     parser.add_argument("--overlay", type=Path, help="Optional output path for a green residual mask overlay PNG.")
+    parser.add_argument("--preprocessed", action="store_true", help="Treat image inputs as already cropped tactile frames and only resize them to 160x120.")
     args = parser.parse_args()
 
     RESIDUAL_FLOOR = args.residual_floor
@@ -198,9 +312,13 @@ def main() -> int:
     ARTIFACT_MAX_COMPONENT_PIXELS = args.artifact_max_component_pixels
     ARTIFACT_LOWFREQ_MEAN_THRESHOLD = args.artifact_lowfreq_mean_threshold
     LOWFREQ_BLUR_RADIUS = args.lowfreq_blur_radius
+    ALIGNMENT_SEARCH_RADIUS = args.alignment_search_radius
+    EDGE_LOCAL_TOLERANCE_RADIUS = args.edge_local_tolerance_radius
+    EDGE_MAGNITUDE_THRESHOLD = args.edge_magnitude_threshold
+    EDGE_LOWFREQ_THRESHOLD = args.edge_lowfreq_threshold
 
-    baseline = load_tactile_frame(args.baseline)
-    current = load_tactile_frame(args.current)
+    baseline = load_tactile_frame(args.baseline, args.preprocessed)
+    current = load_tactile_frame(args.current, args.preprocessed)
     score, detail = robust_residual_area(baseline, current)
     damaged = score >= args.threshold
     result = {
@@ -226,6 +344,10 @@ def main() -> int:
         print(f"residual_mad={detail['residual_mad']:.3f}")
         print(f"mad_multiplier={detail['mad_multiplier']:.3f}")
         print(f"residual_p99={detail['residual_p99']:.3f}")
+        print(f"alignment_shift_x={detail['alignment_shift_x']}")
+        print(f"alignment_shift_y={detail['alignment_shift_y']}")
+        print(f"alignment_score={detail['alignment_score']:.3f}")
+        print(f"edge_tolerance_suppressed_pixels={detail['edge_tolerance_suppressed_pixels']}")
         print(f"max_component_pixels={detail['max_component_pixels']}")
         print(f"min_component_pixels={detail['min_component_pixels']}")
         print(f"artifact_dropped_pixels={detail['artifact_dropped_pixels']}")

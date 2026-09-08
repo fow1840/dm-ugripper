@@ -1,24 +1,30 @@
 # Changelog
 
-- 主摄新增通用命名的 `UGRIPPER_POWER_LINE_FREQUENCY` 环境配置，安装时默认写入 `50` Hz，可改为 `60` Hz 以匹配供电频率；当前仅主摄启动时按配置下发 V4L2 防频闪参数。
-
 ## Unreleased
 
-- H.265 主摄改用 UVC XU RTC 与码流 XU2 SEI 建立 Unix 时间轴：起流前写入主机 Unix 时间 `Tset` 加 `200us`，GET 读取固件在 SET 时锁存的 encoder `Pset`，每帧 Unix 时间按 `Tset + Pframe - Pset` 计算；首个实际写入的 clean keyframe 以其换算后的 Unix 时间写入 metadata `start_offset_us`，后续 PTS 保留 encoder 实际间隔。主摄原 `36ms` 后处理补偿暂置为 `0`，H.264 继续使用 V4L2 时间；tcam 改为向前校正 `-36ms`，stereo camera `publishTime` 改为向前校正 `-3ms`。
-- 停止录制并完成写盘后切回 READY 绿色呼吸灯时，左右灯从最大绿灯亮度约 `70%` 的上升段同步开始，不再可能从全灭阶段逐渐亮起；持续 READY 与夹爪重连不会重复重置呼吸相位。
-- Fays VIKit SDK 从 `3.8.1` 更新到上游 `v3.8.3`（`8e2d91a08b065bde247a2283ecaa4bb7fd3aa419`）：保留 `3.8.2` 对 IMU 帧时间戳小概率回退的修复，并进一步优化数据流初始化稳定性；同步 aarch64/x86_64 运行库与版本头，FT602 `1.0.17` 保持不变。
-- GripperHmiTool 新增绝对只读的 HMI 双版本字段读取：依次发送 `0x52/0x56` 与 `0x52/0x57`，单路 `F2` 不阻断另一通道，并通过 `version_56` / `version_57` 稳定输出供生产强检选择有效固件版本；另新增显式高风险命令 `--initialize-version-preserve-payload`，初始化前完整缓存 `32-byte` SN 与 `1024-byte` 标定 payload，初始化后逐字节原样写回并回读比对，写入或回读失败最多执行 3 轮完整恢复。
-- metadata schema 更新到 `data_version=3.2`：在 `task_stop_s` 后依次新增 Unix 秒开机时间 `boot_time_s` 和触觉损坏 SN 列表 `tactile_damage_sn_list`；后台触觉校验按本条 episode 单次 `damaged=true` 原子回写对应 SN，无损坏保持空列表。停录收尾调整为先同步 `video stop` 运行日志，再释放录制锁；离线 episode 校验器同步支持 3.2，并兼容历史 3.1/3.0。
-- 新增 PC 端外部秒表录制联动测试脚本：自动下发到 240 板端，先通过 runtime 软件录制 FIFO 启动正常录制，默认等待 `2s` 后再以 GPIO139 触发秒表；默认总录制时长为 `15s`，触发延迟可配置且必须小于总时长。GPIO 初始化通过 sysfs `direction=high/low` 原子设置方向和空闲电平，避免写 `out` 时的瞬时低电平在正式测试前误触发秒表；初始化后改由常驻 root Python helper 预打开 GPIO fd，并在同一进程内用 `CLOCK_REALTIME/CLOCK_MONOTONIC_RAW` 夹逼 `write()`，替代正式触发路径中的 `date + sudo tee` 多进程调用。执行前同步覆盖收紧版 CH9344 helper，只允许 bus1/bus9 分别映射右/左夹爪并排除 bus5/bus11，同时校验四个逻辑链接的唯一性和物理来源，失败时不触发测试；停录收尾后在对应 episode 写入 schema v2 `stopwatch_timing.json`，记录 GPIO start/stop 写入前后、区间中点、微秒级窗口与录制命令时间。
-- Ego 起录前时间同步增加严格 `<15ms` 误差门限：每次绝对授时固定补偿实测 ADB 生效延迟 `20ms`，未达标时最多按同一策略重试三次；连续失败以 `UGR-82-02` 中止本条录制并进入 `ERROR_5`。
-- 修复 Ego dataset 路径发现被旧 serial 目录提前截断的问题：绑定 serial 的精确路径、legacy root 与 fallback 扫描结果现在统一汇总去重，空的旧目录不再遮蔽 Ego App 新建 episode 所在目录。
-- Ego 停录改为最多 `3` 次 STOP 广播并固定 `100ms` 重试间隔，实际进入 recording 后的设备消失统一上报 `ego_disconnected/ERROR_5`；finalize 文件大小不一致时复用 offset 断点续传有限重拉，远端 cleanup 跳过不再覆盖主结果。Ego 绑定、解绑及绑定失败提示音结束后按侧回读确认蜂鸣器为 `0/0`，未关闭时最多重试 `5` 次。
+## v2.1.12 - 2026-09-07
 
-## v2.1.11 - 2026-08-12
+- 触觉损坏软校验新增低开销空间容错：先执行 `±2 px` 全局整数平移配准，再仅对双侧纹理边缘开放双向 `1 px` 局部容差，过滤长边线的 `1~2 px` 漂移误报；保留亮度/对比度配准、MAD 阈值、邻域投票和连通域过滤，并在诊断日志中记录配准位移、评分及边缘抑制像素数。
+- H.265 主摄改用 UVC XU RTC 与码流 XU2 SEI 建立 Unix 时间轴：起流前写入主机 Unix 时间 `Tset` 加 `200us`，GET 读取固件在 SET 时锁存的 encoder `Pset`，每帧 Unix 时间按 `Tset + Pframe - Pset` 计算；首个实际写入的 clean keyframe 以其换算后的 Unix 时间写入 metadata `start_offset_us`，后续 PTS 保留 encoder 实际间隔。主摄原 `36ms` 后处理补偿暂置为 `0`，H.264 继续使用 V4L2 时间；tcam 改为向前校正 `-36ms`，stereo camera `publishTime` 改为向前校正 `-3ms`。
+- 主摄新增通用命名的 `UGRIPPER_POWER_LINE_FREQUENCY` 环境配置，安装时默认写入 `50` Hz，可改为 `60` Hz 以匹配供电频率；当前仅主摄启动时按配置下发 V4L2 防频闪参数。
+- metadata schema 更新到 `data_version=3.2`：在 `task_stop_s` 后依次新增 Unix 秒开机时间 `boot_time_s` 和触觉损坏 SN 列表 `tactile_damage_sn_list`；后台触觉校验按本条 episode 单次 `damaged=true` 原子回写对应 SN，无损坏保持空列表。停录收尾调整为先同步 `video stop` 运行日志，再释放录制锁；离线 episode 校验器同步支持 3.2，并兼容历史 3.1/3.0。
+- UgripperRuntime 完成领域拆分与接口收口：将录制、设备、校验、恢复、服务和持久化职责从单体实现拆到独立模块，补齐 ownership/dependency ports，统一 `DA::Ugripper` 命名与公开 API，并对齐 pp-main 公共日志/工具库及 host-only 单测边界；外部录制行为和安装布局保持不变。
+- 外部秒表录制联动脚本升级为 schema v2：常驻 root Python helper 预打开 GPIO fd，并在同一进程内用 `CLOCK_REALTIME/CLOCK_MONOTONIC_RAW` 夹逼 `write()`，替代正式触发路径中的 `date + sudo tee` 多进程调用；`stopwatch_timing.json` 增加 GPIO start/stop 写入前后、区间中点和微秒级窗口。
+- 新增快速 ARM deb 部署入口 `scripts/deploy_arm_deb_fast.sh`：根据 source manifest 自动选择 full/quick/skip 构建模式，增量传输指定主包和可选 updater，并在目标板安装后回读包版本及 `ugripper.service` 状态。
+- 构建脚本默认主包版本调整到 `2.1.12`。
+
+## v2.1.11 - 2026-09-02
 
 - 主运行日志统一为 V3 单行合同，C++、Python、Shell 与外部 child 使用同一 Unix 微秒/native TID/等级/调用点外层；既有错误分支追加显式 `UGR-xx-xx` 错误码，并补齐日志合同检查工具。
-- 修复 Ego 解绑后状态仍残留 `connected`，并兼容新版 `/files/dataset/<ego_serial>/data`、旧 serial-scoped 路径及 legacy dataset root。
-- Fays VIKit SDK 从 `3.8.0` 更新到上游 `v3.8.1`，修复 IMU 参数读取错误；FT602 `1.0.17` 保持不变。
+- Ego 起录前时间同步增加严格 `<15ms` 误差门限，每次绝对授时固定补偿实测 ADB 生效延迟 `20ms`，未达标时最多重试三次；连续失败以 `UGR-82-02` 中止本条录制并进入 `ERROR_5`。
+- 修复 Ego 解绑后状态仍残留 `connected` 及旧 serial 目录遮蔽实际 episode 的问题；绑定 serial 精确路径、新旧 serial-scoped 路径、legacy root 与 fallback 扫描结果统一汇总去重，并阻止解绑前的旧 probe 回写状态。
+- Ego 停录改为最多 `3` 次 STOP 广播并固定 `100ms` 重试间隔；录制中设备消失统一上报 `ego_disconnected/ERROR_5`，finalize 文件大小不一致时按 offset 有限重拉，恢复未完成时保留远端结果。
+- Fays VIKit SDK 从 `3.8.0` 更新到上游 `v3.8.3`（`8e2d91a08b065bde247a2283ecaa4bb7fd3aa419`），修复 IMU 参数读取和帧时间戳小概率回退问题，并优化数据流初始化稳定性；同步 aarch64/x86_64 运行库与版本头，FT602 `1.0.17` 保持不变。
+- 相机全局时间补偿配置集中到 recorder 各自的头文件，V2.1.11 发布值保持为 `0`：主摄、tcam 与 stereo camera 均不额外调整全局 Unix 时间，视频 PTS、Fays 原始 `logTime` 与 IMU 时间保持不变。
+- metadata 发布格式保持 `data_version=3.1`，不生成 `boot_time_s` 和 `tactile_damage_sn_list`；后台触觉校验继续记录历史，离线 episode 校验器兼容已有 3.2 数据及历史 3.0。
+- GripperHmiTool 新增 HMI 双版本字段只读查询，分别输出 `version_56` / `version_57`；新增显式高风险初始化命令，在初始化前缓存并在初始化后逐字节恢复、回读验证 SN 与标定 payload，失败时最多执行 3 轮完整恢复。
+- 停录写盘后返回 READY 时，左右绿色呼吸灯从约 `70%` 最大亮度的上升段同步开始；持续 READY 与夹爪重连不重复重置相位。Ego 绑定、解绑及绑定失败提示音结束后按侧回读确认蜂鸣器为 `0/0`，未关闭时最多重试 `5` 次。
+- 收紧 CH9344 外部 hub 映射，只允许 bus1/bus9 分别映射右/左夹爪并排除 bus5/bus11；新增 PC 端外部秒表录制联动脚本，通过 runtime FIFO 启停录制、使用 GPIO139 触发秒表，并在 episode 写入 `stopwatch_timing.json`。
 - 构建脚本默认主包版本调整到 `2.1.11`。
 
 ## v2.1.10 - 2026-07-29

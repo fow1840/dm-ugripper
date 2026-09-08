@@ -116,6 +116,7 @@ add_executable(${APP_NAME}
     runtime_episode.cc
     runtime_episode_tactile_validation.cc
     runtime_episode_validation.cc
+    tactile_residual.cc
     runtime_persistence_support.cc
     runtime_recovery.cc
     runtime_services.cc

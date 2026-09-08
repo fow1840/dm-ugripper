@@ -79,6 +79,11 @@ add_host_only_runtime_gtest(test_shutdown_request_port
     test_shutdown_request_port.cc
 )
 
+add_host_only_runtime_gtest(test_tactile_residual
+    test_tactile_residual.cc
+    ${CMAKE_SOURCE_DIR}/standalone/UgripperRuntime/tactile_residual.cc
+)
+
 add_test(
     NAME test_check_hmi_event_log_pass
     COMMAND ${Python3_EXECUTABLE}
