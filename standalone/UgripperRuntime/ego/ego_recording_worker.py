@@ -3,6 +3,8 @@ import argparse
 import fcntl
 import json
 import os
+import re
+import shlex
 import shutil
 import struct
 import subprocess
@@ -323,6 +325,91 @@ def detect_egos(preferred_serial: str = "") -> tuple[list[Adb], list[dict]]:
     return devices, details
 
 
+
+FEATURE_MIN_APP_VERSION = (1, 0, 4)
+ENVIRONMENT_FILE = Path("/etc/environment")
+
+
+def parse_release_version(value: str) -> tuple[int, int, int] | None:
+    match = re.fullmatch(r"[vV]?(\d+)\.(\d+)\.(\d+)", value.strip())
+    return tuple(int(part) for part in match.groups()) if match else None
+
+
+def read_environment_value(key: str) -> str:
+    # Parse as data, never source the system environment file as shell code.
+    try:
+        value = ""
+        for line in ENVIRONMENT_FILE.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"^\s*(?:export\s+)?" + re.escape(key) + r"\s*=\s*(.*)$", line)
+            if match:
+                parts = shlex.split(match.group(1), comments=True)
+                value = parts[0] if len(parts) == 1 else ""
+        return value
+    except (OSError, ValueError, UnicodeError):
+        return ""
+
+
+def read_app_version(adb: Adb) -> dict:
+    detail = {"version_name": "", "features_supported": False}
+    try:
+        result = adb.run("shell", "dumpsys", "package", PACKAGE, timeout=5)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "dumpsys package failed")
+        match = re.search(r"^\s*versionName=([^\s]+)", result.stdout, re.MULTILINE)
+        version_name = match.group(1) if match else ""
+        version = parse_release_version(version_name)
+        detail.update(version_name=version_name,
+                      features_supported=version is not None and version >= FEATURE_MIN_APP_VERSION)
+        if version is None:
+            detail["error"] = "app version unavailable or invalid"
+    except Exception as exc:
+        detail["error"] = str(exc)
+    return detail
+
+
+def app_broadcast(adb: Adb, receiver: str, action: str, *extras: str) -> dict:
+    detail = {"status": "failed"}
+    try:
+        result = adb.run("shell", "am", "broadcast", "-n", f"{PACKAGE}/.{receiver}",
+                         "-a", f"{PACKAGE}.{action}", *extras, timeout=5)
+        detail.update(returncode=result.returncode, stdout=result.stdout.strip(),
+                      stderr=result.stderr.strip())
+        completed = re.search(r'Broadcast completed: result=(-?\d+), data="(.*)"', result.stdout)
+        if result.returncode != 0 or not completed or int(completed.group(1)) != -1:
+            raise RuntimeError("broadcast did not return RESULT_OK with JSON data")
+        payload = json.loads(completed.group(2))
+        if not isinstance(payload, dict):
+            raise ValueError("broadcast response is not a JSON object")
+        detail.update(status="returned", response=payload)
+    except Exception as exc:
+        detail["error"] = str(exc)
+    return detail
+
+
+def configure_input_current(adb: Adb, app: dict) -> dict:
+    hardware = read_environment_value("HARDWARE_VERSION")
+    version = parse_release_version(hardware)
+    current_ua = (1600000 if version is not None and version[:2] == (2, 5)
+                  and version > (2, 5, 0) else 1100000)
+    detail = {"hardware_version": hardware, "current_ua": current_ua}
+    if not app.get("features_supported"):
+        detail.update(status="skipped", reason="app version must be >= 1.0.4")
+        return detail
+    detail.update(app_broadcast(adb, "InputCurrentLimitReceiver", "SET_INPUT_CURRENT_LIMIT",
+                                "--ei", "current_ua", str(current_ua)))
+    response = detail.get("response", {})
+    ok = (detail["status"] == "returned" and response.get("status") == "ok"
+          and response.get("requested_ua") == current_ua
+          and response.get("callback") == "success"
+          and str(response.get("readback")) == str(current_ua)
+          and response.get("matched") is True and response.get("persisted") is True
+          and response.get("error") is None)
+    detail["status"] = "ok" if ok else "failed"
+    if not ok:
+        detail.setdefault("error", "input current response did not confirm applied and persisted value")
+    return detail
+
+
 def run_bind(args: argparse.Namespace) -> int:
     status = {"status": "error", "updated_at_ms": now_ms()}
     try:
@@ -342,7 +429,14 @@ def run_bind(args: argparse.Namespace) -> int:
             (detail for detail in candidates if detail.get("serial") == selected.serial),
             {"serial": selected.serial},
         )
+        app = read_app_version(selected)
+        input_current = configure_input_current(selected, app)
+        ugripper_log("WARN" if input_current["status"] == "failed" else "INFO",
+                     "binding features " + json.dumps({"serial": selected.serial, "app": app,
+                                                        "input_current": input_current}), component="ego")
         binding = {
+            "app": app,
+            "input_current": input_current,
             "serial": selected.serial,
             "bound_at_ms": now_ms(),
             "device": selected_detail,

@@ -37,6 +37,54 @@ class FakeAdb:
         raise AssertionError(f"unexpected adb command: {args}")
 
 
+class EgoAppFeaturesTest(unittest.TestCase):
+    def test_app_version_gate(self):
+        for version, expected in (("1.0.3", False), ("1.0.4", True), ("1.0.10", True),
+                                  ("1.1.0", True), ("2.0.0", True), ("v1.0.4", True),
+                                  ("", False), ("1.0.4-beta", False), ("garbage", False)):
+            with self.subTest(version=version):
+                adb = mock.Mock()
+                adb.run.return_value = subprocess.CompletedProcess([], 0, f"  versionName={version}\n", "")
+                self.assertEqual(WORKER.read_app_version(adb)["features_supported"], expected)
+        adb.run.side_effect = subprocess.TimeoutExpired("adb", 5)
+        self.assertFalse(WORKER.read_app_version(adb)["features_supported"])
+
+    def test_current_limits_and_environment_parsing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env_file = Path(directory) / "environment"
+            with mock.patch.object(WORKER, "ENVIRONMENT_FILE", env_file):
+                for value, expected in ((None, 1100000), ("garbage", 1100000), ("2.5", 1100000),
+                                        ("2.4.9", 1100000), ("2.5.0", 1100000), ("2.5.1", 1600000),
+                                        ("2.5.10", 1600000), ("v2.5.1", 1600000), ("2.6.0", 1100000)):
+                    with self.subTest(value=value):
+                        if value is None:
+                            env_file.unlink(missing_ok=True)
+                        else:
+                            env_file.write_text(f'export HARDWARE_VERSION="{value}" # board\n')
+                        response = {"status": "ok", "requested_ua": expected, "callback": "success",
+                                    "readback": str(expected), "matched": True, "persisted": True, "error": None}
+                        adb = mock.Mock()
+                        adb.run.return_value = subprocess.CompletedProcess(
+                            [], 0, 'Broadcast completed: result=-1, data="' + json.dumps(response) + '"\n', "")
+                        result = WORKER.configure_input_current(adb, {"features_supported": True})
+                        self.assertEqual(result["status"], "ok")
+                        self.assertEqual(result["current_ua"], expected)
+                        self.assertEqual(adb.run.call_args.args[-3:], ("--ei", "current_ua", str(expected)))
+                adb.reset_mock()
+                self.assertEqual(WORKER.configure_input_current(adb, {"features_supported": False})["status"], "skipped")
+                adb.run.assert_not_called()
+
+    def test_current_rejects_unconfirmed_results(self):
+        for output in ('Broadcast completed: result=0', 'Broadcast completed: result=-1, data="bad json"',
+                       'Broadcast completed: result=-1, data="{}"',
+                       'Broadcast completed: result=-1, data="{"status":"ok","persisted":false}"'):
+            with self.subTest(output=output), mock.patch.object(WORKER, "read_environment_value", return_value="2.5.0"):
+                adb = mock.Mock()
+                adb.run.return_value = subprocess.CompletedProcess([], 0, output, "")
+                self.assertEqual(WORKER.configure_input_current(adb, {"features_supported": True})["status"], "failed")
+
+
+
 class EgoRecordingWorkerTest(unittest.TestCase):
     def test_time_sync_accepts_first_attempt_below_threshold(self):
         first_set = {"returncode": 0, "elapsed_ms": 2, "stdout": "", "stderr": ""}
