@@ -267,15 +267,21 @@ std::optional<MainCameraXuTimestamp> ParseMainCameraXuTimestamp(
 std::optional<int64_t> MainCameraFrameUnixTimeUs(
     const MainCameraXuTimestamp& timestamp,
     uint64_t encoder_pts_at_set_us) {
-    if (timestamp.xu_time_us == 0 ||
-        timestamp.encoder_pts_us < encoder_pts_at_set_us) {
+    constexpr uint64_t kMax = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+    if (timestamp.xu_time_us == 0 || timestamp.xu_time_us > kMax) {
         return std::nullopt;
     }
-    const uint64_t elapsed_since_set_us =
-        timestamp.encoder_pts_us - encoder_pts_at_set_us;
-    constexpr uint64_t kMax = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
-    if (timestamp.xu_time_us > kMax ||
-        elapsed_since_set_us > kMax - timestamp.xu_time_us) {
+    // SEI can carry the new SET value for a frame captured before that SET.
+    // Subtract unsigned magnitudes separately to avoid underflow and signed overflow.
+    if (timestamp.encoder_pts_us < encoder_pts_at_set_us) {
+        const uint64_t before_set_us = encoder_pts_at_set_us - timestamp.encoder_pts_us;
+        if (before_set_us >= timestamp.xu_time_us) {
+            return std::nullopt;
+        }
+        return static_cast<int64_t>(timestamp.xu_time_us - before_set_us);
+    }
+    const uint64_t elapsed_since_set_us = timestamp.encoder_pts_us - encoder_pts_at_set_us;
+    if (elapsed_since_set_us > kMax - timestamp.xu_time_us) {
         return std::nullopt;
     }
     return static_cast<int64_t>(timestamp.xu_time_us + elapsed_since_set_us);

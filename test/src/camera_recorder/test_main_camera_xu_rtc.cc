@@ -132,13 +132,41 @@ TEST(MainCameraXuRtcTest, MapsSetEncoderPtsToWrittenUnixTime) {
               1'788'161'400'000'000);
 }
 
-TEST(MainCameraXuRtcTest, RejectsEncoderPtsBeforePset) {
+TEST(MainCameraXuRtcTest, MapsCapturedPreSetFrameWithNewSeiAnchor) {
+    // Captured on 240 during periodic SET: new SEI Tset, frame 40.273ms before Pset.
     const ugripper::camera::MainCameraXuTimestamp timestamp{
-        .encoder_pts_us = 99,
-        .xu_time_us = 1'700'000'000'000'000,
+        .encoder_pts_us = 1'167'848'301,
+        .xu_time_us = 1'789'108'668'477'479,
     };
-    EXPECT_FALSE(ugripper::camera::MainCameraFrameUnixTimeUs(timestamp, 100)
-                     .has_value());
+    EXPECT_EQ(ugripper::camera::MainCameraFrameUnixTimeUs(timestamp, 1'167'888'574),
+              1'789'108'668'437'206);
+}
+
+TEST(MainCameraXuRtcTest, RejectsNonpositiveUnixTimeAfterPreSetAdjustment) {
+    const ugripper::camera::MainCameraXuTimestamp timestamp{
+        .encoder_pts_us = 0,
+        .xu_time_us = 100,
+    };
+    EXPECT_FALSE(ugripper::camera::MainCameraFrameUnixTimeUs(timestamp, 100));
+    EXPECT_FALSE(ugripper::camera::MainCameraFrameUnixTimeUs(timestamp, 101));
+}
+
+TEST(MainCameraXuRtcTest, HandlesEncoderCountersBeyondSignedRange) {
+    constexpr auto kMax = std::numeric_limits<uint64_t>::max();
+    const ugripper::camera::MainCameraXuTimestamp before{
+        .encoder_pts_us = kMax - 10, .xu_time_us = 1000,
+    };
+    const ugripper::camera::MainCameraXuTimestamp after{
+        .encoder_pts_us = kMax, .xu_time_us = 1000,
+    };
+    EXPECT_EQ(ugripper::camera::MainCameraFrameUnixTimeUs(before, kMax), 990);
+    EXPECT_EQ(ugripper::camera::MainCameraFrameUnixTimeUs(after, kMax - 10), 1010);
+}
+
+TEST(MainCameraXuRtcTest, RejectsInvalidAnchorBeforeSubtractingDelta) {
+    constexpr auto kMax = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+    EXPECT_FALSE(ugripper::camera::MainCameraFrameUnixTimeUs({0, 0}, 0));
+    EXPECT_FALSE(ugripper::camera::MainCameraFrameUnixTimeUs({0, kMax + 1}, 1));
 }
 
 TEST(MainCameraXuRtcTest, RejectsUnixTimeOverflow) {

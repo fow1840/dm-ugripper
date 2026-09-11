@@ -1741,6 +1741,8 @@ private:
             }
             rtc_tset_us_ = static_cast<uint64_t>(*write_time_us);
             rtc_pset_us_ = *pset_us;
+            rtc_anchors_.emplace_back(*rtc_tset_us_, *rtc_pset_us_);
+            next_rtc_sync_ = std::chrono::steady_clock::now() + std::chrono::seconds(10);
             DM_LOG_INFO("{}", (::DA::utils::LogString()
                                << "[camera_recorder][main_rtc_sync]"
                                << " name=" << config_.name
@@ -1763,8 +1765,45 @@ private:
         return true;
     }
 
+    bool MaybeSyncRtc() {
+        if (options_.codec != "h265" || std::chrono::steady_clock::now() < next_rtc_sync_) {
+            return true;
+        }
+        next_rtc_sync_ = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        const auto tset = ugripper::camera::MainCameraRtcWriteTimeUs(CurrentSystemTimeUs());
+        std::string error;
+        if (!tset || !ugripper::camera::SetMainCameraRtcUs(fd_, static_cast<uint64_t>(*tset), &error)) {
+            DM_LOG_WARN("[camera_recorder][main_rtc_sync_failed] name={} stage=set error={}", config_.name, error);
+            // A failed SET may still have reached the device; do not use an uncertain anchor.
+            SetFailure("periodic main camera RTC SET failed for " + config_.name + ": " + error);
+            return false;
+        }
+        const auto pset = ugripper::camera::GetMainCameraRtcPsetUs(fd_, &error);
+        if (!pset) {
+            DM_LOG_WARN("[camera_recorder][main_rtc_sync_failed] name={} stage=get error={}", config_.name, error);
+            SetFailure("periodic main camera RTC GET failed for " + config_.name + ": " + error);
+            return false;
+        }
+        const int64_t correction_us = (*tset - static_cast<int64_t>(*pset)) -
+            (static_cast<int64_t>(*rtc_tset_us_) - static_cast<int64_t>(*rtc_pset_us_));
+        if (correction_us > 10000 || correction_us < -10000) {
+            DM_LOG_WARN("[camera_recorder][main_rtc_sync_jump] name={} correction_us={} tset_us={} pset_us={}",
+                        config_.name, correction_us, *tset, *pset);
+        }
+        DM_LOG_INFO("[camera_recorder][main_rtc_sync] name={} periodic=true correction_us={} tset_us={} pset_us={}",
+                    config_.name, correction_us, *tset, *pset);
+        rtc_tset_us_ = static_cast<uint64_t>(*tset);
+        rtc_pset_us_ = *pset;
+        // Keep session anchors so queued pre-SET frames retain their original mapping.
+        rtc_anchors_.emplace_back(*rtc_tset_us_, *rtc_pset_us_);
+        return true;
+    }
+
     void CaptureLoop() {
         while (!stop_requested_.load(std::memory_order_acquire)) {
+            if (!MaybeSyncRtc()) {
+                break;
+            }
             pollfd poll_fd{};
             poll_fd.fd = fd_;
             poll_fd.events = POLLIN | POLLPRI;
@@ -1826,7 +1865,9 @@ private:
                     RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
                     break;
                 }
-                if (xu_timestamp->xu_time_us != *rtc_tset_us_) {
+                const auto anchor = std::find_if(rtc_anchors_.rbegin(), rtc_anchors_.rend(),
+                    [&](const auto& value) { return value.first == xu_timestamp->xu_time_us; });
+                if (anchor == rtc_anchors_.rend()) {
                     SetFailure("XU2 SEI Tset does not match the synchronized value for " +
                                config_.name);
                     RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
@@ -1834,7 +1875,7 @@ private:
                 }
                 const auto frame_unix_time_us =
                     ugripper::camera::MainCameraFrameUnixTimeUs(
-                        *xu_timestamp, *rtc_pset_us_);
+                        *xu_timestamp, anchor->second);
                 if (!frame_unix_time_us.has_value()) {
                     SetFailure("invalid XU2 SEI Unix timestamp for " + config_.name);
                     RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
@@ -2032,7 +2073,7 @@ private:
             }
             max_timestamp_adjustment_us_ =
                 std::max(max_timestamp_adjustment_us_, timing.adjustment_us);
-            if (timestamp_clamp_count_ == 1 ||
+            if (timing.timestamp_rollback || timestamp_clamp_count_ == 1 ||
                 (timestamp_clamp_count_ & (timestamp_clamp_count_ - 1)) == 0) {
                 DM_LOG_WARN("{}", (::DA::utils::LogString()
                                      << "[camera_recorder][main_timestamp_clamp]"
@@ -2384,6 +2425,8 @@ private:
     std::optional<int64_t> last_frame_pts_us_;
     std::optional<int64_t> last_frame_system_time_us_;
     std::optional<int64_t> record_time_offset_us_;
+    std::vector<std::pair<uint64_t, uint64_t>> rtc_anchors_;
+    std::chrono::steady_clock::time_point next_rtc_sync_{};
     std::optional<uint64_t> rtc_tset_us_;
     std::optional<uint64_t> rtc_pset_us_;
     std::optional<uint64_t> first_encoder_pts_us_;

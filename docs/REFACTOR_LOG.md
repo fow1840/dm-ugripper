@@ -6,6 +6,29 @@
 - `docs/CHANGELOG.md`：记录对外可感知的软件功能变化、行为变化、修复与发布内容
 - `docs/REFACTOR_LOG.md`：记录内部结构调整、阶段推进、helper 收口、日志统一、路径治理、脚本拆分等重构事项
 
+## 2026-09-11 - 240 主摄周期校时有符号差值修复通过
+
+- 承接同日首次校时失败：先在 240 用独立 V4L2/XU 探针抓取原始时间戳，再运行临时实验版正常录制与异常注入，方法确认后同步生产源码、重新 ARM 打包安装并复测。
+- 原因与方法：固件过渡帧已带新 `Tset`，但 `Pframe` 仍可能早于新 `Pset`；双路 42 秒探针共 5011 帧、各 4 次周期校时，发现 19 个负差值过渡帧（约 -40.273ms 至 -5.480ms），encoder 连续未重置。`MainCameraFrameUnixTimeUs` 改为 `Tset + signed(Pframe-Pset)` 的等价分支计算，避免无符号下溢，继续拒绝非正 Unix 时间和 int64 溢出。
+- 已落地 / 已接线：保留 10 秒周期、按帧 SEI 匹配新旧基准、超过 10ms warning 和 `last_pts+1us` 钳制；增加真实过渡帧及整数边界单测，当前源码重新编译运行 12 项全部通过。
+- 已重跑验证：实验版 `episode_20260911_0002` 的 5225 帧与正式 `2.1.12` 包 `episode_20260911_0003` 的 5248 帧通过。最终 episode `quality_check_status=success`、时长 44.2 秒；两路各 2624 帧、4 次周期校时、5 个 SEI 基准，PTS 无重复/回退，最大帧间隔左 17.995ms、右 17.113ms，解码无错误。所有帧由 SEI/匹配 Pset 重算后，与 MKV PTS 比较误差均为 0us。
+- 异常注入：仅在 tmp 测试版授时中加入 +50ms/-50ms/0 偏置，不改主机系统时间。实测相邻修正约 +50/-100/+50ms，两路各 3 次 `main_rtc_sync_jump`、各 5 次 `main_timestamp_clamp`，MKV PTS 仍严格递增、最小间隔 1us。默认 FFmpeg null 输出名义帧率量化会对人工 1us 间隔报 DTS 警告，明确微秒 encoder timebase 后解码无错误；原始 MKV PTS 无回退。注入代码未进入生产源码。
+- 构建安装：`TARGET_PASSWORD=ubuntu ./scripts/deploy_arm_deb_fast.sh --host 192.168.2.240 --skip-updater`，full ARM 编译和安装成功；主包两入口保持 2.1.12，updater 保持 1.0.4、未重建。最终 CameraRecorder 与本地 SHA-256 一致：`2324248d3e9cdd7c9e71868bf495a5b0758b437a198d5a6c2e4140e0b9859b5e`。`graphify update .` 和 `git diff --check` 通过。
+- 结果目录：`tmp/board_results/main_rtc_method_240_20260911/`；汇总 `test_summary.json`，`ok=true`、`validation_reason=signed_delta_transition_mapping_and_monotonic_pts_verified_on_240`。含探针源 `probe.cpp`、原始帧 CSV `probe_results/`、`probe_summary.json`、`candidate_analysis/`、`final_analysis/`、逐帧对照 `candidate_pts_mapping.json/final_pts_mapping.json`、异常日志 `injected.log/injection_summary.json/injected_analysis/`、正式复测脚本 `final_record.sh`、`final_run2.txt`、`deploy.log` 及两条成功 episode。
+- 环境与收尾：中途 USB 整组掉线、GPIO496 高电平停留，使用现有 USB 恢复入口恢复；安装后重枚举期间首个 START 被硬件错误态拒绝，等待 Ready 后复测成功。结束时服务 active、录制锁清除，板端保留正式包。
+- 边界：已证明周期过渡帧映射、实际 PTS 补偿、回退钳制和 warning；未验证外部曝光时间真值、长时 ppm 漂移或完整 release gate。此前失败记录保留追溯。
+
+## 2026-09-11 - 240 主摄 10 秒 XU 周期校时实测失败
+
+- 已落地 / 已接线：H.265 主摄周期 XU SET/GET、新旧 SEI Tset 映射和 PTS 单调钳制已安装在 `192.168.2.240` 的 `ugripper 2.1.12`；板端 CameraRecorder SHA-256 与本地构建一致：`f1da3dacf7173ca1bd4c49c7b795789ff2f6e5ae060f86e33617bfb8d330f6b8`。
+- 执行：通过 SSH 临时脚本向 `/dev/shm/ugripper/umi_record_control.pipe` 发 `START`，45 秒后发 `STOP`；随后在板端用 `ffprobe` 扫描逐包 PTS、`ffmpeg -nostdin` 全量解码两路主摄、`main_camera_xu_tool --parse-h265-timestamps` 解析复制导出的 H.265 SEI。
+- 结果目录：`tmp/board_results/main_rtc_periodic_240_20260911/`；汇总 JSON：`test_summary.json`；保留 `recording_run.txt`、`recording.log`、`runtime_full.log`、逐包 JSON、SEI 文本、解码输出与完整 `episode_20260911_0001/`。
+- `ok=false`，`validation_reason=both_main_cameras_rejected_first_post_sync_transition_at_10s`。左右第一次周期修正为 `+1045us/+339us`，随后均报 `invalid XU2 SEI Unix timestamp` (`UGR-20-05`)；左/右仅写入 `585/583` 帧，PTS span `9.733336/9.700000s`，metadata `quality_check_status=fail`、`quality_check_err_type=frame_loss`。运行时以左主摄约 `9.750s` 对参考 `44.801s` 的短流失败触发自动 USB 恢复。
+- 已证明：两路均调用一次周期校时，校时前 PTS 严格递增、逐帧间隔约 `16.65–16.69ms`，已有视频解码无错误；保存的 SEI 全部为启动时的旧 Tset，没有成功写入周期校时后的新基准帧。
+- 待修问题：`MainCameraFrameUnixTimeUs` 拒绝 `Pframe<Pset`，高度怀疑固件过渡帧已携带新 Tset，但 Pframe 早于新锁存 Pset；被拒帧没有落盘，日志未记录其具体 Pframe，因此尚未直接取到该数值证据。需支持安全的有符号时间差/明确过渡帧处理并重跑。
+- 覆盖边界：未证明跨校时点 PTS 单调；未触发 `>10ms` 修正或回退，两个 warning 分支尚未板端验证；没有外部曝光时间真值对比。未扩大到完整 release gate，未修改生产代码或重新打包。
+- 收尾：自动 USB 恢复后数据盘重新挂载，录制锁已清除，服务 `active`、硬件回到 `Ready`。临时采集脚本因自动卸载数据盘导致日志切片失败，已从 `/tmp` 原日志恢复并保存在结果目录，不影响上述故障证据。
+
 ## 使用规则
 
 1. 每次重构类改动完成后，都应按需更新本文件。

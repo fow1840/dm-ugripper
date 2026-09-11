@@ -27,6 +27,8 @@ std::optional<uint64_t> GetMainCameraRtcPsetUs(
 std::optional<MainCameraXuTimestamp> ParseMainCameraXuTimestamp(
     const uint8_t* access_unit, size_t size);
 
+// Frame PTS can precede Pset at an in-stream SET transition. Apply the signed
+// difference, rejecting zero/negative Unix results and int64 overflow.
 std::optional<int64_t> MainCameraFrameUnixTimeUs(
     const MainCameraXuTimestamp& timestamp,
     uint64_t encoder_pts_at_set_us);
