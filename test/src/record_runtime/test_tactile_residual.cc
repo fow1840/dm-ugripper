@@ -3,8 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
-#include <utility>
 #include <vector>
 
 namespace DA::Ugripper::detail {
@@ -17,29 +17,22 @@ std::vector<uint8_t> makeTexture()
     {
         for (int x = 0; x < kTactileFrameWidth; ++x)
         {
-            const int texture = ((x / 5 + y / 7) % 2 == 0) ? 28 : -18;
-            const int fine = (x * 3 + y * 5) % 13;
             frame[static_cast<size_t>(y) * kTactileFrameWidth + static_cast<size_t>(x)] =
-                static_cast<uint8_t>(std::clamp(115 + texture + fine, 0, 255));
+                static_cast<uint8_t>(60 + (x * 3 + y * 5) % 121);
         }
     }
     return frame;
 }
 
-std::vector<uint8_t> shiftWithEdge(const std::vector<uint8_t> &frame, int shiftY, int shiftX)
+std::vector<uint8_t> applyNonlinearBrightness(const std::vector<uint8_t> &frame)
 {
-    std::vector<uint8_t> shifted(frame.size(), 0);
-    for (int y = 0; y < kTactileFrameHeight; ++y)
+    std::vector<uint8_t> adjusted = frame;
+    for (uint8_t &value : adjusted)
     {
-        for (int x = 0; x < kTactileFrameWidth; ++x)
-        {
-            const int sourceY = std::clamp(y - shiftY, 0, kTactileFrameHeight - 1);
-            const int sourceX = std::clamp(x - shiftX, 0, kTactileFrameWidth - 1);
-            shifted[static_cast<size_t>(y) * kTactileFrameWidth + static_cast<size_t>(x)] =
-                frame[static_cast<size_t>(sourceY) * kTactileFrameWidth + static_cast<size_t>(sourceX)];
-        }
+        const double normalized = static_cast<double>(value) / 255.0;
+        value = static_cast<uint8_t>(std::lround(std::pow(normalized, 0.78) * 255.0));
     }
-    return shifted;
+    return adjusted;
 }
 
 TEST(TactileResidualTest, IdenticalFrameIsClean)
@@ -49,25 +42,12 @@ TEST(TactileResidualTest, IdenticalFrameIsClean)
 
     EXPECT_FALSE(metrics.damaged);
     EXPECT_DOUBLE_EQ(metrics.robustResidualArea, 0.0);
+    EXPECT_EQ(metrics.solidCorePixels, 0U);
     EXPECT_EQ(metrics.alignmentShiftX, 0);
     EXPECT_EQ(metrics.alignmentShiftY, 0);
 }
 
-TEST(TactileResidualTest, GlobalOneAndTwoPixelTranslationsAreAligned)
-{
-    const std::vector<uint8_t> baseline = makeTexture();
-    for (const auto [shiftY, shiftX] : {std::pair{0, 1}, std::pair{0, 2}, std::pair{1, 0},
-                                            std::pair{2, 0}, std::pair{1, 1}, std::pair{-2, 2}})
-    {
-        const TactileFrameMetrics metrics =
-            computeTactileFrameMetrics(baseline, shiftWithEdge(baseline, shiftY, shiftX));
-        EXPECT_FALSE(metrics.damaged) << "input shift dy=" << shiftY << " dx=" << shiftX;
-        EXPECT_EQ(metrics.alignmentShiftX, -shiftX);
-        EXPECT_EQ(metrics.alignmentShiftY, -shiftY);
-    }
-}
-
-TEST(TactileResidualTest, OnePixelLongTextureEdgeDriftIsSuppressed)
+TEST(TactileResidualTest, OnePixelLongTextureEdgeDriftHasNoSolidCore)
 {
     std::vector<uint8_t> baseline = makeTexture();
     std::vector<uint8_t> current = baseline;
@@ -81,8 +61,76 @@ TEST(TactileResidualTest, OnePixelLongTextureEdgeDriftIsSuppressed)
 
     const TactileFrameMetrics metrics = computeTactileFrameMetrics(baseline, current);
     EXPECT_FALSE(metrics.damaged);
-    EXPECT_GT(metrics.edgeToleranceSuppressedPixels, 0U);
+    EXPECT_EQ(metrics.edgeToleranceSuppressedPixels, 0U);
+    EXPECT_EQ(metrics.solidCorePixels, 0U);
     EXPECT_DOUBLE_EQ(metrics.robustResidualArea, 0.0);
+}
+
+TEST(TactileResidualTest, TwoPixelLinesAndBorderLineHaveNoSolidCore)
+{
+    const std::vector<uint8_t> baseline = makeTexture();
+    for (const bool atBorder : {false, true})
+    {
+        std::vector<uint8_t> current = baseline;
+        const int startX = atBorder ? kTactileFrameWidth - 2 : 78;
+        for (int y = 8; y < kTactileFrameHeight - 8; ++y)
+        {
+            for (int x = startX; x < startX + 2; ++x)
+            {
+                const size_t index = static_cast<size_t>(y) * kTactileFrameWidth +
+                                     static_cast<size_t>(x);
+                current[index] = static_cast<uint8_t>(
+                    std::min(255, static_cast<int>(current[index]) + 70));
+            }
+        }
+
+        const TactileFrameMetrics metrics = computeTactileFrameMetrics(baseline, current);
+        EXPECT_FALSE(metrics.damaged) << "atBorder=" << atBorder;
+        EXPECT_EQ(metrics.solidCorePixels, 0U);
+        EXPECT_GT(metrics.droppedCurvePixels, 0U);
+    }
+}
+
+TEST(TactileResidualTest, TwoPixelCurvedLineHasNoSolidCore)
+{
+    const std::vector<uint8_t> baseline = makeTexture();
+    std::vector<uint8_t> current = baseline;
+    for (int x = 18; x < kTactileFrameWidth - 18; ++x)
+    {
+        const int centerY = 58 + ((x / 8) % 2);
+        for (int y = centerY; y < centerY + 2; ++y)
+        {
+            const size_t index = static_cast<size_t>(y) * kTactileFrameWidth +
+                                 static_cast<size_t>(x);
+            current[index] = static_cast<uint8_t>(
+                std::min(255, static_cast<int>(current[index]) + 70));
+        }
+    }
+
+    const TactileFrameMetrics metrics = computeTactileFrameMetrics(baseline, current);
+    EXPECT_FALSE(metrics.damaged);
+    EXPECT_EQ(metrics.solidCorePixels, 0U);
+    EXPECT_GT(metrics.droppedCurvePixels, 0U);
+}
+
+TEST(TactileResidualTest, FourByFourBlockIsBelowSolidCorePixelThreshold)
+{
+    const std::vector<uint8_t> baseline = makeTexture();
+    std::vector<uint8_t> current = baseline;
+    for (int y = 54; y < 58; ++y)
+    {
+        for (int x = 78; x < 82; ++x)
+        {
+            const size_t index = static_cast<size_t>(y) * kTactileFrameWidth +
+                                 static_cast<size_t>(x);
+            current[index] = static_cast<uint8_t>(
+                std::min(255, static_cast<int>(current[index]) + 70));
+        }
+    }
+
+    const TactileFrameMetrics metrics = computeTactileFrameMetrics(baseline, current);
+    EXPECT_FALSE(metrics.damaged);
+    EXPECT_LT(metrics.solidCorePixels, kTactileResidualMinSolidCorePixels);
 }
 
 TEST(TactileResidualTest, SolidDamageBlockRemainsDetected)
@@ -100,7 +148,88 @@ TEST(TactileResidualTest, SolidDamageBlockRemainsDetected)
 
     const TactileFrameMetrics metrics = computeTactileFrameMetrics(baseline, current);
     EXPECT_TRUE(metrics.damaged);
-    EXPECT_GE(metrics.robustResidualArea, kTactileRobustResidualAreaThreshold);
+    EXPECT_GE(metrics.solidCorePixels, kTactileResidualMinSolidCorePixels);
+}
+
+TEST(TactileResidualTest, ConditionalToneLutRemovesNonlinearBrightnessChange)
+{
+    const std::vector<uint8_t> baseline = makeTexture();
+    const std::vector<uint8_t> current = applyNonlinearBrightness(baseline);
+
+    const TactileFrameMetrics metrics = computeTactileFrameMetrics(baseline, current);
+
+    EXPECT_TRUE(metrics.toneLutApplied);
+    EXPECT_FALSE(metrics.damaged);
+    EXPECT_EQ(metrics.solidCorePixels, 0U);
+    EXPECT_LT(metrics.toneLutResidualP99,
+              metrics.affineResidualP99 * kTactileToneLutMaxP99Ratio);
+}
+
+TEST(TactileResidualTest, SolidDamageSurvivesNonlinearBrightnessCorrection)
+{
+    const std::vector<uint8_t> baseline = makeTexture();
+    std::vector<uint8_t> current = applyNonlinearBrightness(baseline);
+    for (int y = 45; y < 61; ++y)
+    {
+        for (int x = 68; x < 84; ++x)
+        {
+            const size_t index = static_cast<size_t>(y) * kTactileFrameWidth +
+                                 static_cast<size_t>(x);
+            current[index] = static_cast<uint8_t>(
+                std::min(255, static_cast<int>(current[index]) + 70));
+        }
+    }
+
+    const TactileFrameMetrics metrics = computeTactileFrameMetrics(baseline, current);
+
+    EXPECT_TRUE(metrics.damaged);
+    EXPECT_GE(metrics.solidCorePixels, kTactileResidualMinSolidCorePixels);
+}
+
+TEST(TactileResidualTest, DifferentTextureIsReportedAsBaselineMismatch)
+{
+    const std::vector<uint8_t> baseline = makeTexture();
+    std::vector<uint8_t> current(kTactileFrameBytes, 0);
+    for (int y = 0; y < kTactileFrameHeight; ++y)
+    {
+        for (int x = 0; x < kTactileFrameWidth; ++x)
+        {
+            current[static_cast<size_t>(y) * kTactileFrameWidth + static_cast<size_t>(x)] =
+                static_cast<uint8_t>(60 + (x * 11 + y * 17) % 121);
+        }
+    }
+
+    const TactileFrameMetrics metrics = computeTactileFrameMetrics(baseline, current);
+
+    EXPECT_FALSE(metrics.baselineCompatible);
+    EXPECT_TRUE(metrics.baselineRefreshRequired);
+    EXPECT_LT(metrics.baselineCorrelation, kTactileBaselineMinCorrelation);
+    EXPECT_FALSE(metrics.damaged);
+    EXPECT_EQ(metrics.solidCorePixels, 0U);
+    EXPECT_FALSE(metrics.toneLutApplied);
+}
+
+TEST(TactileResidualTest, NinetyPercentLocalizedStructuralDamageIsNotBaselineMismatch)
+{
+    const std::vector<uint8_t> baseline = makeTexture();
+    std::vector<uint8_t> current = baseline;
+    const int damagedRows = kTactileFrameHeight * 9 / 10;
+    for (int y = 0; y < damagedRows; ++y)
+    {
+        for (int x = 0; x < kTactileFrameWidth; ++x)
+        {
+            const size_t index = static_cast<size_t>(y) * kTactileFrameWidth +
+                                 static_cast<size_t>(x);
+            current[index] = static_cast<uint8_t>(255 - current[index]);
+        }
+    }
+
+    const TactileFrameMetrics metrics = computeTactileFrameMetrics(baseline, current);
+
+    EXPECT_TRUE(metrics.baselineCompatible);
+    EXPECT_FALSE(metrics.baselineRefreshRequired);
+    EXPECT_TRUE(metrics.largeStructuralDamage);
+    EXPECT_TRUE(metrics.damaged);
 }
 
 TEST(TactileResidualTest, InvalidFrameSizeFailsClosed)
@@ -112,6 +241,13 @@ TEST(TactileResidualTest, InvalidFrameSizeFailsClosed)
     const TactileFrameMetrics metrics = computeTactileFrameMetrics(baseline, current);
     EXPECT_TRUE(metrics.damaged);
     EXPECT_DOUBLE_EQ(metrics.robustResidualArea, 1.0);
+    EXPECT_EQ(metrics.solidCorePixels, kTactileFrameBytes);
+}
+
+TEST(TactileResidualTest, ExpensiveSpatialToleranceIsDisabledByDefault)
+{
+    EXPECT_EQ(kTactileAlignmentSearchRadius, 0);
+    EXPECT_EQ(kTactileEdgeLocalToleranceRadius, 0);
 }
 
 }  // namespace

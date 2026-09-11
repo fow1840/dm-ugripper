@@ -266,14 +266,18 @@ H.265 主摄在 `VIDIOC_STREAMON` 前向 UVC XU selector `0x19` 写入当前主�
 - 时长合理性：每路启用视频都必须满足跨度阈值；默认包的 stereo 时长复用停录时由 Fays MCAP 首尾 `publishTime` 写入的 timing 缓存，并继续执行既有 Fays MCAP footer/head-tail 检查；`+nostereo` 跳过。
 - 条件产物：若执行了 pre/post 音频录制，对应 wav 仍需存在。
 - 触觉软校验：
-  - 每路 tactile 只取起录附近单帧；预处理只裁掉左侧约 `18%` 光源区域，不裁上边、右边和下边。若同 `serial` 实时参考帧缺失或处于夹爪重连待更新状态，则用本帧建立参考帧并跳过本轮实时 damaged 对比，失败则顺延到下一条 episode。已有实时参考帧时，先在 `5x5` 低频图上搜索 `x/y` 各 `±2 px` 的全局整数平移，使当前帧对齐 baseline，再做全局亮度/对比度配准和直接 residual 差分；仅在 baseline 与当前帧都接近 Sobel 纹理边缘的位置，允许双向 `1 px` 局部匹配，并要求低频差异小于 `8` 才抑制该边缘残差。之后 residual mask 继续经过 `3x3` 邻域投票、连通域过滤，以及“小连通域 + 低频变化小”的边界纹理误差过滤。该组合用于消除 `1~2 px` 整体漂移和长纹理边缘的 `1 px` 局部错位，同时避免对整幅图开放 `2 px` 容差而吞掉真实损坏；单次异常不让当前 episode 失败，仅用于连续 `3` 个 episode 的损坏提示。
+  - 每路 tactile 只取起录附近单帧；预处理只裁掉左侧约 `18%` 光源区域，不裁上边、右边和下边。若同 `serial` 实时参考帧缺失或处于夹爪重连待更新状态，则用本帧建立参考帧并跳过本轮实时 damaged 对比，失败则顺延到下一条 episode。已有实时参考帧时，先做全局亮度/对比度校正和直接 residual 差分，再对 residual mask 执行 `3x3` 邻域投票与 `8` 连通域遍历；每个连通域只有包含至少 `8` 个“自身及周围 `3x3` 全部为异常”的实心核心像素才准入，最终也只按这些实心核心像素判定 damaged。因 `1~2 px` 细直线、曲线和贴边轮廓无法形成 `3x3` 实心核心，其整个连通域会被过滤；面积型损坏仍保留。单次异常不让当前 episode 失败，仅用于连续 `3` 个 episode 的损坏提示。
   - 同时还会与同 `serial` 的持久化 baseline 比较；若 baseline 缺失，则用本帧初始化 baseline 并跳过本轮 persistent 对比，失败则顺延到下一条 episode。已有 baseline 不会因为夹爪重连或时间到期刷新；persistent 比较独立维护最近 `3` 次窗口，连续 `3` 次异常才播放对应 damaged 语音并置位，并登记“下次重新开关机后允许刷新 baseline”。重新开关机后，下一条可用 episode 会刷新该路持久化 baseline；连续 `3` 次 clean 后清除告警但不刷新 baseline。
 - 当前运行时轻量阈值口径：
-  - `robust_residual_area >= 0.003`
+  - 单个连通域的 `3x3` 实心核心像素数至少为 `8`，存在合格核心即判 damaged；`robust_residual_area` 保留为合格实心核心像素占整帧的比例，仅用于诊断兼容，不再使用旧的 `0.003` 面积门限
   - 动态残差阈值为 `max(10, median(residual) + 6 * 1.4826 * MAD(residual))`
-  - 全局空间配准搜索范围为 `x/y ±2 px`；边缘局部容差固定为双向 `1 px`，Sobel magnitude 门限为 `24`，低频差门限为 `8`
-  - residual mask 过滤为：`3x3` 内异常像素数至少 `3`，且 `8` 连通域面积至少 `8 px`；其中面积不超过 `25 px` 且 `5x5` 低频差分均值小于 `5` 的连通域会作为高反差纹理边缘误差丢弃
-  - 该口径用于过滤轻微灰度波动、孤立点和边缘残差；不再启用 small-damage 兜底，避免边线清晰或光源残留图像误触发。
+  - 全局空间配准和边缘局部容差默认关闭（半径均为 `0`）；运行时直接跳过 blur/search/Sobel/local residual，避免为纹理边线误差额外消耗计算量
+  - 当基线与当前帧平均亮度相差至少 `8` 时，额外尝试九分位单调亮度 LUT；只有 LUT 后残差 P99 不超过 `8.5`、相对线性校正下降至少 `40%` 且结构相关性提高时才采用，否则回退线性校正。该条件用于消除同一纹理的非线性曝光变化，不对局部光照场做拟合。
+  - 基线兼容性使用全局相关性与 `10x16` 分块相关性共同判断：全局相关性低于 `0.90` 且匹配块比例不超过 `5%` 时，标记 `baseline_refresh_required` 而不作为损坏；全局相关低但仍保留超过 `5%` 的匹配块时按大面积局部结构损坏处理。运行时只记录该诊断，不自动覆盖基线，避免整面损坏被错误学习为新基线。
+  - residual mask 过滤为：`3x3` 内异常像素数至少 `3`，且 `8` 连通域面积至少 `8 px`；随后计算 `3x3` 实心核心并过滤核心少于 `8 px` 的 curve 型连通域
+  - 诊断日志记录 `solid_core_px / max_solid_core_component_px / curve_drop_px / curve_drop_components`，用于快速区分面积型损坏与曲线/边线误差。
+
+- 单帧触觉算法交付：完整实现位于 `tools/tactile_damage_detector/`，目录内不调用仓库其他脚本；`scripts/package_tactile_damage_detector.sh` 会生成不含测试图片的 `tmp/tactile_damage_detector.tar.gz`。包内 `detect` 接收 `--baseline` 与 `--image`，输出 `result.json / mask.png / comparison.png`；普通原图沿用运行时左侧 `18%` 裁剪与 `160x120` 灰度预处理，`--preprocessed` 用于已预处理图片。返回码 `0/2/1` 分别表示 clean/damaged/运行错误；`baseline_mismatch` 以 clean 返回并在 JSON 中要求刷新基线，但工具不会自动修改输入。该工具只输出单帧结论，不包含连续 episode 黄灯决策。
 
 说明：当前不会为视频做全量逐帧扫描；强校验只读取容器元信息并消费内部 timing 字段，触觉软校验也只做单帧快速比较，优先保证现场稳定性与停录耗时可控。
 
