@@ -49,10 +49,11 @@
   - H.265 主相机的 `metadata.video_details[].start_offset_us` 使用 XU RTC epoch，PTS 使用 XU2 SEI encoder PTS 相对首个实际写入 clean keyframe 的差值；H.264 主相机继续使用 V4L2 时间。主摄后处理补偿当前为 `0`，tcam 向前校正 `36ms`；逐帧 Unix 时间统一按 `start_offset_us + packet_pts_sec * 1000000` 计算，且主相机必须保留真实 gap，丢帧后不得压紧后续时间轴。Stereo 逐帧时间只使用已向前校正的 Fays MCAP camera `publishTime`，不使用 Stereo MKV PTS 做同步真值，也不得在 metadata 上重复应用 `3ms`。
   - 主摄/tcam 补偿值定义在 `standalone/CameraRecorder/include/camera_recorder/camera_timestamp_offsets.h`，stereo 补偿值定义在 `standalone/FaysStereoRecorder/include/fays_stereo_recorder/camera_timestamp_offsets.h`；实验值调整后需要重新编译并重新录制数据验证。
 - `test/scripts/board_stopwatch_record_test.sh`
-  - 在 PC 上一键连接 `ubuntu@192.168.2.240`，把脚本自身传到板端 `/tmp` 后执行外部秒表与正常 UGripper 录制联动测试；先通过运行时软件录制 FIFO 发送 `START`，默认等待 `2s` 后再以 GPIO139 低电平启动秒表。
-  - 默认总录制 `15s`，因此秒表默认运行约 `13s`；到时通过同一 FIFO 发送 `STOP` 并恢复 GPIO 高电平，等待 runtime 完成正常停录、校验和 episode rename 后，在对应最终 episode 中原子写入 `stopwatch_timing.json`。延迟可通过 `--stopwatch-delay-sec` 调整，且必须小于总录制时长。
-  - GPIO 初始化使用 sysfs `direction=high/low` 原子设置输出方向与空闲电平，确认后由常驻 root Python helper 预打开 `value` fd；正式触发只执行 `clock_gettime → write → clock_gettime`，关键路径不再启动 `date`、`sudo` 或 `tee`。异常退出时脚本会优先复用该 fd 恢复 GPIO 待机电平。
-  - `stopwatch_timing.json` schema v2 保存 GPIO start/stop 写入前后、区间中点、微秒级写入窗口、录制 `START/STOP` 命令的 Unix/monotonic 时间及延迟计算；Unix 时间来自 `CLOCK_REALTIME`，GPIO 单调时间来自 `CLOCK_MONOTONIC_RAW`。
+  - 在 PC 上一键连接 `ubuntu@192.168.2.240`，把脚本自身传到板端 `/tmp` 后执行外部秒表与正常 UGripper 录制联动测试。当前硬件合同固定为 GPIO139 低电平持续计时、高电平持续至少 `5s` 清零；脚本会在起录前先保持高电平完成一次清零，再通过运行时软件录制 FIFO 发送 `START`，默认等待 `2s` 后拉低 GPIO 启动秒表。
+  - 默认总录制 `15s`，因此秒表默认运行约 `13s`；到时先通过同一 FIFO 发送 `STOP`，随后恢复 GPIO 高电平并保持默认 `5s`，使秒表停止并清零。停录后的清零等待不计入录制时长；清零时长可通过 `--reset-hold-sec` 增大，但不得小于 `5`。
+  - GPIO 初始化使用 sysfs `direction=high/low` 原子设置输出方向与空闲电平，确认后由常驻 root Python helper 预打开 `value` fd；正式触发只执行 `clock_gettime → write → clock_gettime`，关键路径不再启动 `date`、`sudo` 或 `tee`。异常退出时脚本会优先复用该 fd 恢复 GPIO 高电平，并保持完整清零时长后再退出。
+  - runtime 完成正常停录、校验和 episode rename 后，脚本在最终 episode 中原子写入 schema v2 `stopwatch_timing.json`，保存 GPIO start/stop 写入边界、前后高电平保持时间、清零完成时间、录制 `START/STOP` 命令的 Unix/monotonic 时间及延迟计算；Unix 时间来自 `CLOCK_REALTIME`，GPIO 单调时间来自 `CLOCK_MONOTONIC_RAW`。
+  - 不携带或安装 CH9344 helper，不覆盖板端文件，也不 reload/replay udev；只校验目标机现有四个 CH9344 逻辑链接各有唯一声明者且活动 symlink 指向一致，并接受正式 UGripper 已生成的物理 bus 映射。
 - `test/scripts/board_gripper_hmi_link_stress.sh`
   - 停止 `ugripper.service` 后反复独占连接左右 HMI，执行 RGB、蜂鸣器开关和状态回读，统计合法回复、蜂鸣器状态确认、最大回复年龄与失败轮次。
   - 默认在整个压力窗口并行运行 `SensorRecorder`，持续记录左右 encoder，以区分 HMI 单 UART/控制板异常和整颗 CH9344 或 USB 上行链路异常。
@@ -162,4 +163,4 @@ sudo bash /dev/shm/ugripper_hmi_test/board_gripper_hmi_link_stress.sh \
 - `camera_crash_capture.sh` 在开启内核日志抓取时依赖 `sudo -n dmesg` 与 `sudo -n journalctl -k`；无免密 sudo 时，对应日志会失败或为空。
 - `testVideoPipe.sh` 依赖 `v4l2-ctl`。
 - `scan_main_camera_mkv_issues.py` 依赖 `ffprobe`；当 `--decode-mode` 不是 `off` 时还依赖 `ffmpeg`。
-- `board_stopwatch_record_test.sh` 的 PC 端依赖 `sshpass`、`ssh` 和 `scp`；板端必须处于可正常起录状态，数据盘已挂载，且没有其他正在进行的录制。默认秒表触发极性为低电平有效，可用 `--active-level 1` 覆盖。
+- `board_stopwatch_record_test.sh` 的 PC 端依赖 `sshpass`、`ssh` 和 `scp`；板端必须处于可正常起录状态，数据盘已挂载，且没有其他正在进行的录制。当前秒表硬件固定使用低电平持续运行、高电平持续至少 `5s` 清零，不支持改为高电平触发。

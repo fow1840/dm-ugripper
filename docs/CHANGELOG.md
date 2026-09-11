@@ -7,9 +7,8 @@
 - 触觉损坏判断由连通域面积门限改为每连通域至少 `8` 个 `3x3` 实心核心像素，整体过滤无法形成核心的 `1~2 px` 细直线、曲线和贴边轮廓；默认关闭并短路全局平移配准与边缘局部容差，新增核心像素和 curve 过滤诊断，降低误报与单帧计算开销。
 - 新增可独立交付的单帧触觉损坏检测工具：完整实现收口到 `tools/tactile_damage_detector/`，输入基线图与待测图，输出 JSON 结论、最终实心核心 mask 和一张对比图，且不调用仓库其他脚本；交付包不携带生产或测试图片。
 - 触觉亮度校正增加严格条件启用的九分位单调 LUT，用于过滤同一纹理的非线性曝光变化；同时增加全局与分块结构相关性门禁，换盖板时提示刷新基线但不自动覆盖，大面积局部结构损坏仍进入损坏判定。
-
+- 外部秒表联动脚本不再携带或安装 CH9344 helper，也不修改 udev 状态；预检不硬编码左右手物理 USB bus，只要求板端正式 UGripper 生成的四个 CH9344 逻辑链接各自具有唯一声明者且 symlink 指向一致。
 - 双目 Fays recorder 增加每个 episode 的标定 JSON 最多 5 次重试，并以限频 `WARN` 记录 SDK 无新帧/超时/设备丢失、采集处理过慢和编码队列丢帧。
-
 
 ## v2.1.12 - 2026-09-07
 
@@ -18,7 +17,7 @@
 - 主摄新增通用命名的 `UGRIPPER_POWER_LINE_FREQUENCY` 环境配置，安装时默认写入 `50` Hz，可改为 `60` Hz 以匹配供电频率；当前仅主摄启动时按配置下发 V4L2 防频闪参数。
 - metadata schema 更新到 `data_version=3.2`：在 `task_stop_s` 后依次新增 Unix 秒开机时间 `boot_time_s` 和触觉损坏 SN 列表 `tactile_damage_sn_list`；后台触觉校验按本条 episode 单次 `damaged=true` 原子回写对应 SN，无损坏保持空列表。停录收尾调整为先同步 `video stop` 运行日志，再释放录制锁；离线 episode 校验器同步支持 3.2，并兼容历史 3.1/3.0。
 - UgripperRuntime 完成领域拆分与接口收口：将录制、设备、校验、恢复、服务和持久化职责从单体实现拆到独立模块，补齐 ownership/dependency ports，统一 `DA::Ugripper` 命名与公开 API，并对齐 pp-main 公共日志/工具库及 host-only 单测边界；外部录制行为和安装布局保持不变。
-- 外部秒表录制联动脚本升级为 schema v2：常驻 root Python helper 预打开 GPIO fd，并在同一进程内用 `CLOCK_REALTIME/CLOCK_MONOTONIC_RAW` 夹逼 `write()`，替代正式触发路径中的 `date + sudo tee` 多进程调用；`stopwatch_timing.json` 增加 GPIO start/stop 写入前后、区间中点和微秒级窗口。
+- 外部秒表录制联动脚本升级为 schema v2：常驻 root Python helper 预打开 GPIO fd，并在同一进程内用 `CLOCK_REALTIME/CLOCK_MONOTONIC_RAW` 夹逼 `write()`，替代正式触发路径中的 `date + sudo tee` 多进程调用；按“低电平持续运行、高电平保持至少 5 秒清零”的硬件合同，在录制前和停录后各执行一次高电平清零保持，异常退出时也完成清零；只校验板端现有 CH9344 映射，不携带或安装串口 helper，也不修改 udev 状态；`stopwatch_timing.json` 增加 GPIO start/stop 写入边界、前后高电平保持时间、清零完成时间和微秒级窗口。
 - 新增快速 ARM deb 部署入口 `scripts/deploy_arm_deb_fast.sh`：根据 source manifest 自动选择 full/quick/skip 构建模式，增量传输指定主包和可选 updater，并在目标板安装后回读包版本及 `ugripper.service` 状态。
 - 构建脚本默认主包版本调整到 `2.1.12`。
 
