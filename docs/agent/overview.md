@@ -7,6 +7,7 @@
 - 当前系统默认以**单机双手、本地控制**方式运行。
 - 主控制链路当前以 `run_record.sh -> /opt/ugripper/bin/UgripperRuntime/UgripperRuntime` 作为安装入口。
 - 默认主包录制 **2 路主相机 + 2 路 stereo + 4 路触觉相机 + 左右 sensor/Fays MCAP**；构建时显式设置 `UGRIPPER_ENABLE_STEREO=OFF` 才生成不含双目数据的 `+nostereo` 变体。
+- Fays stereo recorder 对每个 episode 的标定 JSON 获取最多尝试 5 次；运行期间以限频 `WARN` 记录 SDK 无新帧/超时/设备丢失、采集处理过慢和编码队列丢帧，用于区分采集端与编码端问题。
 - HMI 按键、RGB 灯效、提示音、pre/post 音频录制、停录校验，以及右手双键关机/左手双键卸载数据盘请求都已纳入当前运行时。
 - U 盘流程统一负责 `deb` 升级/重装、`config.txt` 导入、标定数据导入和 encoder 零位校准触发；当前自动安装名单已覆盖 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint` 与 `device-ota-mender`，deb 安装窗口会复用 HMI 灯效提示安装中/失败/完成状态，并会在整批安装完成后通过 PulseAudio 播放 `upgrade_completed.wav`。
 

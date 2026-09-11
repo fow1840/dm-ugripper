@@ -1263,8 +1263,8 @@ public:
             queue_.pop_front();
             const uint64_t count = dropCount_.fetch_add(1, std::memory_order_relaxed) + 1;
             if ((count & (count - 1)) == 0 || count % 50 == 0) {
-                std::cerr << "[Video] Encode queue full, dropped oldest frame (total drops: "
-                          << count << ")" << std::endl;
+                DM_LOG_WARN("[Video] Encode queue full, dropped oldest frame: total_drops={} capacity={}",
+                            count, capacity_);
             }
         }
         queue_.push_back(std::move(frame));
@@ -1472,6 +1472,10 @@ void signalHandler(int signal);
 
 class FaysRecorder {
 public:
+    static constexpr uint32_t kCalibrationAttemptsPerEpisode = 5;
+    static constexpr uint64_t kDiagnosticWarnIntervalNs = 2'000'000'000ULL;
+    static constexpr uint64_t kCaptureProcessingWarnNs = 100'000'000ULL;
+
     FaysRecorder(const char* configPath,
                  std::string videoFileName,
                  std::string mcapFileName,
@@ -1488,6 +1492,14 @@ public:
           calibrationJsonPath_(std::move(calibrationJsonPath)),
           statusJsonPath_(std::move(statusJsonPath)),
           calibrationDumped_(false),
+          calibrationAttempts_(0),
+          calibrationLimitWarned_(false),
+          sdkNoNewFrameCount_(0),
+          sdkTimeoutCount_(0),
+          sdkDeviceLostCount_(0),
+          sdkOtherFailureCount_(0),
+          lastSdkWarnNs_(0),
+          lastSuccessfulFrameNs_(0),
           lastImuTimestamp_(0),
           lastImgTimestamp_(0),
           lastFrameSystemNs_(0),
@@ -1629,6 +1641,8 @@ public:
         const uint64_t sessionId = recordingSessionSeed_.fetch_add(1, std::memory_order_relaxed) + 1;
         recordingSessionId_.store(sessionId, std::memory_order_release);
         recordingEnabled_.store(true, std::memory_order_release);
+        calibrationAttempts_.store(0, std::memory_order_release);
+        calibrationLimitWarned_.store(false, std::memory_order_release);
         hasImuTimeOffset_.store(false, std::memory_order_release);
         mcapControlQueue_.PushStart(sessionId, mcapPath);
 
@@ -2119,9 +2133,12 @@ private:
         std::cout << "[Record] Waiting for Stereo frames..." << std::endl;
 
         while (mbIsRunning_) {
+            const uint64_t captureStartNs = SystemNowNs();
             bool gotFrame = false;
-            if (EXIT_SUCCESS == FAYS_VIK_GetStereoFrames(mptrHandle_, &mImgData_)) {
+            const int sdkResult = FAYS_VIK_GetStereoFrames(mptrHandle_, &mImgData_);
+            if (sdkResult == EXIT_SUCCESS) {
                 gotFrame = true;
+                lastSuccessfulFrameNs_.store(SystemNowNs(), std::memory_order_release);
                 if (lastImgTimestamp_ != 0) {
                     if (mImgData_.timestamp < lastImgTimestamp_) {
                         std::cout << "[Video] Timestamp rollback detected: prev=" << lastImgTimestamp_
@@ -2162,6 +2179,34 @@ private:
                 videoFrameQueue_.Push(std::move(vf));
                 TryDumpCalibrationJson("stereo_frame");
                 WriteRuntimeStatus(false);
+                const uint64_t processingNs = SystemNowNs() - captureStartNs;
+                if (processingNs >= kCaptureProcessingWarnNs) {
+                    DM_LOG_WARN("[Video] stereo capture processing slow: duration_ms={} queue_drops={} config={}",
+                                processingNs / 1'000'000ULL, videoFrameQueue_.GetDropCount(), configPath_);
+                }
+            } else {
+                const uint64_t nowNs = SystemNowNs();
+                uint64_t count = 0;
+                const char* resultName = "FAILURE";
+                if (sdkResult == VIKIT_RET_NO_NEW_FRAME) {
+                    count = sdkNoNewFrameCount_.fetch_add(1, std::memory_order_relaxed) + 1;
+                    resultName = "NO_NEW_FRAME";
+                } else if (sdkResult == VIKIT_RET_TIMEOUT) {
+                    count = sdkTimeoutCount_.fetch_add(1, std::memory_order_relaxed) + 1;
+                    resultName = "TIMEOUT";
+                } else if (sdkResult == VIKIT_RET_DEVICE_LOST) {
+                    count = sdkDeviceLostCount_.fetch_add(1, std::memory_order_relaxed) + 1;
+                    resultName = "DEVICE_LOST";
+                } else {
+                    count = sdkOtherFailureCount_.fetch_add(1, std::memory_order_relaxed) + 1;
+                }
+                const uint64_t lastFrameNs = lastSuccessfulFrameNs_.load(std::memory_order_acquire);
+                if (lastSdkWarnNs_ == 0 || nowNs - lastSdkWarnNs_ >= kDiagnosticWarnIntervalNs) {
+                    DM_LOG_WARN("[Video] stereo SDK no frame: result={} code={} count={} since_last_frame_ms={} config={}",
+                                resultName, sdkResult, count,
+                                lastFrameNs == 0 ? 0 : (nowNs - lastFrameNs) / 1'000'000ULL, configPath_);
+                    lastSdkWarnNs_ = nowNs;
+                }
             }
 
             if (!gotFrame) {
@@ -2306,6 +2351,15 @@ private:
             return;
         }
 
+        const uint32_t attempt = calibrationAttempts_.fetch_add(1, std::memory_order_acq_rel) + 1;
+        if (attempt > kCalibrationAttemptsPerEpisode) {
+            if (!calibrationLimitWarned_.exchange(true, std::memory_order_acq_rel)) {
+                DM_LOG_WARN("[FaysCalibration] retry limit reached: attempts={} limit={} config={}",
+                            attempt - 1, kCalibrationAttemptsPerEpisode, configPath_);
+            }
+            return;
+        }
+
         std::string errorMessage;
         if (WriteCalibrationJsonFromHandle(mptrHandle_, configPath_, calibrationJsonPath_, &errorMessage)) {
             calibrationDumped_.store(true, std::memory_order_release);
@@ -2316,8 +2370,8 @@ private:
 
         const uint64_t nowNs = SystemNowNs();
         if (lastCalibrationWarnNs_ == 0 || nowNs - lastCalibrationWarnNs_ > 2000000000ULL) {
-            std::cerr << "[FaysCalibration] Not ready: " << errorMessage
-                      << " reason=" << reason << std::endl;
+            DM_LOG_WARN("[FaysCalibration] Not ready: attempt={} limit={} reason={} error={} config={}",
+                        attempt, kCalibrationAttemptsPerEpisode, reason, errorMessage, configPath_);
             lastCalibrationWarnNs_ = nowNs;
         }
     }
@@ -2345,6 +2399,14 @@ private:
     std::string calibrationJsonPath_;
     std::string statusJsonPath_;
     std::atomic<bool> calibrationDumped_;
+    std::atomic<uint32_t> calibrationAttempts_;
+    std::atomic<bool> calibrationLimitWarned_;
+    std::atomic<uint64_t> sdkNoNewFrameCount_;
+    std::atomic<uint64_t> sdkTimeoutCount_;
+    std::atomic<uint64_t> sdkDeviceLostCount_;
+    std::atomic<uint64_t> sdkOtherFailureCount_;
+    uint64_t lastSdkWarnNs_;
+    std::atomic<uint64_t> lastSuccessfulFrameNs_;
     uint64_t lastCalibrationWarnNs_ = 0;
     uint64_t statusIntervalNs_;
 
