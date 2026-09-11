@@ -474,6 +474,9 @@ sudo tail -n 200 /var/log/ugripper/boot_install.log
 ```
 
 ### 10.4 运行日志
+
+测试工程师可复制 `tools/log_viewer/` 目录并用 Chrome / Edge 打开 `index.html`，一次离线打开一份运行日志，新文件替换当前内容，按等级、错误码、时间、关键词筛选，查看简短中文故障提示、restore 请求/执行/恢复事件计数及上下文。无需安装运行环境；详细统计口径见 `tools/log_viewer/README.md`。
+
 ```bash
 tail -n 200 /tmp/umi_sys_<device_sn_lower>_$(date +%Y%m%d).log
 tail -n 200 /mnt/data_disk/logs/umi_sys_<device_sn_lower>_$(date +%Y%m%d).log

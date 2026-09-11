@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>UGripper · Log Studio</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+<header><div><div class="eyebrow">UGRIPPER / TEST TOOLS</div><h1>Log Studio <span>日志工作台</span></h1><p>从日志到线索，让每一次异常都有迹可循。</p></div><label class="primary">导入日志<input id="files" type="file" accept=".log,.txt,.out" hidden></label></header>
+<section id="drop" tabindex="0" role="button" aria-label="拖入或选择日志文件"><b>把日志拖到这里</b><span>每次一份 .log / .txt · 新文件替换当前日志 · 完全离线 · 无需上传</span></section>
+<div id="status" role="status" aria-live="polite">尚未导入日志</div>
+<section id="stats" class="cards"></section>
+<section class="panel filters"><div class="filter-row"><div id="levels"></div><select id="restore" aria-label="Restore 筛选"><option value="all">全部日志</option><option value="only">仅 restore</option><option value="hide">隐藏 restore</option></select><select id="code" aria-label="错误码筛选"><option value="">全部错误码</option></select></div><div class="filter-row"><input id="search" type="search" placeholder="搜索关键词 / 错误码 / cause / side" aria-label="关键词"><label>从 <input id="from" type="datetime-local" step="1"></label><label>到 <input id="to" type="datetime-local" step="1"></label><button id="reset">重置筛选</button></div></section>
+<section class="panel"><div class="section-head"><h2>Restore 观察</h2><span>以下统计基于当前文件全部日志</span></div><div id="restoreStats" class="badges"></div><p class="note">“执行”以 restore usb start 为准；命令完成不代表设备恢复。计数是日志事件数，截断日志无法推断完整恢复结果。</p><details><summary>展开 restore 事件时间线</summary><div id="timeline"></div></details></section>
+<section class="panel"><div class="section-head"><h2>日志明细 <small id="count"></small></h2><div><button id="export">导出当前筛选</button><button id="clear">清空</button></div></div><div class="table-wrap"><table><thead><tr><th>时间 / 行号</th><th>等级</th><th>内容</th></tr></thead><tbody id="rows"></tbody></table></div><div class="pager"><button id="prev">上一页</button><span id="page"></span><button id="next">下一页</button></div></section>
+<section class="bottom"><div class="panel"><h2>错误码分布</h2><div id="codes"></div></div><div class="panel"><h2>重复消息 <small>按原始内容聚合 · 前 10 项</small></h2><div id="repeats"></div></div></section>
+<dialog id="context"><div class="section-head"><h2>原文与上下文</h2><button id="close">关闭</button></div><pre id="contextText"></pre></dialog>
+<footer>UGripper Log Studio · 本地浏览器解析 · 时间按本机时区显示</footer>
+</main><script src="parser.js"></script><script src="error_codes.js"></script><script src="app.js"></script></body></html>
