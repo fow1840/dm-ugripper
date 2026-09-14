@@ -16,6 +16,7 @@
 - 主服务：`pack_script/ugripper.service`
 - 主入口：`/opt/ugripper/run_record.sh`
 - 主运行时：`/opt/ugripper/bin/UgripperRuntime/UgripperRuntime`
+- 独立维护 Web 服务：`standalone/UgripperWebServer/` 提供 HTTPS 客户页面，接网线即可免登录访问（无账号、密码或会话），维护写请求保留跨站防护与操作确认，默认绑定以太网 `192.168.2.240:8080`，独立 `ugripper-webserver.service`（ubuntu）与 `ugripper-maintenance.service`（本地 root worker）。设备状态、日志下载、数据浏览/下载、白名单软件升级、左右主摄/夹爪固件升级、治具确认后的左右独立编码器标零通过受控 API 提供。主摄 iSerial 与夹爪固件版本按左右展示；四个环境参数（语言、编码、胸部主摄开关、电源频率）提供下拉配置，确认后由 root 专用 helper 限定写入 `/etc/environment` 并重启数采。录制与维护/下载共用 `/run/ugripper/maintenance.lock` 原子锁，持有到各自收尾结束；主摄升级固定调用包内 dfu-util。配置及测试说明见 `standalone/UgripperWebServer/README.md`。
 - 数据目录：`/mnt/data_disk/<device_sn_lower>/data`
 - 持久化标定目录：`/etc/ugripper/config/calibration`
 - 日志目录：`/var/log/ugripper`

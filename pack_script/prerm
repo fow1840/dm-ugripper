@@ -55,6 +55,23 @@ force_cleanup_recording_processes() {
         "${SYSTEM_ACTION_RUNTIME_DIR}/system_action_result" || true
 }
 
+# Wait for a download/recording/USB reset before terminating the runtime.
+# The local worker already owns this lock during a Web self-install.
+if [ ! -e /run/ugripper-web/self-installing ] && [ -e /run/ugripper/maintenance.lock ]; then
+    exec 8<>/run/ugripper/maintenance.lock
+    if ! flock -w 60 8; then
+        echo "Device busy: recording, download or maintenance has not completed." >&2
+        exit 1
+    fi
+fi
+# Stop old HTTP code on every reinstall, but never terminate its in-flight installer.
+systemctl stop ugripper-webserver.service || true
+if [ ! -e /run/ugripper-web/self-installing ]; then
+    systemctl stop ugripper-maintenance.service || true
+fi
+if [ "$1" = "remove" ]; then
+    systemctl disable ugripper-webserver.service ugripper-maintenance.service || true
+fi
 echo "Removing {{APP_NAME}} configuration..."
 
 # --------------------------------------------------

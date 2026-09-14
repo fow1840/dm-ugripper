@@ -429,5 +429,13 @@ echo "[$SERVICE_NAME] Started successfully after udev triggers."
 systemctl enable "$NETWORK_MONITOR_SERVICE"
 systemctl restart "$NETWORK_MONITOR_SERVICE"
 
+# Web and its local worker have independent lifecycles. Preserve a worker doing self-upgrade.
+/usr/bin/python3 "$APP_DIR/bin/UgripperWebServer/setup.py"
+systemctl enable ugripper-maintenance.service ugripper-webserver.service
+if [ ! -e /run/ugripper-web/self-installing ]; then
+    systemctl restart ugripper-maintenance.service
+fi
+systemctl restart ugripper-webserver.service
+
 echo "[$SERVICE_NAME] Installed and Started successfully with User=${SERVICE_RUN_USER}."
 exit 0

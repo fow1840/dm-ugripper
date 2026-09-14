@@ -22,6 +22,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <fcntl.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -72,6 +73,17 @@ bool RecordRuntime::attachPendingPreAudio(const std::string &episodeDir)
 }
 bool RecordRuntime::writeRecordingLock(const std::string &episodeDir)
 {
+    if (maintenanceLockFd_ < 0)
+    {
+        maintenanceLockFd_ = open("/run/ugripper/maintenance.lock", O_RDWR | O_CREAT | O_CLOEXEC, 0660);
+        if (maintenanceLockFd_ < 0 || flock(maintenanceLockFd_, LOCK_EX | LOCK_NB) != 0)
+        {
+            if (maintenanceLockFd_ >= 0) close(maintenanceLockFd_);
+            maintenanceLockFd_ = -1;
+            DM_LOG_WARN("recording rejected: maintenance or download in progress");
+            return false;
+        }
+    }
     json lock = {
         {"pid", static_cast<int>(getpid())},
         {"episode_dir", episodeDir},
@@ -83,6 +95,7 @@ bool RecordRuntime::writeRecordingLock(const std::string &episodeDir)
         DM_LOG_ERROR_CODE("UGR-10-02", "{}", (::DA::utils::LogString() << "failed to write recording lock "
                                                    << options_.recordingLockFile << ": "
                                                    << errorMessage << std::endl).str());
+        removeRecordingLock();
         return false;
     }
     return true;
@@ -97,10 +110,25 @@ void RecordRuntime::removeRecordingLock()
                                                   << options_.recordingLockFile << ": "
                                                   << error.message() << std::endl).str());
     }
+    if (maintenanceLockFd_ >= 0)
+    {
+        close(maintenanceLockFd_);
+        maintenanceLockFd_ = -1;
+    }
 }
 
 bool RecordRuntime::startRecording(bool resetRecording)
 {
+    // Fast user-facing rejection. writeRecordingLock takes the authoritative lock
+    // atomically before any recorder or episode is created.
+    const int guard = open("/run/ugripper/maintenance.lock", O_RDWR | O_CREAT | O_CLOEXEC, 0660);
+    if (guard < 0 || flock(guard, LOCK_EX | LOCK_NB) != 0)
+    {
+        if (guard >= 0) close(guard);
+        DM_LOG_WARN("recording rejected: maintenance or download in progress");
+        return false;
+    }
+    close(guard);
     if (recordingOrchestrator_ == nullptr)
     {
         DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString() << "recording orchestrator not initialized" << std::endl).str());

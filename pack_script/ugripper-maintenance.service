@@ -1,0 +1,15 @@
+[Unit]
+Description=UGripper local maintenance worker
+After=local-fs.target
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/lib/ugripper-maintenance
+ExecStart=/usr/bin/python3 /usr/local/lib/ugripper-web/maintenance.py
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=ugripper-web
+RuntimeDirectoryMode=0755
+UMask=0022
+[Install]
+WantedBy=multi-user.target

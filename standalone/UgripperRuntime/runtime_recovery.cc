@@ -19,6 +19,8 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <fcntl.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -1023,6 +1025,15 @@ void RecordRuntime::triggerRestoreUsbOnError(const std::string &reason, bool che
         return;
     }
 
+    const int maintenanceFd = open("/run/ugripper/maintenance.lock", O_RDWR | O_CREAT | O_CLOEXEC, 0660);
+    if (maintenanceFd < 0 || flock(maintenanceFd, LOCK_EX | LOCK_NB) != 0)
+    {
+        if (maintenanceFd >= 0) close(maintenanceFd);
+        logRestoreUsbSkipOnce("maintenance_busy", "defer USB restore while recording, download or maintenance is active");
+        return;
+    }
+    const auto maintenanceGuard = std::shared_ptr<int>(new int(maintenanceFd), [](int* fd) { close(*fd); delete fd; });
+
     if (!prepareDataDiskForRestoreUsb(reason))
     {
         restoreUsbPreflightFailureUntilMs_ = currentSteadyMs() + kRestoreUsbPreflightFailureCooldownMs;
@@ -1058,7 +1069,7 @@ void RecordRuntime::triggerRestoreUsbOnError(const std::string &reason, bool che
     const auto inProgress = restoreUsbInProgress_;
     const auto lastFinishMs = restoreUsbLastFinishMs_;
     const int attempt = restoreUsbAttemptsInCurrentError_;
-    std::thread([command, inProgress, lastFinishMs, attempt]() {
+    std::thread([command, inProgress, lastFinishMs, attempt, maintenanceGuard]() {
         DM_LOG_WARN("{}", (::DA::utils::LogString()
             << "restore usb start"
             << " attempt=" << attempt

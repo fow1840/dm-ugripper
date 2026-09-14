@@ -1,0 +1,19 @@
+[Unit]
+Description=UGripper Ethernet HTTPS management
+After=network-online.target ugripper-maintenance.service
+Wants=network-online.target ugripper-maintenance.service
+StartLimitIntervalSec=0
+[Service]
+User=ubuntu
+Group=ubuntu
+ExecStart=/usr/bin/python3 /opt/ugripper/bin/UgripperWebServer/server.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ugripper-web/uploads /run/ugripper /tmp
+RestrictAddressFamilies=AF_INET AF_UNIX
+UMask=0077
+[Install]
+WantedBy=multi-user.target

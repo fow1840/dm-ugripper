@@ -504,6 +504,33 @@ rm -rf "$TARGET_INSTALL_ROOT/bin/UgripperRuntime/ego/__pycache__"
 copy_if_exists "standalone/UgripperRuntime/adb" "$TARGET_INSTALL_ROOT/bin/UgripperRuntime/adb"
 copy_if_exists "standalone/UgripperRuntime/config/fakeCamCalib.json" \
     "$TARGET_INSTALL_ROOT/bin/UgripperRuntime/config/fakeCamCalib.json"
+# Source-controlled firmware adapters: no dependency on a developer's checkout.
+for web_tool in linux_read_version main_camera_dfu_trigger; do
+    aarch64-linux-gnu-gcc -O2 -Wall -Wextra -o "standalone/UgripperWebServer/bin/$web_tool" \
+        "standalone/UgripperWebServer/production/$web_tool.c"
+done
+copy_if_exists "standalone/UgripperWebServer" "$TARGET_INSTALL_ROOT/bin/UgripperWebServer"
+# The legacy application tree is writable at runtime. Privileged maintenance must
+# execute only its root-owned copy and the system Python interpreter.
+WEB_PRIVILEGED_ROOT="$BUILD_ROOT/usr/local/lib/ugripper-web"
+copy_if_exists "standalone/UgripperWebServer/common.py" "$WEB_PRIVILEGED_ROOT/common.py"
+copy_if_exists "standalone/UgripperWebServer/maintenance.py" "$WEB_PRIVILEGED_ROOT/maintenance.py"
+copy_if_exists "standalone/UgripperWebServer/environment_config.py" "$WEB_PRIVILEGED_ROOT/environment_config.py"
+copy_if_exists "standalone/UgripperWebServer/production" "$WEB_PRIVILEGED_ROOT/production"
+copy_if_exists "standalone/UgripperWebServer/bin" "$WEB_PRIVILEGED_ROOT/bin"
+copy_if_exists "$TARGET_INSTALL_ROOT/.venv/lib/python3.11/site-packages/serial" "$WEB_PRIVILEGED_ROOT/production/serial"
+if [ ! -f "$WEB_PRIVILEGED_ROOT/production/serial/__init__.py" ]; then
+    echo "Missing packaged pyserial for isolated maintenance worker" >&2
+    exit 1
+fi
+copy_if_exists "$TARGET_INSTALL_ROOT/bin/CameraRecorder/main_camera_xu_tool" "$WEB_PRIVILEGED_ROOT/bin/main_camera_xu_tool"
+copy_if_exists "$TARGET_INSTALL_ROOT/bin/SensorRecorder/zeroing" "$WEB_PRIVILEGED_ROOT/bin/zeroing"
+chmod -R a+rX,go-w "$WEB_PRIVILEGED_ROOT"
+
+if [ ! -x "$TARGET_INSTALL_ROOT/bin/UgripperWebServer/bin/dfu-util" ]; then
+    echo "Missing bundled arm64 dfu-util" >&2
+    exit 1
+fi
 
 # py_script is excluded from rsync by default; restore required runtime/test scripts explicitly.
 copy_if_exists "py_script/usb_audio_play_test.py" "$TARGET_INSTALL_ROOT/py_script/usb_audio_play_test.py"
@@ -526,6 +553,8 @@ copy_if_exists "auto_calibration/ugripper-network-monitor.service" "$BUILD_ROOT/
 copy_if_exists "auto_update/umi-shutdown-trigger.service" "$BUILD_ROOT/etc/systemd/system/umi-shutdown-trigger.service"
 copy_if_exists "auto_update/umi-shutdown-trigger.path" "$BUILD_ROOT/etc/systemd/system/umi-shutdown-trigger.path"
 copy_if_exists "time_sync/ugripper-ntp-sync.service" "$BUILD_ROOT/etc/systemd/system/ugripper-ntp-sync.service"
+copy_if_exists "$PACK_SCRIPT_DIR/ugripper-maintenance.service" "$BUILD_ROOT/etc/systemd/system/ugripper-maintenance.service"
+copy_if_exists "$PACK_SCRIPT_DIR/ugripper-webserver.service" "$BUILD_ROOT/etc/systemd/system/ugripper-webserver.service"
 copy_if_exists "time_sync/safe_ntp_sync.sh" "$TARGET_INSTALL_ROOT/time_sync/safe_ntp_sync.sh"
 
 # 2. 拷贝 DEBIAN 控制文件
@@ -546,6 +575,7 @@ chmod 755 "$BUILD_ROOT/usr/local/sbin/ugripper_restore_usb"
 chmod 755 "$BUILD_ROOT/usr/local/lib/ugripper/restore_usb/auto_restore_usb.py"
 chmod 0440 "$BUILD_ROOT/etc/sudoers.d/ugripper-restore-usb"
 chmod 755 "$TARGET_INSTALL_ROOT/time_sync/safe_ntp_sync.sh"
+chmod 755 "$TARGET_INSTALL_ROOT/bin/UgripperWebServer/server.py"
 
 # 4. 执行变量替换
 echo "--> Injecting variables into scripts..."

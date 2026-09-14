@@ -1,0 +1,81 @@
+"""Read-only status: never opens serial/video nodes owned by recorders."""
+import os
+from pathlib import Path
+import shutil
+import time
+from common import DATA, STATE, command, read_json, operation_lock, Busy, ALLOW
+
+from environment_config import read_settings
+
+CPU_PREV = None
+
+def disk(path, required=False):
+    mounted = os.path.ismount(path) if required else True
+    if not mounted:
+        return {'mounted': False, 'total': 0, 'used': 0, 'free': 0}
+    d = shutil.disk_usage(path)
+    return dict(mounted=True, total=d.total, used=d.used, free=d.free)
+
+def firmware_status():
+    cached = read_json(STATE/'firmware.json')
+    result = {'main_camera': {}, 'gripper': {}}
+    for side in ('left', 'right'):
+        serial = ''
+        try:
+            device = Path('/dev', 'cam_'+side).resolve(strict=True).name
+            node = (Path('/sys/class/video4linux')/device).resolve(strict=True)
+            for parent in node.parents:
+                if (parent/'idVendor').exists() and (parent/'serial').exists():
+                    serial = (parent/'serial').read_text().strip(); break
+        except OSError: pass
+        result['main_camera'][side] = {'iserial': serial}
+        group = cached.get('gripper', {})
+        item = group.get(side, {}) if isinstance(group, dict) else {}
+        result['gripper'][side] = item if isinstance(item, dict) else {}
+    return result
+
+
+def status():
+    global CPU_PREV
+    cpu = [int(v) for v in Path('/proc/stat').read_text().splitlines()[0].split()[1:9]]
+    now = (sum(cpu), cpu[3] + cpu[4])
+    usage = None
+    if CPU_PREV and now[0] > CPU_PREV[0]:
+        usage = round(100 * (1 - (now[1] - CPU_PREV[1]) / (now[0] - CPU_PREV[0])), 1)
+    CPU_PREV = now
+    mem = {l.split(':')[0]: int(l.split()[1])*1024 for l in Path('/proc/meminfo').read_text().splitlines()}
+    versions = {}
+    for name in ALLOW:
+        p = command(['dpkg-query', '-W', '-f=${Status}\t${Version}', name])
+        versions[name] = p.stdout.split('\t')[-1] if p.returncode == 0 and 'install ok installed' in p.stdout else ''
+    devices = []
+    for side, label in [('left', '左'), ('right', '右')]:
+        for key, title in [(f'{side}_gripper','夹爪'),(f'{side}_encoder','编码器'),
+                           (f'cam_{side}','主摄'),(f'tcam_{side}_l','触觉 L'),(f'tcam_{side}_r','触觉 R'),
+                           (f'{side}_fays_stereo','双目'),(f'{side}_fays_imu','双目 IMU')]:
+            present = Path('/dev', key).exists()
+            item = dict(id=key, side=side, label=label+title, present=present, stream=None)
+            if 'fays' in key:
+                snapshots = [Path(f'/dev/shm/umi_{side}_fays_runtime_status.json'), Path(f'/dev/shm/ugripper/umi_{side}_fays_runtime_status.json')]
+                s = next((read_json(p) for p in snapshots if p.exists()), {})
+                stamp = s.get('last_imu_system_ns' if key.endswith('imu') else 'last_frame_system_ns', 0)
+                age = (time.time_ns() - stamp)/1e9 if stamp else None
+                item['stream'] = bool(present and s.get('running') and age is not None and 0 <= age < (5 if key.endswith('imu') else 3))
+            devices.append(item)
+    if Path('/dev/cam_chest').exists():
+        devices.append(dict(id='cam_chest', side='extra', label='胸部主摄', present=True, stream=None))
+    env = {}
+    for line in Path('/etc/environment').read_text().splitlines():
+        if '=' in line:
+            k,v = line.split('=',1); env[k] = v.strip('"\' ')
+    try:
+        with operation_lock(): busy = False
+    except Busy:
+        busy = True
+    return dict(device_sn=env.get('DEVICE_SN',''), versions=versions, devices=devices,
+                cpu_percent=usage, memory=dict(total=mem['MemTotal'], used=mem['MemTotal']-mem['MemAvailable']),
+                disks=dict(data=disk(DATA, True), system=disk('/')), busy=busy,
+                recording=Path('/tmp/umi_recording.lock').exists(),
+                firmware=firmware_status(), configuration=read_settings(),
+                task=read_json(STATE/'task.json'),
+                service_active=command(['systemctl','is-active','ugripper.service']).returncode == 0)

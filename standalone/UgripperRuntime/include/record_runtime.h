@@ -254,6 +254,7 @@ private:
     bool processRecordControlCommand(const std::string &command);
     bool recordAudioClip(const std::string &audioType, bool monitorUpButton);
     bool attachPendingPreAudio(const std::string &episodeDir);
+    int maintenanceLockFd_ = -1;
     bool writeRecordingLock(const std::string &episodeDir);
     void removeRecordingLock();
     bool checkRecorderProcesses();
