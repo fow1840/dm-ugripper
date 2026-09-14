@@ -267,6 +267,42 @@ std::vector<std::string> egoBindingWorkerArgs(const std::string &script,
     return args;
 }
 
+void RecordRuntime::playEgoStorageFullSpeech()
+{
+    if ((isEgoRequired() && !egoBoundConnected_) || !fs::exists(options_.egoRecordingScript))
+    {
+        return;
+    }
+    if (egoSpeechFuture_.valid())
+    {
+        if (egoSpeechFuture_.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
+        {
+            DM_LOG_WARN("skip ego speech 1203 while previous speech request is running");
+            return;
+        }
+        egoSpeechFuture_.get();
+    }
+    auto args = egoBindingWorkerArgs(options_.egoRecordingScript, "speech",
+                                     options_.egoBindingFile, options_.egoBindingStatusFile);
+    args.push_back("--serial");
+    args.push_back(egoBoundSerial_);
+    try
+    {
+        egoSpeechFuture_ = std::async(std::launch::async, [args]() {
+            const bool ok = RecordRuntime::runCommandSync(args);
+            if (!ok)
+            {
+                DM_LOG_WARN("ego speech 1203 request failed; disk fault handling continues");
+            }
+            return ok;
+        });
+    }
+    catch (const std::exception &ex)
+    {
+        DM_LOG_WARN("failed to schedule ego speech 1203: {}", ex.what());
+    }
+}
+
 bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
                                       int64_t,
                                       std::string *errorMessage,
@@ -942,6 +978,13 @@ bool RecordRuntime::syncRuntimeLogToDisk(const char *reason) const
     std::cerr.flush();
     std::fflush(stdout);
     std::fflush(stderr);
+
+    // Persist system/journal logs alongside the runtime log at every stop boundary.
+    const std::string systemLogCommand = "/usr/local/lib/ugripper/logging/save_system_log.sh " +
+        shellQuote(options_.diskRoot + "/logs") + " " + shellQuote(toLower(deviceSn_.empty() ? "unknown_device" : deviceSn_));
+    if (std::system(systemLogCommand.c_str()) != 0) {
+        DM_LOG_WARN("system log snapshot failed");
+    }
 
     const std::string deviceSnLower = toLower(deviceSn_.empty() ? "unknown_device" : deviceSn_);
     const std::string filePrefix = "umi_sys_" + deviceSnLower + "_";

@@ -301,6 +301,8 @@ private:
     bool clearEgoBindingState();
     bool isEgoRequired() const;
     void handleEgoBindingToggle();
+    void playEgoStorageFullSpeech();
+    std::optional<DA::Ugripper::HealthFault> detectDataDiskHealthFault(const std::string &path);
     void maintainEgoBindingAction();
     void maintainEgoBindingHealth();
     void setEgoBindingFault(const std::string &detail);
@@ -504,6 +506,8 @@ private:
     std::string egoProbeSerial_;
     std::future<bool> egoBindingActionFuture_;
     std::future<bool> egoProbeFuture_;
+    std::future<bool> egoSpeechFuture_;
+    bool egoStorageFullNotified_ = false;
     std::unique_ptr<DA::Ugripper::RecordingOrchestrator> recordingOrchestrator_;
 };
 

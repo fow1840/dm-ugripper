@@ -83,6 +83,40 @@ class EgoAppFeaturesTest(unittest.TestCase):
                 adb.run.return_value = subprocess.CompletedProcess([], 0, output, "")
                 self.assertEqual(WORKER.configure_input_current(adb, {"features_supported": True})["status"], "failed")
 
+    def test_speech_selects_device_and_gates_broadcast(self):
+        for bound in ("", "ego-001"):
+            for supported, count, language in ((True, 1, "zh"), (True, 1, "en"), (False, 1, "zh"),
+                                                (True, 0, "zh"), (True, 2, "zh")):
+                with self.subTest(bound=bound, supported=supported, count=count, language=language):
+                    args = argparse.Namespace(binding_file=Path("unused"), serial=bound)
+                    adb = mock.Mock(serial="ego-001")
+                    response = {"protocol": "speech.v1", "code": 1203, "language": language,
+                                "status": "accepted", "error": None}
+                    with mock.patch.object(WORKER, "read_status", return_value={"serial": bound}), \
+                         mock.patch.object(WORKER, "detect_egos", return_value=([adb] * count, [])) as detect, \
+                         mock.patch.object(WORKER, "read_app_version", return_value={"features_supported": supported}), \
+                         mock.patch.object(WORKER, "read_environment_value", return_value=language), \
+                         mock.patch.object(WORKER, "app_broadcast", return_value={"status": "returned", "response": response}) as broadcast, \
+                         mock.patch.object(WORKER, "ugripper_log"):
+                        self.assertEqual(WORKER.run_speech(args), 0)
+                        detect.assert_called_once_with(bound)
+                        if supported and count == 1:
+                            broadcast.assert_called_once_with(adb, "SpeechCommandReceiver", "SPEECH_PLAY",
+                                                              "--ei", "code", "1203", "--es", "language", language)
+                        else:
+                            broadcast.assert_not_called()
+
+    def test_speech_skips_changed_binding_and_reports_rejection(self):
+        args = argparse.Namespace(binding_file=Path("unused"), serial="ego-001")
+        for changed in (True, False):
+            with mock.patch.object(WORKER, "read_status", side_effect=[{"serial": "ego-001"}, {"serial": "" if changed else "ego-001"}]), \
+                 mock.patch.object(WORKER, "detect_egos", return_value=([mock.Mock(serial="ego-001")], [])), \
+                 mock.patch.object(WORKER, "read_app_version", return_value={"features_supported": True}), \
+                 mock.patch.object(WORKER, "read_environment_value", return_value="zh"), \
+                 mock.patch.object(WORKER, "app_broadcast", return_value={"status": "returned", "response": {"status": "rejected"}}) as broadcast, \
+                 mock.patch.object(WORKER, "ugripper_log"):
+                self.assertEqual(WORKER.run_speech(args), 0 if changed else 1)
+                self.assertEqual(broadcast.call_count, 0 if changed else 1)
 
 
 class EgoRecordingWorkerTest(unittest.TestCase):

@@ -8,7 +8,7 @@ namespace fays_stereo_recorder::camera_time {
 // observed after capture, so the accepted latency is compensated by moving the
 // camera publishTime earlier. Update this value when a new experiment is
 // accepted, then rebuild.
-inline constexpr int64_t kStereoCameraLatencyUs = -2'000;
+inline constexpr int64_t kStereoCameraLatencyUs = -1'000;
 
 constexpr uint64_t AddStereoCameraLatencyNs(uint64_t timestampNs)
 {

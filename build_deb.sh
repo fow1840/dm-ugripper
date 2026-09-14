@@ -485,6 +485,8 @@ copy_if_exists "scripts/restore_usb/auto_restore_usb.py" \
     "$BUILD_ROOT/usr/local/lib/ugripper/restore_usb/auto_restore_usb.py"
 copy_if_exists "scripts/logging/ugripper_logger.py" \
     "$BUILD_ROOT/usr/local/lib/ugripper/logging/ugripper_logger.py"
+copy_if_exists "scripts/logging/save_system_log.sh" \
+    "$BUILD_ROOT/usr/local/lib/ugripper/logging/save_system_log.sh"
 
 copy_if_exists "standalone/CameraRecorder/config" "$TARGET_INSTALL_ROOT/bin/CameraRecorder/config"
 copy_if_exists "$PACKAGED_BUILD_DIR/standalone/FaysStereoRecorder/config" \

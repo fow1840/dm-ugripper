@@ -33,6 +33,7 @@
 #include <stdexcept>
 #include <opencv2/imgproc.hpp>
 #include "fays_stereo_recorder/camera_timestamp_offsets.h"
+#include "fays_stereo_recorder/sdk_warning_gate.h"
 #include "utils/fifo_utils.h"
 #include "utils/ugripper_logger.h"
 #include "fays_atrak/fays_atrak_types.h"
@@ -1498,8 +1499,6 @@ public:
           sdkTimeoutCount_(0),
           sdkDeviceLostCount_(0),
           sdkOtherFailureCount_(0),
-          lastSdkWarnNs_(0),
-          lastSuccessfulFrameNs_(0),
           lastImuTimestamp_(0),
           lastImgTimestamp_(0),
           lastFrameSystemNs_(0),
@@ -1980,6 +1979,7 @@ private:
                 lastImuTimestamp_ = imuData.timestamp;
 
                 const uint64_t systemNowNs = SystemNowNs();
+                lastImuSystemNs_.store(systemNowNs, std::memory_order_release);
                 UpdateImuTimeOffset(imuData.timestamp, systemNowNs);
 
                 uint64_t sessionId = 0;
@@ -2132,13 +2132,18 @@ private:
 
         std::cout << "[Record] Waiting for Stereo frames..." << std::endl;
 
+        using DiagnosticClock = fays_stereo_recorder::SdkWarningGate::Clock;
+        fays_stereo_recorder::SdkWarningGate sdkWarnings(
+            VIKIT_RET_NO_NEW_FRAME, DiagnosticClock::now());
+        auto lastSlowWarnAt = DiagnosticClock::now() - std::chrono::nanoseconds(kDiagnosticWarnIntervalNs);
         while (mbIsRunning_) {
-            const uint64_t captureStartNs = SystemNowNs();
+            const auto captureStartedAt = DiagnosticClock::now();
             bool gotFrame = false;
             const int sdkResult = FAYS_VIK_GetStereoFrames(mptrHandle_, &mImgData_);
+            const auto sdkReturnedAt = DiagnosticClock::now();
             if (sdkResult == EXIT_SUCCESS) {
                 gotFrame = true;
-                lastSuccessfulFrameNs_.store(SystemNowNs(), std::memory_order_release);
+                sdkWarnings.RecordFrame(sdkReturnedAt);
                 if (lastImgTimestamp_ != 0) {
                     if (mImgData_.timestamp < lastImgTimestamp_) {
                         std::cout << "[Video] Timestamp rollback detected: prev=" << lastImgTimestamp_
@@ -2179,13 +2184,16 @@ private:
                 videoFrameQueue_.Push(std::move(vf));
                 TryDumpCalibrationJson("stereo_frame");
                 WriteRuntimeStatus(false);
-                const uint64_t processingNs = SystemNowNs() - captureStartNs;
-                if (processingNs >= kCaptureProcessingWarnNs) {
+                const auto processingFinishedAt = DiagnosticClock::now();
+                const auto processingNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    processingFinishedAt - captureStartedAt).count();
+                if (processingNs >= static_cast<int64_t>(kCaptureProcessingWarnNs) &&
+                    processingFinishedAt - lastSlowWarnAt >= std::chrono::nanoseconds(kDiagnosticWarnIntervalNs)) {
                     DM_LOG_WARN("[Video] stereo capture processing slow: duration_ms={} queue_drops={} config={}",
                                 processingNs / 1'000'000ULL, videoFrameQueue_.GetDropCount(), configPath_);
+                    lastSlowWarnAt = processingFinishedAt;
                 }
             } else {
-                const uint64_t nowNs = SystemNowNs();
                 uint64_t count = 0;
                 const char* resultName = "FAILURE";
                 if (sdkResult == VIKIT_RET_NO_NEW_FRAME) {
@@ -2200,12 +2208,10 @@ private:
                 } else {
                     count = sdkOtherFailureCount_.fetch_add(1, std::memory_order_relaxed) + 1;
                 }
-                const uint64_t lastFrameNs = lastSuccessfulFrameNs_.load(std::memory_order_acquire);
-                if (lastSdkWarnNs_ == 0 || nowNs - lastSdkWarnNs_ >= kDiagnosticWarnIntervalNs) {
-                    DM_LOG_WARN("[Video] stereo SDK no frame: result={} code={} count={} since_last_frame_ms={} config={}",
+                if (sdkWarnings.ShouldWarn(sdkResult, sdkReturnedAt)) {
+                    DM_LOG_WARN("[Video] stereo SDK no frame: result={} code={} return_count={} no_frame_ms={} has_frame={} config={}",
                                 resultName, sdkResult, count,
-                                lastFrameNs == 0 ? 0 : (nowNs - lastFrameNs) / 1'000'000ULL, configPath_);
-                    lastSdkWarnNs_ = nowNs;
+                                sdkWarnings.NoFrameMs(sdkReturnedAt), sdkWarnings.HasFrame(), configPath_);
                 }
             }
 
@@ -2332,6 +2338,7 @@ private:
         out << "  \"running\": " << (mbIsRunning_.load(std::memory_order_acquire) ? "true" : "false") << ",\n";
         out << "  \"recording_enabled\": " << (recordingEnabled ? "true" : "false") << ",\n";
         out << "  \"recording_session_id\": " << sessionId << ",\n";
+        out << "  \"last_imu_system_ns\": " << lastImuSystemNs_.load(std::memory_order_acquire) << ",\n";
         out << "  \"last_frame_system_ns\": " << lastFrameSystemNs_.load(std::memory_order_acquire) << ",\n";
         out << "  \"last_frame_fays_ns\": " << lastFrameFaysNs_.load(std::memory_order_acquire) << ",\n";
         out << "  \"last_encoded_frame_system_ns\": " << lastEncodedFrameSystemNs_.load(std::memory_order_acquire) << ",\n";
@@ -2405,8 +2412,6 @@ private:
     std::atomic<uint64_t> sdkTimeoutCount_;
     std::atomic<uint64_t> sdkDeviceLostCount_;
     std::atomic<uint64_t> sdkOtherFailureCount_;
-    uint64_t lastSdkWarnNs_;
-    std::atomic<uint64_t> lastSuccessfulFrameNs_;
     uint64_t lastCalibrationWarnNs_ = 0;
     uint64_t statusIntervalNs_;
 
@@ -2417,6 +2422,7 @@ private:
     CamTsQueue camTsQueue_;
     McapControlQueue mcapControlQueue_;
 
+    std::atomic<uint64_t> lastImuSystemNs_{0};
     uint64_t lastImuTimestamp_;
     std::atomic<uint64_t> imuGapCount_;
     std::atomic<uint64_t> imuRollbackCount_;

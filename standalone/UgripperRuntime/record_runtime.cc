@@ -396,8 +396,8 @@ bool RecordRuntime::Initialize()
         },
         DA::Ugripper::HealthMonitor::Dependencies{
             .get_disk_fault =
-                [](const std::string& path) {
-                    return detectDiskHealthFault(path);
+                [this](const std::string& path) {
+                    return detectDataDiskHealthFault(path);
                 },
             .path_exists =
                 [](const std::string& path) {
@@ -851,6 +851,18 @@ bool RecordRuntime::ensureEpisodeManagerInitialized()
     return true;
 }
 
+std::optional<DA::Ugripper::HealthFault> RecordRuntime::detectDataDiskHealthFault(const std::string &path)
+{
+    const auto fault = detectDiskHealthFault(path);
+    const bool full = fault.has_value() && fault->key == "disk_full";
+    if (full && !egoStorageFullNotified_)
+    {
+        playEgoStorageFullSpeech();
+    }
+    egoStorageFullNotified_ = full;
+    return fault;
+}
+
 bool RecordRuntime::maintainDataStorage()
 {
     if (episodeManagerInitialized_)
@@ -858,7 +870,7 @@ bool RecordRuntime::maintainDataStorage()
         return true;
     }
 
-    const auto diskFault = detectDiskHealthFault(options_.diskRoot);
+    const auto diskFault = detectDataDiskHealthFault(options_.diskRoot);
     if (diskFault.has_value())
     {
         if (!dataStorageWaitLogged_)

@@ -20,9 +20,11 @@ HEALTH_POLL_INTERVAL_SEC="${FAYS_STEREO_HEALTH_POLL_INTERVAL_SEC:-1}"
 FINALIZE_TIMEOUT_SEC="${FAYS_STEREO_FINALIZE_TIMEOUT_SEC:-10}"
 DAEMON_INITIAL_SETTLE_SEC="${FAYS_STEREO_DAEMON_INITIAL_SETTLE_SEC:-0}"
 START_DELAY_SEC="${FAYS_STEREO_START_DELAY_SEC:-0}"
-START_COMPLETE_TIMEOUT_SEC="${FAYS_STEREO_START_COMPLETE_TIMEOUT_SEC:-20}"
-FIFO_STARTUP_TIMEOUT_SEC="${FAYS_STEREO_FIFO_STARTUP_TIMEOUT_SEC:-12}"
-HEALTH_GRACE_SEC="${FAYS_STEREO_HEALTH_GRACE_SEC:-12}"
+START_COMPLETE_TIMEOUT_SEC="${FAYS_STEREO_START_COMPLETE_TIMEOUT_SEC:-5}"
+FIFO_STARTUP_TIMEOUT_SEC="${FAYS_STEREO_FIFO_STARTUP_TIMEOUT_SEC:-5}"
+HEALTH_GRACE_SEC="${FAYS_STEREO_HEALTH_GRACE_SEC:-5}"
+IMU_STALE_SEC="${FAYS_STEREO_IMU_STALE_SEC:-5}"
+RESTART_DELAY_SEC="${FAYS_STEREO_RESTART_DELAY_SEC:-1}"
 FRAME_STALE_SEC="${FAYS_STEREO_FRAME_STALE_SEC:-3}"
 SYMLINK_STABLE_SEC="${FAYS_STEREO_SYMLINK_STABLE_SEC:-5}"
 SYMLINK_STABLE_TIMEOUT_SEC="${FAYS_STEREO_SYMLINK_STABLE_TIMEOUT_SEC:-20}"
@@ -688,11 +690,15 @@ check_side_working_state_reason() {
     fi
 
     if calibration_serial "$calib_json" >/dev/null 2>&1; then
-        if runtime_frame_fresh "$side"; then
+        if runtime_frame_fresh "$side" && runtime_imu_fresh "$side"; then
             return 0
         fi
         if side_in_health_grace "$side"; then
             return 0
+        fi
+        if ! runtime_imu_fresh "$side"; then
+            printf 'IMU stream stale or missing after %ss\n' "$IMU_STALE_SEC"
+            return 1
         fi
         printf 'warmup frame stale after %ss\n' "$FRAME_STALE_SEC"
         return 1
@@ -850,6 +856,31 @@ except Exception:
 PY
 }
 
+runtime_imu_fresh() {
+    local side="$1"
+    local status_json
+    status_json="$(runtime_status_path "$side")"
+    python3 - "$status_json" "$IMU_STALE_SEC" <<'PY'
+import json
+import os
+import sys
+import time
+
+path = sys.argv[1]
+stale_sec = float(sys.argv[2])
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        root = json.load(f)
+    last_ns = int(root.get("last_imu_system_ns", 0) or 0)
+    if last_ns <= 0:
+        sys.exit(1)
+    age = (time.time_ns() - last_ns) / 1e9
+    sys.exit(0 if age <= stale_sec else 1)
+except Exception:
+    sys.exit(1)
+PY
+}
+
 check_side_working_state() {
     local side="$1"
     local config="$2"
@@ -866,11 +897,15 @@ check_side_working_state() {
         return 1
     fi
     if calibration_serial "$calib_json" >/dev/null 2>&1; then
-        if runtime_frame_fresh "$side"; then
+        if runtime_frame_fresh "$side" && runtime_imu_fresh "$side"; then
             return 0
         fi
         if side_in_health_grace "$side"; then
             return 0
+        fi
+        if ! runtime_imu_fresh "$side"; then
+            [ "$quiet" = "true" ] || fays_log "$side IMU stream stale or missing after ${IMU_STALE_SEC}s"
+            return 1
         fi
         [ "$quiet" = "true" ] || fays_log "$side warmup frame stale after ${FRAME_STALE_SEC}s"
         return 1
@@ -952,7 +987,7 @@ wait_for_side_start_complete() {
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null &&
            check_side_device_paths "$side" "$config" "$fifo" true true &&
            calibration_serial "$calib_json" >/dev/null 2>&1 &&
-           runtime_frame_fresh "$side"; then
+           runtime_frame_fresh "$side" && runtime_imu_fresh "$side"; then
             fays_log "$side recorder SDK startup complete: pid=$pid fifo=$fifo"
             return 0
         fi
@@ -1015,6 +1050,7 @@ start_side_daemon() {
         --status-json "$runtime_status_json" \
         daemon 9>&- &
     local pid="$!"
+    local launch_started_at="$SECONDS"
     if ! wait_for_fifo "$fifo" "$FIFO_STARTUP_TIMEOUT_SEC"; then
         log_fifo_startup_timeout "$side" "$fifo" "$pid" "$config" "$runtime_status_json"
         terminate_process_tree "$pid" "$side Fays recorder failed startup"
@@ -1023,10 +1059,10 @@ start_side_daemon() {
 
     if [ "$side" = "left" ]; then
         LEFT_PID="$pid"
-        LEFT_STARTED_AT="$SECONDS"
+        LEFT_STARTED_AT="$launch_started_at"
     else
         RIGHT_PID="$pid"
-        RIGHT_STARTED_AT="$SECONDS"
+        RIGHT_STARTED_AT="$launch_started_at"
     fi
     fays_log "$side recorder started: pid=$pid fifo=$fifo"
 }
@@ -1064,6 +1100,7 @@ stop_side_daemon() {
         RIGHT_PID=""
         RIGHT_STARTED_AT=0
     fi
+    sleep "$RESTART_DELAY_SEC"
 }
 
 maintain_side_daemon() {

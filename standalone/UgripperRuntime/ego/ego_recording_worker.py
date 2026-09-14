@@ -410,6 +410,47 @@ def configure_input_current(adb: Adb, app: dict) -> dict:
     return detail
 
 
+def run_speech(args: argparse.Namespace) -> int:
+    detail = {"code": 1203, "status": "skipped"}
+    try:
+        binding_serial = str(read_status(args.binding_file).get("serial") or "")
+        if binding_serial != args.serial:
+            detail["reason"] = "binding changed before speech"
+        else:
+            devices, _ = detect_egos(binding_serial)
+            if len(devices) != 1:
+                detail["reason"] = "no unique connected ego"
+            else:
+                adb = devices[0]
+                app = read_app_version(adb)
+                detail.update(serial=adb.serial, app=app)
+                if not app["features_supported"]:
+                    detail["reason"] = "app version must be >= 1.0.4"
+                elif str(read_status(args.binding_file).get("serial") or "") != binding_serial:
+                    detail["reason"] = "binding changed during speech preparation"
+                else:
+                    language = read_environment_value("UGRIPPER_LANG") or os.environ.get("UGRIPPER_LANG", "zh")
+                    language = "en" if language.strip().lower() == "en" else "zh"
+                    detail["language"] = language
+                    detail.update(app_broadcast(adb, "SpeechCommandReceiver", "SPEECH_PLAY",
+                                                "--ei", "code", "1203", "--es", "language", language))
+                    response = detail.get("response", {})
+                    accepted = (detail["status"] == "returned"
+                                and response.get("protocol") == "speech.v1"
+                                and response.get("code") == 1203
+                                and response.get("language") == language
+                                and response.get("status") == "accepted"
+                                and response.get("error") is None)
+                    detail["status"] = "accepted" if accepted else "failed"
+                    if not accepted:
+                        detail.setdefault("error", "speech request was not accepted")
+    except Exception as exc:
+        detail.update(status="failed", error=str(exc))
+    ugripper_log("WARN" if detail["status"] == "failed" else "INFO",
+                 "speech " + json.dumps(detail, ensure_ascii=False), component="ego")
+    return 1 if detail["status"] == "failed" else 0
+
+
 def run_bind(args: argparse.Namespace) -> int:
     status = {"status": "error", "updated_at_ms": now_ms()}
     try:
@@ -1601,7 +1642,7 @@ def run_stop(args: argparse.Namespace) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("start", "stop", "cleanup", "bind", "unbind", "probe"))
+    parser.add_argument("command", choices=("start", "stop", "cleanup", "bind", "unbind", "probe", "speech"))
     parser.add_argument("--episode-dir", type=Path)
     parser.add_argument("--status-file", type=Path)
     parser.add_argument("--binding-file", type=Path)
@@ -1616,6 +1657,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.command == "speech":
+        if args.binding_file is None:
+            raise SystemExit("--binding-file is required")
+        return run_speech(args)
     if args.command in ("bind", "unbind", "probe"):
         if args.binding_file is None or args.binding_status_file is None:
             raise SystemExit("--binding-file and --binding-status-file are required")

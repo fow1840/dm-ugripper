@@ -1,6 +1,13 @@
 include(GoogleTest)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+add_executable(test_fays_sdk_warning_gate test_fays_sdk_warning_gate.cc)
+target_include_directories(test_fays_sdk_warning_gate PRIVATE
+    ${PROJECT_SOURCE_DIR}/standalone/FaysStereoRecorder/include
+)
+target_link_libraries(test_fays_sdk_warning_gate PRIVATE GTest::gtest_main)
+gtest_discover_tests(test_fays_sdk_warning_gate PROPERTIES LABELS "host-only;unit;camera")
+
 function(add_host_only_camera_gtest target_name)
     add_executable(${target_name} ${ARGN})
     target_link_libraries(${target_name}
