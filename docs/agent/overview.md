@@ -11,6 +11,8 @@
 - HMI 按键、RGB 灯效、提示音、pre/post 音频录制、停录校验，以及右手双键关机/左手双键卸载数据盘请求都已纳入当前运行时。
 - U 盘流程统一负责 `deb` 升级/重装、`config.txt` 导入、标定数据导入和 encoder 零位校准触发；当前自动安装名单已覆盖 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint` 与 `device-ota-mender`，deb 安装窗口会复用 HMI 灯效提示安装中/失败/完成状态，并会在整批安装完成后通过 PulseAudio 播放 `upgrade_completed.wav`。
 
+Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与启动健康宽限期均为 8 秒（240 实测左侧 SDK 初始化约 4.3 秒，3 秒会提前终止有效初始化）；IMU 无数据超过 3 秒、视频断流超过 3 秒视为不健康。停止并释放端口后等待 1 秒再尝试启动；启动前要求设备节点存在且指向连续稳定 3 秒（当前每次启动都会检查，因此该等待与停止后的 1 秒分别计时）。超时由约 1 秒一次的巡检判定，清理耗时另计。HMI 重连不作为人工插拔证据；软件 USB 恢复与健康验证期间及其后 20 秒内同步设备存在状态，不因重枚举清零恢复次数。
+
 ## 2. 安装布局与入口
 - 安装目录：`/opt/ugripper`
 - 主服务：`pack_script/ugripper.service`

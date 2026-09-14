@@ -465,6 +465,7 @@ private:
         usbRecoveryCoordinator_.GetState().cameraRecorderDStateFirstSeenMs;
     uint64_t &cameraRecorderDStateLastLogMs_ =
         usbRecoveryCoordinator_.GetState().cameraRecorderDStateLastLogMs;
+    uint64_t restoreUsbReconnectSuppressUntilMs_ = 0;
     std::array<bool, 2> &restoreUsbSidePresent_ =
         usbRecoveryCoordinator_.GetState().sidePresent;
     std::array<uint64_t, 2> &restoreUsbInsertGraceUntilMs_ =

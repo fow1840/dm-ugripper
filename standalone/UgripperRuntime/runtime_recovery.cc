@@ -507,7 +507,12 @@ void RecordRuntime::noteRestoreUsbManualInsert(const std::string &side, const st
     {
         return;
     }
-    if (restoreUsbInProgress_->load() || restoreUsbPendingRetryCheck_)
+    if (reason == "hmi_reconnected")
+    {
+        return; // HMI reconnects also occur after software recovery and serial faults.
+    }
+    if (restoreUsbInProgress_->load() || restoreUsbPendingRetryCheck_ ||
+        currentSteadyMs() < restoreUsbReconnectSuppressUntilMs_)
     {
         DM_LOG_INFO("{}", (::DA::utils::LogString()
             << "ignore restore usb manual insert during software restore settle"
@@ -531,8 +536,18 @@ void RecordRuntime::noteRestoreUsbManualInsert(const std::string &side, const st
 
 void RecordRuntime::maintainRestoreUsbDevicePresence()
 {
+    const uint64_t presenceNowMs = currentSteadyMs();
     if (restoreUsbInProgress_->load() || restoreUsbPendingRetryCheck_)
     {
+        restoreUsbReconnectSuppressUntilMs_ = presenceNowMs + kRestoreUsbManualInsertGraceMs;
+    }
+    if (presenceNowMs < restoreUsbReconnectSuppressUntilMs_)
+    {
+        // Consume software-generated disappearance/reappearance without resetting attempts.
+        for (const std::string side : {"left", "right"})
+        {
+            restoreUsbSidePresent_[gripperStateIndexForSide(side)] = sideHasAnyRestoreUsbDevice(side);
+        }
         return;
     }
 

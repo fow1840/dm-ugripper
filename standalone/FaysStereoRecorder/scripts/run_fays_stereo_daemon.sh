@@ -20,13 +20,15 @@ HEALTH_POLL_INTERVAL_SEC="${FAYS_STEREO_HEALTH_POLL_INTERVAL_SEC:-1}"
 FINALIZE_TIMEOUT_SEC="${FAYS_STEREO_FINALIZE_TIMEOUT_SEC:-10}"
 DAEMON_INITIAL_SETTLE_SEC="${FAYS_STEREO_DAEMON_INITIAL_SETTLE_SEC:-0}"
 START_DELAY_SEC="${FAYS_STEREO_START_DELAY_SEC:-0}"
-START_COMPLETE_TIMEOUT_SEC="${FAYS_STEREO_START_COMPLETE_TIMEOUT_SEC:-5}"
-FIFO_STARTUP_TIMEOUT_SEC="${FAYS_STEREO_FIFO_STARTUP_TIMEOUT_SEC:-5}"
-HEALTH_GRACE_SEC="${FAYS_STEREO_HEALTH_GRACE_SEC:-5}"
-IMU_STALE_SEC="${FAYS_STEREO_IMU_STALE_SEC:-5}"
+# SDK initialization can take over 4s on the left USB path; keep its budget
+# separate from the 3s stream-staleness thresholds below.
+START_COMPLETE_TIMEOUT_SEC="${FAYS_STEREO_START_COMPLETE_TIMEOUT_SEC:-8}"
+FIFO_STARTUP_TIMEOUT_SEC="${FAYS_STEREO_FIFO_STARTUP_TIMEOUT_SEC:-8}"
+HEALTH_GRACE_SEC="${FAYS_STEREO_HEALTH_GRACE_SEC:-8}"
+IMU_STALE_SEC="${FAYS_STEREO_IMU_STALE_SEC:-3}"
 RESTART_DELAY_SEC="${FAYS_STEREO_RESTART_DELAY_SEC:-1}"
 FRAME_STALE_SEC="${FAYS_STEREO_FRAME_STALE_SEC:-3}"
-SYMLINK_STABLE_SEC="${FAYS_STEREO_SYMLINK_STABLE_SEC:-5}"
+SYMLINK_STABLE_SEC="${FAYS_STEREO_SYMLINK_STABLE_SEC:-3}"
 SYMLINK_STABLE_TIMEOUT_SEC="${FAYS_STEREO_SYMLINK_STABLE_TIMEOUT_SEC:-20}"
 EXIT_GRACE_SEC="${FAYS_STEREO_EXIT_GRACE_SEC:-2}"
 TERM_GRACE_SEC="${FAYS_STEREO_TERM_GRACE_SEC:-2}"
@@ -737,6 +739,7 @@ wait_for_side_symlinks_stable() {
             stereo_resolved="$(readlink -f "$stereo_path" 2>/dev/null || true)"
             imu_resolved="$(readlink -f "$imu_path" 2>/dev/null || true)"
             if [ -n "$stereo_resolved" ] && [ -n "$imu_resolved" ]; then
+                [ "$SYMLINK_STABLE_SEC" = "0" ] && return 0
                 if [ "$stereo_resolved" = "$last_stereo" ] && [ "$imu_resolved" = "$last_imu" ]; then
                     [ "$stable_since_ms" -ne 0 ] || stable_since_ms="$now_ms"
                     if [ $((now_ms - stable_since_ms)) -ge $((SYMLINK_STABLE_SEC * 1000)) ]; then

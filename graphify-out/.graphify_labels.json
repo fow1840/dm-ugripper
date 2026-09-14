@@ -230,7 +230,7 @@
   "228": "postinst",
   "229": "Community 229",
   "230": "UgripperRuntime/audio/usb_audio_utils.py",
-  "231": "HmiHealthSnapshot",
+  "231": "Community 231",
   "232": "Community 232",
   "233": "6. 第二阶段：Standalone Integration",
   "234": "MainCameraPtsResult",
@@ -649,7 +649,6 @@
   "647": "Community 647",
   "648": "Community 648",
   "649": "Community 649",
-  "650": "Community 650",
   "651": "Community 651",
   "652": "Community 652",
   "653": "Community 653",
@@ -698,7 +697,6 @@
   "696": "Community 696",
   "697": "Community 697",
   "698": "Community 698",
-  "699": "Community 699",
   "700": "Community 700",
   "701": "fays_vikit_left.yaml",
   "702": "fays_vikit_right.yaml",
@@ -732,5 +730,6 @@
   "730": "Community 730",
   "731": "Community 731",
   "732": "Community 732",
-  "733": "Community 733"
+  "733": "Community 733",
+  "736": "Community 736"
 }
