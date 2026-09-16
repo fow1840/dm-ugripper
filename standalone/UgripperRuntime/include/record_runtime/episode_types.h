@@ -13,6 +13,10 @@ struct GripperRuntimeState
     bool hasSerialNumber = false;
     std::string serialNumber;
     std::string lastError;
+    bool calibrationPayloadCached = false;
+    std::array<uint8_t, 1024> calibrationPayload{};
+    unsigned calibrationReadAttempts = 0;
+    uint64_t nextCalibrationReadMs = 0;
 };
 
 struct MainCameraRuntimeState

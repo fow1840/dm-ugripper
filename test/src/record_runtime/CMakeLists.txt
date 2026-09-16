@@ -59,6 +59,10 @@ add_host_only_runtime_gtest(test_gripper_refresh_logic
     test_gripper_refresh_logic.cc
 )
 
+add_host_only_runtime_gtest(test_gripper_extrinsics
+    test_gripper_extrinsics.cc
+)
+
 add_host_only_runtime_gtest(test_runtime_health
     test_runtime_health.cc
 )

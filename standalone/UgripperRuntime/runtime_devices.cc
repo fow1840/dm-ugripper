@@ -48,6 +48,10 @@ void RecordRuntime::handleGripperConnectionEvents()
 
         const size_t index = gripperStateIndexForSide(event.side);
         auto &runtimeState = gripperRuntimeStates_[index];
+        runtimeState.calibrationPayloadCached = false;
+        runtimeState.calibrationPayload = {};
+        runtimeState.calibrationReadAttempts = 0;
+        runtimeState.nextCalibrationReadMs = 0;
         DA::Ugripper::GripperRefreshRuntimeView view{
             .side = runtimeState.side,
             .connected = runtimeState.connected,
@@ -1387,3 +1391,36 @@ void RecordRuntime::HmiLedController::setState(LedState state, double progress)
 }
 
 }  // namespace DA::Ugripper
+
+void RecordRuntime::maintainGripperCalibration()
+{
+    if (isRecordingActive()) return;
+    bool changed = false;
+    for (auto &state : gripperRuntimeStates_)
+    {
+        if (!state.connected || state.calibrationPayloadCached ||
+            state.calibrationReadAttempts >= 3 ||
+            currentSteadyMs() < state.nextCalibrationReadMs ||
+            !panelManager_.isSideReadyForRefresh(state.side, kGripperRefreshActiveTimeoutMs))
+            continue;
+        ++state.calibrationReadAttempts;
+        state.nextCalibrationReadMs = currentSteadyMs() + 30000;
+        state.calibrationPayloadCached =
+            panelManager_.readCalibrationForSide(state.side, &state.calibrationPayload);
+        DM_LOG_INFO("gripper calibration cache: side={} read={} attempt={}",
+                    state.side, state.calibrationPayloadCached, state.calibrationReadAttempts);
+        changed = true;
+    }
+    if (changed && episodeManager_ != nullptr)
+        episodeManager_->SetGripperRuntimeStates(gripperRuntimeStates_);
+}
+
+
+bool RecordRuntime::GripperPanelManager::readCalibrationForSide(
+    const std::string &side, gripper_hmi::GripperCalibrationPayload *payload)
+{
+    const int index = findDriverIndexForSide(side);
+    if (payload == nullptr || index < 0 || drivers_[index] == nullptr ||
+        !drivers_[index]->isConnected()) return false;
+    return drivers_[index]->readCalibrationPayload(payload);
+}

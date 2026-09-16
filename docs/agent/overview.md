@@ -107,14 +107,14 @@ Ego 绑定时通过指定 serial 的 `dumpsys package com.ssnwt.helloxr` 读取 
 4. 写入 `calibration.json`：当前不再从旧持久化 `calibration.json` 迁移或清洗后输出，而是按运行时设备缓存、Fays daemon 标定状态和 tactile USB serial 运行时缓存从零组装，避免旧标定字段、旧命名或旧表述混入 episode。`calibration.json` 的输出格式当前已锁定：
    - 这是锁定格式，顶层字段集合不得增加，已有字段的职责不得漂移；若必须调整，必须先更新本节文档，再同步修改生成代码、持久化刷新逻辑与 episode 校验口径。
    - 顶层只保留 `calibration_info/observation`。
-   - `calibration_info` 只保留 `calibration_status/format_version`，其中 `format_version=3.0`。
+   - `calibration_info` 按顺序输出 `calibration_status/main_cam_extrinsic_calib_status/format_version`，其中 `format_version=3.1`；主摄外参状态位于第四行，左右两组矩阵均有效才为 `calibrated`，否则为 `uncalibrated`，不改变原内参/Fays 状态口径。
    - `observation.images` 使用新范本 key：`cam_left_main/cam_right_main/cam_chest_main/stereo_left/stereo_right/tcam_left_l/tcam_left_r/tcam_right_l/tcam_right_r`。
    - `observation.imu` 使用 `imu_left/imu_right`。
-   - 主摄字段只保留 `camera_model/distortion_coeffs/distortion_model/fps/intrinsics/names/shape`；缺缓存时写默认占位，停录强校验再判失败。
+   - 主摄字段保留 `camera_model/distortion_coeffs/distortion_model/fps/intrinsics/names/shape`；左右主摄增加 `extrinsics.T_base_main_camera/T_main_camera_stereo_cam0`，胸部主摄不增加外参。内参缺缓存时写默认占位，停录强校验再判失败。
    - tactile 字段只保留 `names/serial/shape`，serial 来自运行时在 `/dev/tcam_*` 插入或 symlink 目标变化时维护的 USB sysfs serial 缓存；episode 生成只消费缓存，不再停录阶段额外执行 `udevadm` 探测。
    - stereo 字段按范本保留 `cam0/cam1/camera_model/distortion_model/extrinsics/fps/names/shape`；IMU 字段按范本保留 `accelerometer/gyroscope/update_rate_hz`。
    - 左右主摄、胸部主摄 SN 与主摄标定参数由运行时在相机 symlink 插入/目标变化时通过 Yuzhou UVC XU 异步刷新缓存，拔出时清空；episode 生成只消费缓存，不再停录后同步读 XU。若在线主摄缺少合法 `FE...` SN 或 `MCAL` 标定 payload，本条 episode 会在停录校验阶段失败。
-   - 左右 stereo 与 IMU 标定由 Fays daemon 状态填充；不再把 gripper payload 或旧持久化 calibration 作为 episode `calibration.json` 的来源。
+   - 左右 stereo 与 IMU 标定由 Fays daemon 状态填充；主摄外参来自夹爪 UCAL 缓存：V2 bit6/0x1B0 对应 `T_main_camera_stereo_cam0`，V3 bit7/0x1F0 对应 `T_base_main_camera`，均直接使用存储矩阵，不求逆。空闲时通过 HMI owner 驱动读取，失败每 30 秒重试、每次连接最多 3 次，连接变化清除旧缓存，录制期间不查询。矩阵逐项校验版本、长度、有效位、有限数值和刚体结构；缺失项使用约定的默认结构外参，保留另一项有效实读值；不从旧持久化 calibration 补值。
 5. `record_runtime` 不再产出最终 `info.json`；camera/stereo 录制链路只在 `/dev/shm/ugripper_recording_timing_*.json` 维护内部 timing 缓存，用于 stereo offset 合并、并行视频探测结果缓存和最终 `metadata.json.video_details[].start_offset_us/duration_s` 生成，episode 完成 rename 前会清理该内部文件。停录硬校验只面向最终媒体、MCAP、`calibration.json` 和最终 `metadata.json` 语义，不再把该 shm 缓存作为 episode 产物或硬校验对象：
    - 内部文件顶层临时保留下面这些字段，其他临时调试字段不得写入。
    - `boot_time_offset`

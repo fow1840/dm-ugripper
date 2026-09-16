@@ -132,6 +132,7 @@ private:
         bool getButtonsForPortToken(const std::string &token, ButtonSnapshot *snapshot) const;
         HealthSnapshot getHealthSnapshot(uint64_t activeTimeoutMs) const;
         bool requestStateForSide(const std::string &side);
+        bool readCalibrationForSide(const std::string &side, gripper_hmi::GripperCalibrationPayload *payload);
         bool readRuntimeIdentityForSide(const std::string &side,
                                         std::string *serialNumber,
                                         bool *hasSerialNumber,
@@ -215,6 +216,7 @@ private:
     static const char *hmiEventName(DA::Ugripper::HmiEventType event_type);
 
     void handleGripperConnectionEvents();
+    void maintainGripperCalibration();
     void processPendingGripperRefreshes();
     void refreshGripperRuntimeStateForSide(const std::string &side,
                                            bool markTactileReferencePending);

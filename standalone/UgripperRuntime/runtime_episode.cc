@@ -5,6 +5,7 @@
 #include "record_runtime/error_code_mapping.h"
 #include "utils/ugripper_logger.h"
 #include "record_runtime/gripper_refresh_logic.h"
+#include "record_runtime/gripper_extrinsics.h"
 #include "utils/env_utils.h"
 #include "utils/file_utils.hpp"
 #include "utils/time_utils.h"
@@ -1145,11 +1146,38 @@ bool DA::Ugripper::EpisodeManager::writeFilteredCalibration(const std::string &e
     orderedImages["cam_left_main"] = mainImages.value("cam_left_main", makeDefaultMainCameraCalibrationEntry());
     orderedImages["cam_right_main"] = mainImages.value("cam_right_main", makeDefaultMainCameraCalibrationEntry());
 
+    bool allMainExtrinsicsValid = true;
+    for (const std::string side : {"left", "right"})
+    {
+        json extrinsics = DefaultMainCameraExtrinsics();
+        const auto state = std::find_if(gripperRuntimeStates_.begin(), gripperRuntimeStates_.end(),
+            [&](const auto &item) { return item.side == side; });
+        const bool available = state != gripperRuntimeStates_.end() &&
+                               state->connected && state->calibrationPayloadCached;
+        for (const auto &[key, version, bit, offset] : {
+                 std::tuple{"T_main_camera_stereo_cam0", 0x00020000u, 6u, size_t(0x1b0)},
+                 std::tuple{"T_base_main_camera", 0x00030000u, 7u, size_t(0x1f0)}})
+        {
+            json matrix;
+            if (available && ReadGripperTransform(state->calibrationPayload, version, bit, offset, &matrix))
+                extrinsics[key] = std::move(matrix);
+            else
+            {
+                allMainExtrinsicsValid = false;
+                DM_LOG_WARN("gripper extrinsics unavailable: side={} field={}; using structural default", side, key);
+            }
+        }
+        orderedImages["cam_" + side + "_main"]["extrinsics"] = std::move(extrinsics);
+    }
+
     ordered_json calibrationJson = ordered_json::object();
     const std::string calibrationStatus = (allMainCameraCalibrationValid && allFaysCalibrationValid)
                                              ? "calibrated"
                                              : "uncalibrated";
-    calibrationJson["calibration_info"] = makeLockedCalibrationInfo(calibrationStatus);
+    calibrationJson["calibration_info"] = ordered_json{
+        {"calibration_status", calibrationStatus},
+        {"main_cam_extrinsic_calib_status", allMainExtrinsicsValid ? "calibrated" : "uncalibrated"},
+        {"format_version", "3.1"}};
     calibrationJson["observation"] = ordered_json::object();
     calibrationJson["observation"]["images"] = std::move(orderedImages);
     calibrationJson["observation"]["imu"] = std::move(imu);

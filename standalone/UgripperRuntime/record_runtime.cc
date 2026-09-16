@@ -735,6 +735,7 @@ int RecordRuntime::Run()
         panelManager_.poll(options_.pollMs, &buttons);
         handleGripperConnectionEvents();
         processPendingGripperRefreshes();
+        maintainGripperCalibration();
         const bool recordControlAccepted = pollRecordControlPipe();
         if (!recordControlAccepted)
         {
