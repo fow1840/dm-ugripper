@@ -121,15 +121,21 @@ std::optional<std::pair<size_t, size_t>> FindStartCode(
 }
 
 std::optional<MainCameraXuTimestamp> ParseSeiNal(
-    const uint8_t* nal, size_t nal_size) {
-    if (nal == nullptr || nal_size < 3) {
+    const uint8_t* nal, size_t nal_size, MainCameraCodec codec) {
+    const size_t header_size = codec == MainCameraCodec::H264 ? 1 : 2;
+    if (nal == nullptr || nal_size <= header_size) {
+        return std::nullopt;
+    }
+    const uint8_t nal_type = codec == MainCameraCodec::H264
+        ? nal[0] & 0x1f : (nal[0] >> 1) & 0x3f;
+    if (codec == MainCameraCodec::H264 ? nal_type != 6 : (nal_type != 39 && nal_type != 40)) {
         return std::nullopt;
     }
 
     std::vector<uint8_t> rbsp;
-    rbsp.reserve(nal_size - 2);
+    rbsp.reserve(nal_size - header_size);
     unsigned int zero_count = 0;
-    for (size_t index = 2; index < nal_size; ++index) {
+    for (size_t index = header_size; index < nal_size; ++index) {
         const uint8_t value = nal[index];
         if (zero_count >= 2 && value == 0x03) {
             zero_count = 0;
@@ -185,19 +191,16 @@ std::optional<MainCameraXuTimestamp> ParseSeiNal(
 }
 
 std::optional<MainCameraXuTimestamp> ParseAnnexB(
-    const uint8_t* data, size_t size) {
+    const uint8_t* data, size_t size, MainCameraCodec codec) {
     auto current = FindStartCode(data, size, 0);
     while (current.has_value()) {
         const size_t nal_begin = current->first + current->second;
         const auto next = FindStartCode(data, size, nal_begin);
         const size_t nal_end = next.has_value() ? next->first : size;
-        if (nal_end > nal_begin + 2) {
-            const uint8_t nal_type = static_cast<uint8_t>((data[nal_begin] >> 1) & 0x3f);
-            if (nal_type == 39 || nal_type == 40) {
-                if (auto result = ParseSeiNal(data + nal_begin, nal_end - nal_begin);
-                    result.has_value()) {
-                    return result;
-                }
+        if (nal_end > nal_begin) {
+            if (auto result = ParseSeiNal(data + nal_begin, nal_end - nal_begin, codec);
+                result.has_value()) {
+                return result;
             }
         }
         current = next;
@@ -206,7 +209,7 @@ std::optional<MainCameraXuTimestamp> ParseAnnexB(
 }
 
 std::optional<MainCameraXuTimestamp> ParseLengthPrefixed(
-    const uint8_t* data, size_t size) {
+    const uint8_t* data, size_t size, MainCameraCodec codec) {
     size_t offset = 0;
     while (offset + 4 <= size) {
         const uint32_t nal_size =
@@ -218,11 +221,8 @@ std::optional<MainCameraXuTimestamp> ParseLengthPrefixed(
         if (nal_size == 0 || nal_size > size - offset) {
             return std::nullopt;
         }
-        const uint8_t nal_type = static_cast<uint8_t>((data[offset] >> 1) & 0x3f);
-        if (nal_type == 39 || nal_type == 40) {
-            if (auto result = ParseSeiNal(data + offset, nal_size); result.has_value()) {
-                return result;
-            }
+        if (auto result = ParseSeiNal(data + offset, nal_size, codec); result.has_value()) {
+            return result;
         }
         offset += nal_size;
     }
@@ -230,6 +230,37 @@ std::optional<MainCameraXuTimestamp> ParseLengthPrefixed(
 }
 
 }  // namespace
+
+std::vector<uint8_t> NormalizeMainCameraH264AccessUnit(const uint8_t* data, size_t size) {
+    if (!data || !size) return {};
+    std::vector<std::pair<size_t, size_t>> trailing_sei;
+    std::optional<size_t> first_vcl;
+    auto current = FindStartCode(data, size, 0);
+    while (current) {
+        const size_t begin = current->first + current->second;
+        const auto next = FindStartCode(data, size, begin);
+        const size_t end = next ? next->first : size;
+        if (begin < end) {
+            const auto type = data[begin] & 0x1f;
+            if (type >= 1 && type <= 5 && !first_vcl) first_vcl = current->first;
+            if (type == 6 && first_vcl) trailing_sei.emplace_back(current->first, end);
+        }
+        current = next;
+    }
+    if (trailing_sei.empty()) return {data, data + size};
+    std::vector<uint8_t> result;
+    result.reserve(size);
+    result.insert(result.end(), data, data + *first_vcl);
+    for (const auto& range : trailing_sei)
+        result.insert(result.end(), data + range.first, data + range.second);
+    size_t cursor = *first_vcl;
+    for (const auto& range : trailing_sei) {
+        result.insert(result.end(), data + cursor, data + range.first);
+        cursor = range.second;
+    }
+    result.insert(result.end(), data + cursor, data + size);
+    return result;
+}
 
 bool SetMainCameraRtcUs(int fd, uint64_t timestamp_us, std::string* error_message) {
     if (timestamp_us == 0) {
@@ -254,14 +285,14 @@ std::optional<uint64_t> GetMainCameraRtcPsetUs(int fd, std::string* error_messag
 }
 
 std::optional<MainCameraXuTimestamp> ParseMainCameraXuTimestamp(
-    const uint8_t* access_unit, size_t size) {
+    const uint8_t* access_unit, size_t size, MainCameraCodec codec) {
     if (access_unit == nullptr || size < 4) {
         return std::nullopt;
     }
     if (FindStartCode(access_unit, size, 0).has_value()) {
-        return ParseAnnexB(access_unit, size);
+        return ParseAnnexB(access_unit, size, codec);
     }
-    return ParseLengthPrefixed(access_unit, size);
+    return ParseLengthPrefixed(access_unit, size, codec);
 }
 
 std::optional<int64_t> MainCameraFrameUnixTimeUs(

@@ -56,6 +56,7 @@ struct Options
     bool rtcSet = false;
     bool rtcSyncNow = false;
     bool parseH265Timestamps = false;
+    ugripper::camera::MainCameraCodec timestampCodec = ugripper::camera::MainCameraCodec::H265;
     std::string dumpPath;
     std::string writeRawPath;
     std::string parseH265Path;
@@ -356,24 +357,24 @@ std::optional<std::pair<size_t, size_t>> findStartCode(
     return std::nullopt;
 }
 
-void parseH265TimestampFile(const std::string &path)
+void parseTimestampFile(const std::string &path, ugripper::camera::MainCameraCodec codec)
 {
     std::ifstream input(path, std::ios::binary | std::ios::ate);
     if (!input)
     {
-        throw std::runtime_error("failed to open H.265 file: " + path);
+        throw std::runtime_error("failed to open bitstream file: " + path);
     }
     const std::streamsize size = input.tellg();
     if (size <= 0)
     {
-        throw std::runtime_error("H.265 file is empty: " + path);
+        throw std::runtime_error("bitstream file is empty: " + path);
     }
     input.seekg(0, std::ios::beg);
     std::vector<uint8_t> stream(static_cast<size_t>(size));
     input.read(reinterpret_cast<char *>(stream.data()), size);
     if (!input)
     {
-        throw std::runtime_error("failed to read H.265 file: " + path);
+        throw std::runtime_error("failed to read bitstream file: " + path);
     }
 
     size_t matches = 0;
@@ -386,7 +387,7 @@ void parseH265TimestampFile(const std::string &path)
         if (nalEnd > nalBegin + 2)
         {
             const auto timestamp = ugripper::camera::ParseMainCameraXuTimestamp(
-                stream.data() + current->first, nalEnd - current->first);
+                stream.data() + current->first, nalEnd - current->first, codec);
             if (timestamp.has_value())
             {
                 std::cout << "sei=" << matches++
@@ -445,7 +446,8 @@ void printUsage(const char *program)
         << "  --rtc-get                         Read encoder PTS latched at the last SET\n"
         << "  --rtc-set-us UNIX_TIMESTAMP_US\n"
         << "  --rtc-sync-now\n"
-        << "  --parse-h265-timestamps FILE.h265\n";
+        << "  --parse-h265-timestamps FILE.h265\n"
+        << "  --parse-h264-timestamps FILE.h264\n";
 }
 
 bool parseOptions(int argc, char **argv, Options *options)
@@ -506,9 +508,11 @@ bool parseOptions(int argc, char **argv, Options *options)
             options->rtcSyncNow = true;
             continue;
         }
-        if (arg == "--parse-h265-timestamps" && index + 1 < argc)
+        if ((arg == "--parse-h265-timestamps" || arg == "--parse-h264-timestamps") && index + 1 < argc)
         {
             options->parseH265Timestamps = true;
+            options->timestampCodec = arg == "--parse-h264-timestamps"
+                ? ugripper::camera::MainCameraCodec::H264 : ugripper::camera::MainCameraCodec::H265;
             options->parseH265Path = argv[++index];
             continue;
         }
@@ -559,7 +563,7 @@ int main(int argc, char **argv)
 
         if (options.parseH265Timestamps)
         {
-            parseH265TimestampFile(options.parseH265Path);
+            parseTimestampFile(options.parseH265Path, options.timestampCodec);
         }
 
         const bool needsDevice = options.setBandwidth || options.writeRaw ||

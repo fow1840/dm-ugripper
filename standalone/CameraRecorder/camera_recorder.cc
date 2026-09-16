@@ -3,6 +3,8 @@
 #include "camera_recorder/camera_config.h"
 #include "camera_recorder/camera_registry.h"
 #include "camera_recorder/camera_timing.h"
+#include "camera_recorder/main_camera_cadence.h"
+#include "camera_recorder/main_camera_h265_continuity.h"
 #include "camera_recorder/camera_timestamp_offsets.h"
 #include "camera_recorder/main_camera_xu_rtc.h"
 #include "camera_recorder/stereo_control_json.h"
@@ -1353,6 +1355,8 @@ public:
                            << " appsrc=" << (appsrc_ != nullptr ? "true" : "false")
                            << " pipeline=" << (pipeline_ != nullptr ? "true" : "false")).str());
         if (capture_thread_.joinable()) {
+            // Allow the capture worker to drain its bounded lookahead first.
+            WaitForCaptureThreadDone(std::chrono::milliseconds(250));
             RequestAppsrcEosForStop();
             if (!WaitForCaptureThreadDone(kMainCameraStopEosGrace)) {
                 DM_LOG_WARN("{}", (::DA::utils::LogString()
@@ -1571,6 +1575,7 @@ private:
                     }
                     return false;
                 }
+                correct_50hz_cadence_ = frequency_hz == 50 && config_.fps == 60;
                 DM_LOG_INFO("{}", (::DA::utils::LogString()
                                    << "[camera_recorder][v4l2_control]"
                                    << " name=" << config_.name
@@ -1697,6 +1702,7 @@ private:
             "height", G_TYPE_INT, config_.height,
             "framerate", GST_TYPE_FRACTION, config_.fps, 1,
             "stream-format", G_TYPE_STRING, "byte-stream",
+            "alignment", G_TYPE_STRING, "au",
             nullptr);
         gst_app_src_set_caps(GST_APP_SRC(appsrc_), caps);
         gst_caps_unref(caps);
@@ -1713,7 +1719,7 @@ private:
             return false;
         }
 
-        if (options_.codec == "h265") {
+        {
             const int64_t host_time_us = CurrentSystemTimeUs();
             const auto write_time_us = ugripper::camera::MainCameraRtcWriteTimeUs(host_time_us);
             if (!write_time_us.has_value()) {
@@ -1746,6 +1752,7 @@ private:
             DM_LOG_INFO("{}", (::DA::utils::LogString()
                                << "[camera_recorder][main_rtc_sync]"
                                << " name=" << config_.name
+                               << " codec=" << options_.codec
                                << " device=" << config_.device
                                << " host_time_us=" << host_time_us
                                << " write_ahead_us="
@@ -1766,8 +1773,14 @@ private:
     }
 
     bool MaybeSyncRtc() {
-        if (options_.codec != "h265" || std::chrono::steady_clock::now() < next_rtc_sync_) {
+        if (std::chrono::steady_clock::now() < next_rtc_sync_) {
             return true;
+        }
+        if (!rtc_anchor_observed_) {
+            DM_LOG_WARN("[camera_recorder][main_rtc_sync_failed] name={} codec={} stage=sei_ack tset_us={}",
+                        config_.name, options_.codec, rtc_tset_us_.value_or(0));
+            SetFailure("main camera SEI did not adopt RTC anchor within 10s for " + config_.name);
+            return false;
         }
         next_rtc_sync_ = std::chrono::steady_clock::now() + std::chrono::seconds(10);
         const auto tset = ugripper::camera::MainCameraRtcWriteTimeUs(CurrentSystemTimeUs());
@@ -1790,12 +1803,13 @@ private:
             DM_LOG_WARN("[camera_recorder][main_rtc_sync_jump] name={} correction_us={} tset_us={} pset_us={}",
                         config_.name, correction_us, *tset, *pset);
         }
-        DM_LOG_INFO("[camera_recorder][main_rtc_sync] name={} periodic=true correction_us={} tset_us={} pset_us={}",
-                    config_.name, correction_us, *tset, *pset);
+        DM_LOG_INFO("[camera_recorder][main_rtc_sync] name={} codec={} periodic=true correction_us={} tset_us={} pset_us={}",
+                    config_.name, options_.codec, correction_us, *tset, *pset);
         rtc_tset_us_ = static_cast<uint64_t>(*tset);
         rtc_pset_us_ = *pset;
         // Keep session anchors so queued pre-SET frames retain their original mapping.
         rtc_anchors_.emplace_back(*rtc_tset_us_, *rtc_pset_us_);
+        rtc_anchor_observed_ = false;
         return true;
     }
 
@@ -1851,10 +1865,13 @@ private:
             }
 
             int64_t system_time_us = 0;
-            if (options_.codec == "h265") {
+            int64_t encoder_time_us = 0;
+            {
                 const auto xu_timestamp = ugripper::camera::ParseMainCameraXuTimestamp(
                     static_cast<const uint8_t*>(buffers_[buffer.index].data),
-                    buffer.bytesused);
+                    buffer.bytesused, options_.codec == "h264"
+                        ? ugripper::camera::MainCameraCodec::H264
+                        : ugripper::camera::MainCameraCodec::H265);
                 if (!xu_timestamp.has_value()) {
                     SetFailure("missing or invalid XU2 SEI timestamp for " + config_.name);
                     RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
@@ -1896,12 +1913,13 @@ private:
                                        << (xu_timestamp->encoder_pts_us - *rtc_pset_us_)).str());
                 }
                 system_time_us = *frame_unix_time_us;
-            } else {
-                system_time_us =
-                    V4l2BufferSystemTimeUs(buffer, boot_time_offset_us_)
-                        .value_or(CurrentSystemTimeUs());
+                encoder_time_us = static_cast<int64_t>(xu_timestamp->encoder_pts_us);
+                if (!rtc_anchor_observed_ && xu_timestamp->xu_time_us == *rtc_tset_us_) {
+                    rtc_anchor_observed_ = true;
+                    DM_LOG_INFO("[camera_recorder][main_rtc_anchor_applied] name={} codec={} tset_us={} pframe_us={}",
+                                config_.name, options_.codec, *rtc_tset_us_, xu_timestamp->encoder_pts_us);
+                }
             }
-            const int64_t pts_us = UpdateFrameTimingFromCapture(system_time_us);
 
             GstBuffer* gst_buffer = gst_buffer_new_allocate(nullptr, buffer.bytesused, nullptr);
             if (gst_buffer == nullptr) {
@@ -1917,41 +1935,49 @@ private:
                 RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
                 break;
             }
-            std::memcpy(map_info.data, buffers_[buffer.index].data, buffer.bytesused);
+            if (options_.codec == "h264") {
+                const auto normalized = ugripper::camera::NormalizeMainCameraH264AccessUnit(
+                    static_cast<const uint8_t*>(buffers_[buffer.index].data), buffer.bytesused);
+                std::memcpy(map_info.data, normalized.data(), normalized.size());
+            } else {
+                std::memcpy(map_info.data, buffers_[buffer.index].data, buffer.bytesused);
+            }
             gst_buffer_unmap(gst_buffer, &map_info);
 
-            GST_BUFFER_PTS(gst_buffer) = static_cast<GstClockTime>(pts_us) * 1000ULL;
-            GST_BUFFER_DTS(gst_buffer) = static_cast<GstClockTime>(pts_us) * 1000ULL;
-            GST_BUFFER_DURATION(gst_buffer) = static_cast<GstClockTime>(NominalFrameDurationUs()) * 1000ULL;
-
-            MaybeLogQueueBeforePush(pts_us, buffer.bytesused);
-            const auto push_start = std::chrono::steady_clock::now();
-            const GstFlowReturn push_result = gst_app_src_push_buffer(GST_APP_SRC(appsrc_), gst_buffer);
-            const auto push_elapsed = std::chrono::steady_clock::now() - push_start;
-            if (push_elapsed >= kMainCameraPushWarnThreshold) {
-                LogQueueDiag("push_slow", pts_us, buffer.bytesused, push_elapsed, true);
-            }
-            if (push_result != GST_FLOW_OK) {
-                LogQueueDiag("push_failed", pts_us, buffer.bytesused, push_elapsed, true);
-                RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
-                if (stop_requested_.load(std::memory_order_acquire)) {
-                    DM_LOG_INFO("{}", (::DA::utils::LogString()
-                                       << "[camera_recorder][main_stop_diag] category=push_stopped"
-                                       << " name=" << config_.name
-                                       << " flow=" << gst_flow_get_name(push_result)
-                                       << " flow_code=" << static_cast<int>(push_result)).str());
-                    break;
+            bool continuous = false;
+            bool intra = false;
+            std::size_t vcl_bytes = 0;
+            if (options_.codec == "h265") {
+                const auto picture = h265_pictures_.Inspect(
+                    static_cast<const uint8_t*>(buffers_[buffer.index].data), buffer.bytesused);
+                continuous = h265_continuity_.Observe(
+                    (buffer.flags & V4L2_BUF_FLAG_ERROR) ? std::nullopt : picture, buffer.sequence);
+                intra = !picture || picture->intra;
+                vcl_bytes = picture ? picture->vcl_bytes : 0;
+                if (!continuous) {
+                    DM_LOG_INFO("[camera_recorder][main_cadence_continuity_reset] name={} sequence={} header_known={}",
+                                config_.name, buffer.sequence, picture.has_value());
                 }
-                SetFailure("gst_app_src_push_buffer failed for " + config_.name +
-                           " flow=" + std::to_string(push_result));
-                break;
             }
+            pending_frames_.push_back({gst_buffer, system_time_us, encoder_time_us,
+                                       capture_ordinal_++, continuous, intra, vcl_bytes});
+            // MMAP storage has been copied; return it before any downstream push.
 
             if (!RetryIoctl(fd_, VIDIOC_QBUF, &buffer)) {
                 SetFailure("VIDIOC_QBUF failed for " + config_.name + ": " + std::strerror(errno));
                 break;
             }
+            if (!DrainPendingFrames(false)) {
+                break;
+            }
         }
+        if (!failure_) {
+            DrainPendingFrames(true);
+        }
+        for (const auto& frame : pending_frames_) {
+            gst_buffer_unref(frame.buffer);
+        }
+        pending_frames_.clear();
 
         running_ = false;
         exit_code_ = failure_ ? -1 : 0;
@@ -1968,6 +1994,90 @@ private:
                            << " timestamp_clamp_count=" << timestamp_clamp_count_
                            << " timestamp_rollback_count=" << timestamp_rollback_count_
                            << " max_timestamp_adjustment_us=" << max_timestamp_adjustment_us_).str());
+    }
+
+    struct PendingFrame {
+        GstBuffer* buffer;
+        int64_t unix_us;
+        int64_t encoder_us;
+        uint64_t ordinal;
+        bool continuous;
+        bool intra;
+        std::size_t vcl_bytes;
+    };
+
+    bool PushPendingFrame(int64_t corrected_us) {
+        const auto frame = pending_frames_.front();
+        pending_frames_.pop_front();
+        preceding_encoder_times_.push_back(frame.encoder_us);
+        if (preceding_encoder_times_.size() > 4) preceding_encoder_times_.pop_front();
+        previous_raw_frame_ = frame;
+        previous_raw_frame_->buffer = nullptr;
+        const auto pts_us = UpdateFrameTimingFromCapture(corrected_us);
+        GST_BUFFER_PTS(frame.buffer) = static_cast<GstClockTime>(pts_us) * 1000ULL;
+        GST_BUFFER_DTS(frame.buffer) = GST_BUFFER_PTS(frame.buffer);
+        GST_BUFFER_DURATION(frame.buffer) = static_cast<GstClockTime>(NominalFrameDurationUs()) * 1000ULL;
+        const auto bytes = gst_buffer_get_size(frame.buffer);
+        MaybeLogQueueBeforePush(pts_us, bytes);
+        const auto start = std::chrono::steady_clock::now();
+        const auto result = gst_app_src_push_buffer(GST_APP_SRC(appsrc_), frame.buffer);
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        if (elapsed >= kMainCameraPushWarnThreshold) {
+            LogQueueDiag("push_slow", pts_us, bytes, elapsed, true);
+        }
+        if (result != GST_FLOW_OK) {
+            LogQueueDiag("push_failed", pts_us, bytes, elapsed, true);
+            if (!stop_requested_.load(std::memory_order_acquire)) {
+                SetFailure("gst_app_src_push_buffer failed for " + config_.name +
+                           " flow=" + std::to_string(result));
+            }
+            return false;
+        }
+        return true;
+    }
+
+    bool DrainPendingFrames(bool flush) {
+        while (!pending_frames_.empty()) {
+            if (correct_50hz_cadence_ && previous_raw_frame_) {
+                if (pending_frames_.size() < 3 && !flush) {
+                    break;
+                }
+                bool correct = false;
+                if (pending_frames_.size() >= 3) {
+                    const bool stable = preceding_encoder_times_.size() == 4 &&
+                        ugripper::camera::HasMainCamera50HzStableLeadIn({
+                            preceding_encoder_times_[0], preceding_encoder_times_[1],
+                            preceding_encoder_times_[2], preceding_encoder_times_[3]});
+                    const std::array<int64_t,4> encoder = {
+                        previous_raw_frame_->encoder_us, pending_frames_[0].encoder_us,
+                        pending_frames_[1].encoder_us, pending_frames_[2].encoder_us};
+                    if (options_.codec == "h265") {
+                        correct = cadence_tracker_.ShouldCorrect(pending_frames_[0].ordinal, encoder,
+                            stable, pending_frames_[0].continuous && pending_frames_[1].continuous && pending_frames_[2].continuous,
+                            previous_raw_frame_->intra, pending_frames_[0].intra,
+                            {pending_frames_[0].vcl_bytes, pending_frames_[1].vcl_bytes, pending_frames_[2].vcl_bytes});
+                    } else {
+                        correct = stable && ugripper::camera::IsMainCamera50HzDuplicate(encoder);
+                    }
+                }
+                if (correct) {
+                    const auto corrected = ugripper::camera::MainCamera50HzMappedFrameTimes(
+                        {previous_raw_frame_->encoder_us, pending_frames_[0].encoder_us,
+                         pending_frames_[1].encoder_us, pending_frames_[2].encoder_us},
+                        {previous_raw_frame_->unix_us, pending_frames_[0].unix_us,
+                         pending_frames_[1].unix_us, pending_frames_[2].unix_us});
+                    DM_LOG_INFO("[camera_recorder][main_50hz_duplicate] name={} raw_unix_us={} corrected_unix_us={} next_real_us={} second_real_us={}",
+                                config_.name, pending_frames_[0].unix_us, corrected[0], corrected[1], corrected[2]);
+                    for (const auto time : corrected) {
+                        if (!PushPendingFrame(time)) return false;
+                    }
+                    continue;
+                }
+            }
+            // Unknown patterns and incomplete stop tails retain measured timing.
+            if (!PushPendingFrame(pending_frames_.front().unix_us)) return false;
+        }
+        return true;
     }
 
     bool StartupGateAllowsBuffer(const void* data, uint32_t bytesused) {
@@ -2426,9 +2536,18 @@ private:
     std::optional<int64_t> last_frame_system_time_us_;
     std::optional<int64_t> record_time_offset_us_;
     std::vector<std::pair<uint64_t, uint64_t>> rtc_anchors_;
+    bool rtc_anchor_observed_ = false;
     std::chrono::steady_clock::time_point next_rtc_sync_{};
     std::optional<uint64_t> rtc_tset_us_;
     std::optional<uint64_t> rtc_pset_us_;
+    bool correct_50hz_cadence_ = false;
+    std::deque<PendingFrame> pending_frames_;
+    std::optional<PendingFrame> previous_raw_frame_;
+    std::deque<int64_t> preceding_encoder_times_;
+    uint64_t capture_ordinal_ = 0;
+    ugripper::camera::MainCameraCadenceTracker cadence_tracker_;
+    ugripper::camera::MainCameraH265Pictures h265_pictures_;
+    ugripper::camera::MainCameraH265Continuity h265_continuity_;
     std::optional<uint64_t> first_encoder_pts_us_;
     uint64_t frame_count_ = 0;
     uint64_t timestamp_clamp_count_ = 0;

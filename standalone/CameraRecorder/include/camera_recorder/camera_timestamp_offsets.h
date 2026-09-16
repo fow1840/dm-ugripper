@@ -9,8 +9,10 @@ namespace camera_recorder::camera_time {
 // timestamps earlier. Update these values when a new experiment is accepted,
 // then rebuild.
 // Main-camera absolute time now comes from the camera XU RTC plus the frame
-// encoder PTS, so no host-observation latency is added after capture.
-inline constexpr int64_t kMainCameraLatencyUs = 8'000;
+// encoder-completion PTS. Move its absolute anchor 28 ms earlier to estimate
+// shutter time: measured +36 ms included the previous +8 ms offset.
+// Cadence correction changes only the relative frame timing.
+inline constexpr int64_t kMainCameraLatencyUs = -28'000;
 inline constexpr int64_t kTactileCameraLatencyUs = -35'000;
 
 enum class CameraTimestampSource {

@@ -164,3 +164,21 @@ sudo bash /dev/shm/ugripper_hmi_test/board_gripper_hmi_link_stress.sh \
 - `testVideoPipe.sh` 依赖 `v4l2-ctl`。
 - `scan_main_camera_mkv_issues.py` 依赖 `ffprobe`；当 `--decode-mode` 不是 `off` 时还依赖 `ffmpeg`。
 - `board_stopwatch_record_test.sh` 的 PC 端依赖 `sshpass`、`ssh` 和 `scp`；板端必须处于可正常起录状态，数据盘已挂载，且没有其他正在进行的录制。当前秒表硬件固定使用低电平持续运行、高电平持续至少 `5s` 清零，不支持改为高电平触发。
+
+## 屏幕黑白闪烁（强制请求垂直同步）
+
+在连接显示器的测试电脑上使用独立 Python 环境：
+
+```bash
+python -m pip install glfw PyOpenGL
+python test/scripts/mains_flicker_window.py --list-monitors
+python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
+```
+
+使用 GLFW + OpenGL 双缓冲，明确设置 `swap_interval(1)`；不使用 Tk、`after`、sleep 定时驱动画面。每个 swap 只输出纯黑或纯白，按刷新帧数切换颜色。启动先常亮约一秒验证 swap 节拍，运行中持续检查；启用失败、无节流或明显不匹配显示刷新率时退出，不回退软件定时。失焦/最小化停止推进，恢复及全屏切换重新校验。
+
+`5/6` 切换每秒 50/60 次颜色变更，空格暂停/继续，`F` 全屏，`Esc` 退出；`--paused` 初始暂停，`--monitor 1` 选择第二台显示器。默认自动读取当前显示模式刷新率，`--refresh-hz` 仅用于覆盖校验/调度采用的实际刷新率，不更改显示器设置。窗口移至其他显示器后应以对应 `--monitor` 重新启动。
+
+60 Hz 屏幕每帧黑白交替为 60 次切换/秒，也就是 30 个完整黑白周期/秒；120 Hz 屏幕每色保持两帧。59.94 Hz 等近似模式按整数帧调度并报告实际采用的速率。60 Hz 屏幕选择 50 次切换时只能交替保持 1/2 帧，因此持续时间不均匀；均匀的 50 次切换需要 50/100/150/200 Hz 等模式。高于显示刷新能力的选项会拒绝。
+
+驱动或桌面合成器仍可能覆盖 VSync 设置。脚本校验的是 swap 调用节拍，不能证明实际面板光学输出；请使用本地显示器，关闭 VRR/G-Sync/FreeSync，并优先全屏，准确验收仍需光学测量。

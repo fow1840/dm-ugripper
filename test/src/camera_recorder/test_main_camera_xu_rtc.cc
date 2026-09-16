@@ -122,6 +122,62 @@ TEST(MainCameraXuRtcTest, ConvertsCameraTimestampToUnixTime) {
               1'700'000'000'050'000);
 }
 
+TEST(MainCameraXuRtcTest, ParsesH264AnnexBAndLengthPrefixedWithEscapedPayload) {
+    const uint64_t encoder = 0x0000030000000000ULL;
+    auto nal = MakeSeiNal(encoder, 1'700'000'000'000'000);
+    nal.erase(nal.begin());
+    nal[0] = 6;
+    for (bool annex_b : {false, true}) {
+        std::vector<uint8_t> au = {0, 0, 0, static_cast<uint8_t>(annex_b ? 1 : nal.size())};
+        au.insert(au.end(), nal.begin(), nal.end());
+        const auto stamp = ugripper::camera::ParseMainCameraXuTimestamp(
+            au.data(), au.size(), ugripper::camera::MainCameraCodec::H264);
+        ASSERT_TRUE(stamp);
+        EXPECT_EQ(stamp->encoder_pts_us, encoder);
+        EXPECT_EQ(stamp->xu_time_us, 1'700'000'000'000'000U);
+        EXPECT_FALSE(ugripper::camera::ParseMainCameraXuTimestamp(au.data(), au.size()));
+        au.resize(au.size() - 8);
+        EXPECT_FALSE(ugripper::camera::ParseMainCameraXuTimestamp(
+            au.data(), au.size(), ugripper::camera::MainCameraCodec::H264));
+    }
+}
+
+TEST(MainCameraXuRtcTest, RejectsH264WrongMarkerAndNonSeiNal) {
+    for (bool wrong_marker : {false, true}) {
+        auto nal = MakeSeiNal(123, 456, !wrong_marker);
+        nal.erase(nal.begin());
+        nal[0] = wrong_marker ? 6 : 1;
+        std::vector<uint8_t> au = {0, 0, 1};
+        au.insert(au.end(), nal.begin(), nal.end());
+        EXPECT_FALSE(ugripper::camera::ParseMainCameraXuTimestamp(
+            au.data(), au.size(), ugripper::camera::MainCameraCodec::H264));
+    }
+}
+
+TEST(MainCameraXuRtcTest, MovesTrailingH264SeiBeforePictureWithoutChangingBytes) {
+    const std::vector<uint8_t> prefix = {0, 0, 0, 1, 9, 0xf0, 0, 0, 1, 7, 0xab};
+    const std::vector<uint8_t> picture = {0, 0, 1, 0x65, 0xab, 0xcd};
+    auto nal = MakeSeiNal(123, 456);
+    nal.erase(nal.begin());
+    nal[0] = 6;
+    std::vector<uint8_t> sei = {0, 0, 0, 1};
+    sei.insert(sei.end(), nal.begin(), nal.end());
+    auto input = prefix;
+    input.insert(input.end(), picture.begin(), picture.end());
+    input.insert(input.end(), sei.begin(), sei.end());
+    auto expected = prefix;
+    expected.insert(expected.end(), sei.begin(), sei.end());
+    expected.insert(expected.end(), picture.begin(), picture.end());
+    const auto output = ugripper::camera::NormalizeMainCameraH264AccessUnit(input.data(), input.size());
+    EXPECT_EQ(output, expected);
+    EXPECT_EQ(ugripper::camera::NormalizeMainCameraH264AccessUnit(output.data(), output.size()), output);
+    EXPECT_EQ(ugripper::camera::NormalizeMainCameraH264AccessUnit(picture.data(), picture.size()), picture);
+    const auto stamp = ugripper::camera::ParseMainCameraXuTimestamp(
+        output.data(), output.size(), ugripper::camera::MainCameraCodec::H264);
+    ASSERT_TRUE(stamp);
+    EXPECT_EQ(stamp->encoder_pts_us, 123U);
+}
+
 TEST(MainCameraXuRtcTest, MapsSetEncoderPtsToWrittenUnixTime) {
     const ugripper::camera::MainCameraXuTimestamp first{
         .encoder_pts_us = 73'764'647,
