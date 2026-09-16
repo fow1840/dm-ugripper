@@ -14,7 +14,8 @@ import server
 
 class BoundaryTests(unittest.TestCase):
     def test_mutual_exclusion_survives_same_process_separate_opens(self):
-        with tempfile.TemporaryDirectory() as d, patch.object(common,'LOCK',Path(d)/'lock'):
+        with tempfile.TemporaryDirectory() as d, patch.object(common,'LOCK',Path(d)/'lock'), patch.object(common,'PRODUCTION_LOCK',Path(d)/'production.lock'):
+            common.PRODUCTION_LOCK.touch()
             with common.operation_lock():
                 with self.assertRaises(common.Busy):
                     with common.operation_lock():pass
@@ -41,7 +42,8 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaises(ValueError):maintenance.submit(req)
     def test_upload_identifiers_cannot_escape(self):
         import builtins
-        with tempfile.TemporaryDirectory() as d, patch.object(common,'LOCK',Path(d)/'lock'):
+        with tempfile.TemporaryDirectory() as d, patch.object(common,'LOCK',Path(d)/'lock'), patch.object(common,'PRODUCTION_LOCK',Path(d)/'production.lock'):
+            common.PRODUCTION_LOCK.touch()
             with patch('maintenance.open',side_effect=lambda *a:builtins.open(Path(d)/'usb.lock','a')):
                 for value in ('../x','a'*33,'-option'):
                     with self.assertRaises(ValueError):

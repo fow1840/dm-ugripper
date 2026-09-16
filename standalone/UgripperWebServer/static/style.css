@@ -22,7 +22,12 @@
 .tactile-warning.clear{color:#176341;background:#e5f4eb;border:1px solid #a6d4b8}
 .tactile-warning.unknown{color:#58616c;background:#edf0f3;border:1px solid #cbd1d7}
 
-.language-switch{display:flex;align-items:center;gap:8px;margin-left:auto;white-space:nowrap}#uiLanguage{width:auto}
+.language-switch{display:flex;align-items:center;gap:8px;margin-left:auto;white-space:nowrap}#uiLanguage{width:auto}#productionDetails p{white-space:pre-wrap;overflow-wrap:anywhere;border-bottom:1px solid #ddd;padding-bottom:12px}#productionSummary{font-weight:600}
 
-
+#productionDetails pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto}
 @media(max-width:700px){header{height:auto;min-height:76px;flex-wrap:wrap;gap:8px 12px;padding-top:12px;padding-bottom:12px}#connection{width:100%;text-align:right}#uiLanguage{margin:0}.language-switch{gap:6px;font-size:12px}}
+
+#productionProgressPanel{margin-top:16px;padding:16px;background:#f3f6fa;border-radius:8px}
+#productionProgress{display:block;width:100%;height:18px;margin:10px 0}
+#productionProgressLabel{font-weight:600}
+#productionPhase,#productionFreshness{margin:8px 0 0}

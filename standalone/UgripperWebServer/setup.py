@@ -23,3 +23,5 @@ if not key.exists() or not crt.exists():
     subprocess.run(['/usr/bin/openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','3650','-subj','/CN=UGripper','-addext',f'subjectAltName=IP:{bind}','-keyout',str(key),'-out',str(crt)],check=True,capture_output=True)
 os.chown(key,0,user.pw_gid);os.chmod(key,0o640)
 lock=Path('/run/ugripper/maintenance.lock');lock.touch(exist_ok=True);os.chown(lock,user.pw_uid,user.pw_gid);os.chmod(lock,0o660)
+
+lock=Path('/run/ugripper/production.lock');lock.touch(exist_ok=True);os.chown(lock,user.pw_uid,user.pw_gid);os.chmod(lock,0o660)

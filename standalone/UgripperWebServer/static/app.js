@@ -7,7 +7,7 @@ function post(url,value){return api(url,{method:'POST',headers:{'Content-Type':'
 function bytes(n){return (n/1024**3).toFixed(1)+' GiB'}
 function metric(label,value,detail){const p=el('article',undefined,'panel metric');p.append(el('p',label,'muted'),el('div',value,'value'),el('p',detail,'muted'));return p}
 function row(label,value,good){const d=el('div',undefined,'device');d.append(el('span',label),el('span',value,'state '+(good===null?'':good?'good':'bad')));return d}
-function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording?'录制中':s.busy?'维护 / 传输中':'空闲';
+function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProduction(s.production||{});last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording?'录制中':s.busy?'维护 / 传输中':'空闲';
  const d=s.disks.data,m=s.memory;$('#metrics').replaceChildren(metric('CPU 占用',s.cpu_percent===null?'—':s.cpu_percent+'%','设备系统'),metric('内存使用',Math.round(m.used/m.total*100)+'%',bytes(m.used)+' / '+bytes(m.total)),metric('数据盘剩余',d.mounted?bytes(d.free):'未挂载',d.mounted?'总容量 '+bytes(d.total):'请连接数据盘'),metric('系统盘剩余',bytes(s.disks.system.free),'总容量 '+bytes(s.disks.system.total)));
  for(const side of ['left','right']){$('#'+side+'Devices').replaceChildren(...s.devices.filter(d=>d.side===side).map(d=>row(d.label,!d.present?'未识别':d.stream===null?'已识别':d.stream?'正常出流':'暂未出流',d.present&&(d.stream===null||d.stream))));}
  const ego=s.ego||{},bound=ego.bound,connected=ego.connected;
@@ -26,7 +26,7 @@ function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);last=s;busy
  $('#connection').textContent=(s.service_active?'数采服务在线':'数采服务已停止')+' · '+new Date().toLocaleTimeString();
  if(s.task.id&&!uploading){$('#taskPanel').hidden=false;$('#taskText').textContent=s.task.stage+(s.task.message?' · '+s.task.message:'');if(s.task.status==='running')$('#progress').removeAttribute('value');else $('#progress').value=100;$('#results').replaceChildren();for(const [k,v]of Object.entries(s.task.result||s.task.results||{})){$('#results').append(el('p',k+': '+(typeof v==='object'?(v.installed_version||v.status||'完成'):v)))} }
 }
-async function refresh(){if($('#workspace').hidden)return;try{render(await api('/api/v1/status'))}catch(e){$('#connection').textContent='连接中断';updateTactileImageWarnings([]);message(e.message)}}
+async function refresh(){if($('#workspace').hidden)return;try{render(await api('/api/v1/status'))}catch(e){$('#connection').textContent='连接中断';$('#productionFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';updateTactileImageWarnings([]);message(e.message)}}
 for(const b of document.querySelectorAll('nav [data-page]'))b.onclick=()=>{current=b.dataset.page;for(const x of document.querySelectorAll('.page'))x.hidden=x.id!==current;for(const x of document.querySelectorAll('nav [data-page]'))x.classList.toggle('selected',x===b);$('#title').textContent=({overview:'设备概览',data:'录制数据',upgrade:'升级维护',settings:'配置'})[current];if(current==='data')loadFiles()};
 async function loadFiles(){try{const v=await api('/api/v1/data?path='+encodeURIComponent(directory)+'&offset='+fileOffset);$('#previousFiles').disabled=fileOffset===0;$('#nextFiles').disabled=!v.has_more;$('#directory').textContent='/'+directory;$('#files').replaceChildren();for(const f of v.entries){const item=el('div',undefined,'file'),actions=el('div',undefined,'actions'),path=directory?directory+'/'+f.name:f.name;item.append(el('span',f.name,'name'));if(f.directory){const open=el('button','打开','secondary');open.onclick=()=>{directory=path;fileOffset=0;loadFiles()};actions.append(open)}const download=el('button',f.directory?'打包下载':'下载','secondary');download.onclick=()=>startDownload('/api/v1/download?path='+encodeURIComponent(path));actions.append(download);item.append(actions);$('#files').append(item)}}catch(e){message(e.message)}}
 $('#previousFiles').onclick=()=>{fileOffset=Math.max(0,fileOffset-200);loadFiles()};$('#nextFiles').onclick=()=>{fileOffset+=200;loadFiles()};
@@ -184,3 +184,33 @@ function renderTactileImage(camera,base,job){
  updateTactileImageWarnings(last?.tactile||[]);
 }
 $('#detectCover').onclick=()=>captureImages('tactile');
+
+let productionId='';
+function productionLabel(value){return ({passed:'通过',failed:'不通过',cancelled:'已取消',interrupted:'异常中断',running:'执行中',starting:'启动中',recording:'录制中',finalizing:'收尾中',pause:'停止间隔',finished:'已结束',success:'成功'})[value]||value||'';}
+function renderProduction(job){
+ productionId=job.id||'';const running=job.status==='running';
+ $('#productionStart').disabled=running;$('#productionCancel').disabled=!running;
+ const rounds=job.rounds||[],plan=job.plan||[['A',120,20,51],['B',300,20,11]];
+ const total=plan.reduce((sum,p)=>sum+p[3],0),completed=rounds.filter(r=>['success','failed'].includes(r.status)).length;
+ $('#productionProgressPanel').hidden=!job.id;
+ $('#productionProgress').max=total;$('#productionProgress').value=completed;
+ $('#productionProgressLabel').textContent='已完成轮数：'+completed+' / '+total+' · '+Math.floor(completed/total*100)+'%';
+ const count=plan.find(p=>p[0]===job.group)?.[3]||0;
+ const seconds=Math.max(0,Math.ceil((job.phase_deadline||0)-Date.now()/1000));
+ $('#productionPhase').textContent=job.group ? '当前组：'+job.group+' · 当前轮：'+job.round+' / '+count+' · '+productionLabel(job.phase)+(running?' · 阶段剩余约 '+seconds+' s':'') : productionLabel(job.phase);
+ $('#productionFreshness').textContent='进度更新时间：'+new Date().toLocaleTimeString();
+
+ $('#productionSummary').textContent=job.id ? '状态：'+productionLabel(job.status)+' · '+(job.group||'')+' '+(job.round||0)+' · '+productionLabel(job.phase)+' · 剩余约 '+Math.ceil((job.remaining_s||0)/60)+' min · A 失败 '+(job.failures?.A||0)+' / B 失败 '+(job.failures?.B||0)+' / 总失败 '+((job.failures?.A||0)+(job.failures?.B||0))+(job.reason?' · '+job.reason:'') : '尚未运行';
+ $('#productionDetails').replaceChildren(...(job.rounds||[]).map(r=>{
+  const item=el('div');item.append(el('p',r.group+' #'+r.round+' · '+productionLabel(r.status)+' · '+(r.actual_s??r.planned_s)+' s · '+(r.episode||'')+(r.reason?' · '+r.reason:'')));
+  if(r.log){const log=el('pre',r.log);log.dataset.noI18n='1';item.append(log);}return item;
+ }));
+}
+$('#productionStart').onclick=async()=>{
+ if(!await confirmAction('启动生产压测？A 组 51 轮，B 组 11 轮，约 2 小时 57 分 40 秒，另加启动和收尾时间。关闭网页或拔网线仍继续运行。'))return;
+ try{await post('/api/v1/production/start',{confirm:true});refresh()}catch(e){message(e.message)}
+};
+$('#productionCancel').onclick=async()=>{
+ if(!await confirmAction('取消生产压测并停止当前录制？结果将标记为已取消。'))return;
+ try{await post('/api/v1/production/cancel',{id:productionId});message('正在取消，等待录制收尾');refresh()}catch(e){message(e.message)}
+};

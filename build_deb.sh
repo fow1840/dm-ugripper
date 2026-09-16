@@ -515,6 +515,7 @@ copy_if_exists "standalone/UgripperWebServer" "$TARGET_INSTALL_ROOT/bin/Ugripper
 # execute only its root-owned copy and the system Python interpreter.
 WEB_PRIVILEGED_ROOT="$BUILD_ROOT/usr/local/lib/ugripper-web"
 copy_if_exists "standalone/UgripperWebServer/common.py" "$WEB_PRIVILEGED_ROOT/common.py"
+copy_if_exists "standalone/UgripperWebServer/production_test.py" "$WEB_PRIVILEGED_ROOT/production_test.py"
 copy_if_exists "standalone/UgripperWebServer/maintenance.py" "$WEB_PRIVILEGED_ROOT/maintenance.py"
 copy_if_exists "standalone/UgripperWebServer/camera_snapshot.py" "$WEB_PRIVILEGED_ROOT/camera_snapshot.py"
 copy_if_exists "standalone/UgripperWebServer/tactile_panel.py" "$WEB_PRIVILEGED_ROOT/tactile_panel.py"

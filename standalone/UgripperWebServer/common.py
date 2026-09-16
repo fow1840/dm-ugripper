@@ -13,6 +13,7 @@ ROOT = Path('/opt/ugripper')
 STATE = Path(os.environ.get('UGRIPPER_WEB_STATE', '/var/lib/ugripper-web'))
 RUN = Path(os.environ.get('UGRIPPER_WEB_RUN', '/run/ugripper-web'))
 DATA = Path(os.environ.get('UGRIPPER_WEB_DATA', '/mnt/data_disk'))
+PRODUCTION_LOCK = Path(os.environ.get('UGRIPPER_PRODUCTION_LOCK', '/run/ugripper/production.lock'))
 LOCK = Path(os.environ.get('UGRIPPER_WEB_LOCK', '/run/ugripper/maintenance.lock'))
 MAX_UPLOAD = 200 * 1024 * 1024
 ALLOW = ('das-usb-updater', 'ugripper', 'bluetooth-gatt-server', 'databot-device-joint', 'device-ota-mender')
@@ -55,6 +56,20 @@ def command(args, timeout=15):
 @contextlib.contextmanager
 def operation_lock():
     # Never unlink this inode: recording, download and maintenance share it.
+    production_fd = os.open(PRODUCTION_LOCK, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    try:
+        fcntl.flock(production_fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        os.close(production_fd)
+        raise Busy('生产压测正在执行') from exc
+    try:
+        with _maintenance_lock():
+            yield
+    finally:
+        os.close(production_fd)
+
+@contextlib.contextmanager
+def _maintenance_lock():
     fd = os.open(LOCK, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW, 0o660)
     try:
         try:

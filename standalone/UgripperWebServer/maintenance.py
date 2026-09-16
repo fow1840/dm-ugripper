@@ -239,7 +239,13 @@ class Handler(socketserver.StreamRequestHandler):
         try:
             self.request.settimeout(10)
             req=json.loads(self.rfile.readline(4096))
-            if req.get('action')=='submit': value=submit(req)
+            if req.get('action')=='production_start':
+                from production_test import start
+                value=start()
+            elif req.get('action')=='production_cancel':
+                from production_test import cancel
+                value=cancel(req.get('id'))
+            elif req.get('action')=='submit': value=submit(req)
             elif req.get('action')=='tactile_reset':
                 from tactile_panel import reset_baseline
                 from camera_snapshot import SNAPSHOTS
@@ -263,6 +269,8 @@ class Handler(socketserver.StreamRequestHandler):
 
 if __name__=='__main__':
     PRIVATE.mkdir(mode=0o700,exist_ok=True)
+    from production_test import recover
+    recover()
     from camera_snapshot import SNAPSHOTS
     shutil.rmtree(SNAPSHOTS, ignore_errors=True)
     for name in ('web_reset_request.json','web_reset_response.json','web_reset.gray'):

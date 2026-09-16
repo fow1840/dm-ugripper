@@ -74,7 +74,8 @@ def status():
         with operation_lock(): busy = False
     except Busy:
         busy = True
-    return dict(device_sn=env.get('DEVICE_SN',''), versions=versions, devices=devices,
+    from production_test import snapshot
+    return dict(production=snapshot(),device_sn=env.get('DEVICE_SN',''), versions=versions, devices=devices,
                 cpu_percent=usage, memory=dict(total=mem['MemTotal'], used=mem['MemTotal']-mem['MemAvailable']),
                 disks=dict(data=disk(DATA, True), system=disk('/')), busy=busy,
                 recording=Path('/tmp/umi_recording.lock').exists(),
