@@ -1132,7 +1132,9 @@ maintain_side_daemon() {
 
     if [ -n "$pid" ] || [ -p "$fifo" ]; then
         local unhealthy_reason
-        unhealthy_reason="$(check_side_working_state_reason "$side" "$config" "$fifo" "$calib_json" "$pid" true)"
+        # An unhealthy result is expected here; preserve its reason without
+        # letting errexit abort the worker before cleanup and restart.
+        unhealthy_reason="$(check_side_working_state_reason "$side" "$config" "$fifo" "$calib_json" "$pid" true)" || true
         if [ -z "$unhealthy_reason" ]; then
             unhealthy_reason="unknown"
         fi
@@ -1198,7 +1200,10 @@ apply_side_maintain_result() {
     local result_path="$2"
     local pid="" started_at=0 unhealthy_reason="" last_finalize_error=""
 
-    [ -f "$result_path" ] || return 0
+    if [ ! -s "$result_path" ]; then
+        fays_error "UGR-22-03" "$side recorder maintain worker produced no result; preserving previous state"
+        return 0
+    fi
     # shellcheck disable=SC1090
     source "$result_path"
     if [ "$side" = "left" ]; then
@@ -1228,11 +1233,20 @@ maintain_stereo_daemons_parallel() {
     maintain_side_daemon_worker right "$right_result" &
     right_worker="$!"
 
-    wait "$left_worker" || true
-    wait "$right_worker" || true
+    local left_status=0 right_status=0
+    wait "$left_worker" || left_status=$?
+    wait "$right_worker" || right_status=$?
+    if [ "$left_status" -eq 0 ]; then
+        apply_side_maintain_result left "$left_result"
+    else
+        fays_error "UGR-22-03" "left recorder maintain worker failed exit=$left_status; preserving previous state"
+    fi
+    if [ "$right_status" -eq 0 ]; then
+        apply_side_maintain_result right "$right_result"
+    else
+        fays_error "UGR-22-03" "right recorder maintain worker failed exit=$right_status; preserving previous state"
+    fi
 
-    apply_side_maintain_result left "$left_result"
-    apply_side_maintain_result right "$right_result"
     rm -f "$left_result" "$right_result"
 }
 

@@ -182,3 +182,7 @@ python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
 60 Hz 屏幕每帧黑白交替为 60 次切换/秒，也就是 30 个完整黑白周期/秒；120 Hz 屏幕每色保持两帧。59.94 Hz 等近似模式按整数帧调度并报告实际采用的速率。60 Hz 屏幕选择 50 次切换时只能交替保持 1/2 帧，因此持续时间不均匀；均匀的 50 次切换需要 50/100/150/200 Hz 等模式。高于显示刷新能力的选项会拒绝。
 
 驱动或桌面合成器仍可能覆盖 VSync 设置。脚本校验的是 swap 调用节拍，不能证明实际面板光学输出；请使用本地显示器，关闭 VRR/G-Sync/FreeSync，并优先全屏，准确验收仍需光学测量。
+
+## 双目守护脚本恢复回归
+
+执行 `/usr/bin/python3 test/scripts/test_fays_daemon_recovery.py`，无需相机硬件。测试在 Bash `set -euo pipefail` 环境调用生产函数，覆盖残留 FIFO 时重新启动、维护 worker 异常退出时拒绝应用部分结果，以及空结果保留原 PID。
