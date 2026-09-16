@@ -6,6 +6,8 @@ import time
 from common import DATA, STATE, command, read_json, operation_lock, Busy, ALLOW
 
 from environment_config import read_settings
+from ego_status import ego_status
+from tactile_panel import panel_status
 
 CPU_PREV = None
 
@@ -16,22 +18,22 @@ def disk(path, required=False):
     d = shutil.disk_usage(path)
     return dict(mounted=True, total=d.total, used=d.used, free=d.free)
 
+FIRMWARE_STATUS = Path('/dev/shm/ugripper/firmware_status.json')
+
+
 def firmware_status():
-    cached = read_json(STATE/'firmware.json')
+    cached = read_json(FIRMWARE_STATUS)
+    if not isinstance(cached, dict):
+        cached = {}
+    stamp = cached.get('updated_at_ms')
+    fresh = (isinstance(stamp, (int, float)) and not isinstance(stamp, bool)
+             and 0 <= time.time() * 1000 - stamp <= 15000)
     result = {'main_camera': {}, 'gripper': {}}
     for side in ('left', 'right'):
-        serial = ''
-        try:
-            device = Path('/dev', 'cam_'+side).resolve(strict=True).name
-            node = (Path('/sys/class/video4linux')/device).resolve(strict=True)
-            for parent in node.parents:
-                if (parent/'idVendor').exists() and (parent/'serial').exists():
-                    serial = (parent/'serial').read_text().strip(); break
-        except OSError: pass
-        result['main_camera'][side] = {'iserial': serial}
-        group = cached.get('gripper', {})
-        item = group.get(side, {}) if isinstance(group, dict) else {}
-        result['gripper'][side] = item if isinstance(item, dict) else {}
+        for group in result:
+            items = cached.get(group, {}) if fresh else {}
+            item = items.get(side, {}) if isinstance(items, dict) else {}
+            result[group][side] = item if isinstance(item, dict) else {}
     return result
 
 
@@ -76,6 +78,6 @@ def status():
                 cpu_percent=usage, memory=dict(total=mem['MemTotal'], used=mem['MemTotal']-mem['MemAvailable']),
                 disks=dict(data=disk(DATA, True), system=disk('/')), busy=busy,
                 recording=Path('/tmp/umi_recording.lock').exists(),
-                firmware=firmware_status(), configuration=read_settings(),
+                firmware=firmware_status(), configuration=read_settings(), ego=ego_status(), tactile=panel_status(),
                 task=read_json(STATE/'task.json'),
                 service_active=command(['systemctl','is-active','ugripper.service']).returncode == 0)

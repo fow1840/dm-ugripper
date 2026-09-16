@@ -477,6 +477,7 @@ copy_first_existing "$TARGET_INSTALL_ROOT/bin/UgripperRuntime/UgripperRuntime" \
 copy_first_existing "$TARGET_INSTALL_ROOT/bin/FaysStereoRecorder/fays_record_example" \
     "$PACKAGED_BUILD_DIR/standalone/FaysStereoRecorder/fays_record_example"
 copy_if_exists "scripts/hws" "$BUILD_ROOT/usr/local/bin/hws"
+copy_if_exists "scripts/getimg" "$BUILD_ROOT/usr/local/bin/getimg"
 copy_if_exists "scripts/ugripper_ch9344_symlink_name.sh" \
     "$BUILD_ROOT/usr/local/bin/ugripper_ch9344_symlink_name"
 copy_if_exists "scripts/restore_usb/ugripper_restore_usb" \
@@ -515,6 +516,10 @@ copy_if_exists "standalone/UgripperWebServer" "$TARGET_INSTALL_ROOT/bin/Ugripper
 WEB_PRIVILEGED_ROOT="$BUILD_ROOT/usr/local/lib/ugripper-web"
 copy_if_exists "standalone/UgripperWebServer/common.py" "$WEB_PRIVILEGED_ROOT/common.py"
 copy_if_exists "standalone/UgripperWebServer/maintenance.py" "$WEB_PRIVILEGED_ROOT/maintenance.py"
+copy_if_exists "standalone/UgripperWebServer/camera_snapshot.py" "$WEB_PRIVILEGED_ROOT/camera_snapshot.py"
+copy_if_exists "standalone/UgripperWebServer/tactile_panel.py" "$WEB_PRIVILEGED_ROOT/tactile_panel.py"
+copy_if_exists "tools/tactile_damage_detector" "$TARGET_INSTALL_ROOT/bin/tactile_damage_detector"
+chmod 755 "$TARGET_INSTALL_ROOT/bin/tactile_damage_detector/detect"
 copy_if_exists "standalone/UgripperWebServer/environment_config.py" "$WEB_PRIVILEGED_ROOT/environment_config.py"
 copy_if_exists "standalone/UgripperWebServer/production" "$WEB_PRIVILEGED_ROOT/production"
 copy_if_exists "standalone/UgripperWebServer/bin" "$WEB_PRIVILEGED_ROOT/bin"
@@ -570,6 +575,7 @@ chmod 755 "$BUILD_ROOT/DEBIAN/postinst"
 chmod 755 "$BUILD_ROOT/DEBIAN/prerm"
 chmod 755 "$BUILD_ROOT/DEBIAN/postrm"
 chmod 755 "$BUILD_ROOT/usr/local/bin/hws"
+chmod 755 "$BUILD_ROOT/usr/local/bin/getimg"
 chmod 755 "$BUILD_ROOT/usr/local/bin/ugripper_ch9344_symlink_name"
 chmod 755 "$BUILD_ROOT/usr/local/sbin/ugripper_restore_usb"
 chmod 755 "$BUILD_ROOT/usr/local/lib/ugripper/restore_usb/auto_restore_usb.py"

@@ -49,6 +49,7 @@ public:
     bool setBeepEnabled(bool enabled);
     bool silenceBeep();
     bool readVersions(std::string *version56, std::string *version57);
+    bool readFirmwareVersion(std::string *version);
     bool initializeVersionStorage();
     bool readSerialNumber(std::string *serialNumber);
     bool readSerialNumberPayload(gripper_hmi::GripperSerialNumber *serialNumber);

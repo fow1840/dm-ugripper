@@ -8,24 +8,24 @@
 - 主控制链路当前以 `run_record.sh -> /opt/ugripper/bin/UgripperRuntime/UgripperRuntime` 作为安装入口。
 - 默认主包录制 **2 路主相机 + 2 路 stereo + 4 路触觉相机 + 左右 sensor/Fays MCAP**；构建时显式设置 `UGRIPPER_ENABLE_STEREO=OFF` 才生成不含双目数据的 `+nostereo` 变体。
 - Fays stereo recorder 对每个 episode 的标定 JSON 获取最多尝试 5 次；运行期间以限频 `WARN` 记录 SDK 无新帧/超时/设备丢失、采集处理过慢和编码队列丢帧，用于区分采集端与编码端问题。
+- SDK `NO_NEW_FRAME` 只在连续无成功帧达到 `200ms` 时输出 `WARN`，正常 `25fps` 帧间轮询不告警；首次出帧前从采集循环启动计时。每个返回码独立按 `2s` 限频，`TIMEOUT`、`DEVICE_LOST` 等异常首次立即告警，不被无新帧日志压制。`return_count` 是该返回码分类的累计轮询返回次数，不是丢帧数；`no_frame_ms` 是距成功帧（或首次出帧前距采集启动）的单调时钟间隔，`has_frame` 区分是否已出过帧。采集处理耗时同样使用单调时钟，超过 `100ms` 的告警按 `2s` 限频；这些日志不改变录制、丢帧或恢复策略。
 - HMI 按键、RGB 灯效、提示音、pre/post 音频录制、停录校验，以及右手双键关机/左手双键卸载数据盘请求都已纳入当前运行时。
 - U 盘流程统一负责 `deb` 升级/重装、`config.txt` 导入、标定数据导入和 encoder 零位校准触发；当前自动安装名单已覆盖 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint` 与 `device-ota-mender`，deb 安装窗口会复用 HMI 灯效提示安装中/失败/完成状态，并会在整批安装完成后通过 PulseAudio 播放 `upgrade_completed.wav`。
 
 Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与启动健康宽限期均为 8 秒（240 实测左侧 SDK 初始化约 4.3 秒，3 秒会提前终止有效初始化）；IMU 无数据超过 3 秒、视频断流超过 3 秒视为不健康。停止并释放端口后等待 1 秒再尝试启动；启动前要求设备节点存在且指向连续稳定 3 秒（当前每次启动都会检查，因此该等待与停止后的 1 秒分别计时）。超时由约 1 秒一次的巡检判定，清理耗时另计。HMI 重连不作为人工插拔证据；软件 USB 恢复与健康验证期间及其后 20 秒内同步设备存在状态，不因重枚举清零恢复次数。
-
-- SDK `NO_NEW_FRAME` 只在连续无成功帧达到 `200ms` 时输出 `WARN`，正常 `25fps` 帧间轮询不告警；首次出帧前从采集循环启动计时。每个返回码独立按 `2s` 限频，`TIMEOUT`、`DEVICE_LOST` 等异常首次立即告警，不被无新帧日志压制。`return_count` 是该返回码分类的累计轮询返回次数，不是丢帧数；`no_frame_ms` 是距成功帧（或首次出帧前距采集启动）的单调时钟间隔，`has_frame` 区分是否已出过帧。采集处理耗时同样使用单调时钟，超过 `100ms` 的告警按 `2s` 限频；这些日志不改变录制、丢帧或恢复策略。
 
 ## 2. 安装布局与入口
 - 安装目录：`/opt/ugripper`
 - 主服务：`pack_script/ugripper.service`
 - 主入口：`/opt/ugripper/run_record.sh`
 - 主运行时：`/opt/ugripper/bin/UgripperRuntime/UgripperRuntime`
-- 独立维护 Web 服务：`standalone/UgripperWebServer/` 提供 HTTPS 客户页面，接网线即可免登录访问（无账号、密码或会话），维护写请求保留跨站防护与操作确认，默认绑定以太网 `192.168.2.240:8080`，独立 `ugripper-webserver.service`（ubuntu）与 `ugripper-maintenance.service`（本地 root worker）。设备状态、日志下载、数据浏览/下载、白名单软件升级、左右主摄/夹爪固件升级、治具确认后的左右独立编码器标零通过受控 API 提供。主摄 iSerial 与夹爪固件版本按左右展示；四个环境参数（语言、编码、胸部主摄开关、电源频率）提供下拉配置，确认后由 root 专用 helper 限定写入 `/etc/environment` 并重启数采。录制与维护/下载共用 `/run/ugripper/maintenance.lock` 原子锁，持有到各自收尾结束；主摄升级固定调用包内 dfu-util。配置及测试说明见 `standalone/UgripperWebServer/README.md`。
+- 独立维护 Web 服务：`standalone/UgripperWebServer/` 提供 HTTPS 客户页面，接网线即可免登录访问（无账号、密码或会话），维护写请求保留跨站防护与操作确认，默认绑定以太网 `192.168.2.240:8080`，独立 `ugripper-webserver.service`（ubuntu）与 `ugripper-maintenance.service`（本地 root worker）。设备状态、日志下载、数据浏览/下载、白名单软件升级、左右主摄/夹爪固件升级、治具确认后的左右独立编码器标零通过受控 API 提供。主摄 iSerial 与夹爪固件版本按左右展示，由 UGripper 维护 `/dev/shm/ugripper/firmware_status.json`，Web 仅读取快照；夹爪复用 HMI 驱动在空闲时读取，启动/重连自动刷新，失败每 30 秒重试且每次连接最多 3 次，录制期间不查询；配置页支持空闲时查看左右编码器原始计数、角度与弧度；每次位置查询在录制/维护共享锁内打开并关闭串口，只发送 Modbus 读命令，支持 1Mbps/115200 且不改设备配置。四个环境参数（语言、编码、胸部主摄开关、电源频率）提供下拉配置，确认后由 root 专用 helper 限定写入 `/etc/environment` 并重启数采。录制与维护/下载共用 `/run/ugripper/maintenance.lock` 原子锁，持有到各自收尾结束；主摄升级固定调用包内 dfu-util。配置及测试说明见 `standalone/UgripperWebServer/README.md`。
 - 数据目录：`/mnt/data_disk/<device_sn_lower>/data`
 - 持久化标定目录：`/etc/ugripper/config/calibration`
 - 日志目录：`/var/log/ugripper`
 - 运行日志镜像目录：`/mnt/data_disk/logs`
-- 终端硬件检查：`/usr/local/bin/hws`
+- 每次停录收尾会将 systemd journal（系统服务、内核、USB 等）增量保存到 `/mnt/data_disk/logs/system_<device_sn>_<YYYYMMDD>.log`；游标保存在日志目录，支持重启后续写。journal 清理、游标失效或恢复读取时会按完整日志与已有内容去重后原子替换，避免重复；保存失败不影响停录。
+- 终端硬件检查：`/usr/local/bin/hws`。HWS 与 Web 概览均显示 Ego 绑定状态、连接状态和绑定序列号，共用只读快照解析；绑定以 `/dev/shm/ugripper/ego_binding.json` 为准，连接要求状态快照序列号匹配且 15 秒内更新，否则显示未知。未绑定时连接显示未检测，不额外运行 ADB，也不把 USB 存储枚举当作 Ego 在线。
 - U 盘升级入口：`auto_update/usb_auto_update.sh`
 
 ## 3. 模块总览
@@ -97,6 +97,8 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周期内重启 `ugripper.service` 或重装软件仍保留绑定，整机重启或断电开机后 `/dev/shm` 清空，因此自动恢复为未绑定状态。`ego_binding_status.json` 使用 `bound / connected / disconnected / unbound` 表示绑定完成、在线、离线和已解绑；服务启动时若没有有效 binding，会主动发布 `unbound`，清理旧版本遗留的 `connected / disconnected` 快照。解绑不依赖 ADB 在线，即使 Ego 已拔出并进入 `disconnected / ERROR_5`，仍可通过左右上键组合解除绑定并清除该故障。解绑会在共享锁保护下删除 binding 并原子发布不带旧 serial 的 `unbound`，在途的旧 probe 在发布结果前会重新核对当前 binding，不能把状态覆盖回旧 serial 的 `connected`。解绑后不再探测 Ego，因此随后物理拔出不会改变 `unbound`。安装新版本时会清理旧 `/var/lib/ugripper/ego/binding.json`，避免历史持久化绑定被重新加载。
 
 Ego 绑定时通过指定 serial 的 `dumpsys package com.ssnwt.helloxr` 读取 `versionName`；数字版本达到 `1.0.4` 才允许电流配置，版本缺失、无法解析或低于门槛时跳过新增功能并保留绑定。版本支持普通三段版本及可选 `v/V` 前缀，带其他后缀的版本保守视为未知。绑定文件追加 `app` 与 `input_current`，记录版本、能力、电流配置及广播回读结果。电流直接读取 UGripper 主机 `/etc/environment` 的 `HARDWARE_VERSION`，仅 `2.5.x > 2.5.0` 设置 `1600000 µA`（1.6A）；缺失、非法、`<=2.5.0` 和其他系列统一 `1100000 µA`（1.1A），不使用 metadata 的 `UGRIPPER_HARDWARE_VERSION` 默认值。绑定时发送显式 `InputCurrentLimitReceiver / SET_INPUT_CURRENT_LIMIT` 广播，并核对 JSON 的状态、callback、requested/readback、matched 和 persisted；失败只告警，不取消绑定，也不改变录制硬条件。
+
+Ego 语音目前仅适配 `1203`（存储容量不足，请及时清理）：启动等待存储和运行中健康检查沿用 `disk_full` 判定（数据盘可用空间为 `0`），首次检测到时异步发送 `SpeechCommandReceiver / SPEECH_PLAY`；持续同一次故障只尝试一次，退出 `disk_full` 后再次进入才重新触发。未挂载、只读、空间信息读取失败等其他磁盘故障不播这条。已绑定时仅使用该 serial，未绑定时仅选择唯一在线且符合 SXR 型号规则的 Ego；播报前重新读取 App 版本，低于 `1.0.4` 或未知则跳过。语言读取主机 `/etc/environment` 的 `UGRIPPER_LANG`，缺失时回退进程环境，`en` 使用英文，其余使用 `zh`。ADB 超时或 App 拒绝只写告警，不阻塞磁盘故障处置；日志的 `accepted` 仅表示 App 接受入队，不表示已经播放完成。人工标记无效不再触发 `1103`，数据写入阶段不触发 `1003`。
 
 
 ## 6. 录制生命周期
@@ -360,7 +362,7 @@ H.265 主摄在 `VIDIOC_STREAMON` 前向 UVC XU selector `0x19` 写入当前主�
 ### 8.6 相关辅助单元
 - `auto_update/umi-shutdown-trigger.path`：由 `ugripper` 主包交付并启用，监控 `/run/ugripper/system_action_request`；`/run/ugripper` 由随包 tmpfiles.d 配置在开机阶段创建，避免系统镜像中 `/tmp` tmpfs 与 swapfile 链路的 systemd boot transaction ordering cycle 造成 path unit 激活遗漏。
 - `auto_update/umi-shutdown-trigger.service`：由 `ugripper` 主包交付，只作为 path 触发的 oneshot helper，不单独 enable；检测到触发文件后执行统一 helper，当前支持 `shutdown` 与 `umount` 两类动作，并把执行结果写回 `/run/ugripper/system_action_result`。
-- `auto_calibration/ugripper-network-monitor.service`：监听网线插拔，当前仅在拔线时重启 `ugripper.service`。
+- `auto_calibration/ugripper-network-monitor.service`：仅记录网线状态变化，插拔均不重启数采服务。
 - `auto_update/boot_check_install.sh`：开机时检查 `/opt/backup` 中的 `deb` 是否需要恢复或升级。
 
 ### 8.7 硬件健康监控
@@ -448,7 +450,7 @@ H.265 主摄在 `VIDIOC_STREAMON` 前向 UVC XU selector `0x19` 写入当前主�
 
 ### 9.6 网线监测行为
 `auto_calibration/monitor_network.sh` 当前行为：
-- 网线拔出：仅重启 `ugripper.service`
+- 网线拔出：仅记录状态，不重启 `ugripper.service`
 - 网线插入：不重启 `ugripper.service`，也不执行其他额外动作
 - 若存在 `/run/ugripper_installing_from_usb.lock`，则跳过升级窗口内的边沿动作
 
@@ -459,6 +461,19 @@ H.265 主摄在 `VIDIOC_STREAMON` 前向 UVC XU selector `0x19` 写入当前主�
 - 主包打包当前默认优先从 Nexus raw 仓库下载并解压归档好的 `.venv` `tar.gz`，再沿用同一套 `.venv` 架构校验与 staging 同步逻辑；当前默认归档为 `ugripper-v2-uv-venv/py311_v2.1.0/ugripper_venv_20260623_102954_arm64.tar.gz`，这条入口只针对 raw 制品下载，不走 Conan recipe。
 - 若需要临时切回本地或外部目录中的 `.venv` / `build`，可显式设置 `PACKAGED_VENV_URL=''` 后再配合 `PACKAGED_VENV_SOURCE`、`PACKAGED_BUILD_DIR` 覆盖来源；若最终 `.venv` 来源不存在，脚本会同步移除 staging 中旧的 `.venv`，此时包仍可生成，但不再满足部署后直接运行的交付约束。
 - auto-release 源码基线独立保存在 `temp_build_state/`，不进入主包或 updater staging。候选文件由 Git 已跟踪文件和未忽略的新文件产生，排除文档、Codex、graphify 与构建产物；哈希采用 NUL 分隔批处理和原子替换。主包/updater 构建后的基线刷新默认限时 `30s`，失败或超时时保留上一份基线并告警，不影响已生成的 deb。
+
+## Web 触觉盖板诊断与 Ego 版本
+
+- Ego 绑定读取固件 `ro.internal.display.id` 与 App `versionName`，在线 probe 每分钟补读/更新；页面显示两项版本，断连标注缓存。
+- 触觉图片独立按夹爪侧别与传感器位置展示；“盖板损坏检测”按实时采集参数取图，对照同 serial 的短期 reference、长期 persistent 输出 mask 状态图，不直接更新连续 episode 黄灯窗口。
+- 允许确认当前盖板完好、无接触后按传感器重置指定基线。主运行时消费 `tactile_state/web_reset_request.json`，等后台校验结束后串行更新 baseline/history/黄灯，并回复 `web_reset_response.json`；请求超时、serial 变化均拒绝。不重启双目预热。
+- Web 临时预览仅保留最新一组，过程视频与重置中间文件清理，服务启动清理中断残留；正式基线和固定正常/损坏例图保留。
+
+## 手动相机抓图
+
+- Web 设备概览与 `/usr/local/bin/getimg [输出目录]` 支持按采集配置抓图，录制/维护期间拒绝执行，共用现有 maintenance flock，不停止主服务或双目 warmup。
+- 双目由 Fays recorder 的 `GETIMG|<请求ID>` 从原 SDK 取流线程复制下一帧，控制线程保存；其他本机相机直接采集，沿用 camera YAML 的分辨率、帧率、输入格式、输出变换及环境中的主摄编码、胸部开关、电源频率。
+- Ego 使用独立按钮或 `getimg --ego`，短录约 3 秒后拉取三路视频截帧；全部成功后仅删除本次新建的远端测试 episode，失败保留并报告。详见 `standalone/UgripperWebServer/README.md`。
 
 ## 10. 常用检查与排障入口
 ### 10.1 服务管理
@@ -578,6 +593,13 @@ PY
 - `info.json` 不再作为 episode 最终产物生成；时间偏移信息已迁移到 `metadata.json.video_details[].start_offset_us`。
 - 现场调试若需要同时访问不同子网设备，应由系统侧或人工维护额外地址/路由；主包不负责托管这些网络策略。
 - 校准、导入与恢复动作仍分散在多个 shell 脚本和 service 中；当前功能可用，但维护时需要注意入口分散。
+
+## Web 编码器与界面语言
+
+- Web 默认跟随 `UGRIPPER_LANG`；右上角临时切换中英文，不修改设备配置，刷新后恢复默认。
+- 配置页编码器读取使用持续串口连接，目标 100 Hz，NDJSON 推送；显示实测频率，浏览器按显示刷新节拍绘制。关闭/离开页面主动取消，断连写超时释放，每次约 60 秒硬截止兜底，恢复原串口参数。会话期间与录制、维护互斥。
+
+Web 右上角语言选择器固定显示 `Language / 语言` 标签；录制数据列表在分页前按名称倒序排列，最新日期/编号的 episode 优先展示。
 
 ### 主摄 50 Hz 插补时间修正
 

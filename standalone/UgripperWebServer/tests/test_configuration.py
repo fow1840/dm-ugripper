@@ -50,14 +50,19 @@ class ConfigurationTests(unittest.TestCase):
         with patch('os.geteuid', return_value=1000), self.assertRaises(PermissionError):
             config.write_settings(self.values)
 
-    def test_one_gripper_query_failure_does_not_hide_other_side(self):
-        from subprocess import CompletedProcess
-        with tempfile.TemporaryDirectory() as folder, patch.object(maintenance, 'PRIVATE', Path(folder)), patch.object(maintenance, 'JOB', {'id': 'test'}), patch.object(maintenance, 'report'), patch('maintenance.Path.exists', return_value=True), patch.object(maintenance, 'cache_gripper') as cache, patch.object(maintenance, 'command', side_effect=[CompletedProcess([], 0, '版本号：V1.0.5_20260820', ''), CompletedProcess([], 1, 'NACK', '')]):
-            result = maintenance.execute('read_versions', None)
-            self.assertEqual(result['left'], 'V1.0.5_20260820')
-            self.assertEqual(result['right'], '未读取到版本')
-            self.assertEqual(cache.call_args_list[0].args, ('left', 'V1.0.5_20260820'))
-            self.assertEqual(cache.call_args_list[1].args, ('right', ''))
+    def test_camera_firmware_label_may_change_but_hardware_identity_must_not(self):
+        before = dict(port='1-1.2.1', sn='serial_number=FE123', packet='64', serial='old-firmware')
+        after = before | {'serial': 'new-firmware'}
+        self.assertTrue(maintenance.camera_regression(before, after)['ok'])
+        for key in ('port', 'sn', 'packet'):
+            result = maintenance.camera_regression(before, after | {key: 'changed'})
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['changed'], [key])
+        self.assertFalse(maintenance.camera_regression({}, {})['ok'])
+
+    def test_manual_version_query_is_no_longer_a_maintenance_operation(self):
+        with self.assertRaises(ValueError):
+            maintenance.submit({'kind': 'read_versions', 'confirm': True})
 
 
 if __name__ == '__main__':

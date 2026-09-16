@@ -30,13 +30,6 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
-restart_ugripper() {
-    echo "Restarting ugripper.service..."
-    systemctl restart ugripper.service || {
-        echo "WARNING: failed to restart ugripper.service"
-    }
-}
-
 # ================= 主循环 =================
 while true; do
     DETECTED_INTERFACE=$(detect_preferred_ethernet_interface 2>/dev/null || true)
@@ -82,7 +75,7 @@ while true; do
         # ================= 下降沿：插着 → 拔掉 =================
         if [ "$LAST_STATE" -eq 1 ] && [ "$CURRENT_STATE" -eq 0 ]; then
             echo "[$(date)] Cable removal detected on $CURRENT_INTERFACE"
-            restart_ugripper
+            # Cable state never changes the recording service lifecycle.
         fi
 
         # ================= 上升沿：拔掉 → 插入 =================

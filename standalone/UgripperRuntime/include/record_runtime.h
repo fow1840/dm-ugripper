@@ -45,6 +45,7 @@ struct RecordRuntimeOptions
     std::string audioRecordScript = "./bin/UgripperRuntime/audio/record_usb_audio.py";
     std::string egoRecordingScript = "./bin/UgripperRuntime/ego/ego_recording_worker.py";
     std::string egoBindingFile = "/dev/shm/ugripper/ego_binding.json";
+    std::string firmwareStatusFile = "/dev/shm/ugripper/firmware_status.json";
     std::string egoBindingStatusFile = "/dev/shm/ugripper/ego_binding_status.json";
     std::string audioPipe = "/dev/shm/ugripper/umi_audio_pipe";
     std::string audioReadyFile = "/dev/shm/ugripper/umi_audio_ready";
@@ -132,11 +133,13 @@ private:
         bool getButtonsForPortToken(const std::string &token, ButtonSnapshot *snapshot) const;
         HealthSnapshot getHealthSnapshot(uint64_t activeTimeoutMs) const;
         bool requestStateForSide(const std::string &side);
-        bool readCalibrationForSide(const std::string &side, gripper_hmi::GripperCalibrationPayload *payload);
         bool readRuntimeIdentityForSide(const std::string &side,
                                         std::string *serialNumber,
                                         bool *hasSerialNumber,
                                         std::string *errorMessage);
+        bool readFirmwareVersionForSide(const std::string &side, std::string *version);
+        bool readCalibrationForSide(const std::string &side,
+                                    gripper_hmi::GripperCalibrationPayload *payload);
         std::vector<ConnectionEvent> consumeConnectionEvents();
         bool isSideReadyForRefresh(const std::string &side, uint64_t activeTimeoutMs) const;
         bool setBeepStateForSide(const std::string &side, const GripperBeepState &state);
@@ -216,8 +219,9 @@ private:
     static const char *hmiEventName(DA::Ugripper::HmiEventType event_type);
 
     void handleGripperConnectionEvents();
-    void maintainGripperCalibration();
     void processPendingGripperRefreshes();
+    void maintainFirmwareStatus();
+    void maintainGripperCalibration();
     void refreshGripperRuntimeStateForSide(const std::string &side,
                                            bool markTactileReferencePending);
     void clearGripperRuntimeStateForSide(const std::string &side,
@@ -320,6 +324,7 @@ private:
                                             const std::string &reason);
     void scheduleBackgroundTactileValidation(const std::string &episodeDir);
     void maintainBackgroundTactileValidation();
+    void maintainTactileBaselineReset();
     void cancelBackgroundTactileValidation();
     void requestStopBackgroundTactileValidation();
     void applyTactileValidationFindings(
@@ -417,6 +422,15 @@ private:
     using MainCameraRefreshResult = DA::Ugripper::DeviceStateManager::MainCameraRefreshResult;
     using MainCameraRuntimeCache = DA::Ugripper::DeviceStateManager::MainCameraRuntimeCache;
     using TactileCameraRuntimeCache = DA::Ugripper::DeviceStateManager::TactileCameraRuntimeCache;
+    struct GripperFirmwareCache
+    {
+        std::string version;
+        uint64_t checkedAtMs = 0;
+        uint64_t nextAttemptMs = 0;
+        unsigned attempts = 0;
+    };
+    std::array<GripperFirmwareCache, 2> gripperFirmwareCache_{};
+    uint64_t nextFirmwareStatusMs_ = 0;
     DA::Ugripper::DeviceStateManager deviceStateManager_;
     // Compatibility views keep the existing cross-file implementation stable;
     // DeviceStateManager owns the referenced state.

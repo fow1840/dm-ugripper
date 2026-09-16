@@ -1124,6 +1124,27 @@ bool GripperHmiDriver::readVersions(std::string *version56, std::string *version
     });
 }
 
+bool GripperHmiDriver::readFirmwareVersion(std::string *version)
+{
+    if (version == nullptr)
+    {
+        return false;
+    }
+    version->clear();
+    return runExclusiveCommand([this, version]() {
+        std::string primaryError, fallbackError;
+        if (readVersionPayloadLocked(GripperHmiProtocol::buildReadVersionCommand(),
+                                     version, &primaryError) ||
+            readVersionPayloadLocked(GripperHmiProtocol::buildReadFirmwareVersionCommand(),
+                                     version, &fallbackError))
+        {
+            return true;
+        }
+        lastCommandError_ = "firmware version unavailable: " + primaryError + "; " + fallbackError;
+        return false;
+    });
+}
+
 bool GripperHmiDriver::initializeVersionStorage()
 {
     return runExclusiveCommand([this]() {

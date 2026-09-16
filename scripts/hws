@@ -395,3 +395,12 @@ if [ "${#missing_list[@]}" -gt 0 ]; then
         printf '  - %s\n' "$item"
     done
 fi
+
+# Reuse the same snapshot interpretation as the Web status page.
+ego_helper="${ROOT_DIR}/bin/UgripperWebServer/ego_status.py"
+if [ ! -f "$ego_helper" ]; then
+    ego_helper="${ROOT_DIR}/standalone/UgripperWebServer/ego_status.py"
+fi
+if [ ! -f "$ego_helper" ] || ! /usr/bin/python3 "$ego_helper"; then
+    printf '\nEgo\n  Binding:    未知\n  Connection: 未知（状态读取失败）\n'
+fi

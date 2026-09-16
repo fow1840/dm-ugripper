@@ -18,6 +18,7 @@ import time
 from urllib.parse import urlsplit, parse_qs, quote
 from common import BASE, STATE, DATA, MAX_UPLOAD, Busy, read_json, rpc, operation_lock
 from telemetry import status
+from encoder_probe import read_encoders, stream_encoders
 
 CONFIG={}
 
@@ -74,10 +75,13 @@ class Handler(BaseHTTPRequestHandler):
         return size
     def dispatch(self,post=False):
         path=urlsplit(self.path).path
-        if not post and path in ('/','/app.js','/style.css'):
-            name={'/':'index.html','/app.js':'app.js','/style.css':'style.css'}[path]
+        if not post and path in ('/tactile-normal.png','/tactile-damaged.png'):
+            b=(BASE/'static'/path[1:]).read_bytes()
+            self.headers_out(200,'image/png',len(b));self.wfile.write(b);return
+        if not post and path in ('/','/app.js','/i18n.js','/style.css'):
+            name={'/':'index.html','/i18n.js':'i18n.js','/app.js':'app.js','/style.css':'style.css'}[path]
             b=(BASE/'static'/name).read_bytes()
-            self.headers_out(200,{'/':'text/html; charset=utf-8','/app.js':'text/javascript; charset=utf-8','/style.css':'text/css'}[path],len(b));self.wfile.write(b);return
+            self.headers_out(200,{'/':'text/html; charset=utf-8','/i18n.js':'text/javascript; charset=utf-8','/app.js':'text/javascript; charset=utf-8','/style.css':'text/css'}[path],len(b));self.wfile.write(b);return
         if post:
             # Public fixed header forces cross-origin browser requests to preflight.
             # No CORS is enabled; this is request-origin protection, not authentication.
@@ -86,6 +90,12 @@ class Handler(BaseHTTPRequestHandler):
             if origin and origin!='https://'+self.headers.get('Host',''):return self.json({'error':'请求来源错误'},403)
             if path=='/api/v1/upload':return self.upload()
             size=self.body(4096);body=json.loads(self.rfile.read(size))
+            if path=='/api/v1/tactile/reset':
+                return self.json(rpc(dict(body,action='tactile_reset')))
+            if path=='/api/v1/snapshot':
+                return self.json(rpc(dict(action='snapshot',kind=body.get('kind'))),202)
+            if path=='/api/v1/encoder/stream':return self.encoder_stream()
+            if path=='/api/v1/encoder/read':return self.json(read_encoders())
             if path=='/api/v1/execute':
                 if body.get('confirm') is not True:raise ValueError('请确认维护操作')
                 try:
@@ -96,6 +106,7 @@ class Handler(BaseHTTPRequestHandler):
                         (STATE/'uploads'/token).unlink(missing_ok=True)
                 return self.json(result,202)
         else:
+            if path=='/api/v1/snapshot':return self.snapshot_file()
             if path=='/api/v1/status':return self.json(status())
             if path=='/api/v1/data':return self.list_data()
             if path=='/api/v1/download':return self.download()
@@ -112,6 +123,32 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             import traceback;traceback.print_exc()
             self.json({'error':'操作失败，请获取日志'},500)
+    def encoder_stream(self):
+        # A slow or disconnected consumer cannot keep serial ports indefinitely.
+        with contextlib.closing(stream_encoders()) as samples:
+            first=next(samples)
+            self.connection.settimeout(1)
+            self.headers_out(200,'application/x-ndjson')
+            try:
+                self.wfile.write((json.dumps(first)+'\n').encode());self.wfile.flush()
+                for sample in samples:
+                    self.wfile.write((json.dumps(sample)+'\n').encode());self.wfile.flush()
+            except (ValueError, OSError) as exc:
+                with contextlib.suppress(OSError):
+                    self.wfile.write((json.dumps({'error':str(exc)})+'\n').encode());self.wfile.flush()
+            finally: self.close_connection=True
+
+    def snapshot_file(self):
+        query=parse_qs(urlsplit(self.path).query)
+        job=query.get('id',[''])[0];name=query.get('file',['result.json'])[0]
+        if not re.fullmatch(r'[0-9a-f]{32}',job):raise ValueError('抓图任务无效')
+        if name!='result.json' and not re.fullmatch(r'[A-Za-z0-9_-]+\.(?:jpg|png)',name):raise ValueError('图片名称无效')
+        path=STATE/'snapshots'/job/name
+        with path.open('rb') as source:
+            data=source.read(16*1024*1024)
+        self.headers_out(200,'application/json; charset=utf-8' if name=='result.json' else 'image/png' if name.endswith('.png') else 'image/jpeg',len(data))
+        self.wfile.write(data)
+
     def upload(self):
         size=self.body(MAX_UPLOAD);token=secrets.token_hex(16);path=STATE/'uploads'/token
         with operation_lock():
@@ -136,7 +173,7 @@ class Handler(BaseHTTPRequestHandler):
                 entries=[]
                 query=parse_qs(urlsplit(self.path).query)
                 offset=max(0,int(query.get('offset',['0'])[0]))
-                names=sorted(os.listdir(fd))
+                names=sorted(os.listdir(fd),reverse=True)
                 for name in names[offset:offset+200]:
                     if name.endswith('-temp'):continue
                     info=os.stat(name,dir_fd=fd,follow_symlinks=False)

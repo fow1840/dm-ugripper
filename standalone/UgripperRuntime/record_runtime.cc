@@ -736,6 +736,7 @@ int RecordRuntime::Run()
         handleGripperConnectionEvents();
         processPendingGripperRefreshes();
         maintainGripperCalibration();
+        maintainFirmwareStatus();
         const bool recordControlAccepted = pollRecordControlPipe();
         if (!recordControlAccepted)
         {

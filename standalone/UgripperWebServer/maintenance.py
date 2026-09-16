@@ -64,32 +64,25 @@ def camera_identity(side):
     # Preserve exact SN response and USB identity across a partial upgrade.
     return {'port':port,'serial':serial,'sn':output.strip(), 'packet':(usb/'bMaxPacketSize0').read_text().strip()}
 
-def cache_gripper(side, version):
-    versions=read_json(STATE/'firmware.json')
-    if not isinstance(versions.get('gripper'),dict): versions['gripper']={}
-    versions['gripper'][side]={'version':version, 'checked_at':time.time()}
-    atomic_json(STATE/'firmware.json',versions)
+def camera_regression(before, after):
+    # iSerial contains the firmware label and legitimately changes on upgrade.
+    # The DFU adapter separately verifies the image's version against the device.
+    fields = ('port', 'sn', 'packet')
+    changed = [key for key in fields if not before.get(key) or before.get(key) != after.get(key)]
+    return {'ok': not changed, 'changed': changed, 'before': before, 'after': after}
+
+
+def camera_event(side, event):
+    with (PRIVATE / (JOB['id'] + '.log')).open('a') as log:
+        log.write(json.dumps({'side': side, **event}, ensure_ascii=False) + '\n')
+    if event.get('type') == 'state':
+        report(f'{side}: {event["message"]}')
 
 
 def execute(kind, path, force=False, side=None, settings=None):
     if kind == 'configuration':
         report('保存设备配置')
         return write_settings(settings)
-    if kind == 'read_versions':
-        result={}
-        for selected in ('left','right'):
-            report(f'读取 {selected} 夹爪版本')
-            try:
-                probe=command([PYTHON,BASE/'production/ota_update.py','--port',f'/dev/{selected}_gripper','--check-only'],20) if Path(f'/dev/{selected}_gripper').exists() else None
-                output=probe.stdout if probe else ''
-                with (PRIVATE/(JOB['id']+'.log')).open('a') as log: log.write(output+(probe.stderr if probe else 'device absent'))
-            except Exception:
-                output=''
-            versions=re.findall(r'版本号：\s*(V[0-9]+\.[0-9]+\.[0-9]+(?:_[0-9]+)?)',output)
-            version=versions[-1] if versions else ''
-            cache_gripper(selected,version)
-            result[selected]=version or '未读取到版本'
-        return result
     if kind == 'software':
         report('检查软件包')
         fields = run(['dpkg-deb','-f',path,'Package','Architecture','Version']).splitlines()
@@ -116,15 +109,18 @@ def execute(kind, path, force=False, side=None, settings=None):
         for side in ('left','right'):
             def regression(s):
                 after = camera_identity(s)
-                return {'ok': after==before[s], 'before':before[s], 'after':after}
+                return camera_regression(before[s], after)
             updater = dfu.MainCameraDfuUpdater(firmware_dir=path.parent,
                 version_reader=BASE/'bin/linux_read_version', dfu_trigger=BASE/'bin/main_camera_dfu_trigger',
                 dfu_util=BASE/'bin/dfu-util', read_device_version=camera_version, regression_check=regression,
-                event_sink=lambda e: report(f'{side}: {e["message"]}') if e.get('type')=='state' else None)
-            result[side] = updater.upgrade(side,path,force=force).to_dict()
+                event_sink=lambda e: camera_event(side, e))
+            try:
+                result[side] = updater.upgrade(side,path,force=force).to_dict()
+            except dfu.DfuError as exc:
+                result[side] = {'status': 'failed', **exc.to_dict()}
+                report('单侧失败', results=dict(result))
+                raise
             report('单侧完成', results=dict(result))
-        versions=read_json(STATE/'firmware.json');versions['main_camera']=image_version
-        atomic_json(STATE/'firmware.json',versions)
         return result
     if kind == 'gripper':
         validate_hex(path)
@@ -145,7 +141,6 @@ def execute(kind, path, force=False, side=None, settings=None):
             version = re.findall(r'升级后版本\s*:\s*(\S+)',output)
             if not version or '两次查询一致' not in output: raise RuntimeError('夹爪版本回读不稳定')
             result[side] = version[-1]
-            cache_gripper(side,version[-1])
             report('单侧完成', results=dict(result))
         if result['left'] != result['right']: raise RuntimeError('左右夹爪升级后版本不一致')
         return result
@@ -198,7 +193,7 @@ def worker(kind, path, stack, force=False, side=None, settings=None):
 
 def submit(req):
     kind=req.get('kind')
-    if kind not in ('software','main_camera','gripper','zeroing','configuration','read_versions'): raise ValueError('未知任务')
+    if kind not in ('software','main_camera','gripper','zeroing','configuration'): raise ValueError('未知任务')
     if kind=='zeroing' and req.get('fixture')!='FIXTURE_READY': raise ValueError('必须确认已安装指定标零治具')
     if kind=='zeroing' and req.get('side') not in ('left','right'): raise ValueError('必须指定左侧或右侧编码器')
     if kind=='configuration': validate_settings(req.get('settings'))
@@ -245,6 +240,17 @@ class Handler(socketserver.StreamRequestHandler):
             self.request.settimeout(10)
             req=json.loads(self.rfile.readline(4096))
             if req.get('action')=='submit': value=submit(req)
+            elif req.get('action')=='tactile_reset':
+                from tactile_panel import reset_baseline
+                from camera_snapshot import SNAPSHOTS
+                job=req.get('id','')
+                if not isinstance(job,str) or not re.fullmatch(r'[0-9a-f]{32}',job): raise ValueError('任务无效')
+                if req.get('confirm') is not True: raise ValueError('请确认盖板正常且无接触')
+                with operation_lock():
+                    value=reset_baseline(SNAPSHOTS/job,req.get('camera'),req.get('scope'),req.get('serial'))
+            elif req.get('action')=='snapshot':
+                from camera_snapshot import submit_snapshot
+                value=submit_snapshot(req.get('kind'))
             elif req.get('action')=='logs':
                 # Restricted journal export to a fixed file; never accept a path or command.
                 value={'journal':command(['journalctl','-u','ugripper.service','-u','ugripper-webserver.service','-u','ugripper-maintenance.service','-n','5000','--no-pager'],20).stdout[-512*1024:]}
@@ -257,6 +263,10 @@ class Handler(socketserver.StreamRequestHandler):
 
 if __name__=='__main__':
     PRIVATE.mkdir(mode=0o700,exist_ok=True)
+    from camera_snapshot import SNAPSHOTS
+    shutil.rmtree(SNAPSHOTS, ignore_errors=True)
+    for name in ('web_reset_request.json','web_reset_response.json','web_reset.gray'):
+        Path('/var/lib/ugripper/tactile_state',name).unlink(missing_ok=True)
     (RUN/'self-installing').unlink(missing_ok=True)
     # Old uploads are never resumed after interruption; firmware outcome stays explicit.
     old=read_json(STATE/'task.json')

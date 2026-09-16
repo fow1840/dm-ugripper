@@ -6,24 +6,28 @@ async function api(url,options={}){const r=await fetch(url,options);let value=aw
 function post(url,value){return api(url,{method:'POST',headers:{'Content-Type':'application/json','X-UGripper-Request':'1'},body:JSON.stringify(value)})}
 function bytes(n){return (n/1024**3).toFixed(1)+' GiB'}
 function metric(label,value,detail){const p=el('article',undefined,'panel metric');p.append(el('p',label,'muted'),el('div',value,'value'),el('p',detail,'muted'));return p}
-function row(label,value,good){const d=el('div',undefined,'device');d.append(el('span',label),el('span',value,'state '+(good?'good':'bad')));return d}
-function render(s){last=s;busy=s.busy;$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording?'录制中':s.busy?'维护 / 传输中':'空闲';
+function row(label,value,good){const d=el('div',undefined,'device');d.append(el('span',label),el('span',value,'state '+(good===null?'':good?'good':'bad')));return d}
+function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording?'录制中':s.busy?'维护 / 传输中':'空闲';
  const d=s.disks.data,m=s.memory;$('#metrics').replaceChildren(metric('CPU 占用',s.cpu_percent===null?'—':s.cpu_percent+'%','设备系统'),metric('内存使用',Math.round(m.used/m.total*100)+'%',bytes(m.used)+' / '+bytes(m.total)),metric('数据盘剩余',d.mounted?bytes(d.free):'未挂载',d.mounted?'总容量 '+bytes(d.total):'请连接数据盘'),metric('系统盘剩余',bytes(s.disks.system.free),'总容量 '+bytes(s.disks.system.total)));
  for(const side of ['left','right']){$('#'+side+'Devices').replaceChildren(...s.devices.filter(d=>d.side===side).map(d=>row(d.label,!d.present?'未识别':d.stream===null?'已识别':d.stream?'正常出流':'暂未出流',d.present&&(d.stream===null||d.stream))));}
+ const ego=s.ego||{},bound=ego.bound,connected=ego.connected;
+ $('#egoStatus').replaceChildren(row('绑定状态',bound===true?'已绑定':bound===false?'未绑定':'未知',bound===true?true:null),row('连接状态',connected===true?'已连接':connected===false?'未连接':bound===false?'未检测（未绑定）':'未知（等待状态更新）',connected===true?true:connected===false?false:null));
+ if(ego.serial)$('#egoStatus').append(row('序列号',ego.serial,null));
+ if(ego.bound)for(const [key,label]of [['firmware_version','固件版本'],['software_version','软件版本']])$('#egoStatus').append(row(label,(ego[key]||'未读取')+(ego.connected!==true&&ego[key]?'（缓存）':''),null));
  $('#versions').replaceChildren(...Object.entries(s.versions).map(([k,v])=>row(k,v||'未安装',!!v)));
  $('#firmwareVersions').replaceChildren();
  for(const [side,label]of [['left','左'],['right','右']]){
   const camera=s.firmware?.main_camera?.[side],gripper=s.firmware?.gripper?.[side];
   $('#firmwareVersions').append(row(label+'主摄 iSerial',camera?.iserial||'未识别',!!camera?.iserial));
   const stamp=gripper?.checked_at?' · '+new Date(gripper.checked_at*1000).toLocaleString():'';
-  $('#firmwareVersions').append(row(label+'夹爪固件',(gripper?.version|| (gripper?.checked_at?'未读取到版本':'尚未读取'))+stamp,!!gripper?.version));
+  $('#firmwareVersions').append(row(label+'夹爪固件',(gripper?.version|| (gripper?.status==='disconnected'?'未连接':gripper?.status==='unavailable'?'版本不可用':gripper?.status==='pending'?'等待自动读取':'状态待更新'))+stamp,!!gripper?.version));
  }
  if((!settingsLoaded||s.task?.kind==='configuration'&&s.task?.finished)&&!settingsDirty){for(const select of document.querySelectorAll('#configurationForm select')){const value=s.configuration?.[select.name];select.value=value??'';select.required=true;}settingsLoaded=true;}
  $('#connection').textContent=(s.service_active?'数采服务在线':'数采服务已停止')+' · '+new Date().toLocaleTimeString();
  if(s.task.id&&!uploading){$('#taskPanel').hidden=false;$('#taskText').textContent=s.task.stage+(s.task.message?' · '+s.task.message:'');if(s.task.status==='running')$('#progress').removeAttribute('value');else $('#progress').value=100;$('#results').replaceChildren();for(const [k,v]of Object.entries(s.task.result||s.task.results||{})){$('#results').append(el('p',k+': '+(typeof v==='object'?(v.installed_version||v.status||'完成'):v)))} }
 }
-async function refresh(){if($('#workspace').hidden)return;try{render(await api('/api/v1/status'))}catch(e){$('#connection').textContent='连接中断';message(e.message)}}
-for(const b of document.querySelectorAll('nav [data-page]'))b.onclick=()=>{current=b.dataset.page;for(const x of document.querySelectorAll('.page'))x.hidden=x.id!==current;for(const x of document.querySelectorAll('nav [data-page]'))x.classList.toggle('selected',x===b);$('#title').textContent=b.textContent;if(current==='data')loadFiles()};
+async function refresh(){if($('#workspace').hidden)return;try{render(await api('/api/v1/status'))}catch(e){$('#connection').textContent='连接中断';updateTactileImageWarnings([]);message(e.message)}}
+for(const b of document.querySelectorAll('nav [data-page]'))b.onclick=()=>{current=b.dataset.page;for(const x of document.querySelectorAll('.page'))x.hidden=x.id!==current;for(const x of document.querySelectorAll('nav [data-page]'))x.classList.toggle('selected',x===b);$('#title').textContent=({overview:'设备概览',data:'录制数据',upgrade:'升级维护',settings:'配置'})[current];if(current==='data')loadFiles()};
 async function loadFiles(){try{const v=await api('/api/v1/data?path='+encodeURIComponent(directory)+'&offset='+fileOffset);$('#previousFiles').disabled=fileOffset===0;$('#nextFiles').disabled=!v.has_more;$('#directory').textContent='/'+directory;$('#files').replaceChildren();for(const f of v.entries){const item=el('div',undefined,'file'),actions=el('div',undefined,'actions'),path=directory?directory+'/'+f.name:f.name;item.append(el('span',f.name,'name'));if(f.directory){const open=el('button','打开','secondary');open.onclick=()=>{directory=path;fileOffset=0;loadFiles()};actions.append(open)}const download=el('button',f.directory?'打包下载':'下载','secondary');download.onclick=()=>startDownload('/api/v1/download?path='+encodeURIComponent(path));actions.append(download);item.append(actions);$('#files').append(item)}}catch(e){message(e.message)}}
 $('#previousFiles').onclick=()=>{fileOffset=Math.max(0,fileOffset-200);loadFiles()};$('#nextFiles').onclick=()=>{fileOffset+=200;loadFiles()};
 $('#parent').onclick=()=>{directory=directory.split('/').slice(0,-1).join('/');fileOffset=0;loadFiles()};
@@ -39,17 +43,144 @@ for(const button of document.querySelectorAll('[data-zero-side]'))button.onclick
  if(!await confirmAction('此操作会覆盖'+label+'编码器零位，错误操作会导致测量偏差。必须使用指定标零治具。确认仅对'+label+'侧执行？',true))return;
  try{await post('/api/v1/execute',{kind:'zeroing',side,confirm:true,fixture:'FIXTURE_READY'});message();refresh()}catch(e){message(e.message)}
 };
-$('#readVersions').onclick=async()=>{
- if(busy){message('录制或维护进行中');return}
- if(!await confirmAction('读取左右夹爪固件版本将短暂停止数采，完成后自动恢复。确认读取？'))return;
- try{await post('/api/v1/execute',{kind:'read_versions',confirm:true});message();refresh()}catch(e){message(e.message)}
-};
 $('#configurationForm').onchange=()=>{settingsDirty=true};
 $('#configurationForm').onsubmit=async e=>{
- e.preventDefault();if(busy){message('录制或维护进行中');return}
- const settings=Object.fromEntries(new FormData(e.currentTarget));
+ e.preventDefault();const form=e.currentTarget;if(busy){message('录制或维护进行中');return}
+ const settings=Object.fromEntries(new FormData(form));
  if(!await confirmAction('警告：修改设备参数将影响录制，并重启数采服务。请确认以下设置：\n'+Object.entries(settings).map(([k,v])=>k+' = '+v).join('\n')))return;
- const button=e.currentTarget.querySelector('button');button.disabled=true;
+ const button=form.querySelector('button');button.disabled=true;
  try{await post('/api/v1/execute',{kind:'configuration',settings,confirm:true});message('配置任务已提交，应用结果见任务进度。');settingsDirty=false;}catch(e){message(e.message)}finally{button.disabled=false;refresh()}
 };
 refresh();setInterval(refresh,3000);
+
+let encoderReading=false,encoderTimer=null,encoderRequest=null;
+function stopEncoderReading(text='已停止读取，显示最后一次读数'){
+ encoderReading=false;clearTimeout(encoderTimer);encoderRequest?.abort();encoderRequest=null;
+ $('#encoderToggle').textContent='开始读取';$('#encoderReadStatus').textContent=text;
+}
+function renderEncoder(side,value){
+ const target=$('#encoder'+(side==='left'?'Left':'Right'));
+ if(value.status!=='ok'){target.replaceChildren(el('p',value.message||'未收到有效读数','muted'));return}
+ target.replaceChildren(row('原始计数',String(value.position),null),row('角度',value.angle_deg.toFixed(2)+'°',null),row('弧度',value.angle_rad.toFixed(4)+' rad',null),el('p','读取时间 '+new Date(value.read_at*1000).toLocaleTimeString(),'muted'));
+}
+async function pollEncoder(){
+ const request=new AbortController();encoderRequest=request;
+ try{
+  const response=await fetch('/api/v1/encoder/stream',{method:'POST',headers:{'Content-Type':'application/json','X-UGripper-Request':'1'},body:'{}',signal:request.signal});
+  if(!response.ok)throw Error((await response.json()).error);
+  const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+  while(encoderReading){
+   const {value,done}=await reader.read();if(done)break;
+   buffer+=decoder.decode(value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop();
+   for(const line of lines){if(!line)continue;const sample=JSON.parse(line);if(sample.error)throw Error(sample.error);encoderLatest=sample;}
+   if(!encoderFrame)encoderFrame=requestAnimationFrame(drawEncoder);
+  }
+  if(encoderReading)stopEncoderReading('读取已结束，串口已释放（每次最多 60 秒）');
+ }catch(e){if(encoderReading)stopEncoderReading(e.message)}
+ finally{if(encoderRequest===request)encoderRequest=null;}
+}
+let encoderLatest=null,encoderFrame=0;
+function drawEncoder(){
+ encoderFrame=0;if(!encoderLatest)return;
+ for(const side of ['left','right'])renderEncoder(side,encoderLatest[side]);
+ if(encoderReading)$('#encoderReadStatus').textContent='100 Hz 目标 / 实测 '+encoderLatest.rate_hz+' Hz · 剩余 '+encoderLatest.remaining_s+' s · 丢失 '+(encoderLatest.dropped?.left||0)+' / '+(encoderLatest.dropped?.right||0);
+}
+$('#encoderToggle').onclick=()=>{
+ if(encoderReading){stopEncoderReading();return}
+ if(busy){message('录制或维护进行中，请稍后读取');return}
+ encoderReading=true;$('#encoderToggle').textContent='停止读取';$('#encoderReadStatus').textContent='正在读取…';pollEncoder();
+};
+for(const button of document.querySelectorAll('nav [data-page]'))button.addEventListener('click',()=>{if(button.dataset.page!=='settings'&&encoderReading)stopEncoderReading()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&encoderReading)stopEncoderReading()});
+window.addEventListener('pagehide',()=>{if(encoderReading)stopEncoderReading()});
+
+let captureRunning=false;
+async function captureImages(kind){
+ if(captureRunning||busy){message('设备忙，请稍后抓图');return}
+ captureRunning=true;$('#captureLocal').disabled=true;$('#captureEgo').disabled=true;$('#detectCover').disabled=true;
+ $('#tactileLeftImages').replaceChildren();$('#tactileRightImages').replaceChildren();
+ if(kind==='tactile')$('#tactileStatus').textContent='正在采集四路触觉并检测盖板…';
+ $('#captureImages').replaceChildren();$('#captureStatus').textContent=kind==='ego'?'Ego 正在短录、拉取和截帧…':'正在获取相机帧…';
+ try{
+  const job=await post('/api/v1/snapshot',{kind});
+  const base='/api/v1/snapshot?id='+encodeURIComponent(job.id);
+  let result;
+  const deadline=Date.now()+330000;
+  do{
+   if(Date.now()>deadline)throw Error('抓图等待超时，请检查设备');
+   await new Promise(resolve=>setTimeout(resolve,1000));
+   result=await api(base);
+  }while(result.status==='running');
+  $('#captureStatus').textContent=result.error||({ok:'获取完成',partial:'部分相机获取失败',failed:'获取失败'}[result.status]||result.status);
+  if(kind==='tactile')$('#tactileStatus').textContent=result.error||'本次检测完成；请查看各传感器结论';
+  for(const camera of result.cameras||[]){
+   if(camera.camera.includes('_tcam_')){renderTactileImage(camera,base,job.id);continue;}
+   const card=el('article',undefined,'panel');card.append(el('h3',camera.camera));
+   if(camera.image){
+    const link=el('a');link.href=base+'&file='+encodeURIComponent(camera.image);link.target='_blank';link.rel='noopener';
+    const img=el('img');img.src=link.href;img.alt=camera.camera;img.className='capture-image';link.append(img);card.append(link);
+   }
+   if(camera.error)card.append(el('p',camera.error,'bad'));
+   $('#captureImages').append(card);
+  }
+ }catch(e){$('#captureStatus').textContent=e.message;if(kind==='tactile')$('#tactileStatus').textContent=e.message}
+ finally{captureRunning=false;$('#captureLocal').disabled=busy;$('#captureEgo').disabled=busy;$('#detectCover').disabled=busy;}
+}
+$('#captureLocal').onclick=()=>captureImages('local');
+$('#captureEgo').onclick=()=>captureImages('ego');
+
+function tactileLabel(name){const parts=name.split('_');return (parts[0]==='left'?'左夹爪':'右夹爪')+' · '+(parts[2]==='l'?'左':'右')+'触觉传感器（'+name+'）'}
+function updateTactileImageWarnings(states){
+ for(const badge of document.querySelectorAll('[data-tactile-warning]')){
+  const state=states.find(c=>c.camera===badge.dataset.tactileWarning);
+  const changed=state&&badge.dataset.sensorSerial&&state.serial!==badge.dataset.sensorSerial;
+  const known=state&&!state.error&&!changed&&typeof state.warning==='boolean';
+  badge.className='tactile-warning '+(known?(state.warning?'alarm':'clear'):'unknown');
+  badge.textContent=changed?'传感器已更换，请重新取图':!known?'状态未知 / 未连接':state.warning?'盖板损坏告警':'无损坏告警';
+ }
+}
+function renderTactileStatus(states){
+ updateTactileImageWarnings(states);
+ for(const side of ['left','right']){
+  const target=$('#tactile'+(side==='left'?'Left':'Right')+'Status');
+  target.replaceChildren(...states.filter(c=>c.side===side).map(c=>row(tactileLabel(c.camera),c.error?'未连接 / 序列号未知':c.warning?'黄灯：触觉损坏告警':'无损坏告警',c.error?null:!c.warning)));
+ }
+ for(const button of document.querySelectorAll('[data-baseline-reset]'))button.disabled=busy||captureRunning;
+}
+function appendCaptureImage(card,base,file,label){
+ const link=el('a');link.href=base+'&file='+encodeURIComponent(file);link.target='_blank';link.rel='noopener';
+ const img=el('img');img.src=link.href;img.alt=label;img.className='capture-image';link.append(img);card.append(link);
+}
+function renderTactileImage(camera,base,job){
+ const card=el('article',undefined,'panel');
+ const heading=el('div',undefined,'tactile-image-heading');
+ const badge=el('span','状态未知 / 未连接','tactile-warning unknown');
+ badge.dataset.tactileWarning=camera.camera;badge.dataset.sensorSerial=camera.serial||'';badge.setAttribute('role','status');
+ heading.append(el('h4',tactileLabel(camera.camera)),badge);card.append(heading);
+ card.append(el('p','当前告警状态（连续检测历史）','muted'));
+ if(camera.serial)card.append(el('p','传感器 SN：'+camera.serial,'muted'));
+ if(camera.image)appendCaptureImage(card,base,camera.image,'当前图');
+ if(camera.error)card.append(el('p',camera.error,'bad'));
+ if(camera.comparisons)card.append(el('h4','本次盖板损坏检测结果'));
+ for(const comparison of camera.comparisons||[]){
+  const label=comparison.scope==='reference'?'短期基线':'长期基线';
+  const status={clean:'正常',damaged:'疑似盖板损坏',baseline_mismatch:'基线不匹配，请人工检查',missing:'尚未建立基线'}[comparison.status]||comparison.status;
+  card.append(el('p',label+'：'+status,comparison.status==='damaged'?'bad':'muted'));
+  if(comparison.image)appendCaptureImage(card,base,comparison.image,label+'检测状态图');
+ }
+ if(camera.status==='ok'&&camera.serial&&camera.comparisons){
+  for(const [scope,label]of [['reference','重置短期基线'],['persistent','重置长期基线'],['both','重置长短期基线']]){
+   const button=el('button',label,'secondary');button.dataset.baselineReset='1';button.onclick=async()=>{
+    if(busy||captureRunning){message('设备忙，请稍后操作');return}
+    if(!await confirmAction(tactileLabel(camera.camera)+'：'+label+'。请确认上方当前图中的盖板完好、无接触且无遮挡。此操作将使用该图替换基线，并清除对应检测历史与告警。'))return;
+    captureRunning=true;button.disabled=true;
+    try{await post('/api/v1/tactile/reset',{id:job,camera:camera.camera,serial:camera.serial,scope,confirm:true});$('#tactileStatus').textContent=label+'已完成，请重新运行盖板损坏检测查看更新结果';}
+    catch(e){$('#tactileStatus').textContent=e.message}
+    finally{captureRunning=false;refresh()}
+   };card.append(button);
+  }
+ }
+ $('#tactile'+(camera.camera.startsWith('left_')?'Left':'Right')+'Images').append(card);
+ updateTactileImageWarnings(last?.tactile||[]);
+}
+$('#detectCover').onclick=()=>captureImages('tactile');

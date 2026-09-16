@@ -1473,6 +1473,42 @@ void signalHandler(int signal);
 
 class FaysRecorder {
 public:
+    // The SDK remains owned by ImgOnlineCapture. Only the requested next frame
+    // is copied; file IO runs here on the control thread, never the capture thread.
+    void GetImg(const std::string& token) {
+        if (token.size() != 32 || token.find_first_not_of("0123456789abcdef") != std::string::npos) return;
+        VideoFrame frame;
+        {
+            std::unique_lock<std::mutex> lock(snapshotMutex_);
+            snapshotRequested_ = true;
+            snapshotReady_ = false;
+            const bool ready = snapshotCv_.wait_for(lock, std::chrono::seconds(3),
+                [this] { return snapshotReady_; });
+            snapshotRequested_ = false;
+            if (!ready) return;
+            frame = std::move(snapshotFrame_);
+        }
+        if (frame.width <= 0 || frame.height <= 0 ||
+            (frame.channels != 1 && frame.channels != 3)) return;
+        const size_t bytes = static_cast<size_t>(frame.width) * frame.height * frame.channels;
+        if (frame.bytes.size() < bytes) return;
+        const std::string base = "/dev/shm/ugripper/getimg_" + token;
+        std::ofstream out(base + ".pnm.tmp", std::ios::binary | std::ios::trunc);
+        out << (frame.channels == 1 ? "P5\n" : "P6\n") << frame.width << " " << frame.height << "\n255\n";
+        // The recording encoder consumes BGR; PPM stores RGB.
+        if (frame.channels == 3) {
+            for (size_t i = 0; i < bytes; i += 3) std::swap(frame.bytes[i], frame.bytes[i + 2]);
+        }
+        out.write(reinterpret_cast<const char*>(frame.bytes.data()), bytes);
+        out.close();
+        if (!out || rename((base + ".pnm.tmp").c_str(), (base + ".pnm").c_str()) != 0) return;
+        std::ofstream meta(base + ".json.tmp");
+        meta << "{\"frame_timestamp_ns\":" << frame.publishTimeNs
+             << ",\"fays_timestamp_ns\":" << frame.faysTsNs << "}";
+        meta.close();
+        if (meta) rename((base + ".json.tmp").c_str(), (base + ".json").c_str());
+    }
+
     static constexpr uint32_t kCalibrationAttemptsPerEpisode = 5;
     static constexpr uint64_t kDiagnosticWarnIntervalNs = 2'000'000'000ULL;
     static constexpr uint64_t kCaptureProcessingWarnNs = 100'000'000ULL;
@@ -2181,6 +2217,15 @@ private:
                 // Raw Fays logTime and IMU timestamps must remain unchanged.
                 vf.publishTimeNs = fays_stereo_recorder::camera_time::AddStereoCameraLatencyNs(
                     AlignFaysTsToSystem(mImgData_.timestamp));
+                {
+                    std::lock_guard<std::mutex> lock(snapshotMutex_);
+                    if (snapshotRequested_) {
+                        snapshotFrame_ = vf;
+                        snapshotRequested_ = false;
+                        snapshotReady_ = true;
+                        snapshotCv_.notify_one();
+                    }
+                }
                 videoFrameQueue_.Push(std::move(vf));
                 TryDumpCalibrationJson("stereo_frame");
                 WriteRuntimeStatus(false);
@@ -2390,6 +2435,11 @@ private:
     std::thread mptrMcapWriterThr_;
     std::thread mptrUsbWatchThr_;
 
+    std::mutex snapshotMutex_;
+    std::condition_variable snapshotCv_;
+    bool snapshotRequested_ = false;
+    bool snapshotReady_ = false;
+    VideoFrame snapshotFrame_;
     VideoFrameQueue videoFrameQueue_;
     AtrakImage mImgData_;
     std::atomic<bool> mbIsRunning_;
@@ -2520,6 +2570,8 @@ static void RunControlLoop(FaysRecorder& recorder, const std::string& fifoPath) 
                     }
                     FaysEventLog("fays_recorder", "control START output_dir=" + outputDir);
                     recorder.StartRecording(outputDir);
+                } else if (cmd.rfind("GETIMG|", 0) == 0) {
+                    recorder.GetImg(cmd.substr(7));
                 } else if (cmd == "STOP") {
                     FaysEventLog("fays_recorder", "control STOP");
                     recorder.StopRecordingSession();

@@ -367,6 +367,18 @@ def read_app_version(adb: Adb) -> dict:
     return detail
 
 
+def read_firmware_version(adb: Adb) -> dict:
+    detail = {"version": "", "read_at_ms": now_ms()}
+    try:
+        result = adb.run("shell", "getprop", "ro.internal.display.id", timeout=5, check=True)
+        detail["version"] = result.stdout.strip()
+        if not detail["version"]:
+            detail["error"] = "firmware version unavailable"
+    except Exception as exc:
+        detail["error"] = str(exc)
+    return detail
+
+
 def app_broadcast(adb: Adb, receiver: str, action: str, *extras: str) -> dict:
     detail = {"status": "failed"}
     try:
@@ -477,6 +489,8 @@ def run_bind(args: argparse.Namespace) -> int:
                                                         "input_current": input_current}), component="ego")
         binding = {
             "app": app,
+            "firmware": read_firmware_version(selected),
+            "versions_checked_at_ms": now_ms(),
             "input_current": input_current,
             "serial": selected.serial,
             "bound_at_ms": now_ms(),
@@ -546,6 +560,15 @@ def run_probe(args: argparse.Namespace) -> int:
                 "updated_at_ms": now_ms(),
             }
         )
+        if connected and now_ms() - binding.get("versions_checked_at_ms", 0) >= 60000:
+            adb = Adb(serial)
+            app = read_app_version(adb)
+            firmware = read_firmware_version(adb)
+            with binding_state_lock(args.binding_file):
+                current = read_status(args.binding_file)
+                if current.get("serial") == serial:
+                    current.update(app=app, firmware=firmware, versions_checked_at_ms=now_ms())
+                    write_json_atomic(args.binding_file, current)
         if not connected:
             status["error"] = "bound ego is not present in adb devices"
         published = publish_probe_status(args, serial, status)

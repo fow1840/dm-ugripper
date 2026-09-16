@@ -47,6 +47,8 @@ void RecordRuntime::handleGripperConnectionEvents()
         }
 
         const size_t index = gripperStateIndexForSide(event.side);
+        gripperFirmwareCache_[index] = {};
+        nextFirmwareStatusMs_ = 0;
         auto &runtimeState = gripperRuntimeStates_[index];
         runtimeState.calibrationPayloadCached = false;
         runtimeState.calibrationPayload = {};
@@ -77,6 +79,96 @@ void RecordRuntime::handleGripperConnectionEvents()
     {
         episodeManager_->SetGripperRuntimeStates(gripperRuntimeStates_);
     }
+}
+
+void RecordRuntime::maintainGripperCalibration()
+{
+    if (isRecordingActive()) return;
+    bool changed = false;
+    for (auto &state : gripperRuntimeStates_)
+    {
+        if (!state.connected || state.calibrationPayloadCached ||
+            state.calibrationReadAttempts >= 3 ||
+            currentSteadyMs() < state.nextCalibrationReadMs ||
+            !panelManager_.isSideReadyForRefresh(state.side, kGripperRefreshActiveTimeoutMs))
+            continue;
+        ++state.calibrationReadAttempts;
+        state.nextCalibrationReadMs = currentSteadyMs() + 30000;
+        state.calibrationPayloadCached =
+            panelManager_.readCalibrationForSide(state.side, &state.calibrationPayload);
+        DM_LOG_INFO("gripper calibration cache: side={} read={} attempt={}",
+                    state.side, state.calibrationPayloadCached, state.calibrationReadAttempts);
+        changed = true;
+    }
+    if (changed && episodeManager_ != nullptr)
+        episodeManager_->SetGripperRuntimeStates(gripperRuntimeStates_);
+}
+
+void RecordRuntime::maintainFirmwareStatus()
+{
+    const uint64_t now = currentSteadyMs();
+    if (now < nextFirmwareStatusMs_)
+    {
+        return;
+    }
+    json snapshot = {{"main_camera", json::object()}, {"gripper", json::object()}};
+    for (const std::string side : {"left", "right"})
+    {
+        auto &cache = gripperFirmwareCache_[gripperStateIndexForSide(side)];
+        const bool connected = panelManager_.isSideReadyForRefresh(side, kGripperRefreshActiveTimeoutMs);
+        if (!fs::exists("/dev/" + side + "_gripper"))
+        {
+            cache = {};
+        }
+        // Serial ownership stays with the HMI driver. Never pause its I/O for
+        // version queries during recording; retries are bounded per connection.
+        if (connected && !isRecordingActive() && cache.version.empty() &&
+            cache.attempts < 3 && now >= cache.nextAttemptMs)
+        {
+            ++cache.attempts;
+            cache.nextAttemptMs = now + 30000;
+            panelManager_.readFirmwareVersionForSide(side, &cache.version);
+            cache.checkedAtMs = currentEpochUs() / 1000;
+            DM_LOG_INFO("{}", (::DA::utils::LogString()
+                << "gripper firmware cache: side=" << side
+                << " version=" << (cache.version.empty() ? "unknown" : cache.version)
+                << " attempt=" << cache.attempts).str());
+        }
+        snapshot["gripper"][side] = {
+            {"version", connected ? cache.version : ""},
+            {"connected", connected},
+            {"checked_at", cache.checkedAtMs / 1000.0},
+            {"status", !connected ? "disconnected" : !cache.version.empty() ? "ready" :
+                       cache.attempts >= 3 ? "unavailable" : "pending"},
+        };
+
+        std::string iserial;
+        std::error_code error;
+        const auto device = fs::canonical("/dev/cam_" + side, error);
+        if (!error)
+        {
+            auto node = fs::canonical(fs::path("/sys/class/video4linux") / device.filename(), error);
+            while (!error && !node.empty() && node != node.root_path())
+            {
+                if (fs::exists(node / "idVendor", error) && fs::exists(node / "serial", error))
+                {
+                    std::ifstream input(node / "serial");
+                    std::getline(input, iserial);
+                    break;
+                }
+                node = node.parent_path();
+            }
+        }
+        snapshot["main_camera"][side] = {{"iserial", iserial}};
+    }
+    snapshot["updated_at_ms"] = currentEpochUs() / 1000;
+    snapshot["pid"] = getpid();
+    std::string error;
+    if (!writeTextFileAtomically(options_.firmwareStatusFile, snapshot.dump() + "\n", &error))
+    {
+        DM_LOG_WARN("firmware status publish failed: {}", error);
+    }
+    nextFirmwareStatusMs_ = currentSteadyMs() + 1000;
 }
 
 void RecordRuntime::processPendingGripperRefreshes()
@@ -547,6 +639,128 @@ void RecordRuntime::scheduleBackgroundTactileValidation(const std::string &episo
              << "[PERF] tactile background validation queued: episode_dir=" << episodeDir).str());
 }
 
+void RecordRuntime::maintainTactileBaselineReset()
+{
+    const fs::path root(options_.tactileStateDir);
+    const fs::path requestPath = root / "web_reset_request.json";
+    if (isRecordingActive() || backgroundTactileFuture_.valid() || !fs::exists(requestPath)) return;
+    json response;
+    std::map<fs::path, std::optional<std::string>> originals;
+    try {
+        json request;
+        std::ifstream(requestPath) >> request;
+        response["id"] = request.at("id");
+        const std::string name = request.at("camera");
+        const std::string serial = request.at("serial");
+        const std::string scope = request.at("scope");
+        if (scope != "reference" && scope != "persistent" && scope != "both")
+            throw std::runtime_error("invalid baseline scope");
+        const auto target = std::find_if(kTactileCalibrationTargets.begin(), kTactileCalibrationTargets.end(),
+            [&](const auto& item) { return name == item.cameraName; });
+        if (target == kTactileCalibrationTargets.end()) throw std::runtime_error("unknown tactile camera");
+        const auto device = std::find_if(tactileCameraRuntimeStates_.begin(), tactileCameraRuntimeStates_.end(),
+            [&](const auto& item) { return item.cameraName == name && item.serialNumber == serial && item.present; });
+        if (serial.empty() || device == tactileCameraRuntimeStates_.end())
+            throw std::runtime_error("sensor identity changed; capture again");
+        const uint64_t requested = request.at("requested_at_ms");
+        const uint64_t now = currentEpochMs();
+        if (requested > now || now - requested > 15000) throw std::runtime_error("reset request expired");
+        std::vector<uint8_t> frame;
+        std::string error;
+        if (!readBinaryFileExact(root / "web_reset.gray", kTactileFrameBytes, &frame, &error))
+            throw std::runtime_error(error);
+        json history = json::object();
+        std::ifstream input(tactileHistoryPath(root));
+        if (input.is_open()) input >> history;
+        if (!history.contains("cameras")) history["cameras"] = json::object();
+        // Keep rollback contents until the files and history have all committed.
+        std::vector<fs::path> changedPaths{tactileHistoryPath(root)};
+        if (scope == "reference" || scope == "both") {
+            changedPaths.push_back(tactileReferenceRawPath(root, serial));
+            changedPaths.push_back(tactileReferenceRawPath(root, serial).replace_extension(".json"));
+        }
+        if (scope == "persistent" || scope == "both") changedPaths.push_back(tactilePersistentRawPath(root, serial));
+        for (const auto& path : changedPaths) {
+            if (fs::exists(path)) {
+                std::ifstream old(path, std::ios::binary);
+                if (!old) throw std::runtime_error("cannot back up baseline");
+                originals[path] = std::string(std::istreambuf_iterator<char>(old), {});
+            } else originals[path] = std::nullopt;
+        }
+        auto& entry = history["cameras"][serial];
+        if (!entry.is_object()) entry = json::object();
+        entry["camera_name"] = name;
+        entry["updated_at_ms"] = now;
+        auto saveFrame = [&](const fs::path& path) {
+            fs::create_directories(path.parent_path());
+            const fs::path temporary = path.string() + ".web-new";
+            if (!writeBinaryFile(temporary, frame, &error)) throw std::runtime_error(error);
+            fs::rename(temporary, path);
+        };
+        if (scope == "reference" || scope == "both") {
+            saveFrame(tactileReferenceRawPath(root, serial));
+            if (!writeTactileReferenceMeta(root, serial, *target, now, &error)) throw std::runtime_error(error);
+            entry["recent"] = json::array();
+            entry["reference_pending"] = false;
+            entry["reference_pending_reason"] = "";
+            entry["reference_updated_at_ms"] = now;
+        }
+        if (scope == "persistent" || scope == "both") {
+            saveFrame(tactilePersistentRawPath(root, serial));
+            entry["persistent_recent"] = json::array();
+            entry["persistent_fault_active"] = false;
+            entry["persistent_fault_detail"] = "";
+            entry["persistent_baseline_pending"] = false;
+            entry["persistent_baseline_updated_at_ms"] = now;
+            entry["persistent_baseline_refresh_on_next_boot"] = false;
+            entry["persistent_baseline_refresh_request_boot_id"] = "";
+        }
+        if (!writeTextFileAtomically(tactileHistoryPath(root), history.dump(2), &error))
+            throw std::runtime_error(error);
+        std::vector<EpisodeManager::TactileValidationFinding> findings;
+        for (const auto& item : kTactileCalibrationTargets) {
+            const auto cached = std::find_if(tactileCameraRuntimeStates_.begin(), tactileCameraRuntimeStates_.end(),
+                [&](const auto& state) { return state.cameraName == item.cameraName; });
+            if (cached == tactileCameraRuntimeStates_.end()) continue;
+            const auto saved = history["cameras"].value(cached->serialNumber, json::object());
+            const auto recent = saved.value("recent", json::array());
+            EpisodeManager::TactileValidationFinding finding;
+            finding.cameraName = item.cameraName;
+            finding.side = item.side;
+            finding.sensorSlot = item.sensorSlot;
+            finding.warningActive = saved.value("persistent_fault_active", false) ||
+                (recent.size() >= 3 && std::all_of(recent.begin(), recent.end(),
+                    [](const auto& value) { return value.is_boolean() && value == true; }));
+            findings.push_back(finding);
+        }
+        {
+            std::lock_guard<std::mutex> lock(backgroundTactileMutex_);
+            pendingBackgroundTactileEpisodeDir_.clear();
+        }
+        tactileTriggeredAudioCommand_.clear();
+        applyTactileValidationFindings(findings);
+        applyIdleState();
+        response["status"] = "ok";
+    } catch (const std::exception& ex) {
+        response["status"] = "failed";
+        response["error"] = ex.what();
+        for (const auto& saved : originals) {
+            std::string rollbackError;
+            std::error_code ec;
+            if (saved.second.has_value()) {
+                if (!writeTextFileAtomically(saved.first, *saved.second, &rollbackError))
+                    response["rollback_error"] = rollbackError;
+            } else fs::remove(saved.first, ec);
+            fs::remove(saved.first.string() + ".web-new", ec);
+        }
+    }
+    std::string error;
+    writeTextFileAtomically(root / "web_reset_response.json", response.dump(), &error);
+    std::error_code ec;
+    fs::remove(requestPath, ec);
+    fs::remove(root / "web_reset.gray", ec);
+}
+
 void RecordRuntime::maintainBackgroundTactileValidation()
 {
     if (backgroundTactileFuture_.valid() &&
@@ -580,6 +794,8 @@ void RecordRuntime::maintainBackgroundTactileValidation()
     {
         return;
     }
+
+    maintainTactileBaselineReset();
 
     std::string episodeDir;
     {
@@ -1100,6 +1316,31 @@ bool RecordRuntime::GripperPanelManager::readRuntimeIdentityForSide(
     return true;
 }
 
+bool RecordRuntime::GripperPanelManager::readCalibrationForSide(
+    const std::string &side, gripper_hmi::GripperCalibrationPayload *payload)
+{
+    const int index = findDriverIndexForSide(side);
+    if (payload == nullptr || index < 0 || drivers_[index] == nullptr ||
+        !drivers_[index]->isConnected()) return false;
+    return drivers_[index]->readCalibrationPayload(payload);
+}
+
+bool RecordRuntime::GripperPanelManager::readFirmwareVersionForSide(
+    const std::string &side, std::string *version)
+{
+    if (version == nullptr)
+    {
+        return false;
+    }
+    version->clear();
+    const int index = findDriverIndexForSide(side);
+    if (index < 0 || drivers_[index] == nullptr || !drivers_[index]->isConnected())
+    {
+        return false;
+    }
+    return drivers_[index]->readFirmwareVersion(version);
+}
+
 std::vector<RecordRuntime::GripperPanelManager::ConnectionEvent> RecordRuntime::GripperPanelManager::consumeConnectionEvents()
 {
     std::vector<ConnectionEvent> events = pendingConnectionEvents_;
@@ -1391,36 +1632,3 @@ void RecordRuntime::HmiLedController::setState(LedState state, double progress)
 }
 
 }  // namespace DA::Ugripper
-
-void RecordRuntime::maintainGripperCalibration()
-{
-    if (isRecordingActive()) return;
-    bool changed = false;
-    for (auto &state : gripperRuntimeStates_)
-    {
-        if (!state.connected || state.calibrationPayloadCached ||
-            state.calibrationReadAttempts >= 3 ||
-            currentSteadyMs() < state.nextCalibrationReadMs ||
-            !panelManager_.isSideReadyForRefresh(state.side, kGripperRefreshActiveTimeoutMs))
-            continue;
-        ++state.calibrationReadAttempts;
-        state.nextCalibrationReadMs = currentSteadyMs() + 30000;
-        state.calibrationPayloadCached =
-            panelManager_.readCalibrationForSide(state.side, &state.calibrationPayload);
-        DM_LOG_INFO("gripper calibration cache: side={} read={} attempt={}",
-                    state.side, state.calibrationPayloadCached, state.calibrationReadAttempts);
-        changed = true;
-    }
-    if (changed && episodeManager_ != nullptr)
-        episodeManager_->SetGripperRuntimeStates(gripperRuntimeStates_);
-}
-
-
-bool RecordRuntime::GripperPanelManager::readCalibrationForSide(
-    const std::string &side, gripper_hmi::GripperCalibrationPayload *payload)
-{
-    const int index = findDriverIndexForSide(side);
-    if (payload == nullptr || index < 0 || drivers_[index] == nullptr ||
-        !drivers_[index]->isConnected()) return false;
-    return drivers_[index]->readCalibrationPayload(payload);
-}
