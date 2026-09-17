@@ -602,6 +602,7 @@ PY
 - 安装后的 `bin/CameraRecorder/main_camera_xu_tool` 支持 `--rtc-get`、`--rtc-set-us`、`--rtc-sync-now` 与 `--parse-h265-timestamps`，用于独立验证主摄 XU RTC 与 H.265 XU2 SEI；`--rtc-get` 输出固件在最近一次 SET 时锁存的 encoder `Pset`，`--rtc-sync-now` 使用与录制链相同的 `+200us` 写入 `Tset` 并输出 `Pset`，逐帧时间按 `Tset + Pframe - Pset` 换算。
 - 建议从仓库根目录显式执行 `bash test/scripts/<script>.sh`；详细参数与注意事项见 `test/README.md`。
 - 单条 episode 可执行 `bash test/scripts/validate_episode_data.sh <episode_dir>`；父目录下校验最新一条可追加 `--latest`，机器消费结果可追加 `--json`。
+- 离线校验器分别识别 metadata 3.2（兼容 3.0/3.1）和 calibration 3.1（兼容 3.0）；后者检查独立外参标定状态、左右主摄两项有限数值 4×4 刚体矩阵及对应版本的严格字段合同。`uncalibrated` 与合法默认矩阵可通过格式检查，不代表光学精度达标；未知 calibration 版本、缺项或非法矩阵仍失败。
 - `py_script/read_ugripper_mcap.txt` 是给数据使用者参考的通用 MCAP 读取示例；文件后缀使用 `.txt`，方便在会拦截或加密 `.py` 的环境中发送，但内容仍是 Python 代码。它可直接输入单个 `.mcap` 或完整 episode 目录；episode 模式会自动读取 `sensor_left/right.mcap`、`fays_data_left/right.mcap` 与可选 `ego/sensor.mcap`，并解码当前 UGripper encoder 与 Fays `i/c` 二进制 payload。配套说明见 `py_script/README_read_ugripper_mcap.txt`。示例：
   `python3 py_script/read_ugripper_mcap.txt /mnt/data_disk/<device_sn_lower>/data/episode_<date>_<index> --json-out /tmp/ugripper_mcap_report.json`。
 - 当前 UGripper MCAP 是通用 MCAP 容器，不是 ROS 2 bag；不要用 `ros2 bag info` 或 Foxglove 的 ROS bag 可视化入口作为数据是否正常的判断依据。若要可视化，需要按脚本里的 payload 定义转换成 Foxglove/ROS 可识别 schema 后再导入。

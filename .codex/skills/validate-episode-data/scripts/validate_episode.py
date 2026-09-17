@@ -120,6 +120,8 @@ EXPECTED_METADATA_VIDEO_DETAIL_NAMES = [
 ]
 EXPECTED_CALIBRATION_KEY_ORDER = ["calibration_info", "observation"]
 EXPECTED_CALIBRATION_INFO_KEY_ORDER = ["calibration_status", "format_version"]
+CALIBRATION_INFO_31_KEY_ORDER = ["calibration_status", "main_cam_extrinsic_calib_status", "format_version"]
+MAIN_CAMERA_EXTRINSIC_KEYS = {"T_base_main_camera", "T_main_camera_stereo_cam0"}
 EXPECTED_CALIBRATION_OBSERVATION_KEY_ORDER = ["images", "imu"]
 EXPECTED_CALIBRATION_ROOT_KEYS = set(EXPECTED_CALIBRATION_KEY_ORDER)
 EXPECTED_CALIBRATION_OBSERVATION_KEYS = {"images", "imu"}
@@ -1012,7 +1014,7 @@ class EpisodeValidator:
             self.add_finding(
                 "FAIL",
                 "calibration_schema_key_order",
-                "calibration.json 顶层字段顺序不符合 3.0 标准范本",
+                "calibration.json 顶层字段顺序不符合标准范本",
                 actual_order=calibration_key_order,
                 expected_order=EXPECTED_CALIBRATION_KEY_ORDER,
             )
@@ -1037,6 +1039,7 @@ class EpisodeValidator:
             if key not in self.calibration:
                 self.add_finding("FAIL", "calibration_field", f"calibration.json 缺少字段: {key}")
         calibration_info = self.calibration.get("calibration_info")
+        format_version = calibration_info.get("format_version") if isinstance(calibration_info, dict) else None
         if not isinstance(calibration_info, dict):
             self.add_finding(
                 "FAIL",
@@ -1046,27 +1049,35 @@ class EpisodeValidator:
                 actual_type=value_type_name(calibration_info),
             )
         else:
-            if list(calibration_info.keys()) != EXPECTED_CALIBRATION_INFO_KEY_ORDER:
+            expected_info_keys = (CALIBRATION_INFO_31_KEY_ORDER if format_version == "3.1"
+                                  else EXPECTED_CALIBRATION_INFO_KEY_ORDER)
+            if list(calibration_info.keys()) != expected_info_keys:
                 self.add_finding(
                     "FAIL",
                     "calibration_schema_key_order",
-                    "calibration.json.calibration_info 字段顺序不符合 3.0 标准范本",
+                    "calibration.json.calibration_info 字段顺序不符合对应版本标准范本",
                     actual_order=list(calibration_info.keys()),
-                    expected_order=EXPECTED_CALIBRATION_INFO_KEY_ORDER,
+                    expected_order=expected_info_keys,
                 )
-            if calibration_info.get("calibration_status") not in {"calibrated", "uncalibrated"}:
+            if calibration_info.get("calibration_status") not in ("calibrated", "uncalibrated"):
                 self.add_finding(
                     "FAIL",
                     "calibration_field",
                     "calibration.json.calibration_info.calibration_status 非法",
                     value=calibration_info.get("calibration_status"),
                 )
-            if calibration_info.get("format_version") != "3.0":
+            if format_version == "3.1" and calibration_info.get("main_cam_extrinsic_calib_status") not in ("calibrated", "uncalibrated"):
+                self.add_finding(
+                    "FAIL", "calibration_field",
+                    "calibration.json.calibration_info.main_cam_extrinsic_calib_status 非法",
+                    value=calibration_info.get("main_cam_extrinsic_calib_status"),
+                )
+            if format_version not in ("3.0", "3.1"):
                 self.add_finding(
                     "FAIL",
                     "calibration_field",
-                    "calibration.json.calibration_info.format_version 应为 3.0",
-                    value=calibration_info.get("format_version"),
+                    "calibration.json.calibration_info.format_version 应为 3.0 或 3.1",
+                    value=format_version,
                 )
         observation = self.calibration.get("observation")
         if not isinstance(observation, dict):
@@ -1082,7 +1093,7 @@ class EpisodeValidator:
             self.add_finding(
                 "FAIL",
                 "calibration_schema_key_order",
-                "calibration.json.observation 字段顺序不符合 3.0 标准范本",
+                "calibration.json.observation 字段顺序不符合标准范本",
                 actual_order=list(observation.keys()),
                 expected_order=EXPECTED_CALIBRATION_OBSERVATION_KEY_ORDER,
             )
@@ -1114,7 +1125,7 @@ class EpisodeValidator:
                 self.add_finding(
                     "FAIL",
                     "calibration_schema_key_order",
-                    "calibration.json.observation.images 字段顺序不符合 3.0 标准范本",
+                    "calibration.json.observation.images 字段顺序不符合标准范本",
                     actual_order=list(images.keys()),
                     expected_order=expected_image_keys,
                 )
@@ -1129,7 +1140,7 @@ class EpisodeValidator:
             for key in expected_image_keys:
                 if key not in images:
                     self.add_finding("FAIL", "calibration_field", f"calibration.json.observation.images 缺少 {key}")
-            self.validate_calibration_image_entries(images, expected_image_keys)
+            self.validate_calibration_image_entries(images, expected_image_keys, format_version)
         imu = observation.get("imu")
         if not isinstance(imu, dict):
             self.add_finding("FAIL", "calibration_field", "calibration.json.observation.imu 缺失或非法")
@@ -1138,7 +1149,7 @@ class EpisodeValidator:
                 self.add_finding(
                     "FAIL",
                     "calibration_schema_key_order",
-                    "calibration.json.observation.imu 字段顺序不符合 3.0 标准范本",
+                    "calibration.json.observation.imu 字段顺序不符合标准范本",
                     actual_order=list(imu.keys()),
                     expected_order=REQUIRED_CALIBRATION_IMU_KEYS,
                 )
@@ -1172,17 +1183,58 @@ class EpisodeValidator:
             self.add_finding(
                 "FAIL",
                 "calibration_schema_key_order",
-                f"{path} 字段顺序不符合 3.0 标准范本",
+                f"{path} 字段顺序不符合对应版本标准范本",
                 actual_order=list(entry.keys()),
                 expected_order=expected_keys,
             )
 
-    def validate_calibration_image_entries(self, images: dict[str, Any], expected_image_keys: list[str]) -> None:
+    def validate_main_camera_extrinsics(self, extrinsics: Any, path: str) -> None:
+        if not isinstance(extrinsics, dict) or set(extrinsics) != MAIN_CAMERA_EXTRINSIC_KEYS:
+            self.add_finding("FAIL", "calibration_extrinsics", f"{path} 必须包含两项主摄外参矩阵")
+            return
+        for name in sorted(MAIN_CAMERA_EXTRINSIC_KEYS):
+            matrix = extrinsics[name]
+            if not isinstance(matrix, list) or len(matrix) != 4 or any(
+                not isinstance(row, list) or len(row) != 4 for row in matrix
+            ):
+                self.add_finding("FAIL", "calibration_extrinsics", f"{path}.{name} 必须为 4x4 矩阵")
+                continue
+            try:
+                finite = all(type(value) in (int, float) and math.isfinite(value)
+                             for row in matrix for value in row)
+            except OverflowError:
+                finite = False
+            if not finite:
+                self.add_finding("FAIL", "calibration_extrinsics", f"{path}.{name} 必须为有限数值矩阵")
+                continue
+            # Match the runtime UCAL reader's homogeneous/rotation tolerances.
+            homogeneous = all(abs(matrix[3][i] - expected) <= 1e-5
+                              for i, expected in enumerate((0, 0, 0, 1)))
+            orthogonal = all(abs(sum(matrix[r][k] * matrix[s][k] for k in range(3))
+                                 - (1 if r == s else 0)) <= 0.02
+                             for r in range(3) for s in range(r, 3))
+            determinant = (
+                matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1])
+                - matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0])
+                + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0])
+            )
+            if not homogeneous or not orthogonal or abs(determinant - 1) > 0.02:
+                self.add_finding("FAIL", "calibration_extrinsics", f"{path}.{name} 不是有效的刚体变换")
+
+    def validate_calibration_image_entries(self, images: dict[str, Any], expected_image_keys: list[str],
+                                           format_version: str | None = None) -> None:
         for key in expected_image_keys:
             entry = images.get(key)
             if key in MAIN_CAMERA_NAMES:
-                self.validate_entry_allowed_keys(entry, MAIN_CAMERA_CALIBRATION_KEY_ORDER, f"calibration.json.observation.images.{key}")
+                expected_keys = list(MAIN_CAMERA_CALIBRATION_KEY_ORDER)
+                has_extrinsics = format_version == "3.1" and key in {"cam_left_main", "cam_right_main"}
+                if has_extrinsics:
+                    expected_keys.append("extrinsics")
+                self.validate_entry_allowed_keys(entry, expected_keys, f"calibration.json.observation.images.{key}")
                 if isinstance(entry, dict):
+                    if has_extrinsics:
+                        self.validate_main_camera_extrinsics(
+                            entry.get("extrinsics"), f"calibration.json.observation.images.{key}.extrinsics")
                     if entry.get("camera_model") != "pinhole":
                         self.add_finding("FAIL", "calibration_field", f"calibration.json.observation.images.{key}.camera_model 非法")
                     if entry.get("distortion_model") != "equidistant":

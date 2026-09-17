@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import importlib.util
+import copy
 import sys
 import tempfile
 import unittest
@@ -406,6 +407,126 @@ class ValidateEpisodeProfileTest(unittest.TestCase):
             self.assertTrue(
                 any(item.code == "ego_time_alignment" and item.severity == "FAIL" for item in validator.findings)
             )
+
+
+def calibration_payload(version="3.1", chest=False):
+    info = {"calibration_status": "calibrated"}
+    if version == "3.1":
+        info["main_cam_extrinsic_calib_status"] = "uncalibrated"
+    info["format_version"] = version
+    main = dict(camera_model="pinhole", distortion_coeffs=[0, 0, 0, 0],
+                distortion_model="equidistant", fps=60, intrinsics=[500, 500, 960, 540],
+                names=["height", "width", "channels"], shape=[1080, 1920, 3])
+    stereo = dict(cam0=dict(distortion_coeffs=[], intrinsics=[]),
+                  cam1=dict(distortion_coeffs=[], intrinsics=[]), camera_model="pinhole",
+                  distortion_model="equidistant", extrinsics={}, fps=25,
+                  names=["height", "width", "channels"], shape=[800, 640, 3])
+    tactile = dict(names=["height", "width", "channels"], serial="TACTILE-SN", shape=[480, 640, 3])
+    images = {}
+    if chest:
+        images["cam_chest_main"] = copy.deepcopy(main)
+    for side in ("left", "right"):
+        images[f"stereo_{side}"] = copy.deepcopy(stereo)
+        for slot in ("l", "r"):
+            images[f"tcam_{side}_{slot}"] = copy.deepcopy(tactile)
+    # Use a non-identity transform with translation; do not require zero or invert it.
+    transform = [[0, -1, 0, .078813], [1, 0, 0, 0], [0, 0, 1, -.025092], [0, 0, 0, 1]]
+    for side in ("left", "right"):
+        entry = copy.deepcopy(main)
+        if version == "3.1":
+            entry["extrinsics"] = {name: copy.deepcopy(transform) for name in
+                                    ("T_base_main_camera", "T_main_camera_stereo_cam0")}
+        images[f"cam_{side}_main"] = entry
+    imu = {f"imu_{side}": dict(update_rate_hz=1000, accelerometer={}, gyroscope={})
+           for side in ("left", "right")}
+    return dict(calibration_info=info, observation=dict(images=images, imu=imu))
+
+
+class ValidateCalibrationFormatTest(unittest.TestCase):
+    def validate(self, payload, data_version="3.2", stereo=True):
+        with tempfile.TemporaryDirectory(prefix="ugripper-calibration-") as tmp:
+            root = Path(tmp) / "episode_20260917_0001"
+            root.mkdir()
+            if "cam_chest_main" in payload.get("observation", {}).get("images", {}):
+                (root / "cam_chest.mkv").touch()
+            validator = VALIDATOR.EpisodeValidator(Namespace(path=str(root), latest=False))
+            validator.metadata = metadata(stereo_enabled=stereo, data_version=data_version)
+            validator.calibration = payload
+            validator.resolve_episode_profile()
+            validator.validate_calibration_structure()
+            return [item for item in validator.findings if item.severity == "FAIL"]
+
+    def test_legacy_and_current_formats_are_independent_of_metadata_and_profile(self):
+        for version in ("3.0", "3.1"):
+            for data_version in ("3.0", "3.1", "3.2"):
+                for stereo in (False, True):
+                    for chest in (False, True):
+                        with self.subTest(version=version, metadata=data_version, stereo=stereo, chest=chest):
+                            self.assertEqual(self.validate(calibration_payload(version, chest), data_version, stereo), [])
+
+    def test_current_accepts_both_extrinsic_calibration_states(self):
+        for status in ("calibrated", "uncalibrated"):
+            payload = calibration_payload()
+            payload["calibration_info"]["main_cam_extrinsic_calib_status"] = status
+            self.assertEqual(self.validate(payload), [])
+
+    def test_missing_invalid_and_unknown_info_is_rejected(self):
+        cases = [("format_version", value) for value in (None, "3.2", 3.1, {})]
+        cases += [("main_cam_extrinsic_calib_status", value) for value in (None, "unknown", True, {})]
+        for field, value in cases:
+            with self.subTest(field=field, value=value):
+                payload = calibration_payload()
+                if value is None:
+                    del payload["calibration_info"][field]
+                else:
+                    payload["calibration_info"][field] = value
+                self.assertTrue(self.validate(payload))
+
+    def test_schema_order_and_unknown_fields_remain_strict(self):
+        for target in ("info", "main"):
+            payload = calibration_payload()
+            entry = (payload["calibration_info"] if target == "info" else
+                     payload["observation"]["images"]["cam_left_main"])
+            first = next(iter(entry))
+            entry[first] = entry.pop(first)
+            self.assertTrue(any(f.code == "calibration_schema_key_order" for f in self.validate(payload)))
+            entry["unexpected"] = 1
+            self.assertTrue(self.validate(payload))
+
+    def test_both_main_cameras_require_exactly_two_extrinsics(self):
+        for side in ("left", "right"):
+            for value in (None, [], {}, {"T_base_main_camera": []},
+                          calibration_payload()["observation"]["images"]["cam_left_main"]["extrinsics"] | {"unknown": []}):
+                with self.subTest(side=side, value=value):
+                    payload = calibration_payload()
+                    entry = payload["observation"]["images"][f"cam_{side}_main"]
+                    if value is None:
+                        del entry["extrinsics"]
+                    else:
+                        entry["extrinsics"] = value
+                    self.assertTrue(any(f.code == "calibration_extrinsics" for f in self.validate(payload)))
+
+    def test_malformed_nonfinite_and_nonrigid_matrices_are_rejected(self):
+        valid = calibration_payload()["observation"]["images"]["cam_left_main"]["extrinsics"]["T_base_main_camera"]
+        matrices = [None, [], [[1, 0, 0]] * 4]
+        for row, col, value in ((0, 0, True), (0, 0, "1"), (0, 0, float("nan")),
+                                (0, 0, float("inf")), (0, 0, 10**400), (0, 0, 2),
+                                (3, 3, 0), (3, 0, .1), (2, 2, -1)):
+            matrix = copy.deepcopy(valid)
+            matrix[row][col] = value
+            matrices.append(matrix)
+        for name in ("T_base_main_camera", "T_main_camera_stereo_cam0"):
+            for matrix in matrices:
+                with self.subTest(name=name, matrix=matrix):
+                    payload = calibration_payload()
+                    payload["observation"]["images"]["cam_right_main"]["extrinsics"][name] = matrix
+                    self.assertTrue(any(f.code == "calibration_extrinsics" for f in self.validate(payload)))
+
+    def test_legacy_and_chest_do_not_accept_new_extrinsics(self):
+        for version, camera in (("3.0", "cam_left_main"), ("3.1", "cam_chest_main")):
+            payload = calibration_payload(version, chest=True)
+            payload["observation"]["images"][camera]["extrinsics"] = {}
+            self.assertTrue(any(f.code == "calibration_schema_unexpected_keys" for f in self.validate(payload)))
 
 
 if __name__ == "__main__":
