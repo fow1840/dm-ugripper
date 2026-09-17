@@ -7,7 +7,7 @@ function post(url,value){return api(url,{method:'POST',headers:{'Content-Type':'
 function bytes(n){return (n/1024**3).toFixed(1)+' GiB'}
 function metric(label,value,detail){const p=el('article',undefined,'panel metric');p.append(el('p',label,'muted'),el('div',value,'value'),el('p',detail,'muted'));return p}
 function row(label,value,good){const d=el('div',undefined,'device');d.append(el('span',label),el('span',value,'state '+(good===null?'':good?'good':'bad')));return d}
-function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProduction(s.production||{});last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording?'录制中':s.busy?'维护 / 传输中':'空闲';
+function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProduction(s.production||{});renderTimeSync(s);last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording?'录制中':s.busy?'维护 / 传输中':'空闲';
  const d=s.disks.data,m=s.memory;$('#metrics').replaceChildren(metric('CPU 占用',s.cpu_percent===null?'—':s.cpu_percent+'%','设备系统'),metric('内存使用',Math.round(m.used/m.total*100)+'%',bytes(m.used)+' / '+bytes(m.total)),metric('数据盘剩余',d.mounted?bytes(d.free):'未挂载',d.mounted?'总容量 '+bytes(d.total):'请连接数据盘'),metric('系统盘剩余',bytes(s.disks.system.free),'总容量 '+bytes(s.disks.system.total)));
  for(const side of ['left','right']){$('#'+side+'Devices').replaceChildren(...s.devices.filter(d=>d.side===side).map(d=>row(d.label,!d.present?'未识别':d.stream===null?'已识别':d.stream?'正常出流':'暂未出流',d.present&&(d.stream===null||d.stream))));}
  const ego=s.ego||{},bound=ego.bound,connected=ego.connected;
@@ -26,7 +26,7 @@ function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProdu
  $('#connection').textContent=(s.service_active?'数采服务在线':'数采服务已停止')+' · '+new Date().toLocaleTimeString();
  if(s.task.id&&!uploading){$('#taskPanel').hidden=false;$('#taskText').textContent=s.task.stage+(s.task.message?' · '+s.task.message:'');if(s.task.status==='running')$('#progress').removeAttribute('value');else $('#progress').value=100;$('#results').replaceChildren();for(const [k,v]of Object.entries(s.task.result||s.task.results||{})){$('#results').append(el('p',k+': '+(typeof v==='object'?(v.installed_version||v.status||'完成'):v)))} }
 }
-async function refresh(){if($('#workspace').hidden)return;try{render(await api('/api/v1/status'))}catch(e){$('#connection').textContent='连接中断';$('#productionFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';updateTactileImageWarnings([]);message(e.message)}}
+async function refresh(){if($('#workspace').hidden)return;try{render(await api('/api/v1/status'))}catch(e){$('#connection').textContent='连接中断';$('#timeSyncFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';$('#productionFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';updateTactileImageWarnings([]);message(e.message)}}
 for(const b of document.querySelectorAll('nav [data-page]'))b.onclick=()=>{current=b.dataset.page;for(const x of document.querySelectorAll('.page'))x.hidden=x.id!==current;for(const x of document.querySelectorAll('nav [data-page]'))x.classList.toggle('selected',x===b);$('#title').textContent=({overview:'设备概览',data:'录制数据',upgrade:'升级维护',settings:'配置'})[current];if(current==='data')loadFiles()};
 async function loadFiles(){try{const v=await api('/api/v1/data?path='+encodeURIComponent(directory)+'&offset='+fileOffset);$('#previousFiles').disabled=fileOffset===0;$('#nextFiles').disabled=!v.has_more;$('#directory').textContent='/'+directory;$('#files').replaceChildren();for(const f of v.entries){const item=el('div',undefined,'file'),actions=el('div',undefined,'actions'),path=directory?directory+'/'+f.name:f.name;item.append(el('span',f.name,'name'));if(f.directory){const open=el('button','打开','secondary');open.onclick=()=>{directory=path;fileOffset=0;loadFiles()};actions.append(open)}const download=el('button',f.directory?'打包下载':'下载','secondary');download.onclick=()=>startDownload('/api/v1/download?path='+encodeURIComponent(path));actions.append(download);item.append(actions);$('#files').append(item)}}catch(e){message(e.message)}}
 $('#previousFiles').onclick=()=>{fileOffset=Math.max(0,fileOffset-200);loadFiles()};$('#nextFiles').onclick=()=>{fileOffset+=200;loadFiles()};
@@ -213,4 +213,38 @@ $('#productionStart').onclick=async()=>{
 $('#productionCancel').onclick=async()=>{
  if(!await confirmAction('取消生产压测并停止当前录制？结果将标记为已取消。'))return;
  try{await post('/api/v1/production/cancel',{id:productionId});message('正在取消，等待录制收尾');refresh()}catch(e){message(e.message)}
+};
+
+let timeSyncId='';
+function renderTimeSync(s){
+ const job=s.time_sync||{}, running=job.status==='running', total=job.settings?.count||1;
+ if(job.id&&job.id!==timeSyncId&&job.settings){for(const [key,value] of Object.entries(job.settings)){const input=$('#timeSyncForm').elements.namedItem(key);if(input)input.value=value;}}
+ timeSyncId=job.id||'';
+ $('#timeSyncStart').disabled=!!s.busy||running;
+ $('#timeSyncCancel').disabled=!running;
+ $('#productionStart').disabled=!!s.busy||s.production?.status==='running';
+ for(const input of $('#timeSyncForm').querySelectorAll('input'))input.disabled=running;
+ const config=running?job.configuration:s.configuration;
+ $('#timeSyncConfiguration').textContent='视频编码：'+(config?.CAMERA_CODEC||'—')+' · 电源频率：'+(config?.UGRIPPER_POWER_LINE_FREQUENCY||'—')+' Hz';
+ const completed=(job.rounds||[]).filter(r=>r.status!=='running').length;
+ $('#timeSyncProgress').hidden=!job.id;$('#timeSyncProgress').max=total;$('#timeSyncProgress').value=completed;
+ const labels={completed:'采集完成',resetting:'毫秒表清零中',delay:'等待毫秒表启动',cancelled:'已取消'};
+ const label=v=>labels[v]||productionLabel(v);
+ $('#timeSyncStatus').textContent=job.id?'状态：'+label(job.status)+' · '+(job.round||0)+' / '+total+' · '+label(job.phase)+(running?' · 阶段剩余约 '+Math.ceil(job.phase_remaining_s||0)+' s':'')+(job.reason?' · '+job.reason:''):'尚未运行';
+ $('#timeSyncFreshness').textContent=job.id?'进度更新时间：'+new Date().toLocaleTimeString():'';
+ $('#timeSyncDetails').replaceChildren(...(job.rounds||[]).map(r=>{
+  const item=el('div');item.append(el('p','#'+r.round+' · '+label(r.status)+' · '+(r.episode||'')+(r.reason?' · '+r.reason:'')));
+  if(r.log){const details=el('details');details.append(el('summary','日志'),el('pre',r.log));item.append(details);}return item;
+ }));
+}
+$('#timeSyncForm').onsubmit=async event=>{
+ event.preventDefault();
+ const settings=Object.fromEntries([...new FormData(event.target)].map(([k,v])=>[k,Number(v)]));
+ if(settings.delay_s>=settings.duration_s){message('毫秒表延迟必须小于录制时长');return;}
+ $('#timeSyncStart').disabled=true;
+ try{await post('/api/v1/time-sync/start',settings);await refresh()}catch(e){message(e.message);$('#timeSyncStart').disabled=false;}
+};
+$('#timeSyncCancel').onclick=async()=>{
+ $('#timeSyncCancel').disabled=true;
+ try{await post('/api/v1/time-sync/cancel',{id:timeSyncId});message('正在取消，等待录制收尾');await refresh()}catch(e){message(e.message);$('#timeSyncCancel').disabled=false;}
 };

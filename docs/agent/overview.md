@@ -20,6 +20,7 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - 主入口：`/opt/ugripper/run_record.sh`
 - 主运行时：`/opt/ugripper/bin/UgripperRuntime/UgripperRuntime`
 - 独立维护 Web 服务：`standalone/UgripperWebServer/` 提供 HTTPS 客户页面，接网线即可免登录访问（无账号、密码或会话），维护写请求保留跨站防护与操作确认，默认绑定以太网 `192.168.2.240:8080`，独立 `ugripper-webserver.service`（ubuntu）与 `ugripper-maintenance.service`（本地 root worker）。设备状态、日志下载、数据浏览/下载、白名单软件升级、左右主摄/夹爪固件升级、治具确认后的左右独立编码器标零通过受控 API 提供。主摄 iSerial 与夹爪固件版本按左右展示，由 UGripper 维护 `/dev/shm/ugripper/firmware_status.json`，Web 仅读取快照；夹爪复用 HMI 驱动在空闲时读取，启动/重连自动刷新，失败每 30 秒重试且每次连接最多 3 次，录制期间不查询；配置页支持空闲时查看左右编码器原始计数、角度与弧度；每次位置查询在录制/维护共享锁内打开并关闭串口，只发送 Modbus 读命令，支持 1Mbps/115200 且不改设备配置。四个环境参数（语言、编码、胸部主摄开关、电源频率）提供下拉配置，确认后由 root 专用 helper 限定写入 `/etc/environment` 并重启数采。录制与维护/下载共用 `/run/ugripper/maintenance.lock` 原子锁，持有到各自收尾结束；主摄升级固定调用包内 dfu-util。配置及测试说明见 `standalone/UgripperWebServer/README.md`。
+- Web 配置页时间同步测试：可配置每组录制 1–3600 秒、1–100 组、毫秒表延迟 0 秒起且小于录制时长（默认 100 秒/1 组/延迟 2 秒）。复用包内毫秒表脚本，经 root worker 自动控制 GPIO139，每组前后高电平清零 5 秒，START/STOP 与 GPIO 实测边界写入 episode 的 `stopwatch_timing.json`；与生产压测/维护/下载互斥，断开网页继续执行，取消等待收尾，中断不自动续跑。采集完成不代表已通过光学同步标定。
 - 数据目录：`/mnt/data_disk/<device_sn_lower>/data`
 - 持久化标定目录：`/etc/ugripper/config/calibration`
 - 日志目录：`/var/log/ugripper`

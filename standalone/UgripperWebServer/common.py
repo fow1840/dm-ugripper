@@ -61,7 +61,7 @@ def operation_lock():
         fcntl.flock(production_fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
     except BlockingIOError as exc:
         os.close(production_fd)
-        raise Busy('生产压测正在执行') from exc
+        raise Busy('生产压测或时间同步测试正在执行') from exc
     try:
         with _maintenance_lock():
             yield

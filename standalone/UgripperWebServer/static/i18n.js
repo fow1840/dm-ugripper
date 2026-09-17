@@ -1,6 +1,10 @@
 'use strict';
 // Preserve source text per node so temporary language switches never alter settings.
 const translations={
+'时间同步测试':'Time synchronization test','每组录制时长（秒）':'Recording duration per round (s)','测试组数':'Test rounds','毫秒表延迟启动（秒）':'Stopwatch start delay (s)',
+'请连接外接毫秒表。延迟从发送录制开始指令计时，必须小于录制时长。每组前后自动清零 5 秒，沿用已保存的编码和电源频率配置。关闭网页后继续运行；完成后仍需标定确认同步误差。':'Connect the external stopwatch. The delay starts at the recording START command and must be shorter than the recording duration. Each round resets the stopwatch for 5 seconds before and after recording, using the saved codec and power-line settings. The test continues after closing the page. Calibrate the recordings to measure synchronization error.',
+'开始时间同步测试':'Start synchronization test','停止时间同步测试':'Stop synchronization test','采集完成':'Recording complete','毫秒表清零中':'Resetting stopwatch','等待毫秒表启动':'Waiting to start stopwatch','毫秒表延迟必须小于录制时长':'Stopwatch delay must be shorter than recording duration','生产压测或时间同步测试正在执行':'Production or synchronization test running','日志':'Log',
+
 '丢失 ':'Missed ','未收到有效读数':'No valid reading','设备管理':'Device management','正在连接':'Connecting','设备概览':'Overview','录制数据':'Recordings','升级维护':'Maintenance','配置':'Settings','空闲':'Idle','录制中':'Recording','维护 / 传输中':'Maintenance / transfer',
 '左侧设备':'Left devices','右侧设备':'Right devices','相机抓图':'Camera snapshots',
 '按采集参数获取本机相机图片，双目保持预热。Ego 单独短录约 3 秒，获取成功后删除设备上的本次测试数据。':'Capture using recording settings while keeping stereo warmup active. Ego records for about 3 seconds; its test recording is deleted after successful retrieval.',

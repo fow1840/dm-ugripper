@@ -95,6 +95,10 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/api/v1/snapshot':
                 return self.json(rpc(dict(action='snapshot',kind=body.get('kind'))),202)
             if path=='/api/v1/encoder/stream':return self.encoder_stream()
+            if path=='/api/v1/time-sync/start':
+                return self.json(rpc(dict(action='time_sync_start',settings=body)),202)
+            if path=='/api/v1/time-sync/cancel':
+                return self.json(rpc(dict(action='time_sync_cancel',id=body.get('id'))))
             if path=='/api/v1/production/start':
                 if body.get('confirm') is not True:raise ValueError('请确认维护操作')
                 return self.json(rpc(dict(action='production_start')),202)

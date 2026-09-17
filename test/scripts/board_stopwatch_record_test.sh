@@ -149,7 +149,7 @@ capture_time() {
 start_gpio_helper() {
     local python_bin=""
     local candidate
-    for candidate in /opt/ugripper/.venv/bin/python3 python3; do
+    for candidate in /usr/bin/python3 /opt/ugripper/.venv/bin/python3 python3; do
         if command -v "${candidate}" >/dev/null 2>&1 || [[ -x "${candidate}" ]]; then
             python_bin="${candidate}"
             break
@@ -324,7 +324,7 @@ write_timing_json() {
     local final_episode="$1"
     local python_bin=""
     local candidate
-    for candidate in /opt/ugripper/.venv/bin/python3 python3; do
+    for candidate in /usr/bin/python3 /opt/ugripper/.venv/bin/python3 python3; do
         if command -v "${candidate}" >/dev/null 2>&1 || [[ -x "${candidate}" ]]; then
             python_bin="${candidate}"
             break
@@ -611,6 +611,7 @@ board_cleanup() {
     local exit_code=$?
     trap - EXIT HUP INT TERM
     set +e
+    [[ -n "${BOARD_SLEEP_PID:-}" ]] && kill "${BOARD_SLEEP_PID}" 2>/dev/null
 
     [[ -n "${MONITOR_PID:-}" ]] && kill "${MONITOR_PID}" 2>/dev/null
     if [[ "${RECORD_START_SENT:-0}" == "1" && "${RECORD_STOP_SENT:-0}" != "1" && -p "${RECORD_CONTROL_PIPE}" ]]; then
@@ -632,6 +633,15 @@ board_cleanup() {
     [[ -n "${WORK_DIR:-}" && -d "${WORK_DIR}" ]] && rm -rf "${WORK_DIR}"
 
     exit "${exit_code}"
+}
+
+# Background sleep lets Bash handle TERM immediately, preserving the GPIO helper
+# for the cleanup trap instead of waiting for a long foreground sleep to finish.
+board_sleep() {
+    sleep "$1" &
+    BOARD_SLEEP_PID=$!
+    wait "${BOARD_SLEEP_PID}"
+    BOARD_SLEEP_PID=""
 }
 
 run_board() {
@@ -726,7 +736,8 @@ run_board() {
 
     capture_time pre_reset_start
     echo "Holding GPIO${GPIO} high for ${RESET_HOLD_SEC}s to reset the stopwatch before recording"
-    sleep "${RESET_HOLD_SEC}"
+    echo "WEB_PHASE=resetting:${RESET_HOLD_SEC}"
+    board_sleep "${RESET_HOLD_SEC}"
     capture_time pre_reset_complete
     [[ "$(<"${GPIO_VALUE_PATH}")" == "${IDLE_LEVEL}" ]] || die "GPIO${GPIO} left high level during pre-record reset"
 
@@ -746,13 +757,15 @@ run_board() {
     capture_time record_start_after
     local start_deadline=$((SECONDS + START_TIMEOUT_SEC))
 
-    sleep "${STOPWATCH_DELAY_SEC}"
+    echo "WEB_PHASE=delay:${STOPWATCH_DELAY_SEC}"
+    board_sleep "${STOPWATCH_DELAY_SEC}"
 
     write_gpio_precise gpio_start "${ACTIVE_LEVEL}" || die "failed to trigger stopwatch through precise GPIO helper"
     GPIO_ACTIVE=1
     RESET_HOLD_REQUIRED=1
 
-    sleep "$((DURATION_SEC - STOPWATCH_DELAY_SEC))"
+    echo "WEB_PHASE=recording:$((DURATION_SEC - STOPWATCH_DELAY_SEC))"
+    board_sleep "$((DURATION_SEC - STOPWATCH_DELAY_SEC))"
 
     capture_time record_stop_before
     printf 'STOP\n' > "${RECORD_CONTROL_PIPE}"
@@ -761,7 +774,8 @@ run_board() {
     write_gpio_precise gpio_stop "${IDLE_LEVEL}" || die "failed to stop stopwatch through precise GPIO helper"
     GPIO_ACTIVE=0
     echo "Holding GPIO${GPIO} high for ${RESET_HOLD_SEC}s to reset the stopwatch after recording"
-    sleep "${RESET_HOLD_SEC}"
+    echo "WEB_PHASE=resetting:${RESET_HOLD_SEC}"
+    board_sleep "${RESET_HOLD_SEC}"
     capture_time reset_complete
     [[ "$(<"${GPIO_VALUE_PATH}")" == "${IDLE_LEVEL}" ]] || die "GPIO${GPIO} left high level during post-stop reset"
     STOPWATCH_RESET_COMPLETED=1
@@ -798,6 +812,7 @@ run_board() {
     local final_episode
     observed_episode="$(<"${NEW_EPISODE_FILE}")"
     read -r episode_observed_unix_ns episode_observed_monotonic_sec < "${EPISODE_OBSERVED_FILE}"
+    echo "WEB_PHASE=finalizing:${FINALIZE_TIMEOUT_SEC}"
     final_episode="$(wait_for_final_episode "${observed_episode}")"
     write_timing_json "${final_episode}"
 

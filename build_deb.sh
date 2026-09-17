@@ -516,6 +516,8 @@ copy_if_exists "standalone/UgripperWebServer" "$TARGET_INSTALL_ROOT/bin/Ugripper
 WEB_PRIVILEGED_ROOT="$BUILD_ROOT/usr/local/lib/ugripper-web"
 copy_if_exists "standalone/UgripperWebServer/common.py" "$WEB_PRIVILEGED_ROOT/common.py"
 copy_if_exists "standalone/UgripperWebServer/production_test.py" "$WEB_PRIVILEGED_ROOT/production_test.py"
+copy_if_exists "standalone/UgripperWebServer/time_sync_test.py" "$WEB_PRIVILEGED_ROOT/time_sync_test.py"
+copy_if_exists "test/scripts/board_stopwatch_record_test.sh" "$WEB_PRIVILEGED_ROOT/board_stopwatch_record_test.sh"
 copy_if_exists "standalone/UgripperWebServer/maintenance.py" "$WEB_PRIVILEGED_ROOT/maintenance.py"
 copy_if_exists "standalone/UgripperWebServer/camera_snapshot.py" "$WEB_PRIVILEGED_ROOT/camera_snapshot.py"
 copy_if_exists "standalone/UgripperWebServer/tactile_panel.py" "$WEB_PRIVILEGED_ROOT/tactile_panel.py"

@@ -245,6 +245,12 @@ class Handler(socketserver.StreamRequestHandler):
             elif req.get('action')=='production_cancel':
                 from production_test import cancel
                 value=cancel(req.get('id'))
+            elif req.get('action')=='time_sync_start':
+                from time_sync_test import start
+                value=start(req.get('settings',{}))
+            elif req.get('action')=='time_sync_cancel':
+                from time_sync_test import cancel
+                value=cancel(req.get('id'))
             elif req.get('action')=='submit': value=submit(req)
             elif req.get('action')=='tactile_reset':
                 from tactile_panel import reset_baseline
@@ -271,6 +277,8 @@ if __name__=='__main__':
     PRIVATE.mkdir(mode=0o700,exist_ok=True)
     from production_test import recover
     recover()
+    from time_sync_test import recover as recover_time_sync
+    recover_time_sync()
     from camera_snapshot import SNAPSHOTS
     shutil.rmtree(SNAPSHOTS, ignore_errors=True)
     for name in ('web_reset_request.json','web_reset_response.json','web_reset.gray'):
