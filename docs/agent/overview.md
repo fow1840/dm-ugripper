@@ -7,8 +7,10 @@
 - 当前系统默认以**单机双手、本地控制**方式运行。
 - 主控制链路当前以 `run_record.sh -> /opt/ugripper/bin/UgripperRuntime/UgripperRuntime` 作为安装入口。
 - 默认主包录制 **2 路主相机 + 2 路 stereo + 4 路触觉相机 + 左右 sensor/Fays MCAP**；构建时显式设置 `UGRIPPER_ENABLE_STEREO=OFF` 才生成不含双目数据的 `+nostereo` 变体。
-- Fays stereo recorder 对每个 episode 的标定 JSON 获取最多尝试 5 次；运行期间以限频 `WARN` 记录 SDK 无新帧/超时/设备丢失、采集处理过慢和编码队列丢帧，用于区分采集端与编码端问题。
-- SDK `NO_NEW_FRAME` 只在连续无成功帧达到 `200ms` 时输出 `WARN`，正常 `25fps` 帧间轮询不告警；首次出帧前从采集循环启动计时。每个返回码独立按 `2s` 限频，`TIMEOUT`、`DEVICE_LOST` 等异常首次立即告警，不被无新帧日志压制。`return_count` 是该返回码分类的累计轮询返回次数，不是丢帧数；`no_frame_ms` 是距成功帧（或首次出帧前距采集启动）的单调时钟间隔，`has_frame` 区分是否已出过帧。采集处理耗时同样使用单调时钟，超过 `100ms` 的告警按 `2s` 限频；这些日志不改变录制、丢帧或恢复策略。
+- Fays 双目灰度图在编码线程直接转换为 NV12（Y 映射到 16–235，UV 固定 128），以 `-pix_fmt nv12 -color_range tv` 送入 FFmpeg RKMPP，支持 H.264/H.265；省去灰度扩展 BGR，保持 YUV420 有限范围输出。SDK 三通道输入保留 BGR 兼容路径；异常帧尺寸及会话中途格式变化拒绝送入固定布局管道。
+- Fays 双目取帧线程只做 SDK 取帧、采集时刻对齐、必要的自有缓冲区复制、轻量计数和入队；64 帧有界环形队列以交换方式复用缓冲区（当前 640×800 灰度约 32 MiB/路，可容纳约 2.56 秒积压），锁内不分配图像、不编码、不打印。消费线程处理 NV12/编码、快照及标定；独立诊断线程写状态和限频告警，编码阻塞时仍能更新采集健康状态。队列满时丢最旧帧并累计 `video_queue_drops`，不阻塞 SDK 取帧；不能以线程分离承诺 SDK/调度/长期消费阻塞下绝对无丢帧。
+- 帧携带采集时会话标识，待机及旧会话积压不能进入新 episode；快照只接受请求后的采集帧。`Time gap detected` 使用采集侧相邻 SDK 成功帧原始时间戳，超过 60ms 报告，在消费线程输出；应用队列溢出另计。runtime JSON 提供进程生命周期内 `capture_call_interval_max_ns`（相邻 SDK 调用起点间隔）、`capture_sdk_max_ns`、`capture_handoff_max_ns`（复制/入队耗时）、`capture_call_over_40ms_count`、`sdk_frame_gap_count`、`video_queue_high_water`、`video_queue_drops` 和 `invalid_video_frames`，用于区分取帧调度、SDK 调用和消费积压。
+- Fays stereo recorder 每个 episode 的标定 JSON 获取最多尝试 5 次。SDK `NO_NEW_FRAME` 仅在连续无成功帧达到 200ms 时告警，首次出帧前从诊断线程启动计时；诊断线程每约 20ms 观察返回计数，每个返回码按 2 秒限频，`TIMEOUT`、`DEVICE_LOST` 等异常首次观测即告警。`return_count` 是分类累计轮询返回次数而非丢帧数；`no_frame_ms` 使用采集线程提供的单调时钟成功帧时间；队列溢出及无效尺寸按 2 秒限频告警。
 - HMI 按键、RGB 灯效、提示音、pre/post 音频录制、停录校验，以及右手双键关机/左手双键卸载数据盘请求都已纳入当前运行时。
 - U 盘流程统一负责 `deb` 升级/重装、`config.txt` 导入、标定数据导入和 encoder 零位校准触发；当前自动安装名单已覆盖 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint` 与 `device-ota-mender`，deb 安装窗口会复用 HMI 灯效提示安装中/失败/完成状态，并会在整批安装完成后通过 PulseAudio 播放 `upgrade_completed.wav`。
 

@@ -34,6 +34,8 @@
 #include <opencv2/imgproc.hpp>
 #include "fays_stereo_recorder/camera_timestamp_offsets.h"
 #include "fays_stereo_recorder/sdk_warning_gate.h"
+#include "fays_stereo_recorder/gray_nv12.h"
+#include "fays_stereo_recorder/video_frame_queue.h"
 #include "utils/fifo_utils.h"
 #include "utils/ugripper_logger.h"
 #include "fays_atrak/fays_atrak_types.h"
@@ -1241,63 +1243,8 @@ private:
     std::mutex mtx_;
 };
 
-struct VideoFrame {
-    std::vector<uint8_t> bytes;
-    int width = 0;
-    int height = 0;
-    int channels = 0;
-    uint64_t faysTsNs;
-    uint64_t publishTimeNs;
-};
-
-class VideoFrameQueue {
-public:
-    static constexpr size_t kDefaultCapacity = 32;
-
-    explicit VideoFrameQueue(size_t capacity = kDefaultCapacity)
-        : capacity_(capacity), stopped_(false), dropCount_(0) {}
-
-    bool Push(VideoFrame&& frame) {
-        std::lock_guard<std::mutex> lock(mtx_);
-        if (stopped_) return false;
-        if (queue_.size() >= capacity_) {
-            queue_.pop_front();
-            const uint64_t count = dropCount_.fetch_add(1, std::memory_order_relaxed) + 1;
-            if ((count & (count - 1)) == 0 || count % 50 == 0) {
-                DM_LOG_WARN("[Video] Encode queue full, dropped oldest frame: total_drops={} capacity={}",
-                            count, capacity_);
-            }
-        }
-        queue_.push_back(std::move(frame));
-        cv_.notify_one();
-        return true;
-    }
-
-    bool Pop(VideoFrame& out) {
-        std::unique_lock<std::mutex> lock(mtx_);
-        cv_.wait(lock, [this] { return !queue_.empty() || stopped_; });
-        if (queue_.empty()) return false;
-        out = std::move(queue_.front());
-        queue_.pop_front();
-        return true;
-    }
-
-    void Stop() {
-        std::lock_guard<std::mutex> lock(mtx_);
-        stopped_ = true;
-        cv_.notify_all();
-    }
-
-    uint64_t GetDropCount() const { return dropCount_.load(std::memory_order_relaxed); }
-
-private:
-    const size_t capacity_;
-    std::deque<VideoFrame> queue_;
-    std::mutex mtx_;
-    std::condition_variable cv_;
-    bool stopped_;
-    std::atomic<uint64_t> dropCount_;
-};
+using fays_stereo_recorder::VideoFrame;
+using fays_stereo_recorder::VideoFrameQueue;
 
 class GstRecorder {
 public:
@@ -1305,7 +1252,7 @@ public:
 
     ~GstRecorder() { Stop(); }
 
-    bool Start(const std::string& savePath, int width, int height, int fps) {
+    bool Start(const std::string& savePath, int width, int height, int fps, bool grayInput) {
         if (pipeFd_ >= 0 || childPid_ > 0) {
             return true;
         }
@@ -1318,7 +1265,7 @@ public:
         cmd << "ffmpeg -hide_banner -loglevel error -nostats -y "
             << "-thread_queue_size 64 "
             << "-f rawvideo -vcodec rawvideo "
-            << "-pix_fmt bgr24 "
+            << "-pix_fmt " << (grayInput ? "nv12" : "bgr24") << " "
             << "-s " << width << "x" << height << " "
             << "-r " << fps << " "
             << "-i - "
@@ -1329,6 +1276,7 @@ public:
             << "-qp_min 24 "
             << "-qp_max_i 38 "
             << "-qp_min_i 20 "
+            << (grayInput ? "-color_range tv " : "")
             << "\"" << savePath << "\"";
 
         std::cout << "[FFmpeg] CAMERA_CODEC=" << cameraCodec
@@ -1480,6 +1428,7 @@ public:
         VideoFrame frame;
         {
             std::unique_lock<std::mutex> lock(snapshotMutex_);
+            snapshotRequestedAfterNs_ = SteadyNowNs();
             snapshotRequested_ = true;
             snapshotReady_ = false;
             const bool ready = snapshotCv_.wait_for(lock, std::chrono::seconds(3),
@@ -1511,7 +1460,6 @@ public:
 
     static constexpr uint32_t kCalibrationAttemptsPerEpisode = 5;
     static constexpr uint64_t kDiagnosticWarnIntervalNs = 2'000'000'000ULL;
-    static constexpr uint64_t kCaptureProcessingWarnNs = 100'000'000ULL;
 
     FaysRecorder(const char* configPath,
                  std::string videoFileName,
@@ -1604,8 +1552,10 @@ public:
         std::cout << "[FaysRecorder] Created handle with config: " << configPath << std::endl;
         std::cout << "[FaysRecorder] Standby mode ready. Waiting for START command." << std::endl;
 
+        std::cout << "[SDK] Version: " << FAYS_VIK_GetVersion(mptrHandle_) << std::endl;
         mptrImuThr_ = std::thread(&FaysRecorder::ImuOnlineCapture, this);
         mptrMcapWriterThr_ = std::thread(&FaysRecorder::McapWriteThread, this);
+        mptrDiagnosticsThr_ = std::thread(&FaysRecorder::VideoDiagnosticsThread, this);
         mptrImgThr_ = std::thread(&FaysRecorder::ImgOnlineCapture, this);
         mptrEncThr_ = std::thread(&FaysRecorder::VideoEncodeThread, this);
         mptrUsbWatchThr_ = std::thread(&FaysRecorder::UsbConnectionWatchdog, this);
@@ -1623,6 +1573,7 @@ public:
             mptrImgThr_.join();
         }
 
+        if (mptrDiagnosticsThr_.joinable()) mptrDiagnosticsThr_.join();
         videoFrameQueue_.Stop();
         if (mptrEncThr_.joinable()) {
             mptrEncThr_.join();
@@ -2160,49 +2111,43 @@ private:
         }
     }
 
+    static uint64_t SteadyNowNs() {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    // All maxima have a single writer (capture), and read-only diagnostics readers.
+    static void CaptureMaximum(std::atomic<uint64_t>& maximum, uint64_t value) {
+        if (value > maximum.load(std::memory_order_relaxed))
+            maximum.store(value, std::memory_order_relaxed);
+    }
+
     void ImgOnlineCapture() {
-        const std::string version = FAYS_VIK_GetVersion(mptrHandle_);
-        std::cout << "[SDK] Version: " << version << std::endl;
-
-        const uint64_t VIDEO_THRESHOLD_NS = 60000000;
-
-        std::cout << "[Record] Waiting for Stereo frames..." << std::endl;
-
-        using DiagnosticClock = fays_stereo_recorder::SdkWarningGate::Clock;
-        fays_stereo_recorder::SdkWarningGate sdkWarnings(
-            VIKIT_RET_NO_NEW_FRAME, DiagnosticClock::now());
-        auto lastSlowWarnAt = DiagnosticClock::now() - std::chrono::nanoseconds(kDiagnosticWarnIntervalNs);
+        VideoFrame vf; // Buffer allocations circulate through the ring and are reused.
+        uint64_t previousCallNs = 0;
         while (mbIsRunning_) {
-            const auto captureStartedAt = DiagnosticClock::now();
-            bool gotFrame = false;
+            const uint64_t startedNs = SteadyNowNs();
+            if (previousCallNs) {
+                const uint64_t interval = startedNs - previousCallNs;
+                CaptureMaximum(captureCallIntervalMaxNs_, interval);
+                if (interval > 40'000'000ULL) captureLateCallCount_.fetch_add(1, std::memory_order_relaxed);
+            }
+            previousCallNs = startedNs;
+            // Stamp the session before the SDK call: standby/old-session backlog
+            // must never become frames of a newly started episode.
+            const uint64_t captureSessionId = recordingEnabled_.load(std::memory_order_acquire)
+                ? recordingSessionId_.load(std::memory_order_acquire) : 0;
             const int sdkResult = FAYS_VIK_GetStereoFrames(mptrHandle_, &mImgData_);
-            const auto sdkReturnedAt = DiagnosticClock::now();
+            const uint64_t returnedNs = SteadyNowNs();
+            CaptureMaximum(captureSdkMaxNs_, returnedNs - startedNs);
             if (sdkResult == EXIT_SUCCESS) {
-                gotFrame = true;
-                sdkWarnings.RecordFrame(sdkReturnedAt);
-                if (lastImgTimestamp_ != 0) {
-                    if (mImgData_.timestamp < lastImgTimestamp_) {
-                        std::cout << "[Video] Timestamp rollback detected: prev=" << lastImgTimestamp_
-                                  << ", curr=" << mImgData_.timestamp
-                                  << " diff=" << (static_cast<int64_t>(mImgData_.timestamp) - static_cast<int64_t>(lastImgTimestamp_))
-                                  << " ns" << std::endl;
-                    } else {
-                        const uint64_t timeDiff = mImgData_.timestamp - lastImgTimestamp_;
-                        if (timeDiff > VIDEO_THRESHOLD_NS) {
-                            const double timeDiffMs = timeDiff / 1e6;
-                            std::cout << "[Video] Time gap detected: " << std::fixed << std::setprecision(3)
-                                      << timeDiffMs << " ms"
-                                      << " (prev=" << lastImgTimestamp_ << ", curr=" << mImgData_.timestamp << ")"
-                                      << std::endl;
-                        }
-                    }
-                }
-                lastImgTimestamp_ = mImgData_.timestamp;
-                const uint64_t systemNowNs = SystemNowNs();
-                lastFrameSystemNs_.store(systemNowNs, std::memory_order_release);
+                lastFrameSteadyNs_.store(returnedNs, std::memory_order_release);
+                lastFrameSystemNs_.store(SystemNowNs(), std::memory_order_release);
                 lastFrameFaysNs_.store(mImgData_.timestamp, std::memory_order_release);
-
-                VideoFrame vf;
+                vf.previousFaysTsNs = lastImgTimestamp_;
+                if (lastImgTimestamp_ && mImgData_.timestamp > lastImgTimestamp_ + 60'000'000ULL)
+                    sdkFrameGapCount_.fetch_add(1, std::memory_order_relaxed);
+                lastImgTimestamp_ = mImgData_.timestamp;
                 vf.width = mImgData_.width;
                 vf.height = mImgData_.height;
                 vf.channels = mImgData_.channel;
@@ -2211,61 +2156,75 @@ private:
                     : static_cast<size_t>(std::max(0, vf.width)) *
                           static_cast<size_t>(std::max(0, vf.height)) *
                           static_cast<size_t>(std::max(0, vf.channels));
+                if (frameBytes == 0 || frameBytes > FAYS_ATRAK_MONO_MAX_BYTES * 3ULL) {
+                    invalidFrameCount_.fetch_add(1, std::memory_order_relaxed);
+                    continue;
+                }
                 vf.bytes.assign(mImgData_.data, mImgData_.data + frameBytes);
                 vf.faysTsNs = mImgData_.timestamp;
-                // Compensate only the camera Unix publishTime before it enters the MCAP queue.
-                // Raw Fays logTime and IMU timestamps must remain unchanged.
+                vf.capturedSteadyNs = startedNs;
+                vf.sessionId = captureSessionId;
+                // Align at acquisition, before any consumer backlog can delay it.
                 vf.publishTimeNs = fays_stereo_recorder::camera_time::AddStereoCameraLatencyNs(
                     AlignFaysTsToSystem(mImgData_.timestamp));
-                {
-                    std::lock_guard<std::mutex> lock(snapshotMutex_);
-                    if (snapshotRequested_) {
-                        snapshotFrame_ = vf;
-                        snapshotRequested_ = false;
-                        snapshotReady_ = true;
-                        snapshotCv_.notify_one();
-                    }
-                }
                 videoFrameQueue_.Push(std::move(vf));
-                TryDumpCalibrationJson("stereo_frame");
-                WriteRuntimeStatus(false);
-                const auto processingFinishedAt = DiagnosticClock::now();
-                const auto processingNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    processingFinishedAt - captureStartedAt).count();
-                if (processingNs >= static_cast<int64_t>(kCaptureProcessingWarnNs) &&
-                    processingFinishedAt - lastSlowWarnAt >= std::chrono::nanoseconds(kDiagnosticWarnIntervalNs)) {
-                    DM_LOG_WARN("[Video] stereo capture processing slow: duration_ms={} queue_drops={} config={}",
-                                processingNs / 1'000'000ULL, videoFrameQueue_.GetDropCount(), configPath_);
-                    lastSlowWarnAt = processingFinishedAt;
-                }
+                CaptureMaximum(captureHandoffMaxNs_, SteadyNowNs() - returnedNs);
             } else {
-                uint64_t count = 0;
-                const char* resultName = "FAILURE";
-                if (sdkResult == VIKIT_RET_NO_NEW_FRAME) {
-                    count = sdkNoNewFrameCount_.fetch_add(1, std::memory_order_relaxed) + 1;
-                    resultName = "NO_NEW_FRAME";
-                } else if (sdkResult == VIKIT_RET_TIMEOUT) {
-                    count = sdkTimeoutCount_.fetch_add(1, std::memory_order_relaxed) + 1;
-                    resultName = "TIMEOUT";
-                } else if (sdkResult == VIKIT_RET_DEVICE_LOST) {
-                    count = sdkDeviceLostCount_.fetch_add(1, std::memory_order_relaxed) + 1;
-                    resultName = "DEVICE_LOST";
-                } else {
-                    count = sdkOtherFailureCount_.fetch_add(1, std::memory_order_relaxed) + 1;
+                if (sdkResult == VIKIT_RET_NO_NEW_FRAME)
+                    sdkNoNewFrameCount_.fetch_add(1, std::memory_order_relaxed);
+                else if (sdkResult == VIKIT_RET_TIMEOUT)
+                    sdkTimeoutCount_.fetch_add(1, std::memory_order_relaxed);
+                else if (sdkResult == VIKIT_RET_DEVICE_LOST)
+                    sdkDeviceLostCount_.fetch_add(1, std::memory_order_relaxed);
+                else {
+                    sdkOtherFailureCode_.store(sdkResult, std::memory_order_relaxed);
+                    sdkOtherFailureCount_.fetch_add(1, std::memory_order_release);
                 }
-                if (sdkWarnings.ShouldWarn(sdkResult, sdkReturnedAt)) {
-                    DM_LOG_WARN("[Video] stereo SDK no frame: result={} code={} return_count={} no_frame_ms={} has_frame={} config={}",
-                                resultName, sdkResult, count,
-                                sdkWarnings.NoFrameMs(sdkReturnedAt), sdkWarnings.HasFrame(), configPath_);
-                }
-            }
-
-            if (!gotFrame) {
                 std::this_thread::sleep_for(std::chrono::microseconds(200));
             }
         }
-
         videoFrameQueue_.Stop();
+    }
+
+    void VideoDiagnosticsThread() {
+        using Clock = fays_stereo_recorder::SdkWarningGate::Clock;
+        fays_stereo_recorder::SdkWarningGate warnings(VIKIT_RET_NO_NEW_FRAME, Clock::now());
+        uint64_t observedFrameNs = 0, previousCounts[4] = {};
+        uint64_t lastSummaryNs = 0, lastDrops = 0, lastInvalid = 0;
+        while (mbIsRunning_) {
+            const auto now = Clock::now();
+            const uint64_t frameNs = lastFrameSteadyNs_.load(std::memory_order_acquire);
+            if (frameNs && frameNs != observedFrameNs) {
+                warnings.RecordFrame(Clock::time_point(std::chrono::nanoseconds(frameNs)));
+                observedFrameNs = frameNs;
+            }
+            const uint64_t counts[] = {sdkNoNewFrameCount_.load(), sdkTimeoutCount_.load(),
+                                      sdkDeviceLostCount_.load(), sdkOtherFailureCount_.load()};
+            const int codes[] = {VIKIT_RET_NO_NEW_FRAME, VIKIT_RET_TIMEOUT,
+                                 VIKIT_RET_DEVICE_LOST, sdkOtherFailureCode_.load()};
+            const char* names[] = {"NO_NEW_FRAME", "TIMEOUT", "DEVICE_LOST", "FAILURE"};
+            for (size_t i = 0; i < 4; ++i) {
+                if (counts[i] != previousCounts[i] && warnings.ShouldWarn(codes[i], now)) {
+                    DM_LOG_WARN("[Video] stereo SDK no frame: result={} code={} return_count={} no_frame_ms={} has_frame={} config={}",
+                                names[i], codes[i], counts[i], warnings.NoFrameMs(now), warnings.HasFrame(), configPath_);
+                }
+                previousCounts[i] = counts[i];
+            }
+            const uint64_t nowNs = SteadyNowNs();
+            if (nowNs - lastSummaryNs >= kDiagnosticWarnIntervalNs) {
+                const uint64_t drops = videoFrameQueue_.GetDropCount();
+                const uint64_t invalid = invalidFrameCount_.load();
+                if (drops != lastDrops || invalid != lastInvalid) {
+                    DM_LOG_WARN("[Video] frame handoff loss: queue_drops={} invalid_frames={} config={}",
+                                drops, invalid, configPath_);
+                    lastDrops = drops;
+                    lastInvalid = invalid;
+                }
+                lastSummaryNs = nowNs;
+            }
+            WriteRuntimeStatus(false); // Still runs when the SDK or encoder is stalled.
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
     }
 
     void VideoEncodeThread() {
@@ -2274,15 +2233,50 @@ private:
         uint64_t activeVideoSessionId = 0;
         std::string sessionOutputDir;
         std::deque<CamTsQueuedSample> pendingCamSamples;
-        std::vector<uint8_t> bgrBuffer;
+        std::vector<uint8_t> nv12Buffer;
+        int sessionWidth = 0, sessionHeight = 0, sessionChannels = 0;
 
         VideoFrame vf;
         while (videoFrameQueue_.Pop(vf)) {
+            if (vf.previousFaysTsNs && vf.faysTsNs < vf.previousFaysTsNs) {
+                std::cout << "[Video] Timestamp rollback detected: prev=" << vf.previousFaysTsNs
+                          << ", curr=" << vf.faysTsNs << std::endl;
+            } else if (vf.previousFaysTsNs && vf.faysTsNs - vf.previousFaysTsNs > 60'000'000ULL) {
+                std::cout << "[Video] Time gap detected: " << std::fixed << std::setprecision(3)
+                          << (vf.faysTsNs - vf.previousFaysTsNs) / 1e6 << " ms"
+                          << " (prev=" << vf.previousFaysTsNs << ", curr=" << vf.faysTsNs << ")" << std::endl;
+            }
+            {
+                std::lock_guard<std::mutex> lock(snapshotMutex_);
+                if (snapshotRequested_ && vf.capturedSteadyNs > snapshotRequestedAfterNs_) {
+                    snapshotFrame_ = vf;
+                    snapshotRequested_ = false;
+                    snapshotReady_ = true;
+                    snapshotCv_.notify_one();
+                }
+            }
+            TryDumpCalibrationJson("stereo_consumer");
             std::string outputDir;
             uint64_t sessionId = 0;
             const bool shouldRecord = GetRecordingState(&outputDir, &sessionId);
+            // Discard stale frames without closing an encoder for the current session.
+            if (shouldRecord && vf.sessionId != sessionId) continue;
 
             if (shouldRecord && sessionId != 0) {
+                if (vf.width <= 0 || vf.height <= 0 ||
+                    (vf.channels != 1 && vf.channels != 3)) {
+                    DM_LOG_WARN("[Video] Invalid frame layout: width={} height={} channels={}",
+                                vf.width, vf.height, vf.channels);
+                    continue;
+                }
+                const size_t pixels = static_cast<size_t>(vf.width) * static_cast<size_t>(vf.height);
+                if (pixels > SIZE_MAX / static_cast<size_t>(vf.channels) ||
+                    vf.bytes.size() < pixels * static_cast<size_t>(vf.channels) ||
+                    (vf.channels == 1 && (vf.width % 2 || vf.height % 2))) {
+                    DM_LOG_WARN("[Video] Invalid frame size for encoder: width={} height={} channels={} bytes={}",
+                                vf.width, vf.height, vf.channels, vf.bytes.size());
+                    continue;
+                }
                 if (videoSessionOpen && sessionId != activeVideoSessionId) {
                     mRecorder_.Stop();
                     videoSessionOpen = false;
@@ -2293,30 +2287,35 @@ private:
                     std::cout << "[Record] Input Info: " << vf.width << "x" << vf.height
                               << " Channels: " << vf.channels << std::endl;
                     if (mRecorder_.Start(outputDir + videoFileName_,
-                                         vf.width, vf.height, recordFps_)) {
+                                         vf.width, vf.height, recordFps_, vf.channels == 1)) {
                         sessionOutputDir = outputDir;
                         videoSessionOpen = true;
                         activeVideoSessionId = sessionId;
                         frameIndex = 0;
+                        sessionWidth = vf.width;
+                        sessionHeight = vf.height;
+                        sessionChannels = vf.channels;
                     }
                 }
 
                 if (videoSessionOpen) {
+                    // rawvideo has a fixed layout for the lifetime of the encoder.
+                    if (vf.width != sessionWidth || vf.height != sessionHeight ||
+                        vf.channels != sessionChannels) {
+                        DM_LOG_WARN("[Video] Frame layout changed during recording: width={} height={} channels={}",
+                                    vf.width, vf.height, vf.channels);
+                        continue;
+                    }
                     if (vf.channels == 1) {
-                        const size_t pixelCount =
-                            static_cast<size_t>(vf.width) * static_cast<size_t>(vf.height);
-                        bgrBuffer.resize(pixelCount * 3);
-                        if (vf.bytes.size() < pixelCount) {
-                            std::cerr << "[Video] WARNING: gray frame is smaller than expected, bytes="
-                                      << vf.bytes.size() << ", expected=" << pixelCount << std::endl;
+                        if (!fays_stereo_recorder::GrayToNv12(
+                                vf.bytes.data(), vf.bytes.size(), vf.width, vf.height, nv12Buffer)) {
+                            DM_LOG_WARN("[Video] Invalid gray frame for NV12 conversion");
                             continue;
                         }
-                        cv::Mat gray(vf.height, vf.width, CV_8UC1, vf.bytes.data());
-                        cv::Mat bgr(vf.height, vf.width, CV_8UC3, bgrBuffer.data());
-                        cv::cvtColor(gray, bgr, cv::COLOR_GRAY2BGR);
-                        mRecorder_.Write(bgrBuffer.data(), bgrBuffer.size());
+                        mRecorder_.Write(nv12Buffer.data(), nv12Buffer.size());
                     } else {
-                        mRecorder_.Write(vf.bytes.data(), vf.bytes.size());
+                        // Color-capable SDK devices retain the existing packed BGR path.
+                        mRecorder_.Write(vf.bytes.data(), pixels * 3);
                     }
 
                     CamTsQueuedSample camSample{};
@@ -2329,7 +2328,6 @@ private:
 
                     lastEncodedFrameSystemNs_.store(SystemNowNs(), std::memory_order_release);
                     lastEncodedFrameFaysNs_.store(vf.faysTsNs, std::memory_order_release);
-                    WriteRuntimeStatus(false);
                     frameIndex++;
                 }
             } else if (videoSessionOpen) {
@@ -2357,6 +2355,7 @@ private:
             return;
         }
 
+        std::lock_guard<std::mutex> statusLock(runtimeStatusMutex_);
         const uint64_t nowNs = SystemNowNs();
         uint64_t lastWriteNs = lastRuntimeStatusWriteNs_.load(std::memory_order_acquire);
         if (!force && lastWriteNs != 0 && nowNs - lastWriteNs < statusIntervalNs_) {
@@ -2388,6 +2387,14 @@ private:
         out << "  \"last_frame_fays_ns\": " << lastFrameFaysNs_.load(std::memory_order_acquire) << ",\n";
         out << "  \"last_encoded_frame_system_ns\": " << lastEncodedFrameSystemNs_.load(std::memory_order_acquire) << ",\n";
         out << "  \"last_encoded_frame_fays_ns\": " << lastEncodedFrameFaysNs_.load(std::memory_order_acquire) << ",\n";
+        out << "  \"capture_call_interval_max_ns\": " << captureCallIntervalMaxNs_.load() << ",\n";
+        out << "  \"capture_sdk_max_ns\": " << captureSdkMaxNs_.load() << ",\n";
+        out << "  \"capture_handoff_max_ns\": " << captureHandoffMaxNs_.load() << ",\n";
+        out << "  \"capture_call_over_40ms_count\": " << captureLateCallCount_.load() << ",\n";
+        out << "  \"sdk_frame_gap_count\": " << sdkFrameGapCount_.load() << ",\n";
+        out << "  \"video_queue_drops\": " << videoFrameQueue_.GetDropCount() << ",\n";
+        out << "  \"video_queue_high_water\": " << videoFrameQueue_.HighWater() << ",\n";
+        out << "  \"invalid_video_frames\": " << invalidFrameCount_.load() << ",\n";
         out << "  \"status_write_system_ns\": " << nowNs << "\n";
         out << "}\n";
         out.close();
@@ -2431,6 +2438,7 @@ private:
     void* mptrHandle_;
     std::thread mptrImgThr_;
     std::thread mptrEncThr_;
+    std::thread mptrDiagnosticsThr_;
     std::thread mptrImuThr_;
     std::thread mptrMcapWriterThr_;
     std::thread mptrUsbWatchThr_;
@@ -2439,6 +2447,7 @@ private:
     std::condition_variable snapshotCv_;
     bool snapshotRequested_ = false;
     bool snapshotReady_ = false;
+    uint64_t snapshotRequestedAfterNs_ = 0;
     VideoFrame snapshotFrame_;
     VideoFrameQueue videoFrameQueue_;
     AtrakImage mImgData_;
@@ -2462,6 +2471,11 @@ private:
     std::atomic<uint64_t> sdkTimeoutCount_;
     std::atomic<uint64_t> sdkDeviceLostCount_;
     std::atomic<uint64_t> sdkOtherFailureCount_;
+    std::atomic<int> sdkOtherFailureCode_{-1};
+    std::atomic<uint64_t> lastFrameSteadyNs_{0};
+    std::atomic<uint64_t> captureCallIntervalMaxNs_{0}, captureSdkMaxNs_{0}, captureHandoffMaxNs_{0};
+    std::atomic<uint64_t> captureLateCallCount_{0}, sdkFrameGapCount_{0}, invalidFrameCount_{0};
+    std::mutex runtimeStatusMutex_;
     uint64_t lastCalibrationWarnNs_ = 0;
     uint64_t statusIntervalNs_;
 
