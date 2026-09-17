@@ -31,3 +31,6 @@
 #productionProgress{display:block;width:100%;height:18px;margin:10px 0}
 #productionProgressLabel{font-weight:600}
 #productionPhase,#productionFreshness{margin:8px 0 0}
+.metrics{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.battery-low .value{color:#b42318}
+@media(max-width:480px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric .value{font-size:24px}.metric{min-width:0}}

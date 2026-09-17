@@ -99,8 +99,11 @@ class EgoAppFeaturesTest(unittest.TestCase):
                          mock.patch.object(WORKER, "app_broadcast", return_value={"status": "returned", "response": response}) as broadcast, \
                          mock.patch.object(WORKER, "ugripper_log"):
                         self.assertEqual(WORKER.run_speech(args), 0)
-                        detect.assert_called_once_with(bound)
-                        if supported and count == 1:
+                        if bound:
+                            detect.assert_called_once_with(bound)
+                        else:
+                            detect.assert_not_called()
+                        if bound and supported and count == 1:
                             broadcast.assert_called_once_with(adb, "SpeechCommandReceiver", "SPEECH_PLAY",
                                                               "--ei", "code", "1203", "--es", "language", language)
                         else:
@@ -117,6 +120,39 @@ class EgoAppFeaturesTest(unittest.TestCase):
                  mock.patch.object(WORKER, "ugripper_log"):
                 self.assertEqual(WORKER.run_speech(args), 0 if changed else 1)
                 self.assertEqual(broadcast.call_count, 0 if changed else 1)
+
+    def test_all_umi_codes_and_languages_use_confirmed_response(self):
+        for code in (1302, 1003, 1203, 1204, 1205):
+            for language in ('zh', 'en'):
+                with self.subTest(code=code, language=language):
+                    args = argparse.Namespace(binding_file=Path('unused'), serial='ego-001', speech_code=code)
+                    response = {'protocol': 'speech.v1', 'code': code, 'language': language,
+                                'status': 'accepted', 'error': None}
+                    adb = mock.Mock(serial='ego-001')
+                    with mock.patch.object(WORKER, 'read_status', return_value={'serial': 'ego-001'}), \
+                         mock.patch.object(WORKER, 'detect_egos', return_value=([adb], [])), \
+                         mock.patch.object(WORKER, 'read_app_version', return_value={'features_supported': True}), \
+                         mock.patch.object(WORKER, 'read_environment_value', return_value=language), \
+                         mock.patch.object(WORKER, 'app_broadcast', return_value={'status': 'returned', 'response': response}) as broadcast, \
+                         mock.patch.object(WORKER, 'ugripper_log'):
+                        self.assertEqual(WORKER.run_speech(args), 0)
+                        broadcast.assert_called_once_with(adb, 'SpeechCommandReceiver', 'SPEECH_PLAY',
+                                                          '--ei', 'code', str(code), '--es', 'language', language)
+                        response['code'] = 9999
+                        self.assertEqual(WORKER.run_speech(args), 1)
+
+    def test_speech_does_not_discover_unbound_egos(self):
+        args = argparse.Namespace(binding_file=Path('unused'), serial='', speech_code=1302)
+        with mock.patch.object(WORKER, 'read_status', return_value={}), \
+             mock.patch.object(WORKER, 'detect_egos') as detect:
+            self.assertEqual(WORKER.run_speech(args), 0)
+            detect.assert_not_called()
+
+    def test_unknown_speech_code_is_rejected_before_device_access(self):
+        with mock.patch.object(WORKER, 'detect_egos') as detect:
+            with self.assertRaises(ValueError):
+                WORKER.run_speech(argparse.Namespace(speech_code=9999))
+            detect.assert_not_called()
 
 
 class EgoRecordingWorkerTest(unittest.TestCase):
@@ -323,6 +359,7 @@ class EgoRecordingWorkerTest(unittest.TestCase):
                 binding_status_file=status_file,
             )
             selected = mock.Mock(serial="ego-001")
+            selected.run.return_value = subprocess.CompletedProcess([], 0, '', '')
             details = [{"serial": "ego-001", "props_match": True}]
             with mock.patch.object(WORKER, "detect_egos", return_value=([selected], details)):
                 self.assertEqual(WORKER.run_bind(args), 0)

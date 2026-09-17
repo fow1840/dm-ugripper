@@ -202,6 +202,7 @@ RecordRuntime::~RecordRuntime()
     closeRecordControlPipe();
     requestStopBackgroundTactileValidation();
     waitForMainCameraRefreshes();
+    egoFeedback_.reset();
     stopAudioPlayer();
     if (ledController_)
     {
@@ -686,6 +687,7 @@ bool RecordRuntime::Initialize()
     }
     panelManager_.consumeConnectionEvents();
 
+    startEgoFeedback();
     startAudioPlayer();
     healthState_.first_seen_ms = currentSteadyMs();
     startStereoDaemon();
@@ -855,14 +857,7 @@ bool RecordRuntime::ensureEpisodeManagerInitialized()
 
 std::optional<DA::Ugripper::HealthFault> RecordRuntime::detectDataDiskHealthFault(const std::string &path)
 {
-    const auto fault = detectDiskHealthFault(path);
-    const bool full = fault.has_value() && fault->key == "disk_full";
-    if (full && !egoStorageFullNotified_)
-    {
-        playEgoStorageFullSpeech();
-    }
-    egoStorageFullNotified_ = full;
-    return fault;
+    return detectDiskHealthFault(path);
 }
 
 bool RecordRuntime::maintainDataStorage()
@@ -1096,6 +1091,11 @@ const std::string &RecordRuntime::lastEpisodeDir() const
 
 void RecordRuntime::setLedState(LedState state, double progress)
 {
+    if (egoFeedback_) {
+        const auto phase = state == LedState::Recording ? EgoSpeechPolicy::Phase::Recording
+            : state == LedState::Writing ? EgoSpeechPolicy::Phase::Writing : EgoSpeechPolicy::Phase::Idle;
+        egoFeedback_->SetPhase(phase);
+    }
     const bool progressChanged =
         !hasLastLoggedLedState_ || std::fabs(lastLoggedLedProgress_ - progress) > 0.001;
     if (!hasLastLoggedLedState_ || lastLoggedLedState_ != state || progressChanged)

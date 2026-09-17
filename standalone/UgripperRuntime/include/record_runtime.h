@@ -4,6 +4,7 @@
 #include "gripper_hmi_driver.h"
 #include "gripper_hmi_led_effects.h"
 #include "record_runtime/audio_coordinator.h"
+#include "record_runtime/ego_feedback.h"
 #include "record_runtime/button_action_router.h"
 #include "record_runtime/device_state_manager.h"
 #include "record_runtime/episode_manager.h"
@@ -308,7 +309,7 @@ private:
     bool clearEgoBindingState();
     bool isEgoRequired() const;
     void handleEgoBindingToggle();
-    void playEgoStorageFullSpeech();
+    void startEgoFeedback();
     std::optional<DA::Ugripper::HealthFault> detectDataDiskHealthFault(const std::string &path);
     void maintainEgoBindingAction();
     void maintainEgoBindingHealth();
@@ -524,8 +525,7 @@ private:
     std::string egoProbeSerial_;
     std::future<bool> egoBindingActionFuture_;
     std::future<bool> egoProbeFuture_;
-    std::future<bool> egoSpeechFuture_;
-    bool egoStorageFullNotified_ = false;
+    std::unique_ptr<EgoFeedback> egoFeedback_;
     std::unique_ptr<DA::Ugripper::RecordingOrchestrator> recordingOrchestrator_;
 };
 

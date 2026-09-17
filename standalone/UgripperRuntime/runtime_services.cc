@@ -267,40 +267,25 @@ std::vector<std::string> egoBindingWorkerArgs(const std::string &script,
     return args;
 }
 
-void RecordRuntime::playEgoStorageFullSpeech()
+void RecordRuntime::startEgoFeedback()
 {
-    if ((isEgoRequired() && !egoBoundConnected_) || !fs::exists(options_.egoRecordingScript))
-    {
-        return;
-    }
-    if (egoSpeechFuture_.valid())
-    {
-        if (egoSpeechFuture_.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready)
-        {
-            DM_LOG_WARN("skip ego speech 1203 while previous speech request is running");
-            return;
+    const auto script = options_.egoRecordingScript;
+    const auto binding = options_.egoBindingFile;
+    const auto status = options_.egoBindingStatusFile;
+    egoFeedback_ = std::make_unique<EgoFeedback>(options_.diskRoot, [script, binding, status](int code) {
+        if (!fs::exists(script)) return;
+        std::string serial;
+        std::ifstream input(binding);
+        if (input) {
+            try { json value; input >> value; serial = value.value("serial", ""); }
+            catch (const std::exception&) { return; }
         }
-        egoSpeechFuture_.get();
-    }
-    auto args = egoBindingWorkerArgs(options_.egoRecordingScript, "speech",
-                                     options_.egoBindingFile, options_.egoBindingStatusFile);
-    args.push_back("--serial");
-    args.push_back(egoBoundSerial_);
-    try
-    {
-        egoSpeechFuture_ = std::async(std::launch::async, [args]() {
-            const bool ok = RecordRuntime::runCommandSync(args);
-            if (!ok)
-            {
-                DM_LOG_WARN("ego speech 1203 request failed; disk fault handling continues");
-            }
-            return ok;
-        });
-    }
-    catch (const std::exception &ex)
-    {
-        DM_LOG_WARN("failed to schedule ego speech 1203: {}", ex.what());
-    }
+        if (serial.empty()) return;
+        auto args = egoBindingWorkerArgs(script, "speech", binding, status);
+        args.insert(args.end(), {"--serial", serial, "--speech-code", std::to_string(code)});
+        if (!RecordRuntime::runCommandSync(args))
+            DM_LOG_WARN("ego speech {} request failed", code);
+    });
 }
 
 bool RecordRuntime::startEgoRecording(const std::string &episodeDir,

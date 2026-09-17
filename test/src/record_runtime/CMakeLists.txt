@@ -3,6 +3,12 @@ cmake_minimum_required(VERSION 3.10)
 include(GoogleTest)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+add_executable(test_ego_feedback test_ego_feedback.cc
+    ${CMAKE_SOURCE_DIR}/standalone/UgripperRuntime/bms_reader.cc)
+target_include_directories(test_ego_feedback PRIVATE ${CMAKE_SOURCE_DIR}/standalone/UgripperRuntime/include)
+target_link_libraries(test_ego_feedback PRIVATE GTest::gtest_main nlohmann_json::nlohmann_json Threads::Threads)
+gtest_discover_tests(test_ego_feedback PROPERTIES LABELS "host-only;unit;record_runtime")
+
 function(add_host_only_runtime_gtest target_name)
     add_executable(${target_name} ${ARGN})
     target_include_directories(${target_name}

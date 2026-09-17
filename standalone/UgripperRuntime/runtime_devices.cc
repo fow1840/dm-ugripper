@@ -590,6 +590,10 @@ void RecordRuntime::applyTactileValidationFindings(
     const std::vector<EpisodeManager::TactileValidationFinding> &findings)
 {
     bool warningActive = false;
+    if (egoFeedback_ && std::any_of(findings.begin(), findings.end(),
+            [](const auto& finding) { return finding.warningTriggered; })) {
+        egoFeedback_->Notify(1205);
+    }
     tactileWarningSides_ = {};
     for (const auto &finding : findings)
     {

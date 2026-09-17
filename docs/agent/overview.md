@@ -108,7 +108,19 @@ Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周
 
 Ego 绑定时通过指定 serial 的 `dumpsys package com.ssnwt.helloxr` 读取 `versionName`；数字版本达到 `1.0.4` 才允许电流配置，版本缺失、无法解析或低于门槛时跳过新增功能并保留绑定。版本支持普通三段版本及可选 `v/V` 前缀，带其他后缀的版本保守视为未知。绑定文件追加 `app` 与 `input_current`，记录版本、能力、电流配置及广播回读结果。电流直接读取 UGripper 主机 `/etc/environment` 的 `HARDWARE_VERSION`，仅 `2.5.x > 2.5.0` 设置 `1600000 µA`（1.6A）；缺失、非法、`<=2.5.0` 和其他系列统一 `1100000 µA`（1.1A），不使用 metadata 的 `UGRIPPER_HARDWARE_VERSION` 默认值。绑定时发送显式 `InputCurrentLimitReceiver / SET_INPUT_CURRENT_LIMIT` 广播，并核对 JSON 的状态、callback、requested/readback、matched 和 persisted；失败只告警，不取消绑定，也不改变录制硬条件。
 
-Ego 语音目前仅适配 `1203`（存储容量不足，请及时清理）：启动等待存储和运行中健康检查沿用 `disk_full` 判定（数据盘可用空间为 `0`），首次检测到时异步发送 `SpeechCommandReceiver / SPEECH_PLAY`；持续同一次故障只尝试一次，退出 `disk_full` 后再次进入才重新触发。未挂载、只读、空间信息读取失败等其他磁盘故障不播这条。已绑定时仅使用该 serial，未绑定时仅选择唯一在线且符合 SXR 型号规则的 Ego；播报前重新读取 App 版本，低于 `1.0.4` 或未知则跳过。语言读取主机 `/etc/environment` 的 `UGRIPPER_LANG`，缺失时回退进程环境，`en` 使用英文，其余使用 `zh`。ADB 超时或 App 拒绝只写告警，不阻塞磁盘故障处置；日志的 `accepted` 仅表示 App 接受入队，不表示已经播放完成。人工标记无效不再触发 `1103`，数据写入阶段不触发 `1003`。
+Ego 联动语音使用后台串行队列发送 `SpeechCommandReceiver / SPEECH_PLAY`，不阻塞采集与停录收尾。`1003` 在录制后的数据写入/收尾阶段持续超过 3 秒时发送一次，提前结束取消；成功起录超过 3 秒且数据盘可用比例严格小于 5% 时发送 `1203`，每条录制一次，其他磁盘故障不代用此播报。`1204` 随 Error1 的 `validation_failed` 播放，连续三次触觉异常的现有告警触发 `1205`。起录前 3 秒暂缓队列发送，避免打断 Ego 起录提示。仅向已绑定且在线的 Ego 发送，未绑定直接跳过；App 低于 `1.0.4` 或未知则跳过，发送前再次校验绑定。语言读取 `/etc/environment` 的 `UGRIPPER_LANG`，缺失回退进程环境；`en` 使用英文，其余为 `zh`。`accepted` 仅表示 App 接受入队，不表示播放完成。人工标记无效不触发 `1103`。
+
+BMS 由 UGripper 内置后台线程独占打开 `/dev/ttyS0`（9600、8N1），使用 `tmp/bms` 提供的只读查询和 90 字节响应布局，校验帧头、长度反码、功能码、异或校验、帧尾及 SOC 范围。每秒查询并原子更新 `/dev/shm/ugripper/battery_status.json`，5 秒无有效数据即视为断连并尝试重连。Web 只读新鲜快照，每 3 秒显示最新百分比和充放电状态，未连接不显示为 0%。`1302` 在电量下降到 10%、5%、4%、3%、2%、1% 时各播报一次；跳过多个阈值只合并提示一次，充电期间不提示，充电回升至 10% 以上重新布防。去重状态为进程内状态，重启后按当前有效电量判断。无有效电量不触发告警。
+
+| 状态 | 中文 | 英文 | code | 设备类型 |
+| --- | --- | --- | --- | --- |
+| 背包低电量 | 背包电量低，请充电 | Backpack low battery. Please charge. | 1302 | Umi |
+| 数据记录/收尾超过 3 秒 | 数据记录中，请稍等 | Data recording ... Please wait | 1003 | Umi |
+| 数据盘可用空间低于 5% | 存储容量不足，请及时清理 | Storage space is running low ; pleaseclear. | 1203 | Umi |
+| 标定数据异常/时序不完整（Error1） | 数据校验错误 | Data validation error | 1204 | Umi |
+| 连续三次检测到触觉图像异常 | 请检查触觉传感器表面是否破损 | check the surface of tactile sensor for any damage. | 1205 | Umi |
+
+对照表保留 Ego 提供的文案；UGripper 发送 code 和语言，不直接发送或合成文案。
 
 
 ## 6. 录制生命周期

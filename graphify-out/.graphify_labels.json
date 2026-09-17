@@ -166,7 +166,6 @@
   "164": "Community 164",
   "165": "Community 165",
   "166": "MCAP CMake Builder",
-  "167": "string",
   "168": "`pp_main` 合并后 `ugripper` 正式测试方案",
   "169": "4.2 `SensorRecorder`",
   "170": "build_deb.sh",
@@ -319,7 +318,6 @@
   "317": "Community 317",
   "318": "Community 318",
   "319": "Community 319",
-  "320": "Community 320",
   "321": "Community 321",
   "322": "Community 322",
   "323": "Community 323",
@@ -756,5 +754,15 @@
   "754": "Community 754",
   "755": "Community 755",
   "756": "Community 756",
-  "758": "Community 758"
+  "757": "Community 757",
+  "758": "Community 758",
+  "759": "Community 759",
+  "761": "Community 761",
+  "762": "Community 762",
+  "763": "Community 763",
+  "764": "Community 764",
+  "765": "Community 765",
+  "767": "Community 767",
+  "768": "Community 768",
+  "769": "Community 769"
 }

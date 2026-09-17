@@ -423,10 +423,15 @@ def configure_input_current(adb: Adb, app: dict) -> dict:
 
 
 def run_speech(args: argparse.Namespace) -> int:
-    detail = {"code": 1203, "status": "skipped"}
+    code = getattr(args, "speech_code", 1203)
+    if code not in (1302, 1003, 1203, 1204, 1205):
+        raise ValueError("unsupported Umi speech code")
+    detail = {"code": code, "status": "skipped"}
     try:
         binding_serial = str(read_status(args.binding_file).get("serial") or "")
-        if binding_serial != args.serial:
+        if not binding_serial:
+            detail["reason"] = "no bound ego"
+        elif binding_serial != args.serial:
             detail["reason"] = "binding changed before speech"
         else:
             devices, _ = detect_egos(binding_serial)
@@ -445,11 +450,11 @@ def run_speech(args: argparse.Namespace) -> int:
                     language = "en" if language.strip().lower() == "en" else "zh"
                     detail["language"] = language
                     detail.update(app_broadcast(adb, "SpeechCommandReceiver", "SPEECH_PLAY",
-                                                "--ei", "code", "1203", "--es", "language", language))
+                                                "--ei", "code", str(code), "--es", "language", language))
                     response = detail.get("response", {})
                     accepted = (detail["status"] == "returned"
                                 and response.get("protocol") == "speech.v1"
-                                and response.get("code") == 1203
+                                and response.get("code") == code
                                 and response.get("language") == language
                                 and response.get("status") == "accepted"
                                 and response.get("error") is None)
@@ -1675,6 +1680,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--detect-timeout", type=float, default=15.0)
     parser.add_argument("--finalize-timeout", type=float, default=60.0)
     parser.add_argument("--codec", choices=("h264", "h265"), default="h264")
+    parser.add_argument("--speech-code", type=int, choices=(1302, 1003, 1203, 1204, 1205), default=1203)
     return parser.parse_args()
 
 

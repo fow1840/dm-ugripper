@@ -41,6 +41,7 @@ namespace DA::Ugripper {
 
 void RecordRuntime::sendAudioCommand(const std::string &command) const
 {
+    if (egoFeedback_ && command == "validation_failed") egoFeedback_->Notify(1204);
     if (audioCoordinator_ == nullptr)
     {
         return;

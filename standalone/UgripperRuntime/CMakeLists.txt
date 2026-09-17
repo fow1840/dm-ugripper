@@ -120,6 +120,8 @@ add_executable(${APP_NAME}
     runtime_persistence_support.cc
     runtime_recovery.cc
     runtime_services.cc
+    bms_reader.cc
+    ego_feedback.cc
     runtime_support.cc
 )
 set_target_properties(${APP_NAME} PROPERTIES

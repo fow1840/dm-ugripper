@@ -19,6 +19,21 @@ def disk(path, required=False):
     return dict(mounted=True, total=d.total, used=d.used, free=d.free)
 
 FIRMWARE_STATUS = Path('/dev/shm/ugripper/firmware_status.json')
+BATTERY_STATUS = Path('/dev/shm/ugripper/battery_status.json')
+
+
+def battery_status():
+    cached = read_json(BATTERY_STATUS)
+    if not isinstance(cached, dict):
+        return {'connected': False}
+    stamp, percent = cached.get('updated_at_ms'), cached.get('percent')
+    valid = (isinstance(stamp, (int, float)) and not isinstance(stamp, bool)
+             and 0 <= time.time() * 1000 - stamp <= 5000
+             and type(percent) is int and 0 <= percent <= 100
+             and cached.get('connected') is True)
+    if not valid:
+        return {'connected': False}
+    return {**cached, 'connected': True}
 
 
 def firmware_status():
@@ -80,6 +95,6 @@ def status():
                 cpu_percent=usage, memory=dict(total=mem['MemTotal'], used=mem['MemTotal']-mem['MemAvailable']),
                 disks=dict(data=disk(DATA, True), system=disk('/')), busy=busy,
                 recording=Path('/tmp/umi_recording.lock').exists(),
-                firmware=firmware_status(), configuration=read_settings(), ego=ego_status(), tactile=panel_status(),
+                firmware=firmware_status(), battery=battery_status(), configuration=read_settings(), ego=ego_status(), tactile=panel_status(),
                 task=read_json(STATE/'task.json'),
                 service_active=command(['systemctl','is-active','ugripper.service']).returncode == 0)
