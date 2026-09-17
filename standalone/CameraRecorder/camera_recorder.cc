@@ -1,3 +1,4 @@
+#include "camera_recorder/tactile_timing.h"
 #include "camera_recorder/camera_recorder.h"
 #include "camera_recorder/camera_command_builder.h"
 #include "camera_recorder/camera_config.h"
@@ -1135,9 +1136,21 @@ protected:
 
     virtual std::string BuildCommand() const = 0;
 
+    bool UsesTactileCaptureClock() const {
+        return config_.mode == ugripper::camera::CameraRecordMode::HybridDecodeEncode &&
+            (config_.role == ugripper::camera::CameraRole::Tactile || config_.name.find("tcam") != std::string::npos);
+    }
+
     void UpdateFrameTiming(int64_t frame_pts_us) {
         std::lock_guard<std::mutex> lock(first_frame_mutex_);
-        const int64_t system_time_us = CurrentSystemTimeUs();
+        // Never substitute encoder/log delivery time when the capture anchor is missing.
+        if (UsesTactileCaptureClock() && !tactile_unix_origin_us_) {
+            failure_ = true;
+            DM_LOG_ERROR_CODE("UGR-20-02", "[camera_recorder] missing tactile capture Unix anchor: {}", config_.name);
+            return;
+        }
+        const int64_t system_time_us = UsesTactileCaptureClock()
+            ? *tactile_unix_origin_us_ + frame_pts_us : CurrentSystemTimeUs();
         ++observed_output_frame_count_;
         if (record_time_offset_us_.has_value()) {
             last_frame_pts_us_ = frame_pts_us;
@@ -1158,6 +1171,22 @@ protected:
             return;
         }
 
+        if (UsesTactileCaptureClock()) {
+            if (const auto origin = ugripper::camera::TactileUnixOriginFromFfmpeg(line); origin) {
+                if (!tactile_unix_origin_us_) {
+                    tactile_unix_origin_us_ = origin;
+                    DM_LOG_INFO("[camera_recorder][tactile_capture_anchor] name={} unix_origin_us={}",
+                                config_.name, *origin);
+                }
+            }
+            // Only mux statistics count output frames. debug_ts input/decoder/filter
+            // lines are timing diagnostics, not additional frames or log artifacts.
+            if (const auto pts = ParseFramePtsUsFromStatsLine(line); pts) {
+                UpdateFrameTiming(*pts);
+                return;
+            }
+            if (line.find(" -> ") != std::string::npos || line.find(" <- ") != std::string::npos) return;
+        }
         if (const auto pts_us = ParseFramePtsUsFromStatsLine(line); pts_us.has_value()) {
             UpdateFrameTiming(*pts_us);
             return;
@@ -1284,6 +1313,7 @@ protected:
     std::optional<int64_t> record_time_offset_us_;
     uint64_t observed_output_frame_count_ = 0;
     bool final_stats_logged_ = false;
+    std::optional<int64_t> tactile_unix_origin_us_;
 };
 
 #if CAMERA_RECORDER_HAS_GSTREAMER
@@ -4774,10 +4804,10 @@ bool CameraRecorderManager::WriteInfoJson(bool allow_missing_offsets) const {
             if (timestamp_source.has_value()) {
                 const int64_t raw_offset_us = *offset_us;
                 const auto source = *timestamp_source;
-                const int64_t latency_us = camera_recorder::camera_time::CameraLatencyUs(source);
+                const int64_t latency_us = camera_recorder::camera_time::CameraLatencyUs(source, config.name);
                 // Main/tactile compensation changes only the absolute PTS=0 Unix anchor.
                 // Video PTS and duration remain untouched.
-                offset_us = camera_recorder::camera_time::AddCameraLatencyUs(raw_offset_us, source);
+                offset_us = camera_recorder::camera_time::AddCameraLatencyUs(raw_offset_us, source, config.name);
                 DM_LOG_INFO("{}", (::DA::utils::LogString()
                                    << "[camera_recorder] applied start offset latency compensation"
                                    << " camera=" << config.name

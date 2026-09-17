@@ -32,6 +32,10 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - 终端硬件检查：`/usr/local/bin/hws`。HWS 与 Web 概览均显示 Ego 绑定状态、连接状态和绑定序列号，共用只读快照解析；绑定以 `/dev/shm/ugripper/ego_binding.json` 为准，连接要求状态快照序列号匹配且 15 秒内更新，否则显示未知。未绑定时连接显示未检测，不额外运行 ADB，也不把 USB 存储枚举当作 Ego 在线。
 - U 盘升级入口：`auto_update/usb_auto_update.sh`
 
+### 触觉相机采集时间保留
+
+触觉 `hybrid-decode-encode` 使用 FFmpeg `-timestamps abs` 将 V4L2 时间映射为 Unix，`-fps_mode passthrough -enc_time_base -1` 保留输入时间基，不再按名义 120fps 自动补/丢帧。名义帧率仅请求设备采集模式。`debug_ts` 的 `demuxer+ffmpeg` 精确整数 `off` 建立 Unix 起点，禁止使用低精度科学计数的 `off_time`；只把 mux stats 计为输出帧，逐帧调试行被消费而不写运行日志。缺少有效 Unix 起点不回退为编码输出接收时间。当前逐路固定补偿见 7.2.1；旧 −35ms 包含编码输出观测延迟，不能沿用。容器毫秒量化与实际 USB/V4L2 时间抖动保留，不进行平滑。
+
 双目起录等待 MCAP 打开后再允许编码/IMU 提交。停录先禁止新的会话提交，通过共享/独占锁等待在途编码与 IMU 提交结束，刷新生产者本地批次并关闭视频输入；MCAP 写线程排空当前会话的本地批次与队列后关闭文件并确认，下一轮才可开始。进程退出也须等待生产者全部结束后让 MCAP 写线程退出，避免只因队列暂空而提前关闭。SDK 采集线程不持有编码收尾锁。
 
 ## 3. 模块总览
@@ -262,15 +266,15 @@ Ego 语音目前仅适配 `1203`（存储容量不足，请及时清理）：启
 
 | 相机 | 原始时间来源 | 全局时间表达 | 补偿位置 | 当前值 |
 | --- | --- | --- | --- | --- |
-| 左右/胸部主摄 | H.265：XU `Tset/Pset` + XU2 SEI `Pframe`；H.264：V4L2 buffer 时间 | `start_offset_us + PTS` | CameraRecorder 写 `<camera>_record_time_offset_us` 时只调整绝对起点 | `0us` |
-| 四路 tcam | recorder 首帧系统时间与 PTS | `start_offset_us + PTS` | CameraRecorder 写 `<camera>_record_time_offset_us` 时只调整绝对起点 | `-36,000us` |
-| 左右 stereo camera | Fays camera 设备时间换算到 Unix | Fays MCAP `c.publishTime` | 图像采集后、进入 MCAP 队列前逐帧调整 | `-3,000us` |
+| 左右/胸部主摄 | XU `Tset/Pset` + H.264/H.265 SEI `Pframe` | `start_offset_us + PTS` | CameraRecorder 写 `<camera>_record_time_offset_us` 时只调整绝对起点 | 左 `-27200us`，右 `-29200us`，其他 `-28000us` |
+| 四路 tcam | V4L2 采集时间经 FFmpeg 转换到 Unix，保留输入时间基 | `start_offset_us + PTS` | 采集 Unix 起点；不包含编码输出日志接收延迟 | 左 L `-1500us`，左 R/右 L `-2100us`，右 R `-1800us` |
+| 左右 stereo camera | Fays camera 设备时间换算到 Unix | Fays MCAP `c.publishTime` | 图像采集后、进入 MCAP 队列前逐帧调整 | 左 `-1000us`（未重新标定），右 `0us` |
 | 左右 Fays IMU | Fays IMU 设备时间换算到 Unix | Fays MCAP `i.publishTime` | 不补偿 | `0us` |
 
-H.265 主摄在 `VIDIOC_STREAMON` 前向 UVC XU selector `0x19` 写入当前主机 Unix 微秒 `Tset` 加 `200us`，优先使用板端实测有效的 unit `3`，并保留 README 原协议 unit `2` fallback；写入后立即 GET 固件锁存的 SET 时刻 encoder PTS `Pset`。码流必须为每个实际写入 access unit 提供合法 XU2 SEI，SEI 中 `xu_time_us` 必须等于本次 `Tset`，首个通过 startup gate 的 clean keyframe encoder PTS 冻结为 MKV 相对零点，且录制期间 `Tset` 不得变化。任意帧 Unix 时间按 `Tset + Pframe - Pset` 计算；主摄后处理补偿当前为 `0`，数值入口仍保留，后续有新的实验结论时可单独调整。H.264 不含该 SEI，继续使用现有 V4L2 时间路径。
+主摄在起流前及每 10 秒经 XU 授时；每帧按自身 SEI 对应的 `Tset + Pframe - Pset` 映射 Unix 时间。H.264/H.265 共用该映射，详见下文主摄 SEI 与周期修正规则。
 主摄打开设备后读取 `/etc/environment` 中的通用配置 `UGRIPPER_POWER_LINE_FREQUENCY`，支持 `50`/`60` Hz 并映射到标准 V4L2 `power_line_frequency` 控制；安装包在缺少该变量时写入默认值 `50`，已有值不覆盖。参数命名保持通用，当前仅主摄录制链使用，不改变录制 PTS 计算。
 
-主摄和 tcam 的后处理补偿不会修改 MKV packet PTS、帧间 gap 或 duration。tcam 将主机观测时间向前校正 `36ms`；Stereo 补偿只将 camera topic 的 Unix `publishTime` 向前校正 `3ms`，原始设备域 `logTime`、Fays IMU 时间戳和 stereo MKV 固定帧率 PTS 均保持不变。`record_runtime` 从首个已补偿的 stereo camera `publishTime` 生成 stereo `start_offset_us`，因此 metadata 阶段禁止再次应用 `3ms`。
+上述逐路新值来自 episode_20260917_0002 毫秒表启动后前 10 个有效帧（有误差、use_for_sync=true、needs_review=false），使用 `新 offset = 旧 offset - 平均误差`；主摄不纳入被标记无效的重复帧。仅适用于当前标定设备及条件，10 帧小窗口不能代表所有设备。共模漂移不写入设备时间轴。主摄/tcam 固定补偿不修改 MKV packet PTS、gap 或 duration；Stereo 只改变 camera `publishTime`，不改变设备 `logTime`、IMU 或视频 PTS。metadata 从已补偿的 camera 时间建立起点，禁止重复补偿。
 
 ### 7.3 停录强校验
 停录后当前按以下层次校验：

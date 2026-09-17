@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
 
 namespace fays_stereo_recorder::camera_time {
 
@@ -10,9 +11,16 @@ namespace fays_stereo_recorder::camera_time {
 // accepted, then rebuild.
 inline constexpr int64_t kStereoCameraLatencyUs = -1'000;
 
-constexpr uint64_t AddStereoCameraLatencyNs(uint64_t timestampNs)
+constexpr int64_t StereoCameraLatencyUs(std::string_view videoName = {})
 {
-    constexpr int64_t offsetNs = kStereoCameraLatencyUs * 1'000;
+    // Right view: first ten valid samples averaged -1ms with the old -1ms
+    // correction. Left view has no accepted optical result; keep its offset.
+    return videoName == "stereo_right.mkv" ? 0 : kStereoCameraLatencyUs;
+}
+
+constexpr uint64_t AddStereoCameraLatencyNs(uint64_t timestampNs, std::string_view videoName = {})
+{
+    const int64_t offsetNs = StereoCameraLatencyUs(videoName) * 1'000;
     if (offsetNs >= 0)
     {
         return timestampNs + static_cast<uint64_t>(offsetNs);

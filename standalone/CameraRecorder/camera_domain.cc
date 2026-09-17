@@ -671,7 +671,8 @@ std::optional<std::string> BuildStereoSessionVideoFilter(const CameraConfig& con
 
 std::string OutputTimingArgs(const CameraConfig& config)
 {
-    if (!UsesFrameDropWithPreservedPts(config))
+    if (!UsesFrameDropWithPreservedPts(config) &&
+        config.role != CameraRole::Tactile && config.name.find("tcam") == std::string::npos)
     {
         return "";
     }
@@ -720,7 +721,10 @@ std::string BuildHybridCameraCommand(const CameraConfig& config, const CommandBu
     const auto video_filter = BuildVideoFilter(config);
 
     std::ostringstream oss;
-    oss << options.ffmpeg_bin << " -hide_banner -loglevel warning -nostats -y ";
+    const bool tactile = config.role == CameraRole::Tactile || config.name.find("tcam") != std::string::npos;
+    oss << options.ffmpeg_bin
+        << (tactile ? " -hide_banner -loglevel info -debug_ts -nostats -y "
+                    : " -hide_banner -loglevel warning -nostats -y ");
     if (config.input_thread_queue_size > 0)
     {
         oss << "-thread_queue_size " << config.input_thread_queue_size << ' ';
@@ -728,6 +732,7 @@ std::string BuildHybridCameraCommand(const CameraConfig& config, const CommandBu
     oss << "-f v4l2 -input_format " << CaptureInputFormat(config) << ' '
         << "-framerate " << config.fps << ' '
         << "-video_size " << CaptureWidth(config) << 'x' << CaptureHeight(config) << ' '
+        << (tactile ? "-timestamps abs " : "")
         << "-i " << device << ' ';
     if (video_filter.has_value())
     {

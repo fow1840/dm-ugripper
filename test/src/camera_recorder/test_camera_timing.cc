@@ -270,3 +270,14 @@ TEST(CameraCadenceTest, RephasesAfterIntraWhenShortGapIsSecond)
     // nearby phase any more; the next call must retain the prior phase evidence.
     EXPECT_TRUE(t.ShouldCorrect(5301,{0,25056,37510,42156},false,true,true,false,{1527,1961,1688}));
 }
+
+#include "camera_recorder/tactile_timing.h"
+TEST(TactileCaptureTiming, ExactUnixOriginIgnoresRoundedDisplay)
+{
+    auto origin = ugripper::camera::TactileUnixOriginFromFfmpeg(
+        "demuxer+ffmpeg -> ist_index:0:0 pkt_pts:0 off:-1789621040150679 off_time:-1.78962e+09");
+    ASSERT_TRUE(origin);
+    EXPECT_EQ(*origin, 1789621040150679LL);
+    for (const auto line : {"demuxer -> off:-1789621040150679", "demuxer+ffmpeg -> off:-3132625604", "demuxer+ffmpeg -> off:NOPTS", "demuxer+ffmpeg -> off:-1789621040150679bad", "demuxer+ffmpeg -> off:-9223372036854775808"})
+        EXPECT_FALSE(ugripper::camera::TactileUnixOriginFromFfmpeg(line));
+}

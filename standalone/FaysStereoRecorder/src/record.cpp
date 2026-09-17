@@ -2197,7 +2197,7 @@ private:
                 vf.sessionId = captureSessionId;
                 // Align at acquisition, before any consumer backlog can delay it.
                 vf.publishTimeNs = fays_stereo_recorder::camera_time::AddStereoCameraLatencyNs(
-                    AlignFaysTsToSystem(mImgData_.timestamp));
+                    AlignFaysTsToSystem(mImgData_.timestamp), videoFileName_);
                 videoFrameQueue_.Push(std::move(vf));
                 CaptureMaximum(captureHandoffMaxNs_, SteadyNowNs() - returnedNs);
             } else {

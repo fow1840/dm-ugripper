@@ -117,3 +117,25 @@ TEST(CameraCommandBuilderTest, BuildsStereoSessionCommand)
 }
 
 }  // namespace
+
+TEST(CameraCommandBuilderTest, TactileNativeRatePreservesCaptureClockForBothCodecs)
+{
+    auto config = MakeHybridCamera();
+    config.name = "left_tcam_r";
+    config.role = ugripper::camera::CameraRole::Tactile;
+    config.fps = 120;
+    config.output_fps = 0;
+    config.video_filter.clear();
+    config.capture_width = config.width;
+    config.capture_height = config.height;
+    for (const auto& codec : {"h264", "h265"}) {
+        ugripper::camera::CommandBuildOptions options;
+        options.codec = codec;
+        const auto cmd = ugripper::camera::BuildHybridCameraCommand(config, options);
+        EXPECT_NE(cmd.find("-fps_mode passthrough -enc_time_base -1"), std::string::npos);
+        EXPECT_NE(cmd.find("-timestamps abs"), std::string::npos);
+        EXPECT_NE(cmd.find("-debug_ts"), std::string::npos);
+        EXPECT_EQ(cmd.find("fps=120"), std::string::npos);
+        EXPECT_EQ(cmd.find("-r 120"), std::string::npos);
+    }
+}
