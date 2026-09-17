@@ -11,6 +11,7 @@
 - Fays 双目取帧线程只做 SDK 取帧、采集时刻对齐、必要的自有缓冲区复制、轻量计数和入队；64 帧有界环形队列以交换方式复用缓冲区（当前 640×800 灰度约 32 MiB/路，可容纳约 2.56 秒积压），锁内不分配图像、不编码、不打印。消费线程处理 NV12/编码、快照及标定；独立诊断线程写状态和限频告警，编码阻塞时仍能更新采集健康状态。队列满时丢最旧帧并累计 `video_queue_drops`，不阻塞 SDK 取帧；不能以线程分离承诺 SDK/调度/长期消费阻塞下绝对无丢帧。
 - 帧携带采集时会话标识，待机及旧会话积压不能进入新 episode；快照只接受请求后的采集帧。`Time gap detected` 使用采集侧相邻 SDK 成功帧原始时间戳，超过 60ms 报告，在消费线程输出；应用队列溢出另计。runtime JSON 提供进程生命周期内 `capture_call_interval_max_ns`（相邻 SDK 调用起点间隔）、`capture_sdk_max_ns`、`capture_handoff_max_ns`（复制/入队耗时）、`capture_call_over_40ms_count`、`sdk_frame_gap_count`、`video_queue_high_water`、`video_queue_drops` 和 `invalid_video_frames`，用于区分取帧调度、SDK 调用和消费积压。
 - Fays stereo recorder 每个 episode 的标定 JSON 获取最多尝试 5 次。SDK `NO_NEW_FRAME` 仅在连续无成功帧达到 200ms 时告警，首次出帧前从诊断线程启动计时；诊断线程每约 20ms 观察返回计数，每个返回码按 2 秒限频，`TIMEOUT`、`DEVICE_LOST` 等异常首次观测即告警。`return_count` 是分类累计轮询返回次数而非丢帧数；`no_frame_ms` 使用采集线程提供的单调时钟成功帧时间；队列溢出及无效尺寸按 2 秒限频告警。
+- RK3588 数采服务启动前由 root helper `config/uvc_workqueue_affinity.py` 按在线 CPU 的 `cpu_capacity` 选择大核，将内核全局 unbound workqueue 掩码限制到现有允许集合中的大核，降低 UVC 异步拷贝与 USB 接收请求重新提交的调度延迟。该内核未暴露 UVC 专用 affinity 接口，因此此设置也影响其他 unbound workqueue，不改变应用线程优先级、SDK 取帧接口或坏帧丢弃规则。原掩码保存在 root 专用 `/run/ugripper-workqueue-affinity/`；服务停止、启动失败或升级停服时自动恢复，检测到外部修改则保留外部值。非 RK3588、没有大小核或现有掩码未允许大核时不调整，helper 失败记录 journal 且不阻止服务启动。可通过 `ugripper.service` 的 systemd drop-in 设置 `Environment=UGRIPPER_UVC_WORKQUEUE_BIG_CORES=false` 后重启关闭；不要用全局掩码调整代替逐帧校验。
 - HMI 按键、RGB 灯效、提示音、pre/post 音频录制、停录校验，以及右手双键关机/左手双键卸载数据盘请求都已纳入当前运行时。
 - U 盘流程统一负责 `deb` 升级/重装、`config.txt` 导入、标定数据导入和 encoder 零位校准触发；当前自动安装名单已覆盖 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint` 与 `device-ota-mender`，deb 安装窗口会复用 HMI 灯效提示安装中/失败/完成状态，并会在整批安装完成后通过 PulseAudio 播放 `upgrade_completed.wav`。
 
@@ -30,6 +31,8 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - 每次停录收尾会将 systemd journal（系统服务、内核、USB 等）增量保存到 `/mnt/data_disk/logs/system_<device_sn>_<YYYYMMDD>.log`；游标保存在日志目录，支持重启后续写。journal 清理、游标失效或恢复读取时会按完整日志与已有内容去重后原子替换，避免重复；保存失败不影响停录。
 - 终端硬件检查：`/usr/local/bin/hws`。HWS 与 Web 概览均显示 Ego 绑定状态、连接状态和绑定序列号，共用只读快照解析；绑定以 `/dev/shm/ugripper/ego_binding.json` 为准，连接要求状态快照序列号匹配且 15 秒内更新，否则显示未知。未绑定时连接显示未检测，不额外运行 ADB，也不把 USB 存储枚举当作 Ego 在线。
 - U 盘升级入口：`auto_update/usb_auto_update.sh`
+
+双目起录等待 MCAP 打开后再允许编码/IMU 提交。停录先禁止新的会话提交，通过共享/独占锁等待在途编码与 IMU 提交结束，刷新生产者本地批次并关闭视频输入；MCAP 写线程排空当前会话的本地批次与队列后关闭文件并确认，下一轮才可开始。进程退出也须等待生产者全部结束后让 MCAP 写线程退出，避免只因队列暂空而提前关闭。SDK 采集线程不持有编码收尾锁。
 
 ## 3. 模块总览
 | 模块 | 入口 | 当前职责 | 关键输入/输出 |
