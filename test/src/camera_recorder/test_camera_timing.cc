@@ -149,12 +149,12 @@ TEST(CameraCadenceTest, TracksWithoutRepeatingLeadInAndResetsOnLoss)
     EXPECT_TRUE(t.ShouldCorrect(28,{400000,424000,428000,442000},true,true,false));
 }
 
-TEST(CameraCadenceTest, RephasesOnNearbySignalAndSkipsIntraLatency)
+TEST(CameraCadenceTest, RephasesOnNearbySignalAndTracksConfirmedPostIntra)
 {
     ugripper::camera::MainCameraCadenceTracker t;
     ASSERT_TRUE(t.ShouldCorrect(4,{0,24000,28000,42000},true,true,false));
     EXPECT_TRUE(t.ShouldCorrect(9,{100000,124000,128000,142000},false,true,false));
-    EXPECT_FALSE(t.ShouldCorrect(15,{200000,234000,244000,248000},true,true,true));
+    EXPECT_TRUE(t.ShouldCorrect(15,{200000,234000,244000,248000},true,true,true));
     EXPECT_TRUE(t.ShouldCorrect(21,{300000,324000,328000,342000},false,true,false));
 }
 
@@ -197,4 +197,76 @@ TEST(CameraCadenceTest, DistinguishesRepeatedIntraFromDelayedRealIntra)
     EXPECT_FALSE(t.ShouldCorrect(10,{0,34000,43600,47200},true,true,false,true,{40000,500,2500}));
     EXPECT_TRUE(t.ShouldCorrect(11,{0,9600,13200,27000},false,true,true,false,{500,2500,2400}));
     EXPECT_TRUE(t.ShouldCorrect(17,{0,26000,37000,42000},false,true,false,true,{40000,2500,2400}));
+}
+
+#include "camera_recorder/main_camera_h264_continuity.h"
+namespace {
+struct AvcTestBits {
+    std::vector<uint8_t> bytes;
+    unsigned pos=0;
+    void Put(uint32_t v,unsigned n) {
+        for(unsigned i=n;i>0;--i) {if(pos%8==0) bytes.push_back(0);bytes.back()|=((v>>(i-1))&1)<<(7-pos%8);++pos;}
+    }
+    void Ue(uint32_t v) {unsigned n=0;for(auto x=v+1;x>1;x>>=1)++n;Put(0,n);Put(v+1,n+1);}
+    void Nal(std::vector<uint8_t>& out,uint8_t h) {
+        Put(1,1);while(pos%8)Put(0,1);out.insert(out.end(),{0,0,1,h});
+        unsigned zeros=0;for(auto b:bytes){if(zeros==2&&b<=3){out.push_back(3);zeros=0;}out.push_back(b);zeros=b==0?zeros+1:0;}
+    }
+};
+std::vector<uint8_t> AvcAu(unsigned frame,bool idr=false,unsigned slice=0,bool reference=true,bool headers=false) {
+    std::vector<uint8_t> out;
+    if(headers) {
+        AvcTestBits s;s.Put(66,8);s.Put(0,8);s.Put(30,8);s.Ue(0);s.Ue(0);s.Ue(0);s.Ue(0);s.Ue(1);s.Put(0,1);s.Ue(39);s.Ue(29);s.Put(1,1);s.Nal(out,0x67);
+        AvcTestBits p;p.Ue(0);p.Ue(0);p.Put(0,1);p.Put(0,1);p.Ue(0);p.Nal(out,0x68);
+    }
+    AvcTestBits b;b.Ue(0);b.Ue(slice);b.Ue(0);b.Put(frame,4);b.Nal(out,(reference?0x60:0)|(idr?5:1));return out;
+}
+}
+TEST(CameraCadenceTest, H264ParsesReferencePicturesAndResetsOnUnsupportedSlices) {
+    ugripper::camera::MainCameraH264Pictures p;
+    auto inspect=[&](const auto& bytes){return p.Inspect(bytes.data(),bytes.size());};
+    auto first=inspect(AvcAu(0,true,2,true,true));ASSERT_TRUE(first);EXPECT_TRUE(first->intra);EXPECT_GT(first->vcl_bytes,0u);
+    auto second=inspect(AvcAu(1));ASSERT_TRUE(second);EXPECT_EQ(second->frame_num,1u);
+    EXPECT_FALSE(inspect(AvcAu(2,false,1))); // B picture invalidates cached headers
+    EXPECT_FALSE(inspect(AvcAu(3)));
+    ASSERT_TRUE(inspect(AvcAu(0,true,2,true,true)));
+    EXPECT_FALSE(inspect(AvcAu(1,false,0,false))); // non-reference frame_num is not continuity evidence
+    const std::vector<uint8_t> truncated{0,0,1,0x67};EXPECT_FALSE(inspect(truncated));
+}
+TEST(CameraCadenceTest, H264ContinuityRequiresBothReferenceAndTransportSequence) {
+    using P=ugripper::camera::MainCameraH264Pictures::Picture;
+    ugripper::camera::MainCameraH264Continuity c;
+    EXPECT_FALSE(c.Observe(P{14,4,false,false,100},20));
+    EXPECT_TRUE(c.Observe(P{15,4,false,false,100},21));
+    EXPECT_TRUE(c.Observe(P{0,4,false,false,100},22));
+    EXPECT_FALSE(c.Observe(P{2,4,false,false,100},23));
+    EXPECT_FALSE(c.Observe(P{3,4,false,false,100},25));
+    EXPECT_TRUE(c.Observe(P{0,4,true,true,100},26));
+    EXPECT_FALSE(c.Observe(std::nullopt,27));
+    EXPECT_FALSE(c.Observe(P{1,4,false,false,100},28));
+}
+
+TEST(CameraCadenceTest, PostIntraRepeatRequiresLockedPhaseContinuityAndSignature)
+{
+    using ugripper::camera::MainCameraCadenceTracker;
+    const std::array<int64_t,4> measured{0,25056,37510,42156};
+    const std::array<std::size_t,3> sizes{1527,1961,1688};
+    MainCameraCadenceTracker t;
+    EXPECT_FALSE(t.ShouldCorrect(351,measured,false,true,true,false,sizes));
+    ASSERT_TRUE(t.ShouldCorrect(345,{0,24000,28000,42000},true,true,false));
+    EXPECT_FALSE(t.ShouldCorrect(349,measured,false,true,true,false,sizes));
+    EXPECT_TRUE(t.ShouldCorrect(351,measured,false,true,true,false,sizes));
+    EXPECT_FALSE(t.ShouldCorrect(357,{0,20000,40000,60000},false,true,true,false,sizes));
+    EXPECT_FALSE(t.ShouldCorrect(363,measured,false,false,true,false,sizes));
+    EXPECT_FALSE(t.ShouldCorrect(369,measured,false,true,true,false,sizes));
+}
+
+TEST(CameraCadenceTest, RephasesAfterIntraWhenShortGapIsSecond)
+{
+    ugripper::camera::MainCameraCadenceTracker t;
+    ASSERT_TRUE(t.ShouldCorrect(5294,{0,24000,28000,42000},true,true,false));
+    EXPECT_FALSE(t.ShouldCorrect(5300,{0,19000,44000,56500},false,true,false,true,{55000,1500,2000}));
+    // Failed expected I candidate advances prediction to 5306. This is not a
+    // nearby phase any more; the next call must retain the prior phase evidence.
+    EXPECT_TRUE(t.ShouldCorrect(5301,{0,25056,37510,42156},false,true,true,false,{1527,1961,1688}));
 }

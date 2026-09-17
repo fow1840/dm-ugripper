@@ -77,6 +77,11 @@ public:
         const bool nearby=next_duplicate_ &&
             (index+1==*next_duplicate_ || index==*next_duplicate_+1) && signature && b<8'000;
         const bool expected=next_duplicate_ && index==*next_duplicate_;
+        // +5 also covers one frame after an expected I candidate which was
+        // rejected: its prediction has already advanced by six.
+        const bool post_intra_phase = expected || (next_duplicate_ &&
+            (index+1==*next_duplicate_ || index==*next_duplicate_+1 ||
+             index+5==*next_duplicate_) && std::min(b,c)<8'000);
         if(expected) next_duplicate_=index+6;
         const bool plausible=std::min({a,b,c})>0 && std::max({a,b,c})<40'000 &&
             a+b+c>=32'000 && a+b+c<=50'000;
@@ -95,6 +100,8 @@ public:
         tracked=continuous && expected && a>=16'000;
         const bool regular = !current_intra && (
             (compact && signature) || after_intra ||
+            // Locked phase and timing signature survive post-I residual size.
+            (previous_intra && post_intra_phase && signature) ||
             (!previous_intra && plausible &&
                 (tracked || (continuous && nearby) || (stable_lead_in && signature))));
         if(repeated_intra || regular) {

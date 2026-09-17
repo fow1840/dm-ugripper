@@ -5,6 +5,7 @@
 #include "camera_recorder/camera_timing.h"
 #include "camera_recorder/main_camera_cadence.h"
 #include "camera_recorder/main_camera_h265_continuity.h"
+#include "camera_recorder/main_camera_h264_continuity.h"
 #include "camera_recorder/camera_timestamp_offsets.h"
 #include "camera_recorder/main_camera_xu_rtc.h"
 #include "camera_recorder/stereo_control_json.h"
@@ -1947,18 +1948,20 @@ private:
             bool continuous = false;
             bool intra = false;
             std::size_t vcl_bytes = 0;
-            if (options_.codec == "h265") {
-                const auto picture = h265_pictures_.Inspect(
+            const auto inspect_picture = [&](auto& parser, auto& continuity) {
+                const auto picture = parser.Inspect(
                     static_cast<const uint8_t*>(buffers_[buffer.index].data), buffer.bytesused);
-                continuous = h265_continuity_.Observe(
+                continuous = continuity.Observe(
                     (buffer.flags & V4L2_BUF_FLAG_ERROR) ? std::nullopt : picture, buffer.sequence);
                 intra = !picture || picture->intra;
                 vcl_bytes = picture ? picture->vcl_bytes : 0;
                 if (!continuous) {
-                    DM_LOG_INFO("[camera_recorder][main_cadence_continuity_reset] name={} sequence={} header_known={}",
-                                config_.name, buffer.sequence, picture.has_value());
+                    DM_LOG_INFO("[camera_recorder][main_cadence_continuity_reset] name={} codec={} sequence={} header_known={}",
+                                config_.name, options_.codec, buffer.sequence, picture.has_value());
                 }
-            }
+            };
+            if (options_.codec == "h265") inspect_picture(h265_pictures_, h265_continuity_);
+            else inspect_picture(h264_pictures_, h264_continuity_);
             pending_frames_.push_back({gst_buffer, system_time_us, encoder_time_us,
                                        capture_ordinal_++, continuous, intra, vcl_bytes});
             // MMAP storage has been copied; return it before any downstream push.
@@ -2051,13 +2054,11 @@ private:
                     const std::array<int64_t,4> encoder = {
                         previous_raw_frame_->encoder_us, pending_frames_[0].encoder_us,
                         pending_frames_[1].encoder_us, pending_frames_[2].encoder_us};
-                    if (options_.codec == "h265") {
+                    {
                         correct = cadence_tracker_.ShouldCorrect(pending_frames_[0].ordinal, encoder,
                             stable, pending_frames_[0].continuous && pending_frames_[1].continuous && pending_frames_[2].continuous,
                             previous_raw_frame_->intra, pending_frames_[0].intra,
                             {pending_frames_[0].vcl_bytes, pending_frames_[1].vcl_bytes, pending_frames_[2].vcl_bytes});
-                    } else {
-                        correct = stable && ugripper::camera::IsMainCamera50HzDuplicate(encoder);
                     }
                 }
                 if (correct) {
@@ -2546,6 +2547,8 @@ private:
     std::deque<int64_t> preceding_encoder_times_;
     uint64_t capture_ordinal_ = 0;
     ugripper::camera::MainCameraCadenceTracker cadence_tracker_;
+    ugripper::camera::MainCameraH264Pictures h264_pictures_;
+    ugripper::camera::MainCameraH264Continuity h264_continuity_;
     ugripper::camera::MainCameraH265Pictures h265_pictures_;
     ugripper::camera::MainCameraH265Continuity h265_continuity_;
     std::optional<uint64_t> first_encoder_pts_us_;
