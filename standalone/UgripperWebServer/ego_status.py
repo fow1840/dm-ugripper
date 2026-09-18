@@ -46,6 +46,12 @@ def ego_status(runtime=RUNTIME, now_ms=None):
     state = snapshot.get('status')
     if state in ('connected', 'disconnected'):
         result.update(connected=state == 'connected', state=state)
+    battery = snapshot.get('battery', {})
+    if result['connected'] is True and isinstance(battery, dict):
+        percent, stamp = battery.get('percent'), battery.get('updated_at_ms')
+        if (type(percent) is int and 0 <= percent <= 100
+                and type(stamp) in (int, float) and 0 <= now - stamp <= 20000):
+            result['battery'] = dict(percent=percent, charging=battery.get('charging') is True)
     return result
 
 

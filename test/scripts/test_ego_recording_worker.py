@@ -22,6 +22,23 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(WORKER)
 
 
+class BatteryTests(unittest.TestCase):
+    def test_battery_values_and_invalid_responses(self):
+        adb = mock.Mock()
+        for level, scale, present, valid in [(50, 200, 'true', True), (0, 100, 'true', True),
+                                           (101, 100, 'true', False), (10, 0, 'true', False),
+                                           (10, 100, 'false', False)]:
+            adb.run.return_value = subprocess.CompletedProcess([], 0,
+                f"  present: {present}\n  level: {level}\n  scale: {scale}\n  status: 2\n", '')
+            result = WORKER.read_battery(adb)
+            self.assertEqual(bool(result), valid)
+            if valid:
+                self.assertEqual(result['percent'], round(level * 100 / scale))
+                self.assertTrue(result['charging'])
+        adb.run.return_value = subprocess.CompletedProcess([], 1, '', 'offline')
+        self.assertEqual(WORKER.read_battery(adb), {})
+
+
 class FakeAdb:
     def __init__(self, roots, serial=""):
         self.roots = roots

@@ -8,6 +8,22 @@ from ego_status import ego_status
 
 
 class EgoStatusTests(unittest.TestCase):
+    def test_battery_requires_connected_matching_fresh_snapshot(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'ego_binding.json').write_text(json.dumps({'serial': 'ego'}))
+            for state, serial, stamp, percent, valid in [
+                ('connected', 'ego', 80000, 0, True),
+                ('connected', 'ego', 79999, 50, False),
+                ('connected', 'ego', 100001, 50, False),
+                ('connected', 'ego', 100000, True, False),
+                ('disconnected', 'ego', 100000, 50, False),
+                ('connected', 'other', 100000, 50, False)]:
+                (root / 'ego_binding_status.json').write_text(json.dumps(dict(
+                    status=state, serial=serial, updated_at_ms=100000,
+                    battery=dict(percent=percent, updated_at_ms=stamp, charging=True))))
+                self.assertEqual('battery' in ego_status(root, 100000), valid)
+
     def test_binding_is_authoritative_and_probe_must_be_current(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

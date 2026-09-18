@@ -34,3 +34,5 @@
 .metrics{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
 .battery-low .value{color:#b42318}
 @media(max-width:480px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric .value{font-size:24px}.metric{min-width:0}}
+
+.device-heading{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px}.device-sn{font-size:13px;font-weight:400;color:#64748b;overflow-wrap:anywhere}

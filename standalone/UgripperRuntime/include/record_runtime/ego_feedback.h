@@ -41,7 +41,7 @@ public:
         if (!events_.empty()) {
             const int code = events_.front(); events_.pop_front(); return code;
         }
-        if (!phaseNotified_ && now - phaseStart_ > 3000 &&
+        if (!phaseNotified_ && now - phaseStart_ > (phase_ == Phase::Writing ? 5000u : 3000u) &&
             (phase_ == Phase::Writing || (phase_ == Phase::Recording && lowStorage))) {
             phaseNotified_ = true;
             if (phase_ == Phase::Writing) return 1003;

@@ -547,6 +547,22 @@ def publish_probe_status(
         return bool(current_serial)
 
 
+def read_battery(adb: Adb) -> dict:
+    result = adb.run("shell", "dumpsys", "battery", timeout=2)
+    if result.returncode:
+        return {}
+    fields = dict(re.findall(r"^\s*([A-Za-z ]+):\s*([^\r\n]+)", result.stdout, re.MULTILINE))
+    try:
+        level, scale = int(fields["level"]), int(fields["scale"])
+        if fields.get("present", "").strip() != "true" or scale <= 0 or not 0 <= level <= scale:
+            return {}
+        return {"percent": round(level * 100 / scale),
+                "charging": int(fields.get("status", "0")) == 2,
+                "updated_at_ms": now_ms()}
+    except (KeyError, ValueError):
+        return {}
+
+
 def run_probe(args: argparse.Namespace) -> int:
     status = {"status": "disconnected", "updated_at_ms": now_ms()}
     serial = ""
@@ -565,6 +581,16 @@ def run_probe(args: argparse.Namespace) -> int:
                 "updated_at_ms": now_ms(),
             }
         )
+        if connected:
+            previous = read_status(args.binding_status_file)
+            battery = previous.get("battery", {}) if previous.get("serial") == serial else {}
+            stamp = battery.get("updated_at_ms", 0) if isinstance(battery, dict) else 0
+            if not isinstance(stamp, (int, float)) or not 0 <= now_ms() - stamp < 10000:
+                try:
+                    battery = read_battery(Adb(serial))
+                except Exception:
+                    battery = {}
+            status["battery"] = battery
         if connected and now_ms() - binding.get("versions_checked_at_ms", 0) >= 60000:
             adb = Adb(serial)
             app = read_app_version(adb)

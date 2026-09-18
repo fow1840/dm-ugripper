@@ -78,13 +78,14 @@ TEST(EgoSpeechPolicyTest, WritingDelayIsCancelledAndDoesNotFireForUnmount) {
     p.SetPhase(EgoSpeechPolicy::Phase::Recording,5000);
     p.SetPhase(EgoSpeechPolicy::Phase::Idle,5100);
     p.SetPhase(EgoSpeechPolicy::Phase::Writing,5200);
-    EXPECT_FALSE(p.Next(8200,{},false));
-    EXPECT_EQ(p.Next(8201,{},false),1003);
-    EXPECT_FALSE(p.Next(9000,{},false));
-    p.SetPhase(EgoSpeechPolicy::Phase::Recording,10000);
-    p.SetPhase(EgoSpeechPolicy::Phase::Writing,11000);
-    p.SetPhase(EgoSpeechPolicy::Phase::Idle,12000);
-    EXPECT_FALSE(p.Next(15000,{},false));
+    EXPECT_FALSE(p.Next(8201,{},false));
+    EXPECT_FALSE(p.Next(10200,{},false));
+    EXPECT_EQ(p.Next(10201,{},false),1003);
+    EXPECT_FALSE(p.Next(11000,{},false));
+    p.SetPhase(EgoSpeechPolicy::Phase::Recording,12000);
+    p.SetPhase(EgoSpeechPolicy::Phase::Writing,13000);
+    p.SetPhase(EgoSpeechPolicy::Phase::Idle,14000);
+    EXPECT_FALSE(p.Next(19000,{},false));
 }
 
 TEST(EgoSpeechPolicyTest, LowStorageWaitsForRecordingAndRearmsPerEpisode) {

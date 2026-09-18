@@ -136,6 +136,7 @@ void RecordRuntime::maintainFirmwareStatus()
         }
         snapshot["gripper"][side] = {
             {"version", connected ? cache.version : ""},
+            {"serial", connected ? gripperRuntimeStates_[gripperStateIndexForSide(side)].serialNumber : ""},
             {"connected", connected},
             {"checked_at", cache.checkedAtMs / 1000.0},
             {"status", !connected ? "disconnected" : !cache.version.empty() ? "ready" :
