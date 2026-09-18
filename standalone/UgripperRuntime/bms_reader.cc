@@ -4,51 +4,60 @@
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
-#include <fcntl.h>
-#include <poll.h>
-#include <sys/file.h>
-#include <termios.h>
-#include <unistd.h>
+#include <climits>
+#include <map>
+#include <sstream>
 
 namespace DA::Ugripper {
 uint64_t BatterySteadyMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
 }
-std::optional<BatterySample> BmsParser::Feed(uint8_t byte) {
-    bytes_.push_back(byte);
-    while (!bytes_.empty()) {
-        if (bytes_[0] != 0x68 || (bytes_.size() > 1 && bytes_[1] != 0x5a) ||
-            (bytes_.size() > 2 && bytes_[2] != 0xa5)) {
-            bytes_.erase(bytes_.begin());
-            continue;
-        }
-        if (bytes_.size() < 90) return {};
-        uint8_t checksum = 0;
-        for (size_t i = 0; i < 88; ++i) checksum ^= bytes_[i];
-        const auto u16 = [&](size_t i) { return int(bytes_[i]) | (int(bytes_[i+1]) << 8); };
-        if (bytes_[3] != 0 || bytes_[89] != 0x16 || checksum != bytes_[88] ||
-            u16(45) > 100 || bytes_[71] == 0 || bytes_[71] > 16) {
-            bytes_.erase(bytes_.begin());
-            continue;
-        }
-        BatterySample sample;
-        sample.percent = u16(45);
-        sample.capacity_mah = u16(41) * 10;
-        sample.remaining_mah = u16(43) * 10;
-        uint32_t current = 0;
-        for (int i = 0; i < 4; ++i) current |= uint32_t(bytes_[47+i]) << (8*i);
-        sample.current_ma = static_cast<int32_t>(current);
-        sample.charging = (u16(65) & (1 << 12)) != 0;
-        sample.discharging = (u16(65) & (1 << 11)) != 0;
-        for (int i = 0; i < bytes_[71]; ++i) sample.voltage_mv += u16(4+2*i);
-        bytes_.erase(bytes_.begin(), bytes_.begin()+90);
-        return sample;
+std::optional<BatterySample> ParseBmsSnapshot(const std::string& text, int64_t unix_ms) {
+    if (text.size() > 4096) return {};
+    std::map<std::string, int64_t> values;
+    std::istringstream input(text);
+    std::string line;
+    while (std::getline(input, line)) {
+        const auto colon = line.find(':');
+        if (colon == std::string::npos) continue;
+        const auto key = line.substr(0, colon);
+        if (key != "timestamp" && key != "soc_percent" && key != "totalCapacity_mAh" &&
+            key != "remainCapacity_mAh" && key != "totalVoltage_mV" &&
+            key != "current_mA" && key != "isCharging" && key != "isDischarging") continue;
+        std::istringstream number(line.substr(colon + 1));
+        int64_t value;
+        if (!(number >> value) || !(number >> std::ws).eof() || values.count(key)) return {};
+        values[key] = value;
     }
-    return {};
+    for (const auto* key : {"timestamp", "soc_percent", "totalCapacity_mAh", "remainCapacity_mAh",
+                            "totalVoltage_mV", "current_mA", "isCharging", "isDischarging"}) {
+        if (!values.count(key)) return {};
+    }
+    // Source timestamp has second resolution. Never refresh old data merely by rereading it.
+    const auto stamp = values["timestamp"];
+    if (stamp <= 0 || stamp > unix_ms / 1000 || unix_ms - stamp * 1000 > 20000) return {};
+    for (const auto* key : {"soc_percent", "totalCapacity_mAh", "remainCapacity_mAh", "totalVoltage_mV"}) {
+        if (values[key] < 0 || values[key] > INT_MAX) return {};
+    }
+    if (values["soc_percent"] > 100 || values["current_mA"] < INT_MIN || values["current_mA"] > INT_MAX ||
+        values["isCharging"] < 0 || values["isCharging"] > 1 ||
+        values["isDischarging"] < 0 || values["isDischarging"] > 1) return {};
+    BatterySample sample;
+    sample.percent = values["soc_percent"];
+    sample.capacity_mah = values["totalCapacity_mAh"];
+    sample.remaining_mah = values["remainCapacity_mAh"];
+    sample.voltage_mv = values["totalVoltage_mV"];
+    sample.current_ma = values["current_mA"];
+    sample.charging = values["isCharging"] != 0;
+    sample.discharging = values["isDischarging"] != 0;
+    const auto age = static_cast<uint64_t>(unix_ms - stamp * 1000);
+    const auto steady = BatterySteadyMs();
+    sample.received_ms = steady - std::min(steady, age);
+    return sample;
 }
-BmsReader::BmsReader(std::string port, std::string snapshot)
-    : port_(std::move(port)), snapshot_(std::move(snapshot)), thread_(&BmsReader::Run, this) {}
+BmsReader::BmsReader(std::string source, std::string snapshot)
+    : source_(std::move(source)), snapshot_(std::move(snapshot)), thread_(&BmsReader::Run, this) {}
 BmsReader::~BmsReader() {
     stop_ = true;
     if (thread_.joinable()) thread_.join();
@@ -57,7 +66,7 @@ BmsReader::~BmsReader() {
 }
 std::optional<BatterySample> BmsReader::Sample() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!sample_ || BatterySteadyMs() - sample_->received_ms > 5000) return {};
+    if (!sample_ || BatterySteadyMs() - sample_->received_ms > 20000) return {};
     return sample_;
 }
 void BmsReader::Publish() {
@@ -65,7 +74,8 @@ void BmsReader::Publish() {
         const auto sample = Sample();
         const auto epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
-        nlohmann::json data{{"connected", sample.has_value()}, {"updated_at_ms", epoch}, {"port", port_}};
+        nlohmann::json data{{"connected", sample.has_value()}, {"updated_at_ms", epoch}, {"source", source_}};
+        data["status"] = sample ? "ready" : "service_unavailable";
         if (sample) {
             data["percent"] = sample->percent;
             data["charging"] = sample->charging;
@@ -85,68 +95,23 @@ void BmsReader::Publish() {
     } catch (const std::exception&) { /* Battery telemetry must not stop collection. */ }
 }
 void BmsReader::Run() {
-    int fd = -1;
-    termios original{};
-    bool restore = false;
-    BmsParser parser;
-    uint64_t retry = 0, request = 0, publish = 0, opened = 0, received = 0;
-    const auto closePort = [&] {
-        if (fd >= 0) {
-            if (restore) tcsetattr(fd, TCSANOW, &original);
-            close(fd);
-        }
-        fd = -1;
-        restore = false;
-        parser = BmsParser{};
-        std::lock_guard<std::mutex> lock(mutex_);
-        sample_.reset();
-    };
     while (!stop_) {
-        const auto now = BatterySteadyMs();
-        if (fd < 0 && now >= retry) {
-            retry = now + 3000;
-            fd = open(port_.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
-            if (fd >= 0) {
-                if (flock(fd, LOCK_EX | LOCK_NB) != 0 || tcgetattr(fd, &original) != 0) closePort();
-                else {
-                    auto config = original;
-                    cfmakeraw(&config);
-                    config.c_cflag = CLOCAL | CREAD | CS8;
-                    config.c_cc[VMIN] = 0; config.c_cc[VTIME] = 0;
-                    cfsetispeed(&config, B9600); cfsetospeed(&config, B9600);
-                    restore = true;
-                    if (tcsetattr(fd, TCSANOW, &config) != 0) closePort();
-                    else { opened = now; received = 0; request = 0; }
-                }
+        std::optional<BatterySample> sample;
+        // Bounded read also tolerates a producer truncating/replacing the snapshot.
+        std::ifstream file(source_);
+        if (file) {
+            char buffer[4097];
+            file.read(buffer, sizeof(buffer));
+            if (!file.bad() && file.gcount() <= 4096) {
+                const auto epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                sample = ParseBmsSnapshot(std::string(buffer, file.gcount()), epoch);
             }
         }
-        if (fd >= 0) {
-            if (now >= request) {
-                constexpr uint8_t command[]{0x68,0x0c,0xf3,0,0,0,0,0,0,0,0x97,0x16};
-                if (write(fd, command, sizeof(command)) != sizeof(command)) closePort();
-                request = now + 1000;
-            }
-            if (fd >= 0) {
-                pollfd poller{fd, POLLIN, 0};
-                if (poll(&poller, 1, 100) > 0) {
-                    if (poller.revents & (POLLERR | POLLHUP | POLLNVAL)) closePort();
-                    else if (poller.revents & POLLIN) {
-                        uint8_t buffer[512];
-                        const auto count = read(fd, buffer, sizeof(buffer));
-                        for (ssize_t i = 0; i < count; ++i) {
-                            if (auto sample = parser.Feed(buffer[i])) {
-                                received = sample->received_ms = BatterySteadyMs();
-                                std::lock_guard<std::mutex> lock(mutex_);
-                                sample_ = *sample;
-                            }
-                        }
-                    }
-                }
-                if (now > (received ? received : opened) + 5000) closePort();
-            }
-        } else std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        if (now >= publish) { Publish(); publish = now + 1000; }
+        { std::lock_guard<std::mutex> lock(mutex_); sample_ = sample; }
+        Publish();
+        for (int i = 0; i < 10 && !stop_; ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    closePort();
 }
 }

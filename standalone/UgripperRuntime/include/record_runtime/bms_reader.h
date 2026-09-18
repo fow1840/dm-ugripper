@@ -18,23 +18,18 @@ struct BatterySample {
     bool discharging = false;
     uint64_t received_ms = 0;
 };
-// Wire layout from tmp/bms; integers are little-endian, independent of host ABI.
-class BmsParser {
-public:
-    std::optional<BatterySample> Feed(uint8_t byte);
-private:
-    std::vector<uint8_t> bytes_;
-};
+// Read the Bluetooth service's text snapshot; never open its serial device.
+std::optional<BatterySample> ParseBmsSnapshot(const std::string& text, int64_t unix_ms);
 class BmsReader {
 public:
-    explicit BmsReader(std::string port = "/dev/ttyS0",
+    explicit BmsReader(std::string source = "/opt/bluetooth_server/bms_latest.txt",
                        std::string snapshot = "/dev/shm/ugripper/battery_status.json");
     ~BmsReader();
     std::optional<BatterySample> Sample() const;
 private:
     void Run();
     void Publish();
-    std::string port_, snapshot_;
+    std::string source_, snapshot_;
     mutable std::mutex mutex_;
     std::optional<BatterySample> sample_;
     std::atomic<bool> stop_{false};

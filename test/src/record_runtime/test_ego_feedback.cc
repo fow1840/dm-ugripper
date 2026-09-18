@@ -10,55 +10,65 @@
 
 using namespace DA::Ugripper;
 
-static std::array<uint8_t,90> Frame(int percent = 10) {
-    std::array<uint8_t,90> f{};
-    f[0]=0x68; f[1]=0x5a; f[2]=0xa5; f[89]=0x16;
-    f[4]=0xa0; f[5]=0x0f; f[71]=1; f[45]=percent;
-    f[41]=0xf4; f[42]=1; f[43]=50;
-    for(int i=47;i<51;++i) f[i]=0xff;
-    f[66]=0x08;
-    for(int i=0;i<88;++i) f[88]^=f[i];
-    return f;
+static std::string Snapshot(int64_t stamp, int percent = 10) {
+    return "timestamp: " + std::to_string(stamp) + "\n"
+        "totalCapacity_mAh: 5000\nremainCapacity_mAh: 500\n"
+        "totalVoltage_mV: 28900\ncurrent_mA: -123\n"
+        "soc_percent: " + std::to_string(percent) + "\n"
+        "isCharging: 0\nisDischarging: 1\navgTemperature_degC: 27.3\n";
 }
 
-TEST(BmsParserTest, FragmentedFrameRecoversAfterNoiseAndRejectsBadChecksum) {
-    BmsParser p;
-    for(auto v:{0x68,0x68,0x12,0x16}) EXPECT_FALSE(p.Feed(v));
-    auto bad=Frame(); bad[20]^=1;
-    for(auto v:bad) EXPECT_FALSE(p.Feed(v));
-    auto good=Frame();
-    for(size_t i=0;i<89;++i) EXPECT_FALSE(p.Feed(good[i]));
-    auto s=p.Feed(good[89]); ASSERT_TRUE(s);
-    EXPECT_EQ(s->percent,10); EXPECT_EQ(s->voltage_mv,4000);
-    EXPECT_EQ(s->current_ma,-1); EXPECT_EQ(s->capacity_mah,5000);
-    EXPECT_EQ(s->remaining_mah,500); EXPECT_TRUE(s->discharging);
-    for(auto v:Frame(101)) EXPECT_FALSE(p.Feed(v));
-    for(auto v:Frame(0)) s=p.Feed(v);
-    ASSERT_TRUE(s); EXPECT_EQ(s->percent,0);
+TEST(BmsSnapshotTest, ValidatesFreshnessCompletenessAndValues) {
+    auto s = ParseBmsSnapshot(Snapshot(100), 100999);
+    ASSERT_TRUE(s);
+    EXPECT_EQ(s->percent, 10); EXPECT_EQ(s->capacity_mah, 5000);
+    EXPECT_EQ(s->remaining_mah, 500); EXPECT_EQ(s->voltage_mv, 28900);
+    EXPECT_EQ(s->current_ma, -123); EXPECT_FALSE(s->charging); EXPECT_TRUE(s->discharging);
+    EXPECT_TRUE(ParseBmsSnapshot(Snapshot(100, 0), 120000));
+    EXPECT_TRUE(ParseBmsSnapshot(Snapshot(100, 100), 100000));
+    EXPECT_FALSE(ParseBmsSnapshot(Snapshot(100), 120001));
+    EXPECT_FALSE(ParseBmsSnapshot(Snapshot(101), 100000));
+    EXPECT_FALSE(ParseBmsSnapshot(Snapshot(0), 100000));
+    EXPECT_FALSE(ParseBmsSnapshot(Snapshot(INT64_MAX), 100000));
+    EXPECT_FALSE(ParseBmsSnapshot(Snapshot(100, 101), 100000));
+    EXPECT_FALSE(ParseBmsSnapshot(Snapshot(100, -1), 100000));
+    EXPECT_FALSE(ParseBmsSnapshot("timestamp: 100\nsoc_percent: 10\n", 100000));
+    EXPECT_FALSE(ParseBmsSnapshot(Snapshot(100) + "soc_percent: 9\n", 100000));
+    auto bad = Snapshot(100); bad.replace(bad.find("current_mA: -123"), 16, "current_mA: 1.2");
+    EXPECT_FALSE(ParseBmsSnapshot(bad, 100000));
+    EXPECT_FALSE(ParseBmsSnapshot(std::string(4097, 'x'), 100000));
 }
 
-TEST(BmsReaderTest, ReadsSerialAndPublishesDisconnectedOnShutdown) {
-    const int master=posix_openpt(O_RDWR|O_NOCTTY|O_NONBLOCK);
-    ASSERT_GE(master,0); ASSERT_EQ(grantpt(master),0); ASSERT_EQ(unlockpt(master),0);
-    const std::string port=ptsname(master);
-    char temp[]="/tmp/ugripper-bms-test-XXXXXX";
-    ASSERT_NE(mkdtemp(temp),nullptr);
-    const auto path=std::filesystem::path(temp)/"battery.json";
+TEST(BmsReaderTest, ReadsSnapshotRejectsStaleAndRecoversWithoutSerial) {
+    char temp[] = "/tmp/ugripper-bms-test-XXXXXX";
+    ASSERT_NE(mkdtemp(temp), nullptr);
+    const auto root = std::filesystem::path(temp);
+    const auto source = root / "bms_latest.txt", output = root / "battery.json";
+    const auto epoch = [] { return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count(); };
+    const auto write = [&](int64_t stamp, int percent) {
+        std::ofstream file(source.string() + ".tmp"); file << Snapshot(stamp, percent); file.close();
+        std::filesystem::rename(source.string() + ".tmp", source);
+    };
     {
-        BmsReader reader(port,path.string());
-        pollfd poller{master,POLLIN,0}; ASSERT_GT(poll(&poller,1,2000),0);
-        uint8_t request[32]; EXPECT_EQ(read(master,request,sizeof(request)),12);
-        const auto frame=Frame(5);
-        ASSERT_EQ(write(master,frame.data(),15),15);
-        ASSERT_EQ(write(master,frame.data()+15,75),75);
-        const auto deadline=BatterySteadyMs()+2000;
-        while(!reader.Sample() && BatterySteadyMs()<deadline)
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        ASSERT_TRUE(reader.Sample()); EXPECT_EQ(reader.Sample()->percent,5);
+        BmsReader reader(source.string(), output.string());
+        EXPECT_FALSE(reader.Sample());
+        const auto wait = [&](bool connected) {
+            const auto deadline = BatterySteadyMs() + 3000;
+            while (bool(reader.Sample()) != connected && BatterySteadyMs() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            return bool(reader.Sample()) == connected;
+        };
+        write(epoch(), 5); ASSERT_TRUE(wait(true)); EXPECT_EQ(reader.Sample()->percent, 5);
+        write(epoch() - 30, 5); ASSERT_TRUE(wait(false));
+        write(epoch(), 0); ASSERT_TRUE(wait(true)); EXPECT_EQ(reader.Sample()->percent, 0);
+        std::filesystem::remove(source); ASSERT_TRUE(wait(false));
     }
-    nlohmann::json status; std::ifstream(path)>>status;
+    nlohmann::json status; std::ifstream(output) >> status;
     EXPECT_FALSE(status.at("connected").get<bool>());
-    close(master); std::filesystem::remove_all(temp);
+    EXPECT_EQ(status.at("status"), "service_unavailable");
+    EXPECT_EQ(status.at("source"), source.string());
+    std::filesystem::remove_all(root);
 }
 
 TEST(EgoSpeechPolicyTest, WritingDelayIsCancelledAndDoesNotFireForUnmount) {

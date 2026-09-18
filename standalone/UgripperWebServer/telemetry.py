@@ -25,14 +25,14 @@ BATTERY_STATUS = Path('/dev/shm/ugripper/battery_status.json')
 def battery_status():
     cached = read_json(BATTERY_STATUS)
     if not isinstance(cached, dict):
-        return {'connected': False}
+        return {'connected': False, 'status': 'service_unavailable'}
     stamp, percent = cached.get('updated_at_ms'), cached.get('percent')
     valid = (isinstance(stamp, (int, float)) and not isinstance(stamp, bool)
              and 0 <= time.time() * 1000 - stamp <= 5000
              and type(percent) is int and 0 <= percent <= 100
              and cached.get('connected') is True)
     if not valid:
-        return {'connected': False}
+        return {'connected': False, 'status': 'service_unavailable'}
     return {**cached, 'connected': True}
 
 
