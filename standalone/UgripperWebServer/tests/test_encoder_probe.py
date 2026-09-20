@@ -1,4 +1,5 @@
 import contextlib
+import math
 from pathlib import Path
 import sys
 import unittest
@@ -9,6 +10,16 @@ from common import Busy
 
 
 class EncoderProbeTests(unittest.TestCase):
+    def test_signed_angles_preserve_raw_count(self):
+        for raw, signed in ((0, 0), (1, 1), (32767, 32767),
+                            (32768, -32768), (61364, -4172), (65535, -1)):
+            with self.subTest(raw=raw):
+                sample = probe.position_sample(raw)
+                self.assertEqual(sample['position'], raw)
+                self.assertAlmostEqual(sample['angle_rad'], signed * math.tau / 65536)
+                self.assertAlmostEqual(sample['angle_deg'], signed * 360 / 65536)
+        self.assertAlmostEqual(probe.position_sample(61364)['angle_rad'], -0.4, places=4)
+
     def test_fragmented_position_after_noise_and_bad_crc(self):
         # Known Modbus response for 0x1234: 01 03 02 12 34 b5 33.
         chunks = [b'noise\x01\x03\x02\x12\x34\x00\x00\x01', b'\x03\x02\x12', b'\x34\xb5\x33']

@@ -42,6 +42,15 @@ def read_position(fd, timeout=0.15):
     return None
 
 
+def position_sample(position):
+    """Keep the raw register count, but match the recorder's signed angle."""
+    signed_position = position - 65536 if position >= 32768 else position
+    return dict(status='ok', position=position,
+                angle_deg=signed_position * 360 / 65536,
+                angle_rad=signed_position * math.tau / 65536,
+                read_at=time.time())
+
+
 def read_encoder(path):
     fd = None
     original = None
@@ -57,8 +66,7 @@ def read_encoder(path):
             for _ in range(2):
                 position = read_position(fd)
                 if position is not None:
-                    return dict(status='ok', position=position, angle_deg=position * 360 / 65536,
-                                angle_rad=position * math.tau / 65536, baudrate=baud, read_at=time.time())
+                    return dict(position_sample(position), baudrate=baud)
         return dict(status='unavailable', message='未收到有效读数')
     except (OSError, termios.error):
         return dict(status='unavailable', message='编码器未连接或串口不可用')
@@ -115,8 +123,7 @@ def stream_encoders(duration=60):
                     values[side] = dict(status='unavailable',message='未收到有效读数')
                     continue
                 missed[side] = 0; valid[side] += 1
-                values[side] = dict(status='ok', position=position, angle_deg=position*360/65536,
-                                    angle_rad=position*math.tau/65536, read_at=time.time())
+                values[side] = position_sample(position)
             count += 1
             elapsed = time.monotonic()-start
             yield dict(values, rate_hz=round(min(valid.values())/max(elapsed,0.01),1), dropped=dict(dropped), remaining_s=max(0,round(duration-elapsed,1)))
