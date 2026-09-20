@@ -77,3 +77,7 @@ add_test(
 set_tests_properties(test_check_video_windows_rules PROPERTIES
     LABELS "host-only;unit;camera"
 )
+
+add_host_only_camera_xu_gtest(test_main_camera_startup
+    test_main_camera_startup.cc
+)

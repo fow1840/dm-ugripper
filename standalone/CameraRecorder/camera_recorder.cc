@@ -9,6 +9,7 @@
 #include "camera_recorder/main_camera_h264_continuity.h"
 #include "camera_recorder/camera_timestamp_offsets.h"
 #include "camera_recorder/main_camera_xu_rtc.h"
+#include "camera_recorder/main_camera_startup.h"
 #include "camera_recorder/stereo_control_json.h"
 #include "utils/ugripper_logger.h"
 
@@ -93,8 +94,8 @@ constexpr auto kMainCameraStopEosGrace = std::chrono::milliseconds(500);
 constexpr auto kMainCameraStopPollInterval = std::chrono::milliseconds(10);
 constexpr int64_t kMainCameraShortStreamMinSessionUs = 5 * kUsPerSecond;
 constexpr int64_t kMainCameraShortStreamMaxSpanUs = 2 * kUsPerSecond;
-constexpr int kMainCameraStartupGateMaxFrames = 90;
-constexpr auto kMainCameraStartupGateMaxWait = std::chrono::milliseconds(1500);
+constexpr auto kMainCameraStartupGateMaxWait = std::chrono::microseconds(
+    ugripper::camera::MainCameraStartupBuffer::kMaxWaitUs);
 
 #ifndef UGRIPPER_ENABLE_PERF_LOG
 #define UGRIPPER_ENABLE_PERF_LOG 0
@@ -1799,6 +1800,7 @@ private:
             }
             return false;
         }
+        startup_gate_start_ = std::chrono::steady_clock::now();
         streaming_ = true;
         return true;
     }
@@ -1846,13 +1848,21 @@ private:
 
     void CaptureLoop() {
         while (!stop_requested_.load(std::memory_order_acquire)) {
+            if (StartupGateTimedOut()) break;
             if (!MaybeSyncRtc()) {
                 break;
             }
             pollfd poll_fd{};
             poll_fd.fd = fd_;
             poll_fd.events = POLLIN | POLLPRI;
-            const int poll_rc = poll(&poll_fd, 1, 200);
+            int poll_timeout_ms = 200;
+            if (!startup_gate_open_) {
+                const auto remaining = kMainCameraStartupGateMaxWait -
+                    (std::chrono::steady_clock::now() - startup_gate_start_);
+                poll_timeout_ms = static_cast<int>(std::clamp<int64_t>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(remaining).count(), 1, 200));
+            }
+            const int poll_rc = poll(&poll_fd, 1, poll_timeout_ms);
             if (poll_rc == 0) {
                 HandleBusMessages();
                 continue;
@@ -1884,126 +1894,28 @@ private:
                 break;
             }
 
-            if (!StartupGateAllowsBuffer(buffers_[buffer.index].data, buffer.bytesused)) {
-                if (!RetryIoctl(fd_, VIDIOC_QBUF, &buffer)) {
-                    SetFailure("VIDIOC_QBUF failed for " + config_.name + ": " + std::strerror(errno));
-                    break;
-                }
-                if (failure_) {
-                    break;
-                }
-                continue;
-            }
-
-            int64_t system_time_us = 0;
-            int64_t encoder_time_us = 0;
-            {
-                const auto xu_timestamp = ugripper::camera::ParseMainCameraXuTimestamp(
-                    static_cast<const uint8_t*>(buffers_[buffer.index].data),
-                    buffer.bytesused, options_.codec == "h264"
-                        ? ugripper::camera::MainCameraCodec::H264
-                        : ugripper::camera::MainCameraCodec::H265);
-                if (!xu_timestamp.has_value()) {
-                    SetFailure("missing or invalid XU2 SEI timestamp for " + config_.name);
-                    RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
-                    break;
-                }
-                if (!rtc_tset_us_.has_value() || !rtc_pset_us_.has_value()) {
-                    SetFailure("missing synchronized XU RTC Tset/Pset for " + config_.name);
-                    RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
-                    break;
-                }
-                const auto anchor = std::find_if(rtc_anchors_.rbegin(), rtc_anchors_.rend(),
-                    [&](const auto& value) { return value.first == xu_timestamp->xu_time_us; });
-                if (anchor == rtc_anchors_.rend()) {
-                    SetFailure("XU2 SEI Tset does not match the synchronized value for " +
-                               config_.name);
-                    RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
-                    break;
-                }
-                const auto frame_unix_time_us =
-                    ugripper::camera::MainCameraFrameUnixTimeUs(
-                        *xu_timestamp, anchor->second);
-                if (!frame_unix_time_us.has_value()) {
-                    SetFailure("invalid XU2 SEI Unix timestamp for " + config_.name);
-                    RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
-                    break;
-                }
-                if (!first_encoder_pts_us_.has_value()) {
-                    first_encoder_pts_us_ = xu_timestamp->encoder_pts_us;
-                    DM_LOG_INFO("{}", (::DA::utils::LogString()
-                                       << "[camera_recorder][main_timestamp_source]"
-                                       << " name=" << config_.name
-                                       << " source=xu2_sei"
-                                       << " xu_time_us=" << xu_timestamp->xu_time_us
-                                       << " encoder_pts_us=" << xu_timestamp->encoder_pts_us
-                                       << " frame_unix_time_us=" << *frame_unix_time_us
-                                       << " tset_us=" << *rtc_tset_us_
-                                       << " pset_us=" << *rtc_pset_us_
-                                       << " encoder_elapsed_since_set_us="
-                                       << (xu_timestamp->encoder_pts_us - *rtc_pset_us_)).str());
-                }
-                system_time_us = *frame_unix_time_us;
-                encoder_time_us = static_cast<int64_t>(xu_timestamp->encoder_pts_us);
-                if (!rtc_anchor_observed_ && xu_timestamp->xu_time_us == *rtc_tset_us_) {
-                    rtc_anchor_observed_ = true;
-                    DM_LOG_INFO("[camera_recorder][main_rtc_anchor_applied] name={} codec={} tset_us={} pframe_us={}",
-                                config_.name, options_.codec, *rtc_tset_us_, xu_timestamp->encoder_pts_us);
-                }
-            }
-
-            GstBuffer* gst_buffer = gst_buffer_new_allocate(nullptr, buffer.bytesused, nullptr);
-            if (gst_buffer == nullptr) {
-                SetFailure("gst_buffer_new_allocate failed for " + config_.name);
-                RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
-                break;
-            }
-
-            GstMapInfo map_info{};
-            if (!gst_buffer_map(gst_buffer, &map_info, GST_MAP_WRITE)) {
-                gst_buffer_unref(gst_buffer);
-                SetFailure("gst_buffer_map failed for " + config_.name);
-                RetryIoctl(fd_, VIDIOC_QBUF, &buffer);
-                break;
-            }
-            if (options_.codec == "h264") {
-                const auto normalized = ugripper::camera::NormalizeMainCameraH264AccessUnit(
-                    static_cast<const uint8_t*>(buffers_[buffer.index].data), buffer.bytesused);
-                std::memcpy(map_info.data, normalized.data(), normalized.size());
-            } else {
-                std::memcpy(map_info.data, buffers_[buffer.index].data, buffer.bytesused);
-            }
-            gst_buffer_unmap(gst_buffer, &map_info);
-
-            bool continuous = false;
-            bool intra = false;
-            std::size_t vcl_bytes = 0;
-            const auto inspect_picture = [&](auto& parser, auto& continuity) {
-                const auto picture = parser.Inspect(
-                    static_cast<const uint8_t*>(buffers_[buffer.index].data), buffer.bytesused);
-                continuous = continuity.Observe(
-                    (buffer.flags & V4L2_BUF_FLAG_ERROR) ? std::nullopt : picture, buffer.sequence);
-                intra = !picture || picture->intra;
-                vcl_bytes = picture ? picture->vcl_bytes : 0;
-                if (!continuous) {
-                    DM_LOG_INFO("[camera_recorder][main_cadence_continuity_reset] name={} codec={} sequence={} header_known={}",
-                                config_.name, options_.codec, buffer.sequence, picture.has_value());
-                }
-            };
-            if (options_.codec == "h265") inspect_picture(h265_pictures_, h265_continuity_);
-            else inspect_picture(h264_pictures_, h264_continuity_);
-            pending_frames_.push_back({gst_buffer, system_time_us, encoder_time_us,
-                                       capture_ordinal_++, continuous, intra, vcl_bytes});
-            // MMAP storage has been copied; return it before any downstream push.
-
+            // Copy and return the driver buffer before parsing or replaying startup data.
+            ugripper::camera::MainCameraStartupBuffer::Frame frame;
+            const auto* data = static_cast<const uint8_t*>(buffers_[buffer.index].data);
+            const bool buffer_valid = buffer.bytesused <= buffers_[buffer.index].length &&
+                !(buffer.flags & V4L2_BUF_FLAG_ERROR);
+            if (buffer_valid) frame.data.assign(data, data + buffer.bytesused);
+            const auto sequence = buffer.sequence;
             if (!RetryIoctl(fd_, VIDIOC_QBUF, &buffer)) {
                 SetFailure("VIDIOC_QBUF failed for " + config_.name + ": " + std::strerror(errno));
                 break;
             }
+            if (!ProcessCapturedFrame(std::move(frame), sequence, buffer_valid)) break;
             if (!DrainPendingFrames(false)) {
                 break;
             }
         }
+        if (!startup_gate_open_ && !failure_) {
+            const auto reason = "main camera stopped before startup anchor/keyframe for " + config_.name;
+            SetFailure(reason);
+            WriteCameraRecorderFault(options_.output_dir, config_, reason);
+        }
+        startup_buffer_.Discard();
         if (!failure_) {
             DrainPendingFrames(true);
         }
@@ -2111,79 +2023,142 @@ private:
         return true;
     }
 
-    bool StartupGateAllowsBuffer(const void* data, uint32_t bytesused) {
-        if (startup_gate_open_) {
-            return true;
+    bool StartupGateTimedOut() {
+        if (startup_gate_open_ ||
+            std::chrono::steady_clock::now() - startup_gate_start_ < kMainCameraStartupGateMaxWait) {
+            return false;
         }
-        if (startup_gate_checked_frames_ == 0) {
-            startup_gate_start_ = std::chrono::steady_clock::now();
+        const auto reason = "main camera startup gate timed out camera=" + config_.name +
+            " max_wait_ms=" + std::to_string(kMainCameraStartupGateMaxWait.count() / 1000) +
+            " dropped_frames=" + std::to_string(startup_gate_dropped_frames_);
+        SetFailure(reason);
+        WriteCameraRecorderFault(options_.output_dir, config_, reason);
+        return true;
+    }
+
+    bool ProcessCapturedFrame(ugripper::camera::MainCameraStartupBuffer::Frame frame,
+                              uint32_t sequence, bool buffer_valid) {
+        using Startup = ugripper::camera::MainCameraStartupBuffer;
+        if (StartupGateTimedOut()) return false;
+        const auto timestamp = ugripper::camera::ParseMainCameraXuTimestamp(
+            frame.data.data(), frame.data.size(), options_.codec == "h264"
+                ? ugripper::camera::MainCameraCodec::H264
+                : ugripper::camera::MainCameraCodec::H265);
+        frame.valid = buffer_valid && timestamp.has_value();
+        if (timestamp) frame.timestamp = *timestamp;
+        const auto inspect = [&](auto& parser, auto& continuity) {
+            const auto picture = parser.Inspect(frame.data.data(), frame.data.size());
+            frame.continuous = continuity.Observe(
+                frame.valid ? picture : std::nullopt, sequence);
+            frame.intra = !picture || picture->intra;
+            frame.vcl_bytes = picture ? picture->vcl_bytes : 0;
+        };
+        if (options_.codec == "h265") inspect(h265_pictures_, h265_continuity_);
+        else inspect(h264_pictures_, h264_continuity_);
+        if (!rtc_tset_us_ || !rtc_pset_us_) {
+            SetFailure("missing synchronized XU RTC Tset/Pset for " + config_.name);
+            return false;
         }
-
-        ++startup_gate_checked_frames_;
-        const auto check_start = std::chrono::steady_clock::now();
-        const CompressedAccessUnitCheck check =
-            CheckCompressedAccessUnit(data, bytesused, options_.codec);
-        const auto check_elapsed = std::chrono::steady_clock::now() - check_start;
-        const auto check_elapsed_us =
-            std::chrono::duration_cast<std::chrono::microseconds>(check_elapsed).count();
-        startup_gate_max_check_us_ =
-            std::max<uint64_t>(startup_gate_max_check_us_, static_cast<uint64_t>(std::max<int64_t>(0, check_elapsed_us)));
-
-        const auto gate_elapsed = std::chrono::steady_clock::now() - startup_gate_start_;
-        const auto gate_elapsed_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(gate_elapsed).count();
-        if (IsCleanStartupAccessUnit(check, options_.codec)) {
+        if (!startup_gate_open_) {
+            ++startup_gate_checked_frames_;
+            const auto check = CheckCompressedAccessUnit(
+                frame.data.data(), frame.data.size(), options_.codec);
+            frame.clean_keyframe = frame.valid && IsCleanStartupAccessUnit(check, options_.codec);
+            const auto actual_tset = frame.timestamp.xu_time_us;
+            const auto pframe = frame.timestamp.encoder_pts_us;
+            const auto dropped_before = startup_buffer_.dropped();
+            const auto result = startup_buffer_.Push(std::move(frame), *rtc_tset_us_,
+                *rtc_pset_us_, options_.session_start_system_time_us);
+            startup_gate_dropped_frames_ = static_cast<int>(startup_buffer_.dropped());
+            if (startup_buffer_.dropped() != dropped_before && startup_drop_logs_++ < 3) {
+                DM_LOG_WARN("[camera_recorder][main_startup_gate] event=dropped name={} expected_tset_us={} actual_tset_us={} pset_us={} pframe_us={} sequence={} dropped_frames={}",
+                    config_.name, *rtc_tset_us_, actual_tset, *rtc_pset_us_, pframe,
+                    sequence, startup_gate_dropped_frames_);
+            }
+            if (result == Startup::Result::Overflow) {
+                const auto reason = "main camera startup buffer limit exceeded for " + config_.name;
+                SetFailure(reason);
+                WriteCameraRecorderFault(options_.output_dir, config_, reason);
+                return false;
+            }
+            if (StartupGateTimedOut()) return false;
+            if (result != Startup::Result::Ready) return true;
+            auto buffered = startup_buffer_.Take();
             startup_gate_open_ = true;
-            DM_LOG_INFO("{}", (::DA::utils::LogString()
-                               << "[camera_recorder][main_startup_gate]"
-                               << " event=accepted"
-                               << " name=" << config_.name
-                               << " codec=" << options_.codec
-                               << " wait_ms=" << gate_elapsed_ms
-                               << " checked_frames=" << startup_gate_checked_frames_
-                               << " dropped_frames=" << startup_gate_dropped_frames_
-                               << " bytes=" << bytesused
-                               << " nal_count=" << check.nal_count
-                               << " nal_types=" << check.nal_types
-                               << " max_check_us=" << startup_gate_max_check_us_).str());
+            rtc_anchor_observed_ = true;
+            const auto wait_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - startup_gate_start_).count();
+            const auto backfilled = std::count_if(buffered.begin(), buffered.end(),
+                [&](const auto& item) { return item.timestamp.xu_time_us != *rtc_tset_us_; });
+            DM_LOG_INFO("[camera_recorder][main_startup_gate] event=accepted name={} codec={} wait_ms={} checked_frames={} dropped_frames={} buffered_frames={} backfilled_frames={} first_unix_us={} session_start_us={}",
+                config_.name, options_.codec, wait_us / 1000, startup_gate_checked_frames_,
+                startup_gate_dropped_frames_, buffered.size(), backfilled,
+                buffered.front().unix_us, options_.session_start_system_time_us);
+            DM_LOG_INFO("[camera_recorder][main_rtc_anchor_applied] name={} codec={} tset_us={} pframe_us={}",
+                config_.name, options_.codec, *rtc_tset_us_, pframe);
+            for (const auto& item : buffered) {
+                if (!EnqueueCapturedFrame(item)) return false;
+            }
             return true;
         }
-
-        ++startup_gate_dropped_frames_;
-        if (startup_gate_dropped_frames_ <= 3 ||
-            startup_gate_checked_frames_ == kMainCameraStartupGateMaxFrames) {
-            DM_LOG_WARN("{}", (::DA::utils::LogString()
-                               << "[camera_recorder][main_startup_gate]"
-                               << " event=dropped"
-                               << " name=" << config_.name
-                               << " codec=" << options_.codec
-                               << " wait_ms=" << gate_elapsed_ms
-                               << " checked_frames=" << startup_gate_checked_frames_
-                               << " dropped_frames=" << startup_gate_dropped_frames_
-                               << " bytes=" << bytesused
-                               << " parsed=" << (check.parsed ? "true" : "false")
-                               << " has_sps=" << (check.has_sps ? "true" : "false")
-                               << " has_pps=" << (check.has_pps ? "true" : "false")
-                               << " has_idr=" << (check.has_idr ? "true" : "false")
-                               << " nal_count=" << check.nal_count
-                               << " nal_types=" << check.nal_types
-                               << " check_us=" << check_elapsed_us).str());
+        if (!frame.valid) {
+            SetFailure("missing or invalid XU2 SEI timestamp/buffer for " + config_.name);
+            return false;
         }
-
-        if (startup_gate_checked_frames_ >= kMainCameraStartupGateMaxFrames ||
-            gate_elapsed >= kMainCameraStartupGateMaxWait) {
-            std::ostringstream error;
-            error << "main camera startup gate timed out"
-                  << " camera=" << config_.name
-                  << " checked_frames=" << startup_gate_checked_frames_
-                  << " dropped_frames=" << startup_gate_dropped_frames_
-                  << " wait_ms=" << gate_elapsed_ms
-                  << " max_wait_ms=" << kMainCameraStartupGateMaxWait.count()
-                  << " max_check_us=" << startup_gate_max_check_us_;
-            SetFailure(error.str());
-            WriteCameraRecorderFault(options_.output_dir, config_, error.str());
+        const auto anchor = std::find_if(rtc_anchors_.rbegin(), rtc_anchors_.rend(),
+            [&](const auto& value) { return value.first == frame.timestamp.xu_time_us; });
+        if (anchor == rtc_anchors_.rend()) {
+            SetFailure("XU2 SEI Tset does not match the synchronized value for " + config_.name);
+            return false;
         }
-        return false;
+        const auto mapped = ugripper::camera::MainCameraFrameUnixTimeUs(frame.timestamp, anchor->second);
+        if (!mapped) {
+            SetFailure("invalid XU2 SEI Unix timestamp for " + config_.name);
+            return false;
+        }
+        frame.unix_us = *mapped;
+        if (!rtc_anchor_observed_ && frame.timestamp.xu_time_us == *rtc_tset_us_) {
+            rtc_anchor_observed_ = true;
+            DM_LOG_INFO("[camera_recorder][main_rtc_anchor_applied] name={} codec={} tset_us={} pframe_us={}",
+                config_.name, options_.codec, *rtc_tset_us_, frame.timestamp.encoder_pts_us);
+        }
+        return EnqueueCapturedFrame(frame);
+    }
+
+    bool EnqueueCapturedFrame(const ugripper::camera::MainCameraStartupBuffer::Frame& frame) {
+        GstBuffer* buffer = gst_buffer_new_allocate(nullptr, frame.data.size(), nullptr);
+        if (!buffer) {
+            SetFailure("gst_buffer_new_allocate failed for " + config_.name);
+            return false;
+        }
+        GstMapInfo map{};
+        if (!gst_buffer_map(buffer, &map, GST_MAP_WRITE)) {
+            gst_buffer_unref(buffer);
+            SetFailure("gst_buffer_map failed for " + config_.name);
+            return false;
+        }
+        if (options_.codec == "h264") {
+            const auto normalized = ugripper::camera::NormalizeMainCameraH264AccessUnit(
+                frame.data.data(), frame.data.size());
+            std::memcpy(map.data, normalized.data(), normalized.size());
+        } else {
+            std::memcpy(map.data, frame.data.data(), frame.data.size());
+        }
+        gst_buffer_unmap(buffer, &map);
+        if (!first_encoder_pts_us_) {
+            first_encoder_pts_us_ = frame.timestamp.encoder_pts_us;
+            DM_LOG_INFO("[camera_recorder][main_timestamp_source] name={} source=xu2_sei xu_time_us={} encoder_pts_us={} frame_unix_time_us={} tset_us={} pset_us={} startup_backfilled={}",
+                config_.name, frame.timestamp.xu_time_us, frame.timestamp.encoder_pts_us,
+                frame.unix_us, *rtc_tset_us_, *rtc_pset_us_, frame.timestamp.xu_time_us != *rtc_tset_us_);
+        }
+        if (!frame.continuous) {
+            DM_LOG_INFO("[camera_recorder][main_cadence_continuity_reset] name={} codec={}",
+                config_.name, options_.codec);
+        }
+        pending_frames_.push_back({buffer, frame.unix_us,
+            static_cast<int64_t>(frame.timestamp.encoder_pts_us), capture_ordinal_++,
+            frame.continuous, frame.intra, frame.vcl_bytes});
+        return true;
     }
 
     int64_t NominalFrameDurationUs() const {
@@ -2589,7 +2564,8 @@ private:
     bool startup_gate_open_ = false;
     int startup_gate_checked_frames_ = 0;
     int startup_gate_dropped_frames_ = 0;
-    uint64_t startup_gate_max_check_us_ = 0;
+    ugripper::camera::MainCameraStartupBuffer startup_buffer_;
+    unsigned startup_drop_logs_ = 0;
     std::chrono::steady_clock::time_point startup_gate_start_{};
 };
 #else
@@ -4636,6 +4612,7 @@ void ClearCameraRecorderFault(const fs::path& episode_dir) {
 }
 
 bool CameraRecorderManager::Prepare(const std::vector<CameraConfig>& configs, std::vector<std::string>* missing_devices) {
+    options_.session_start_system_time_us = CurrentSystemTimeUs();
     recorders_.clear();
     expected_configs_.clear();
     had_failure_ = false;

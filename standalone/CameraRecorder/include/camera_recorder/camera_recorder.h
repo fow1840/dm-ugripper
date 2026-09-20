@@ -27,6 +27,8 @@ struct Options {
     fs::path output_dir;
     std::string codec;
     int duration_sec = 0;
+    // Shared admission boundary, captured before preparing/opening any camera.
+    int64_t session_start_system_time_us = 0;
     bool dry_run = false;
     bool allow_missing = false;
     bool stereo_daemon = false;
