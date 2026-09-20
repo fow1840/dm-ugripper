@@ -19,12 +19,12 @@ ugripper_log() {
     local payload=""
 
     case "${level^^}" in
-        TRACE) level_short="T" ;;
-        DEBUG) level_short="D" ;;
+        TRACE) return 0 ;;
+        DEBUG) return 0 ;;
         INFO) level_short="I" ;;
         WARN|WARNING) level_short="W" ;;
         ERROR) level_short="E" ;;
-        FATAL|CRITICAL) level_short="F" ;;
+        FATAL|CRITICAL) level_short="E" ;;
         *) return 2 ;;
     esac
     if [ "$level_short" = "E" ] || [ "$level_short" = "F" ]; then

@@ -66,7 +66,13 @@ def normalize_line(raw_line: str) -> str | None:
 
     match = V3_RE.fullmatch(line)
     if match:
-        level = "F" if match.group("level") == "C" else match.group("level")
+        level = match.group("level")
+        if level in ("T", "D"):
+            return None
+        if level == "I" and "[main_50hz_duplicate]" in match.group("payload"):
+            return None
+        if level in ("C", "F"):
+            level = "E"
         return (
             f"[{match.group('ts')}][tid {match.group('tid')}][{level}]"
             f"[{match.group('source')}] {match.group('payload')}"
@@ -79,6 +85,10 @@ def normalize_line(raw_line: str) -> str | None:
     match = AUDIO_RE.fullmatch(line) or SHELL_RE.fullmatch(line)
     if match:
         level = LEVELS[match.group("level").upper()]
+        if level in ("T", "D"):
+            return None
+        if level == "F":
+            level = "E"
         payload = f"[{match.group('component')}] {match.group('payload')}"
         return _new_outer(level, payload)
 

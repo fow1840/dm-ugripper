@@ -2,6 +2,13 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/network_iface_lib.sh"
+. "$SCRIPT_DIR/../scripts/lib/ugripper_shell_common.sh"
+
+log_state() {
+    [ "$*" = "${LAST_LOG_MESSAGE:-}" ] && return 0
+    LAST_LOG_MESSAGE="$*"
+    ugripper_log "network_monitor" "$1" "${@:2}"
+}
 
 UPGRADE_GUARD_FILE="/run/ugripper_installing_from_usb.lock"
 
@@ -20,12 +27,12 @@ arm_monitor() {
     CURRENT_INTERFACE="$iface"
     LAST_STATE="$state"
     MONITOR_ARMED=1
-    echo "Network Monitor armed on $CURRENT_INTERFACE. Baseline State: $LAST_STATE"
+    log_state INFO "Network Monitor armed on $CURRENT_INTERFACE. Baseline State: $LAST_STATE"
 }
 
 # ================= 信号处理 =================
 cleanup() {
-    echo "Network Monitor: Received stop signal. Exiting..."
+    log_state INFO "Network Monitor: Received stop signal. Exiting..."
     exit 0
 }
 trap cleanup SIGTERM SIGINT
@@ -35,9 +42,9 @@ while true; do
     DETECTED_INTERFACE=$(detect_preferred_ethernet_interface 2>/dev/null || true)
     if [ -z "$DETECTED_INTERFACE" ]; then
         if [ "$MONITOR_ARMED" -eq 1 ]; then
-            echo "Warning: no physical ethernet interface detected, keep last iface=$CURRENT_INTERFACE state=$LAST_STATE"
+            log_state WARNING "Warning: no physical ethernet interface detected, keep last iface=$CURRENT_INTERFACE state=$LAST_STATE"
         else
-            echo "Waiting for physical ethernet interface to appear..."
+            log_state INFO "Waiting for physical ethernet interface to appear..."
         fi
         sleep 1
         continue
@@ -46,7 +53,7 @@ while true; do
     CURRENT_STATE=$(read_iface_carrier "$DETECTED_INTERFACE" 2>/dev/null || true)
 
     if [ -z "$CURRENT_STATE" ]; then
-        echo "Warning: interface $DETECTED_INTERFACE carrier not ready, keep last iface=${CURRENT_INTERFACE:-N/A} state=${LAST_STATE:-N/A}"
+        log_state WARNING "Warning: interface $DETECTED_INTERFACE carrier not ready, keep last iface=${CURRENT_INTERFACE:-N/A} state=${LAST_STATE:-N/A}"
         sleep 1
         continue
     fi
@@ -58,7 +65,7 @@ while true; do
     fi
 
     if [ "$CURRENT_INTERFACE" != "$DETECTED_INTERFACE" ]; then
-        echo "Detected ethernet interface switch: ${CURRENT_INTERFACE:-N/A} -> $DETECTED_INTERFACE"
+        log_state INFO "Detected ethernet interface switch: ${CURRENT_INTERFACE:-N/A} -> $DETECTED_INTERFACE"
         arm_monitor "$DETECTED_INTERFACE" "$CURRENT_STATE"
         sleep 1
         continue
@@ -66,7 +73,7 @@ while true; do
 
     if [ "$LAST_STATE" -ne "$CURRENT_STATE" ]; then
         if is_upgrade_in_progress; then
-            echo "[$(date)] Upgrade guard active, skip network edge action on $CURRENT_INTERFACE: ${LAST_STATE} -> ${CURRENT_STATE}"
+            log_state INFO "Upgrade guard active, skip network edge action on $CURRENT_INTERFACE: ${LAST_STATE} -> ${CURRENT_STATE}"
             LAST_STATE="$CURRENT_STATE"
             sleep 1
             continue
@@ -74,13 +81,13 @@ while true; do
 
         # ================= 下降沿：插着 → 拔掉 =================
         if [ "$LAST_STATE" -eq 1 ] && [ "$CURRENT_STATE" -eq 0 ]; then
-            echo "[$(date)] Cable removal detected on $CURRENT_INTERFACE"
+            log_state INFO "Cable removal detected on $CURRENT_INTERFACE"
             # Cable state never changes the recording service lifecycle.
         fi
 
         # ================= 上升沿：拔掉 → 插入 =================
         if [ "$LAST_STATE" -eq 0 ] && [ "$CURRENT_STATE" -eq 1 ]; then
-            echo "[$(date)] Cable insertion detected on $CURRENT_INTERFACE, no action required"
+            log_state INFO "Cable insertion detected on $CURRENT_INTERFACE, no action required"
         fi
 
         LAST_STATE="$CURRENT_STATE"

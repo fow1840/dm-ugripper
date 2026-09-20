@@ -17,6 +17,7 @@ import threading
 import time
 from urllib.parse import urlsplit, parse_qs, quote
 from common import BASE, STATE, DATA, MAX_UPLOAD, Busy, read_json, rpc, operation_lock
+from common import ugripper_log, log_exception
 from telemetry import status
 from encoder_probe import read_encoders, stream_encoders
 
@@ -51,6 +52,14 @@ def add_archive(tar, fd, name):
 
 class Handler(BaseHTTPRequestHandler):
     server_version='UGripper'
+    def log_request(self,code='-',size='-'):
+        # Successful browser polling is not a service event.
+        if isinstance(code,int) and code >= 400:
+            ugripper_log('WARNING', f'HTTP {code} {urlsplit(self.path).path}', component='web')
+    def log_message(self,fmt,*args):
+        ugripper_log('INFO', fmt % args, component='web')
+    def log_error(self,fmt,*args):
+        ugripper_log('ERROR', fmt % args, component='web', error_code='UGR-00-01')
     def setup(self):
         super().setup();self.connection.settimeout(45)
         self.connection.do_handshake()
@@ -129,7 +138,7 @@ class Handler(BaseHTTPRequestHandler):
             if isinstance(exc,(BrokenPipeError,ConnectionResetError,socket.timeout)):return
             self.json({'error':str(exc) if isinstance(exc,ValueError) else '文件或服务暂不可用'},400)
         except Exception:
-            import traceback;traceback.print_exc()
+            log_exception('web')
             self.json({'error':'操作失败，请获取日志'},500)
     def encoder_stream(self):
         # A slow or disconnected consumer cannot keep serial ports indefinitely.
@@ -234,6 +243,8 @@ class Handler(BaseHTTPRequestHandler):
 
 class Server(ThreadingHTTPServer):
     daemon_threads=True
+    def handle_error(self,request,client_address):
+        log_exception('web')
     def __init__(self,*args):self.slots=threading.BoundedSemaphore(8);super().__init__(*args)
     def service_actions(self):
         if time.time()-getattr(self,'last_cleanup',0)<60:return
@@ -255,6 +266,8 @@ class Server(ThreadingHTTPServer):
         finally:self.slots.release()
 
 if __name__=='__main__':
+    from ugripper_logger import install_exception_logging
+    install_exception_logging('web')
     for old in (STATE/'uploads').iterdir(): old.unlink(missing_ok=True)
     CONFIG=read_json('/etc/ugripper-web/config.json')
     # Explicit Ethernet address only, never a wildcard or Wi-Fi listener.

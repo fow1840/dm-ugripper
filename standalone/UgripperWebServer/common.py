@@ -7,6 +7,21 @@ from pathlib import Path
 import socket
 import signal
 import subprocess
+import sys
+import traceback
+
+for _logging_dir in (Path(__file__).resolve().parents[2] / 'scripts/logging',
+                     Path('/usr/local/lib/ugripper/logging')):
+    if (_logging_dir / 'ugripper_logger.py').is_file():
+        sys.path.insert(0, str(_logging_dir))
+        break
+from ugripper_logger import ugripper_log
+
+
+def log_exception(component):
+    ugripper_log('ERROR', traceback.format_exc().replace('error_code=', 'reported_code='), component=component,
+                 error_code='UGR-00-01')
+
 
 BASE = Path(__file__).resolve().parent
 ROOT = Path('/opt/ugripper')

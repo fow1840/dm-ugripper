@@ -17,8 +17,8 @@ LEVELS = {
     "WARN": "W",
     "WARNING": "W",
     "ERROR": "E",
-    "FATAL": "F",
-    "CRITICAL": "F",
+    "FATAL": "E",
+    "CRITICAL": "E",
 }
 
 
@@ -47,6 +47,9 @@ def ugripper_log(
     if short_level in ("E", "F") and error_code is None:
         raise ValueError("ERROR/FATAL logs require an explicit error_code")
 
+    if short_level in ("T", "D"):
+        return
+
     frame = inspect.currentframe()
     for _ in range(stacklevel):
         if frame is not None:
@@ -68,3 +71,18 @@ def ugripper_log(
         if error_code is not None:
             payload = _append_error_code(payload, error_code)
         print(prefix + payload, flush=True)
+
+
+def install_exception_logging(component: str) -> None:
+    """Keep uncaught service/thread exceptions in the same structured stream."""
+    import sys
+    import traceback
+
+    def report(kind, value, tb):
+        if issubclass(kind, KeyboardInterrupt):
+            return
+        ugripper_log("ERROR", "".join(traceback.format_exception(kind, value, tb)).replace("error_code=", "reported_code="),
+                     component=component, error_code="UGR-00-01")
+
+    sys.excepthook = report
+    threading.excepthook = lambda args: report(args.exc_type, args.exc_value, args.exc_traceback)

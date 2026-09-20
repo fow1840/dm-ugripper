@@ -17,6 +17,7 @@
 #include <array>
 #include <atomic>
 #include <cerrno>
+#include <cctype>
 #include <chrono>
 #include <csignal>
 #include <cmath>
@@ -1205,9 +1206,18 @@ protected:
             return;
         }
 
-        if (!PerfLogEnabled() && IsNoisyRecorderLogLine(line)) {
+        std::string lower = line;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        if (ContainsAny(lower, {"error", "failed", "fatal"})) {
+            DM_LOG_ERROR_CODE("UGR-20-05", "[{}] {}", config_.name, line);
             return;
         }
+        if (lower.find("warning") != std::string::npos) {
+            DM_LOG_WARN("[{}] {}", config_.name, line);
+            return;
+        }
+        if (IsNoisyRecorderLogLine(line)) return;
         DM_LOG_INFO("{}", (::DA::utils::LogString() << "[" << config_.name << "] " << line).str());
     }
 
@@ -2009,8 +2019,6 @@ private:
                          pending_frames_[1].encoder_us, pending_frames_[2].encoder_us},
                         {previous_raw_frame_->unix_us, pending_frames_[0].unix_us,
                          pending_frames_[1].unix_us, pending_frames_[2].unix_us});
-                    DM_LOG_INFO("[camera_recorder][main_50hz_duplicate] name={} raw_unix_us={} corrected_unix_us={} next_real_us={} second_real_us={}",
-                                config_.name, pending_frames_[0].unix_us, corrected[0], corrected[1], corrected[2]);
                     for (const auto time : corrected) {
                         if (!PushPendingFrame(time)) return false;
                     }
@@ -2151,7 +2159,8 @@ private:
                 config_.name, frame.timestamp.xu_time_us, frame.timestamp.encoder_pts_us,
                 frame.unix_us, *rtc_tset_us_, *rtc_pset_us_, frame.timestamp.xu_time_us != *rtc_tset_us_);
         }
-        if (!frame.continuous) {
+        if (!frame.continuous && !cadence_reset_logged_) {
+            cadence_reset_logged_ = true;
             DM_LOG_INFO("[camera_recorder][main_cadence_continuity_reset] name={} codec={}",
                 config_.name, options_.codec);
         }
@@ -2189,7 +2198,7 @@ private:
             }
             max_timestamp_adjustment_us_ =
                 std::max(max_timestamp_adjustment_us_, timing.adjustment_us);
-            if (timing.timestamp_rollback || timestamp_clamp_count_ == 1 ||
+            if (timestamp_clamp_count_ == 1 ||
                 (timestamp_clamp_count_ & (timestamp_clamp_count_ - 1)) == 0) {
                 DM_LOG_WARN("{}", (::DA::utils::LogString()
                                      << "[camera_recorder][main_timestamp_clamp]"
@@ -2561,6 +2570,7 @@ private:
     uint64_t timestamp_clamp_count_ = 0;
     uint64_t timestamp_rollback_count_ = 0;
     int64_t max_timestamp_adjustment_us_ = 0;
+    bool cadence_reset_logged_ = false;
     bool startup_gate_open_ = false;
     int startup_gate_checked_frames_ = 0;
     int startup_gate_dropped_frames_ = 0;

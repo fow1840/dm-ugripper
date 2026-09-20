@@ -15,6 +15,7 @@ import threading
 import time
 import uuid
 from common import BASE, ROOT, STATE, RUN, MAX_UPLOAD, ALLOW, Busy, atomic_json, read_json, command, operation_lock
+from common import log_exception
 from production import main_camera_dfu as dfu
 from environment_config import validate_settings, write_settings
 
@@ -273,7 +274,13 @@ class Handler(socketserver.StreamRequestHandler):
         except Exception as exc: response=dict(ok=False,error=str(exc),busy=isinstance(exc,Busy))
         self.wfile.write(json.dumps(response).encode()+b'\n')
 
+class Server(socketserver.ThreadingUnixStreamServer):
+    def handle_error(self,request,client_address):
+        log_exception('maintenance')
+
 if __name__=='__main__':
+    from ugripper_logger import install_exception_logging
+    install_exception_logging('maintenance')
     PRIVATE.mkdir(mode=0o700,exist_ok=True)
     from production_test import recover
     recover()
@@ -292,6 +299,6 @@ if __name__=='__main__':
     for p in PRIVATE.iterdir():
         if p.suffix in ('.img','.hex','.deb'): p.unlink()
     address=RUN/'maintenance.sock';address.unlink(missing_ok=True)
-    with socketserver.ThreadingUnixStreamServer(str(address),Handler) as srv:
+    with Server(str(address),Handler) as srv:
         os.chown(address,0,pwd.getpwnam('ubuntu').pw_gid);os.chmod(address,0o660)
         srv.serve_forever()

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+import contextlib
+import io
+import threading
 import importlib.util
 import re
 import sys
@@ -46,11 +49,39 @@ class LoggingV3Test(unittest.TestCase):
             self.assertIsNotNone(normalized)
             self.assertEqual(self.payload(normalized), expected)
 
-    def test_strips_ansi_and_maps_critical_to_fatal(self):
+    def test_strips_ansi_and_maps_critical_to_error(self):
         raw = "[1784604654.707685][tid 2367]\x1b[91m[C]\x1b[0m[fn 1] fatal error_code=UGR-00-01"
         normalized = writer.normalize_line(raw)
-        self.assertIn("[F][fn 1] fatal error_code=UGR-00-01", normalized)
+        self.assertIn("[E][fn 1] fatal error_code=UGR-00-01", normalized)
         self.assertNotIn("\x1b", normalized)
+
+    def test_production_suppresses_frame_info_but_preserves_errors(self):
+        prefix = "[1784604654.707685][tid 2367]"
+        for level in ("D", "T"):
+            self.assertIsNone(writer.normalize_line(prefix + f"[{level}][fn 1] detail"))
+        self.assertIsNone(writer.normalize_line(prefix + "[I][fn 1] [main_50hz_duplicate] detail"))
+        error = prefix + "[E][fn 1] [main_50hz_duplicate] failed error_code=UGR-20-05"
+        self.assertEqual(writer.normalize_line(error), error)
+        self.assertIsNone(writer.normalize_line("[audio][DEBUG][2026-07-21 11:31:44] detail"))
+
+    def test_service_exception_keeps_traceback_and_one_error_code(self):
+        old_sys, old_thread = sys.excepthook, threading.excepthook
+        output = io.StringIO()
+        try:
+            logger.install_exception_logging("web")
+            with contextlib.redirect_stdout(output):
+                try:
+                    raise RuntimeError("child failed error_code=UGR-20-05")
+                except RuntimeError:
+                    sys.excepthook(*sys.exc_info())
+        finally:
+            sys.excepthook, threading.excepthook = old_sys, old_thread
+        lines = output.getvalue().splitlines()
+        self.assertTrue(lines)
+        for line in lines:
+            self.assertEqual(writer.V3_RE.fullmatch(line).group("level"), "E")
+            self.assertEqual(line.count("error_code="), 1)
+        self.assertIn("child failed", output.getvalue())
 
     def test_suppresses_pygame_banner(self):
         self.assertIsNone(writer.normalize_line(writer.PYGAME_BANNER))

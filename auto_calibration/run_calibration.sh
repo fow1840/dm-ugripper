@@ -3,23 +3,23 @@
 # ================= 脚本初始化 =================
 TARGET_USER="ubuntu"
 
-# 检查是否以 root 运行
-if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root"
-  exit 1
-fi
-
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "$script_dir/../" && pwd)"
 shell_common="$project_root/scripts/lib/ugripper_shell_common.sh"
 
 if [ ! -f "$shell_common" ]; then
-  echo "[calibration][ERROR] missing shell helper: $shell_common"
+  printf '[%s][tid %s][E][main 0] [calibration] missing shell helper: %s error_code=UGR-00-01\n' "$(date '+%s.%6N')" "$BASHPID" "$shell_common"
   exit 1
 fi
 
 # shellcheck source=/dev/null
 . "$shell_common"
+
+# 检查是否以 root 运行
+if [ "$EUID" -ne 0 ]; then
+  ugripper_log "calibration" "ERROR" "UGR-00-01" "Please run as root"
+  exit 1
+fi
 
 log_info() {
   ugripper_log "calibration" "INFO" "$*"

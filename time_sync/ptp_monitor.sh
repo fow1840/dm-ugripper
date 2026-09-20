@@ -1,5 +1,7 @@
 #!/bin/bash
 
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/lib/ugripper_shell_common.sh"
+
 # ================= 配置 =================
 STATUS_FILE="/dev/shm/umi_ptp_status"
 TEMP_FILE="${STATUS_FILE}.tmp"
@@ -13,7 +15,7 @@ chmod 666 "$STATUS_FILE"
 
 # ================= 信号处理 =================
 cleanup() {
-    echo "PTP Monitor: Received stop signal, exiting..."
+    ugripper_log "ptp_monitor" "INFO" "Received stop signal, exiting..."
     # 退出前可以把状态标记为 UNKNOWN
     echo "{\"timestamp\": \"$(date +%s)\", \"state\": \"UNKNOWN\", \"offset\": 0.0, \"path_delay\": 0.0, \"sys_offset\": 0.0}" > "$STATUS_FILE"
     exit 0
