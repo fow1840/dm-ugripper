@@ -199,6 +199,9 @@ write_status() {
     LAST_FINALIZED_EPISODE_DIR="$LAST_FINALIZED_EPISODE_DIR" \
     LAST_FINALIZE_ERROR="$LAST_FINALIZE_ERROR" \
     LAST_SESSION_JSON="$LAST_SESSION_JSON" \
+    LEFT_PID="$LEFT_PID" RIGHT_PID="$RIGHT_PID" \
+    FRAME_STALE_SEC="$FRAME_STALE_SEC" IMU_STALE_SEC="$IMU_STALE_SEC" \
+    DAEMON_STARTED_MS="$DAEMON_STARTED_MS" \
     LEFT_PROCESS_READY="$left_process_ready" \
     RIGHT_PROCESS_READY="$right_process_ready" \
     LEFT_CONFIG="$LEFT_CONFIG" \
@@ -285,6 +288,16 @@ def runtime_state(path):
         root["status"] = "ready"
     return root
 
+# Keep the outage deadline across recorder PID changes, but not daemon restarts
+# (USB restore restarts the daemon). Device absence/remapping starts a new window.
+try:
+    with open(os.environ["STATUS_FILE"], encoding="utf-8") as stream:
+        previous = json.load(stream)
+except (OSError, ValueError):
+    previous = {}
+if previous.get("daemon_started_ms") != os.environ.get("DAEMON_STARTED_MS"):
+    previous = {}
+
 def camera_state(name, process_ready, config_path, calibration, runtime):
     serial = calibration.get("serial_number", "")
     devices = calibration.get("devices", {})
@@ -299,7 +312,32 @@ def camera_state(name, process_ready, config_path, calibration, runtime):
         stereo_online and
         imu_online
     )
-    state = "ready" if ready else "not-ready"
+    now_ns = time.time_ns()
+    now_mono = time.monotonic()
+    side = name.split("_", 1)[0]
+    identity = [os.path.realpath(stereo_path), os.path.realpath(imu_path)]
+    old = previous.get("cameras", {}).get(name, {})
+    def fresh(field, limit):
+        stamp = int(runtime.get(field, 0) or 0)
+        return stamp > 0 and 0 <= now_ns - stamp <= limit * 1e9
+    streams_ready = (
+        runtime.get("valid", False) and runtime.get("running", False) and
+        str(runtime.get("pid", "")) == os.environ.get(side.upper() + "_PID", "") and
+        fresh("status_write_system_ns", 3) and
+        fresh("last_frame_system_ns", float(os.environ["FRAME_STALE_SEC"])) and
+        fresh("last_imu_system_ns", float(os.environ["IMU_STALE_SEC"])))
+    ready = bool(ready and streams_ready)
+    outage_since = 0
+    recovery_pending = False
+    if not ready and stereo_online and imu_online:
+        outage_since = old.get("outage_since_monotonic", 0)
+        if old.get("device_identity") != identity or not outage_since or outage_since > now_mono:
+            outage_since = now_mono
+        # Standby recovery gets 20s total, including SDK startup and local retries.
+        # An active recording must still surface a stale stream immediately.
+        recovery_pending = not as_bool("RECORDING") and now_mono - outage_since < 20
+    state = "ready" if ready else "warmup frame stale"
+
     if process_ready and calibration.get("valid") and serial and not stereo_online:
         state = "stereo-symlink-missing"
     elif process_ready and calibration.get("valid") and serial and not imu_online:
@@ -318,6 +356,9 @@ def camera_state(name, process_ready, config_path, calibration, runtime):
         "state": state,
         "device": config_path,
         "ready": ready,
+        "recovery_pending": recovery_pending,
+        "outage_since_monotonic": outage_since,
+        "device_identity": identity,
         "process_ready": process_ready,
         "session_recording": as_bool("RECORDING"),
         "serial_number": serial,
@@ -386,6 +427,7 @@ root = {
     "last_finalized_episode_dir": os.environ.get("LAST_FINALIZED_EPISODE_DIR", ""),
     "last_finalize_error": os.environ.get("LAST_FINALIZE_ERROR", ""),
     "last_session": last_session,
+    "daemon_started_ms": os.environ.get("DAEMON_STARTED_MS"),
     "ready": ready,
     "service_state": service_state,
     "multi_device_error": multi_device_error,

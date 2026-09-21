@@ -663,3 +663,7 @@ Ego 电量由绑定状态探测读取指定 serial 的 `adb shell dumpsys batter
 主摄从 `VIDIOC_STREAMON` 成功起最多等待 1.5 秒；持续复制码流并立即归还 V4L2 buffer，从最早可解码的干净关键帧缓存连续帧，收到本次 SEI Tset 后按 `本次 Tset + Pframe - 本次 Pset` 回填缓存帧 Unix 时间并按序输出，无需等另一个关键帧或固定睡眠。缓存最多 180 帧/64 MiB 每路；断号、未知解码连续性、encoder PTS 不递增、无效 SEI/buffer 会丢弃候选段并重新等待干净关键帧。使用所有相机 Prepare 前的共同 Unix 时间作为本次相机会话准入下界，拒绝反推后早于该下界的历史帧（此边界晚于 runtime 接收 START，不能补回启动前未采到的画面）；首次新 Tset 后不再接受未知旧锚点。无帧也按总时间超时；超限、超时或停录前仍未就绪明确失败，不输出未确认时间的缓存。首个回填帧作为 PTS=0，原始 SEI 不改、真实 Pframe 间隔保留，正常录制仍沿用逐帧锚点匹配与 10 秒周期校时。`main_startup_gate` 记录等待、缓存/回填/丢弃数量和首帧时间，丢弃仅打印前 3 次。
 
 正常 50Hz 重复帧修正报告 `main_50hz_duplicate` 不输出、不新增统计，修正算法不变。生产日志禁止 TRACE/DEBUG，级别收敛到 I/W/E；主摄连续性诊断每会话最多一次，时间戳修正告警按既有倍增计数限频。Web 成功请求不逐次打印，服务异常使用公共结构化 logger；双目 SDK 原有输出与系统 journal 采集策略不变。
+
+### Fays 无帧恢复状态
+
+双目 ready 同时要求本侧当前 recorder PID 的状态更新、视频与 IMU 时间戳新鲜。待机缺流时给本侧 20 秒总拉流恢复窗口，ready 保持 false、recovery_pending 为 true；上层健康巡检在该窗口内暂缓本侧故障升级，但仍检查其他设备。窗口跨 recorder 重启保持，恢复出帧、设备节点重新映射或 daemon 重启后重新计时。超时仍无帧按现有 ERROR_4 和持续故障确认流程触发 USB restore；已有 restore 进行中、重枚举等待及次数上限仍有效。录制中的断流不使用此待机宽限。

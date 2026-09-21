@@ -619,11 +619,22 @@ std::optional<HealthFault> HealthMonitor::EvaluateHealth() const
             {
                 HardwareFaultSide side = HardwareFaultSide::Unknown;
                 HardwareFaultSide control_failure_side = HardwareFaultSide::Unknown;
+                bool recovery_pending = false;
                 if (stereo_status.contains("cameras") && stereo_status["cameras"].is_object())
                 {
                     const json& cameras = stereo_status["cameras"];
+                    for (const char* name : {"left_stereo", "right_stereo"})
+                    {
+                        if (cameras.contains(name) && cameras[name].is_object() &&
+                            !cameras[name].value("ready", false) &&
+                            cameras[name].value("recovery_pending", false) &&
+                            !stereo_status.value("recording", false))
+                            recovery_pending = true;
+                    }
                     if (cameras.contains("left_stereo") && cameras["left_stereo"].is_object() &&
-                        !cameras["left_stereo"].value("ready", false))
+                        !cameras["left_stereo"].value("ready", false) &&
+                        (!cameras["left_stereo"].value("recovery_pending", false) ||
+                         stereo_status.value("recording", false)))
                     {
                         side = MergeSides(side, HardwareFaultSide::Left);
                         const json& camera = cameras["left_stereo"];
@@ -636,7 +647,9 @@ std::optional<HealthFault> HealthMonitor::EvaluateHealth() const
                         }
                     }
                     if (cameras.contains("right_stereo") && cameras["right_stereo"].is_object() &&
-                        !cameras["right_stereo"].value("ready", false))
+                        !cameras["right_stereo"].value("ready", false) &&
+                        (!cameras["right_stereo"].value("recovery_pending", false) ||
+                         stereo_status.value("recording", false)))
                     {
                         side = MergeSides(side, HardwareFaultSide::Right);
                         const json& camera = cameras["right_stereo"];
@@ -660,12 +673,16 @@ std::optional<HealthFault> HealthMonitor::EvaluateHealth() const
                             StereoControlReconnectHint(control_failure_side),
                     };
                 }
-                return HealthFault{
-                    RuntimeLedState::Error2,
-                    side,
-                    "stereo_not_ready",
-                    "Stereo warmup not ready: " + stereo_status.value("service_state", std::string("unknown")),
-                };
+                // All unready sides may be inside their bounded pull-stream recovery window.
+                if (side != HardwareFaultSide::Unknown || !recovery_pending)
+                {
+                    return HealthFault{
+                        RuntimeLedState::Error2,
+                        side,
+                        "stereo_not_ready",
+                        "Stereo warmup not ready: " + stereo_status.value("service_state", std::string("unknown")),
+                    };
+                }
             }
         }
         catch (const std::exception& ex)

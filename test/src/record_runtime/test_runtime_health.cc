@@ -802,7 +802,8 @@ TEST(HealthMonitorTest, ReportsStereoStatusMissing)
          .stereo_status_file = (temp_dir / "missing_status.json").string(),
          .critical_device_paths = {"/dev/cam0"},
          .poll_interval_ms = 1000,
-         .hmi_active_timeout_ms = 2500},
+         .hmi_active_timeout_ms = 2500,
+         .stereo_startup_grace_ms = 0},
         {.is_disk_writable =
              [](const std::string&) {
                  return true;
@@ -844,7 +845,8 @@ TEST(HealthMonitorTest, ReportsStereoDaemonNotRunning)
          .stereo_status_file = (temp_dir / "stereo_status.json").string(),
          .critical_device_paths = {"/dev/cam0"},
          .poll_interval_ms = 1000,
-         .hmi_active_timeout_ms = 2500},
+         .hmi_active_timeout_ms = 2500,
+         .stereo_startup_grace_ms = 0},
         {.is_disk_writable =
              [](const std::string&) {
                  return true;
@@ -888,7 +890,8 @@ TEST(HealthMonitorTest, ReportsStereoStatusInvalid)
          .stereo_status_file = stereo_status.string(),
          .critical_device_paths = {"/dev/cam0"},
          .poll_interval_ms = 1000,
-         .hmi_active_timeout_ms = 2500},
+         .hmi_active_timeout_ms = 2500,
+         .stereo_startup_grace_ms = 0},
         {.is_disk_writable =
              [](const std::string&) {
                  return true;
@@ -932,7 +935,8 @@ TEST(HealthMonitorTest, ReportsStereoNotReady)
          .stereo_status_file = stereo_status.string(),
          .critical_device_paths = {"/dev/cam0"},
          .poll_interval_ms = 1000,
-         .hmi_active_timeout_ms = 2500},
+         .hmi_active_timeout_ms = 2500,
+         .stereo_startup_grace_ms = 0},
         {.is_disk_writable =
              [](const std::string&) {
                  return true;
@@ -994,7 +998,8 @@ TEST(HealthMonitorTest, ReportsRecognizedFaysControlFailureAsError4)
          .stereo_status_file = stereo_status.string(),
          .critical_device_paths = {"/dev/cam0"},
          .poll_interval_ms = 1000,
-         .hmi_active_timeout_ms = 2500},
+         .hmi_active_timeout_ms = 2500,
+         .stereo_startup_grace_ms = 0},
         {.is_disk_writable =
              [](const std::string&) {
                  return true;
@@ -1029,6 +1034,133 @@ TEST(HealthMonitorTest, ReportsRecognizedFaysControlFailureAsError4)
     fs::remove_all(temp_dir);
 }
 
+TEST(HealthMonitorTest, DoesNotDeferFaysLossDuringRecording)
+{
+    const fs::path temp_dir = MakeTempDir();
+    const fs::path stereo_status = temp_dir / "stereo_status.json";
+    std::ofstream(stereo_status) << R"({
+        "ready": false,
+        "recording": true,
+        "service_state": "not-ready",
+        "cameras": {
+            "left_stereo": {
+                "ready": true,
+                "state": "ready",
+                "stereo_symlink_online": true,
+                "imu_symlink_online": true
+            },
+            "right_stereo": {
+                "ready": false,
+                "state": "warmup frame stale",
+                "recovery_pending": true,
+                "stereo_symlink_online": true,
+                "imu_symlink_online": true
+            }
+        }
+    })";
+
+    HealthMonitor monitor(
+        {.disk_root = temp_dir.string(),
+         .stereo_status_file = stereo_status.string(),
+         .critical_device_paths = {"/dev/cam0"},
+         .poll_interval_ms = 1000,
+         .hmi_active_timeout_ms = 2500,
+         .stereo_startup_grace_ms = 0},
+        {.is_disk_writable =
+             [](const std::string&) {
+                 return true;
+             },
+         .path_exists =
+             [](const std::string&) {
+                 return true;
+             },
+         .get_process_status =
+             [](WorkerName) {
+                 return ProcessStatus{.state = ProcessState::Running, .running = true, .pid = 7};
+             },
+         .get_hmi_health =
+             [](uint64_t) {
+                 return HmiHealthSnapshot{
+                     .has_connected_device = true,
+                     .input_connected = true,
+                     .input_active = true,
+                 };
+             }},
+        &FakeNowMs);
+
+    g_now_ms = 1500;
+    const auto result = monitor.Poll(HealthState{});
+    ASSERT_TRUE(result.checked);
+    ASSERT_TRUE(result.fault.has_value());
+    EXPECT_EQ(result.fault->key, DA::Ugripper::kErrorTypeStereoControlFailed);
+    EXPECT_EQ(result.fault->led_state, RuntimeLedState::Error4);
+    EXPECT_EQ(result.fault->side, HardwareFaultSide::Right);
+    EXPECT_NE(result.fault->detail.find("unplug/replug the right gripper"), std::string::npos);
+
+    fs::remove_all(temp_dir);
+}
+
+TEST(HealthMonitorTest, DefersFaysFaultDuringBoundedStreamRecovery)
+{
+    const fs::path temp_dir = MakeTempDir();
+    const fs::path stereo_status = temp_dir / "stereo_status.json";
+    std::ofstream(stereo_status) << R"({
+        "ready": false,
+        "service_state": "not-ready",
+        "cameras": {
+            "left_stereo": {
+                "ready": true,
+                "state": "ready",
+                "stereo_symlink_online": true,
+                "imu_symlink_online": true
+            },
+            "right_stereo": {
+                "ready": false,
+                "state": "warmup frame stale",
+                "recovery_pending": true,
+                "stereo_symlink_online": true,
+                "imu_symlink_online": true
+            }
+        }
+    })";
+
+    HealthMonitor monitor(
+        {.disk_root = temp_dir.string(),
+         .stereo_status_file = stereo_status.string(),
+         .critical_device_paths = {"/dev/cam0"},
+         .poll_interval_ms = 1000,
+         .hmi_active_timeout_ms = 2500,
+         .stereo_startup_grace_ms = 0},
+        {.is_disk_writable =
+             [](const std::string&) {
+                 return true;
+             },
+         .path_exists =
+             [](const std::string&) {
+                 return true;
+             },
+         .get_process_status =
+             [](WorkerName) {
+                 return ProcessStatus{.state = ProcessState::Running, .running = true, .pid = 7};
+             },
+         .get_hmi_health =
+             [](uint64_t) {
+                 return HmiHealthSnapshot{
+                     .has_connected_device = true,
+                     .input_connected = true,
+                     .input_active = true,
+                 };
+             }},
+        &FakeNowMs);
+
+    g_now_ms = 1500;
+    const auto result = monitor.Poll(HealthState{});
+    ASSERT_TRUE(result.checked);
+    EXPECT_FALSE(result.fault.has_value());
+
+    fs::remove_all(temp_dir);
+}
+
 TEST(HealthMonitorTest, ReportsMissingRecognizedFaysCameraAsError2)
 {
     const fs::path temp_dir = MakeTempDir();
@@ -1057,7 +1189,8 @@ TEST(HealthMonitorTest, ReportsMissingRecognizedFaysCameraAsError2)
          .stereo_status_file = stereo_status.string(),
          .critical_device_paths = {"/dev/cam0"},
          .poll_interval_ms = 1000,
-         .hmi_active_timeout_ms = 2500},
+         .hmi_active_timeout_ms = 2500,
+         .stereo_startup_grace_ms = 0},
         {.is_disk_writable =
              [](const std::string&) {
                  return true;
@@ -1102,7 +1235,8 @@ TEST(HealthMonitorTest, ClassifiesUnknownStereoNotReadyWithoutSideDetails)
          .stereo_status_file = stereo_status.string(),
          .critical_device_paths = {"/dev/cam0"},
          .poll_interval_ms = 1000,
-         .hmi_active_timeout_ms = 2500},
+         .hmi_active_timeout_ms = 2500,
+         .stereo_startup_grace_ms = 0},
         {.is_disk_writable =
              [](const std::string&) {
                  return true;
