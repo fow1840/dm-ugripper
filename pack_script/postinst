@@ -414,6 +414,10 @@ disable_continuous_ntp_services
 systemctl enable "$NTP_SYNC_SERVICE" || true
 systemctl start --no-block "$NTP_SYNC_SERVICE" || echo "Warning: failed to start $NTP_SYNC_SERVICE (will not block install)"
 
+# Bound Ego time service is independent of individual recording sessions.
+systemctl enable ugripper-ego-timesync.service
+systemctl restart --no-block ugripper-ego-timesync.service
+
 # 主应用服务
 systemctl enable "$SERVICE_NAME"
 echo "Starting $SERVICE_NAME after udev triggers completed..."

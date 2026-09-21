@@ -1,0 +1,17 @@
+[Unit]
+Description=UGripper bound Ego continuous USB time source
+After=local-fs.target
+
+[Service]
+Type=simple
+User=ubuntu
+SupplementaryGroups=dialout
+WorkingDirectory=/opt/ugripper
+ExecStart=/opt/ugripper/.venv/bin/python3 /opt/ugripper/bin/UgripperRuntime/ego/ego_time_sync_service.py
+Restart=always
+RestartSec=2
+TimeoutStopSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

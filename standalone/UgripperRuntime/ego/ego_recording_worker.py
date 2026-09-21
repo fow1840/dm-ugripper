@@ -2,6 +2,7 @@
 import argparse
 import fcntl
 import json
+import math
 import os
 import re
 import shlex
@@ -23,7 +24,8 @@ for _logging_dir in (
 from ugripper_logger import ugripper_log
 
 
-PACKAGE = "com.ssnwt.helloxr"
+PACKAGE = "com.ssnwt.helloxr"  # Broadcast action / Java namespace stays unchanged.
+SUPPORTED_PACKAGES = ("com.ssnwt.egoserver", PACKAGE)
 APP_EXTERNAL_ROOT = f"/sdcard/Android/data/{PACKAGE}/files"
 LEGACY_REMOTE_ROOT = f"{APP_EXTERNAL_ROOT}/dataset"
 REMOTE_ROOT_OVERRIDE_ENV = "UGRIPPER_EGO_REMOTE_ROOT"
@@ -184,6 +186,16 @@ def compact_status(payload: dict) -> dict:
 def compact_time_sync(detail: dict) -> dict:
     keys = (
         "status",
+        "mode",
+        "serial",
+        "device_status",
+        "serial_available",
+        "rtt_ms",
+        "updated_at_ms",
+        "good_samples",
+        "result_count",
+        "host_time_ready",
+        "sample_fresh",
         "elapsed_ms",
         "threshold_ms",
         "max_corrections",
@@ -240,6 +252,7 @@ def set_ego_video_codec(adb: Adb, camera_codec: str) -> dict:
             "broadcast",
             "-a",
             f"{PACKAGE}.SET_VIDEO_CODEC",
+            "-p", app_package(adb),
             "--es",
             "codec",
             ego_codec,
@@ -270,6 +283,30 @@ def list_devices(adb: Adb) -> list[str]:
     return devices
 
 
+def app_package(adb: Adb) -> str:
+    value = getattr(adb, "package", None)
+    return value if isinstance(value, str) and value in SUPPORTED_PACKAGES else PACKAGE
+
+
+def select_app(adb: Adb) -> str:
+    """Resolve installed application identity; versionName alone is not unique."""
+    result = adb.run("shell", "pm", "list", "packages", timeout=5)
+    if result.returncode:
+        raise RuntimeError("cannot inspect Ego application packages")
+    installed = set(re.findall(r"^package:(\S+)", result.stdout, re.MULTILINE))
+    candidates = [name for name in SUPPORTED_PACKAGES if name in installed]
+    if len(candidates) > 1:
+        running = [name for name in candidates
+                   if adb.run("shell", "pidof", name, timeout=3).stdout.strip()]
+        if len(running) != 1:
+            raise RuntimeError("multiple Ego applications installed; exactly one must be running")
+        candidates = running
+    if not candidates:
+        raise RuntimeError("no supported Ego application installed")
+    adb.package = candidates[0]
+    return adb.package
+
+
 def get_props(adb: Adb) -> dict:
     props = {}
     for key in SXR_PROPS:
@@ -281,8 +318,15 @@ def get_props(adb: Adb) -> dict:
 def is_ego_device(adb: Adb) -> tuple[bool, dict]:
     props = get_props(adb)
     props_match = all(props.get(key) == value for key, value in SXR_PROPS.items())
-    package_result = adb.run("shell", "pm", "path", PACKAGE, timeout=8)
+    if not props_match:
+        return False, {"serial": adb.serial, "props": props, "props_match": False}
+    try:
+        package = select_app(adb)
+    except RuntimeError as exc:
+        return False, {"serial": adb.serial, "props": props, "props_match": True, "error": str(exc)}
+    package_result = adb.run("shell", "pm", "path", package, timeout=8)
     dataset_roots = list_dataset_roots(adb)
+    adb.app_info = read_app_version(adb)
     detail = {
         "serial": adb.serial,
         "props": props,
@@ -350,9 +394,9 @@ def read_environment_value(key: str) -> str:
 
 
 def read_app_version(adb: Adb) -> dict:
-    detail = {"version_name": "", "features_supported": False}
+    detail = {"version_name": "", "features_supported": False, "package": app_package(adb)}
     try:
-        result = adb.run("shell", "dumpsys", "package", PACKAGE, timeout=5)
+        result = adb.run("shell", "dumpsys", "package", app_package(adb), timeout=5)
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "dumpsys package failed")
         match = re.search(r"^\s*versionName=([^\s]+)", result.stdout, re.MULTILINE)
@@ -382,7 +426,7 @@ def read_firmware_version(adb: Adb) -> dict:
 def app_broadcast(adb: Adb, receiver: str, action: str, *extras: str) -> dict:
     detail = {"status": "failed"}
     try:
-        result = adb.run("shell", "am", "broadcast", "-n", f"{PACKAGE}/.{receiver}",
+        result = adb.run("shell", "am", "broadcast", "-n", f"{app_package(adb)}/{PACKAGE}.{receiver}",
                          "-a", f"{PACKAGE}.{action}", *extras, timeout=5)
         detail.update(returncode=result.returncode, stdout=result.stdout.strip(),
                       stderr=result.stderr.strip())
@@ -591,8 +635,11 @@ def run_probe(args: argparse.Namespace) -> int:
                 except Exception:
                     battery = {}
             status["battery"] = battery
-        if connected and now_ms() - binding.get("versions_checked_at_ms", 0) >= 60000:
+        if connected and (now_ms() - binding.get("versions_checked_at_ms", 0) >= 60000
+                          or previous.get("status") != "connected"
+                          or previous.get("serial") != serial):
             adb = Adb(serial)
+            select_app(adb)
             app = read_app_version(adb)
             firmware = read_firmware_version(adb)
             with binding_state_lock(args.binding_file):
@@ -623,15 +670,17 @@ def list_dataset_roots(adb: Adb) -> list[str]:
     if configured:
         return [configured]
 
-    external_root_q = shell_quote(APP_EXTERNAL_ROOT)
-    fallback_pattern_q = shell_quote(f"{LEGACY_REMOTE_ROOT}/*/data")
-    explicit_roots = [LEGACY_REMOTE_ROOT]
+    external_root = f"/sdcard/Android/data/{app_package(adb)}/files"
+    legacy_root = f"{external_root}/dataset"
+    external_root_q = shell_quote(external_root)
+    fallback_pattern_q = shell_quote(f"{legacy_root}/*/data")
+    explicit_roots = [legacy_root]
     adb_serial = str(getattr(adb, "serial", "") or "")
     if adb_serial:
         explicit_roots.extend(
             (
-                f"{LEGACY_REMOTE_ROOT}/{adb_serial}/data",
-                f"{APP_EXTERNAL_ROOT}/{adb_serial}/data/dataset",
+                f"{legacy_root}/{adb_serial}/data",
+                f"{external_root}/{adb_serial}/data/dataset",
             )
         )
     explicit_root_checks = "".join(
@@ -766,7 +815,64 @@ def summarize_set_time_result(result: dict) -> dict:
     return detail
 
 
+def read_serial_time_sync(adb: Adb) -> dict:
+    """Read the APK's applied-sync status; never set its clock through ADB."""
+    detail = {"status": "error", "mode": "usb_acm", "serial": adb.serial,
+              "threshold_ms": 5.0, "updated_at_ms": now_ms()}
+    port = ""
+    try:
+        forward = adb.run("forward", "tcp:0", "tcp:8080", timeout=3)
+        port = forward.stdout.strip()
+        if forward.returncode or not port.isdigit() or not 0 < int(port) < 65536:
+            port = ""
+            raise RuntimeError("cannot forward Ego time-sync status endpoint")
+        result = subprocess.run(
+            ["curl", "--http0.9", "--fail", "--silent", "--show-error", "--max-time", "2",
+             f"http://127.0.0.1:{port}/api/status/time_sync"],
+            capture_output=True, text=True, timeout=3, check=True)
+        state = json.loads(result.stdout).get("time_sync", {})
+        offset, rtt = state.get("offset_ms"), state.get("rtt_ms")
+        numeric = all(type(v) in (int, float) and math.isfinite(v) for v in (offset, rtt))
+        ok = (state.get("status") == "synced" and state.get("serial_available") is True
+              and numeric and abs(offset) <= 5 and 0 <= rtt <= 10)
+        detail.update(status="ok" if ok else "error", device_status=state.get("status"),
+                      serial_available=state.get("serial_available") is True,
+                      final_offset_ms=offset if numeric else None,
+                      rtt_ms=rtt if numeric else None)
+        if not ok:
+            detail["error"] = "Ego USB time sync is not ready"
+    except Exception as exc:
+        detail["error"] = str(exc)
+    finally:
+        if port:
+            try:
+                adb.run("forward", "--remove", "tcp:" + port, timeout=3)
+            except Exception:
+                pass
+    return detail
+
+
+def continuous_time_sync_status(adb: Adb) -> dict:
+    state = read_status(Path('/dev/shm/ugripper/ego_time_sync.json'))
+    binding = read_status(Path('/dev/shm/ugripper/ego_binding.json'))
+    try:
+        boot_id = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        fresh = 0 <= time.monotonic() - state['updated_monotonic_s'] <= 5
+        sample_fresh = 0 <= time.monotonic() - state['result_monotonic_s'] <= 15
+        valid = (fresh and sample_fresh and state.get('boot_id') == boot_id
+                 and state.get('serial') == adb.serial == binding.get('serial')
+                 and state.get('package') == app_package(adb)
+                 and state.get('status') == 'ok')
+    except (KeyError, TypeError, ValueError, OSError):
+        valid = False
+    return dict(state, status='ok' if valid else 'error', mode='usb_acm',
+                final_offset_ms=state.get('offset_ms'), threshold_ms=5.0,
+                error='' if valid else 'bound Ego continuous time sync is not ready')
+
+
 def sync_ego_time(adb: Adb) -> dict:
+    if app_package(adb) == "com.ssnwt.egoserver":
+        return continuous_time_sync_status(adb)
     started = now_ms()
     threshold_ms = max(0.0, TIME_SYNC_MAX_OFFSET_MS)
     set_ahead_ms = TIME_SYNC_SET_AHEAD_MS
@@ -1398,6 +1504,8 @@ def run_start(args: argparse.Namespace) -> int:
             return 0
 
         status["serial"] = adb.serial
+        app_info = getattr(adb, "app_info", None)
+        status["app"] = app_info if isinstance(app_info, dict) else {"package": app_package(adb)}
         status["time_sync"] = {
             "status": "running",
             "started_at_ms": now_ms(),
@@ -1416,7 +1524,7 @@ def run_start(args: argparse.Namespace) -> int:
                     "error_type": "ego_time_sync_failed",
                     "error": (
                         f"ego time sync failed offset_ms={offset_text} "
-                        f"threshold_ms={TIME_SYNC_MAX_OFFSET_MS:g}"
+                        f"threshold_ms={status['time_sync'].get('threshold_ms', TIME_SYNC_MAX_OFFSET_MS):g}"
                     ),
                     "updated_at_ms": now_ms(),
                 }
@@ -1431,7 +1539,7 @@ def run_start(args: argparse.Namespace) -> int:
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
 
-        result = adb.run("shell", "am", "broadcast", "-a", f"{PACKAGE}.START_RECORDING", timeout=10)
+        result = adb.run("shell", "am", "broadcast", "-a", f"{PACKAGE}.START_RECORDING", "-p", app_package(adb), timeout=10)
         status["start_broadcast_returncode"] = result.returncode
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
@@ -1485,8 +1593,23 @@ def run_start(args: argparse.Namespace) -> int:
         write_status(args.status_file, status)
 
         local_episode_dir = args.episode_dir / "ego"
+        last_sync_sample = None
         while True:
             sync_episode_once(adb, remote_root, remote_episode, local_episode_dir)
+            if app_package(adb) == "com.ssnwt.egoserver":
+                sample = continuous_time_sync_status(adb)
+                sample_id = sample.get("updated_monotonic_s")
+                if sample_id != last_sync_sample:
+                    last_sync_sample = sample_id
+                    quality = status.setdefault("time_sync_quality", {"samples": 0, "unhealthy_samples": 0,
+                                                                       "max_abs_offset_ms": 0.0})
+                    quality["samples"] += 1
+                    quality["unhealthy_samples"] += int(sample.get("status") != "ok")
+                    offset = sample.get("final_offset_ms")
+                    if type(offset) in (int, float) and math.isfinite(offset):
+                        quality["max_abs_offset_ms"] = max(quality["max_abs_offset_ms"], abs(offset))
+                    with (local_episode_dir / "time_sync_samples.jsonl").open("a") as output:
+                        output.write(json.dumps(compact_time_sync(sample)) + "\n")
             status["updated_at_ms"] = now_ms()
             write_status(args.status_file, status)
             time.sleep(args.interval)
@@ -1511,6 +1634,8 @@ def run_stop(args: argparse.Namespace) -> int:
     remote_episode = str(status.get("remote_episode") or "")
     recording_started = bool(remote_episode)
     adb = Adb(serial) if serial else None
+    if adb is not None:
+        adb.package = status.get("app", {}).get("package", PACKAGE)
     stop_attempts = []
     stop_succeeded = False
     last_failure_status = "not_found"
@@ -1536,6 +1661,7 @@ def run_stop(args: argparse.Namespace) -> int:
                         "broadcast",
                         "-a",
                         f"{PACKAGE}.STOP_RECORDING",
+                        "-p", app_package(adb),
                         timeout=10,
                     )
                     detail.update(
@@ -1623,6 +1749,20 @@ def run_stop(args: argparse.Namespace) -> int:
             current_remote = final_episode
             current_exists = True
         else:
+            if app_package(adb) == "com.ssnwt.egoserver":
+                sample = continuous_time_sync_status(adb)
+                sample_id = sample.get("updated_monotonic_s")
+                if sample_id != last_sync_sample:
+                    last_sync_sample = sample_id
+                    quality = status.setdefault("time_sync_quality", {"samples": 0, "unhealthy_samples": 0,
+                                                                       "max_abs_offset_ms": 0.0})
+                    quality["samples"] += 1
+                    quality["unhealthy_samples"] += int(sample.get("status") != "ok")
+                    offset = sample.get("final_offset_ms")
+                    if type(offset) in (int, float) and math.isfinite(offset):
+                        quality["max_abs_offset_ms"] = max(quality["max_abs_offset_ms"], abs(offset))
+                    with (local_episode_dir / "time_sync_samples.jsonl").open("a") as output:
+                        output.write(json.dumps(compact_time_sync(sample)) + "\n")
             status["updated_at_ms"] = now_ms()
             write_status(args.status_file, status)
             time.sleep(args.interval)

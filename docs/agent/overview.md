@@ -649,6 +649,15 @@ I 帧后重复帧识别补充：当帧序号连续、已锁定周期且完整长
 Ego 电量由绑定状态探测读取指定 serial 的 `adb shell dumpsys battery`，有效结果每 10 秒刷新，写入 `ego_binding_status.json.battery`；Web 不调用 ADB，仅在连接有效且电量样本不超过 20 秒时展示百分比和充电状态，否则显示电量不可用。查询失败不改变 Ego 连接判定。
 
 
+### Ego 绑定后持续 USB 校时（2026-09-18）
+
+- `ugripper-ego-timesync.service` 随主包安装启动，独立于每条录制；只打开绑定序列号对应的 `18d1:903b` ACM 串口，2 Mbps，使用厂商 `time-sync-server` 的 24/40 字节协议。独立串口线程响应 NTP 请求、每秒心跳；ADB HTTP 状态检查不阻塞串口。解绑关闭串口，重绑、串口断开及服务重启后重新连接并重新累计健康样本。不修改 Ego USB 属性。
+- 新包 `com.ssnwt.egoserver` 与旧包 `com.ssnwt.helloxr` 可有相同 `versionName=1.0.4`，因此按安装包身份与版本共同识别。双包共存时要求恰好一包运行。数据搜索仅限所选包的 `files`，兼容 `dataset/<SN>/data` 与 `<SN>/data/dataset`；广播 action/Java 类名仍为 `com.ssnwt.helloxr`，目标 package 单独指定。停录使用起录锁定的包和数据目录，不切换到另一包历史数据。
+- 新版起录只读取 `/dev/shm/ugripper/ego_time_sync.json`，不启动同步或通过 ADB 设置时间。要求连续 5 个新交换批次由 APK 确认为 `synced`、offset ≤5 ms、RTT ≤10 ms，服务快照 ≤5秒、有效交换 ≤15秒，且匹配绑定序列号及本次系统启动。当前 APK 不发 RESULT 时以新请求批次加 `/api/status/time_sync` 判定；重复 HTTP 读取不重复累计。旧版无此接口，保留原录制前 ADB 对时以兼容。
+- Umi 保留原待机单次 NTP 机制，不额外启用 chrony。成功后写 root 所有的 `/run/ugripper-time-source.json`，记录 boot ID、Realtime/Monotonic 锚点。Ego 授时始终使用背包当前系统时钟，不依赖该凭据或外网；NTP/PTP 调整系统时间后继续向 Ego 授时，检测到单次时钟跳变 ≥100ms 时重建串口会话并重新累计同步质量。Web 的“已与背包同步”仅代表两者对齐，不代表 UTC 已校准。
+- Web Ego 卡片显示持续同步状态及偏差/RTT，只读后台快照。每条新版 Ego 数据记录 `ego_sync.json.time_sync_quality` 与 `ego/time_sync_samples.jsonl` 的抽样质量，异常样本保留，不修改既有相机/IMU 时间域或历史时间戳。
+- 厂商 APK 当前仍通过 `clock_settime` 校正 CLOCK_REALTIME；持续串口同步不等于平滑 slew。首次大幅校时在录制准入前完成，录制期间仍需检查微小跳变、MCAP/视频单调性及 BOOTTIME 映射漂移；此实现不保证消除起录延迟或提供硬件同步精度。
+
 ### 主摄启动锚点与生产日志
 
 主摄从 `VIDIOC_STREAMON` 成功起最多等待 1.5 秒；持续复制码流并立即归还 V4L2 buffer，从最早可解码的干净关键帧缓存连续帧，收到本次 SEI Tset 后按 `本次 Tset + Pframe - 本次 Pset` 回填缓存帧 Unix 时间并按序输出，无需等另一个关键帧或固定睡眠。缓存最多 180 帧/64 MiB 每路；断号、未知解码连续性、encoder PTS 不递增、无效 SEI/buffer 会丢弃候选段并重新等待干净关键帧。使用所有相机 Prepare 前的共同 Unix 时间作为本次相机会话准入下界，拒绝反推后早于该下界的历史帧（此边界晚于 runtime 接收 START，不能补回启动前未采到的画面）；首次新 Tset 后不再接受未知旧锚点。无帧也按总时间超时；超限、超时或停录前仍未就绪明确失败，不输出未确认时间的缓存。首个回填帧作为 PTS=0，原始 SEI 不改、真实 Pframe 间隔保留，正常录制仍沿用逐帧锚点匹配与 10 秒周期校时。`main_startup_gate` 记录等待、缓存/回填/丢弃数量和首帧时间，丢弃仅打印前 3 次。

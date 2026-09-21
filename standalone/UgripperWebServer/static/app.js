@@ -15,6 +15,7 @@ function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProdu
  const ego=s.ego||{},bound=ego.bound,connected=ego.connected;
  $('#egoStatus').replaceChildren(row('绑定状态',bound===true?'已绑定':bound===false?'未绑定':'未知',bound===true?true:null),row('连接状态',connected===true?'已连接':connected===false?'未连接':bound===false?'未检测（未绑定）':'未知（等待状态更新）',connected===true?true:connected===false?false:null));
  if(ego.bound)$('#egoStatus').append(row('电量',ego.battery?ego.battery.percent+'%'+(ego.battery.charging?' · 充电中':''):'电量不可用',ego.battery?true:null));
+ if(ego.bound){const ts=ego.time_sync,ready=ts?.status==='ok';$('#egoStatus').append(row('时间同步',ready?'已与背包同步':ts?.status==='legacy'?'旧版录制前校时':ts?.status==='disconnected'?'授时连接断开':ts?.status==='error'?'授时异常':'正在与背包同步',ready?true:null));const measured=v=>typeof v==='number'&&Number.isFinite(v)?v.toFixed(3)+' ms':'暂无测量';$('#egoStatus').append(row('与背包偏差',measured(ts?.offset_ms),null),row('往返延迟 RTT',measured(ts?.rtt_ms),null));}
  if(ego.serial)$('#egoStatus').append(row('序列号',ego.serial,null));
  if(ego.bound)for(const [key,label]of [['firmware_version','固件版本'],['software_version','软件版本']])$('#egoStatus').append(row(label,(ego[key]||'未读取')+(ego.connected!==true&&ego[key]?'（缓存）':''),null));
  $('#versions').replaceChildren(...Object.entries(s.versions).map(([k,v])=>row(k,v||'未安装',!!v)));

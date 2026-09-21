@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Raw episode 各传感器对齐到 Unix</title>
+  <desc id="desc">主摄触觉由绝对起点加真实 PTS 换算，本机 sensor 和 Fays 使用 publishTime，Ego 单调时间加 head pose 锚点偏移，统一为 Unix 纳秒后检查和匹配。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#64748b"/></marker>
+    <style>text{font-family:"Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#183047}.title{font-size:28px;font-weight:700}.label{font-size:20px;font-weight:700}.body{font-size:17px}.small{font-size:15px}.arrow{fill:none;stroke:#64748b;stroke-width:2;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1200" height="720" rx="20" fill="#f4f7fb"/>
+  <text x="40" y="51" class="title">Raw episode → 统一 Unix 时间轴</text>
+  <text x="40" y="82" class="body">先恢复每帧 / 每条消息的绝对时刻，再做跨传感器匹配</text>
+  <g stroke="#cddaea" stroke-width="1.5" fill="#fff">
+    <rect x="40" y="115" width="650" height="95" rx="12"/>
+    <rect x="40" y="225" width="650" height="80" rx="12"/>
+    <rect x="40" y="320" width="650" height="110" rx="12"/>
+    <rect x="40" y="445" width="650" height="110" rx="12"/>
+  </g>
+  <text x="60" y="147" class="label">主摄 + 触觉视频</text>
+  <text x="60" y="176" class="body">t_ns = start_offset_us × 1000 + PTS × time_base × 10⁹</text>
+  <text x="60" y="198" class="small">起点已是 Unix；使用落盘真实 PTS，保留 gap</text>
+  <text x="60" y="256" class="label">本机 IMU / Encoder</text>
+  <text x="60" y="285" class="body">t_ns = sensor MCAP 消息头 publishTime</text>
+  <text x="60" y="351" class="label">Fays 双目 + IMU</text>
+  <text x="60" y="381" class="body">双目帧 ↔ c.frameIndex / 顺序 → c.publishTime</text>
+  <text x="60" y="410" class="body">IMU → i.publishTime；不用双目 MKV PTS 推算采集时刻</text>
+  <text x="60" y="476" class="label">可选 Ego：单调时钟消息</text>
+  <text x="60" y="506" class="body">t_ns = publishTime + Δ_ns</text>
+  <text x="60" y="534" class="small">Δ_ns = head_pose 绝对起点 × 1000 − head_pose 首条原始时间</text>
+  <path class="arrow" d="M690 163H735V330H785"/>
+  <path class="arrow" d="M690 265H735"/>
+  <path class="arrow" d="M690 375H735V330"/>
+  <path class="arrow" d="M690 500H735V375"/>
+  <rect x="795" y="220" width="365" height="222" rx="16" fill="#e1f1ee" stroke="#80bcb0" stroke-width="1.5"/>
+  <text x="820" y="260" class="title">Unix 纳秒 t_ns</text>
+  <text x="820" y="298" class="body">① 检查回退 / gap / 覆盖范围</text>
+  <text x="820" y="334" class="body">② 取各流共同时间区间</text>
+  <text x="820" y="370" class="body">③ 最近帧 / 传感器插值</text>
+  <text x="820" y="406" class="body">④ 保存匹配误差与有效性</text>
+  <rect x="40" y="585" width="1120" height="101" rx="12" fill="#fff2d9"/>
+  <text x="60" y="619" class="label">已补偿的数据不再加延迟；已是 Unix 的消息不再加 boot time / Ego 偏移</text>
+  <text x="60" y="650" class="body">需要相对时间时，各流统一减同一个 t0。不要逐路首帧归零，也不要用帧号 / FPS 抹平缺帧。</text>
+  <text x="60" y="675" class="small">时间域一致 ≠ 硬件曝光同步；物理同步精度需用共同事件单独验证。</text>
+</svg>

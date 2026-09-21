@@ -22,6 +22,78 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(WORKER)
 
 
+class EgoPackageTests(unittest.TestCase):
+    def test_unrelated_android_device_does_not_abort_discovery(self):
+        adb = mock.Mock(serial="phone")
+        with mock.patch.object(WORKER, "get_props", return_value={}), \
+             mock.patch.object(WORKER, "select_app") as select:
+            self.assertFalse(WORKER.is_ego_device(adb)[0])
+            select.assert_not_called()
+        with mock.patch.object(WORKER, "get_props", return_value=WORKER.SXR_PROPS), \
+             mock.patch.object(WORKER, "select_app", side_effect=RuntimeError("missing app")):
+            self.assertFalse(WORKER.is_ego_device(adb)[0])
+
+    def test_new_and_legacy_package_with_same_version(self):
+        for package in WORKER.SUPPORTED_PACKAGES:
+            adb = mock.Mock(serial="test-serial")
+            adb.run.return_value = subprocess.CompletedProcess([], 0, f"package:{package}\n", "")
+            self.assertEqual(WORKER.select_app(adb), package)
+            adb.run.return_value = subprocess.CompletedProcess([], 0, "versionName=1.0.4\n", "")
+            self.assertEqual(WORKER.read_app_version(adb)["package"], package)
+            adb.run.return_value = subprocess.CompletedProcess([], 0, "", "")
+            WORKER.list_dataset_roots(adb)
+            command = adb.run.call_args.args[1]
+            self.assertIn(f"/Android/data/{package}/files", command)
+            other = next(p for p in WORKER.SUPPORTED_PACKAGES if p != package)
+            self.assertNotIn(f"/Android/data/{other}/files", command)
+
+    def test_ambiguous_apps_rejected(self):
+        adb = mock.Mock()
+        adb.run.side_effect = [subprocess.CompletedProcess([], 0,
+            "\n".join("package:" + p for p in WORKER.SUPPORTED_PACKAGES), ""),
+            subprocess.CompletedProcess([], 0, "10", ""),
+            subprocess.CompletedProcess([], 0, "20", "")]
+        with self.assertRaisesRegex(RuntimeError, "multiple Ego"):
+            WORKER.select_app(adb)
+
+    def test_new_package_keeps_legacy_action_and_class(self):
+        adb = mock.Mock(package="com.ssnwt.egoserver")
+        adb.run.return_value = subprocess.CompletedProcess([], 0,
+            'Broadcast completed: result=-1, data="{}"', '')
+        WORKER.app_broadcast(adb, "SpeechCommandReceiver", "SPEECH_STATUS")
+        args = adb.run.call_args.args
+        self.assertIn("com.ssnwt.egoserver/com.ssnwt.helloxr.SpeechCommandReceiver", args)
+        self.assertIn("com.ssnwt.helloxr.SPEECH_STATUS", args)
+
+
+class EgoSerialSyncTests(unittest.TestCase):
+    def test_status_gate_and_forward_cleanup(self):
+        for state, available, offset, rtt, expected in [
+                ("synced", True, .2, .3, "ok"),
+                ("measured_only", True, .2, .3, "error"),
+                ("synced", False, .2, .3, "error"),
+                ("synced", True, 6, .3, "error"),
+                ("synced", True, float("nan"), .3, "error"),
+                ("synced", True, .2, 20, "error")]:
+            adb = mock.Mock(serial="ego", package="com.ssnwt.egoserver")
+            adb.run.return_value = subprocess.CompletedProcess([], 0, "18099\n", "")
+            payload = {"time_sync": dict(status=state, serial_available=available,
+                                         offset_ms=offset, rtt_ms=rtt)}
+            with mock.patch.object(WORKER.subprocess, "run", return_value=
+                    subprocess.CompletedProcess([], 0, json.dumps(payload), "")), \
+                 mock.patch.object(WORKER, "set_remote_time_ms") as set_time:
+                self.assertEqual(WORKER.read_serial_time_sync(adb)["status"], expected)
+                set_time.assert_not_called()
+            self.assertEqual(adb.run.call_args.args, ("forward", "--remove", "tcp:18099"))
+
+    def test_http_failure_releases_only_owned_forward(self):
+        adb = mock.Mock(serial="ego", package="com.ssnwt.egoserver")
+        adb.run.return_value = subprocess.CompletedProcess([], 0, "18099\n", "")
+        with mock.patch.object(WORKER.subprocess, "run", side_effect=subprocess.TimeoutExpired("curl", 3)):
+            self.assertEqual(WORKER.read_serial_time_sync(adb)["status"], "error")
+        self.assertEqual(adb.run.call_args.args, ("forward", "--remove", "tcp:18099"))
+
+
 class BatteryTests(unittest.TestCase):
     def test_battery_values_and_invalid_responses(self):
         adb = mock.Mock()

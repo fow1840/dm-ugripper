@@ -178,7 +178,7 @@ def capture_ego(output):
     # START can have reached the device even if ADB times out: always attempt STOP.
     try:
         ego.set_ego_video_codec(adb, read_settings().get('CAMERA_CODEC') or 'h265')
-        adb.run('shell', 'am', 'broadcast', '-a', f'{ego.PACKAGE}.START_RECORDING', check=True)
+        adb.run('shell', 'am', 'broadcast', '-a', f'{ego.PACKAGE}.START_RECORDING', '-p', ego.app_package(adb), check=True)
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             candidates = ego.find_new_temp_episodes(adb, previous)
@@ -197,7 +197,7 @@ def capture_ego(output):
         stopped = False
         for attempt in range(3):
             try:
-                adb.run('shell', 'am', 'broadcast', '-a', f'{ego.PACKAGE}.STOP_RECORDING', check=True)
+                adb.run('shell', 'am', 'broadcast', '-a', f'{ego.PACKAGE}.STOP_RECORDING', '-p', ego.app_package(adb), check=True)
                 stopped = True
                 break
             except Exception:

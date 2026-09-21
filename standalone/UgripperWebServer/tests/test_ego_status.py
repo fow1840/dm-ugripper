@@ -24,6 +24,18 @@ class EgoStatusTests(unittest.TestCase):
                     battery=dict(percent=percent, updated_at_ms=stamp, charging=True))))
                 self.assertEqual('battery' in ego_status(root, 100000), valid)
 
+    def test_sync_requires_matching_fresh_connection(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'ego_binding.json').write_text(json.dumps({'serial': 'ego'}))
+            (root / 'ego_binding_status.json').write_text(json.dumps(dict(
+                status='connected', serial='ego', updated_at_ms=100000)))
+            for serial, stamp, valid in [('ego', 100000, True), ('other', 100000, False),
+                                         ('ego', 94999, False), ('ego', 100001, False)]:
+                (root / 'ego_time_sync.json').write_text(json.dumps(dict(status='ok', serial=serial,
+                    updated_at_ms=stamp, mode='usb_acm', offset_ms=.1, rtt_ms=.2)))
+                self.assertEqual('time_sync' in ego_status(root, 100000), valid)
+
     def test_binding_is_authoritative_and_probe_must_be_current(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

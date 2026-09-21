@@ -52,6 +52,12 @@ def ego_status(runtime=RUNTIME, now_ms=None):
         if (type(percent) is int and 0 <= percent <= 100
                 and type(stamp) in (int, float) and 0 <= now - stamp <= 20000):
             result['battery'] = dict(percent=percent, charging=battery.get('charging') is True)
+    sync = _read(runtime / 'ego_time_sync.json') or {}
+    stamp = sync.get('updated_at_ms')
+    if (result['connected'] is True and sync.get('serial') == serial
+            and type(stamp) in (int, float) and 0 <= now - stamp <= 5000):
+        result['time_sync'] = {key: sync.get(key) for key in
+            ('status', 'mode', 'offset_ms', 'rtt_ms', 'updated_at_ms')}
     return result
 
 

@@ -234,6 +234,21 @@ sync_time_with_timedatectl() {
     done
 }
 
+publish_time_source() {
+    # /run is cleared at boot. Consumers also compare boot ID and monotonic age.
+    /usr/bin/python3 - <<'PYMARK'
+import json, os, time
+from pathlib import Path
+path = Path('/run/ugripper-time-source.json')
+tmp = path.with_suffix('.tmp')
+tmp.write_text(json.dumps(dict(status='ok',
+    boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+    realtime_s=time.time(), monotonic_s=time.monotonic())))
+os.chmod(tmp, 0o644)
+os.replace(tmp, path)
+PYMARK
+}
+
 log "Service started (Backend: one-shot sntp, fallback timedatectl)."
 
 stop_continuous_ntp_services
@@ -253,10 +268,13 @@ fi
 log "System IDLE. Running one-shot time sync..."
 
 if sync_time_with_sntp; then
+    publish_time_source
     log "Time sync SUCCESS."
 elif sync_time_with_ntpd; then
+    publish_time_source
     log "Time sync SUCCESS."
 elif sync_time_with_timedatectl; then
+    publish_time_source
     log "Time sync SUCCESS."
 else
     log "Time sync FAILED (no usable one-shot backend or all servers failed)."

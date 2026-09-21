@@ -557,6 +557,7 @@ echo "--> .venv sync: ${VENV_DURATION}s"
 
 echo "=== [4/5] 处理配置脚本与变量替换 ==="
 # 1. 拷贝 Systemd Service
+copy_if_exists "$PACK_SCRIPT_DIR/ugripper-ego-timesync.service" "$BUILD_ROOT/etc/systemd/system/ugripper-ego-timesync.service"
 copy_if_exists "$PACK_SCRIPT_DIR/ugripper.service" "$BUILD_ROOT/etc/systemd/system/${APP_NAME}.service"
 copy_if_exists "auto_calibration/ugripper-calibration.service" "$BUILD_ROOT/etc/systemd/system/ugripper-calibration.service"
 copy_if_exists "auto_calibration/ugripper-network-monitor.service" "$BUILD_ROOT/etc/systemd/system/ugripper-network-monitor.service"

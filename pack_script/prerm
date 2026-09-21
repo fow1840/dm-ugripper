@@ -65,6 +65,7 @@ if [ ! -e /run/ugripper-web/self-installing ] && [ -e /run/ugripper/maintenance.
     fi
 fi
 # Stop old HTTP code on every reinstall, but never terminate its in-flight installer.
+systemctl stop ugripper-ego-timesync.service || true
 systemctl stop ugripper-webserver.service || true
 if [ ! -e /run/ugripper-web/self-installing ]; then
     systemctl stop ugripper-maintenance.service || true
@@ -88,6 +89,7 @@ force_cleanup_recording_processes
 systemctl disable "$SERVICE_NAME" || true
 systemctl disable "$NETWORK_MONITOR_SERVICE" || true
 systemctl disable "$NTP_SYNC_SERVICE" || true
+systemctl disable ugripper-ego-timesync.service || true
 systemctl disable --now "$SHUTDOWN_TRIGGER_PATH" || true
 systemctl stop "$SHUTDOWN_TRIGGER_SERVICE" || true
 # --------------------------------------------------
