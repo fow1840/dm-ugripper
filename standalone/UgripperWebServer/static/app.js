@@ -3,7 +3,7 @@ const $=s=>document.querySelector(s);let fileOffset=0,directory='',current='over
 function el(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
 function message(text=''){$('#message').textContent=text}
 async function api(url,options={}){const r=await fetch(url,options);let value=await r.json();if(!r.ok){throw Error(value.error||'请求失败')}return value}
-function post(url,value){return api(url,{method:'POST',headers:{'Content-Type':'application/json','X-UGripper-Request':'1'},body:JSON.stringify(value)})}
+function post(url,value,password){const headers={'Content-Type':'application/json','X-UGripper-Request':'1'};if(password)headers['X-UGripper-Maintenance-Password']=password;return api(url,{method:'POST',headers,body:JSON.stringify(value)})}
 function bytes(n){return (n/1024**3).toFixed(1)+' GiB'}
 function metric(label,value,detail){const p=el('article',undefined,'panel metric');p.append(el('p',label,'muted'),el('div',value,'value'),el('p',detail,'muted'));return p}
 function row(label,value,good){const d=el('div',undefined,'device');d.append(el('span',label),el('span',value,'state '+(good===null?'':good?'good':'bad')));return d}
@@ -37,23 +37,39 @@ $('#previousFiles').onclick=()=>{fileOffset=Math.max(0,fileOffset-200);loadFiles
 $('#parent').onclick=()=>{directory=directory.split('/').slice(0,-1).join('/');fileOffset=0;loadFiles()};
 function startDownload(url){if(busy){message('录制或维护进行中，请稍后下载');return}window.location.assign(url);message('下载开始后请等待完成，期间无法录制。')}
 $('#logs').onclick=()=>startDownload('/api/v1/logs');
-function confirmAction(text,fixture=false){$('#confirmText').textContent=text;$('#fixtureLabel').hidden=!fixture;$('#fixture').checked=false;$('#confirmDialog').showModal();return new Promise(resolve=>{$('#cancelConfirm').onclick=()=>{$('#confirmDialog').close();resolve(false)};$('#acceptConfirm').onclick=()=>{if(fixture&&!$('#fixture').checked)return;$('#confirmDialog').close();resolve(true)};$('#confirmDialog').oncancel=()=>resolve(false)})}
-function upload(file){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('POST','/api/v1/upload');x.setRequestHeader('X-UGripper-Request','1');x.upload.onprogress=e=>{$('#progress').value=e.loaded/e.total*100;$('#taskText').textContent='正在上传 '+Math.round(e.loaded/e.total*100)+'%'};x.onload=()=>{try{const v=JSON.parse(x.responseText);x.status===201?resolve(v):reject(Error(v.error||'上传失败'))}catch(e){reject(e)}};x.onerror=()=>reject(Error('上传连接中断'));x.send(file)})}
+function confirmAction(text,fixture=false,protectedOperation=false){
+ $('#confirmText').textContent=text;$('#fixtureLabel').hidden=!fixture;$('#fixture').checked=false;
+ $('#maintenancePasswordLabel').hidden=!protectedOperation;$('#maintenancePassword').value='';$('#confirmError').textContent='';
+ $('#confirmDialog').showModal();if(protectedOperation)$('#maintenancePassword').focus();
+ return new Promise(resolve=>{
+  const finish=value=>{$('#maintenancePassword').value='';$('#confirmDialog').close();resolve(value)};
+  $('#cancelConfirm').onclick=()=>finish(false);
+  $('#acceptConfirm').onclick=()=>{
+   if(fixture&&!$('#fixture').checked){$('#confirmError').textContent='请先确认已安装指定标零治具';return}
+   const password=$('#maintenancePassword').value;
+   if(protectedOperation&&!password){$('#confirmError').textContent='请输入维护密码';$('#maintenancePassword').focus();return}
+   finish(protectedOperation?password:true);
+  };
+  $('#maintenancePassword').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();$('#acceptConfirm').click()}};
+  $('#confirmDialog').oncancel=event=>{event.preventDefault();finish(false)};
+ });
+}
+function upload(file,password){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('POST','/api/v1/upload');x.setRequestHeader('X-UGripper-Request','1');x.setRequestHeader('X-UGripper-Maintenance-Password',password);x.upload.onprogress=e=>{$('#progress').value=e.loaded/e.total*100;$('#taskText').textContent='正在上传 '+Math.round(e.loaded/e.total*100)+'%'};x.onload=()=>{try{const v=JSON.parse(x.responseText);x.status===201?resolve(v):reject(Error(v.error||'上传失败'))}catch(e){reject(e)}};x.onerror=()=>reject(Error('上传连接中断'));x.send(file)})}
 $('#firmwareKind').onchange=()=>{$('#firmwareFile').accept=$('#firmwareKind').value==='main_camera'?'.img':'.hex';$('#firmwareFile').value=''};
-for(const form of document.querySelectorAll('.upgradeForm'))form.onsubmit=async e=>{e.preventDefault();const kind=form.dataset.kind||$('#firmwareKind').value,file=form.querySelector('input[type=file]').files[0];if(!file||file.size>=200*1024**2||!file.size){message('请选择小于 200 MiB 的文件');return}if(busy){message('录制或维护进行中');return}if(!await confirmAction('确认使用 '+file.name+' 执行'+(kind==='software'?'软件覆盖安装':'左右两侧固件升级')+'？过程中请勿断电或拔插设备。'))return;form.querySelector('button').disabled=true;uploading=true;$('#taskPanel').hidden=false;try{const u=await upload(file);await post('/api/v1/execute',{kind,upload:u.upload,confirm:true,force:kind==='main_camera'&&$('#forceFlash').checked});message();form.reset()}catch(e){message(e.message)}finally{uploading=false;form.querySelector('button').disabled=false;refresh()}};
+for(const form of document.querySelectorAll('.upgradeForm'))form.onsubmit=async e=>{e.preventDefault();const kind=form.dataset.kind||$('#firmwareKind').value,file=form.querySelector('input[type=file]').files[0];if(!file||file.size>=200*1024**2||!file.size){message('请选择小于 200 MiB 的文件');return}if(busy){message('录制或维护进行中');return}const password=await confirmAction('确认使用 '+file.name+' 执行'+(kind==='software'?'软件覆盖安装':'左右两侧固件升级')+'？过程中请勿断电或拔插设备。',false,true);if(!password)return;form.querySelector('button').disabled=true;uploading=true;$('#taskPanel').hidden=false;try{const u=await upload(file,password);await post('/api/v1/execute',{kind,upload:u.upload,confirm:true,force:kind==='main_camera'&&$('#forceFlash').checked},password);message();form.reset()}catch(e){message(e.message)}finally{uploading=false;form.querySelector('button').disabled=false;refresh()}};
 for(const button of document.querySelectorAll('[data-zero-side]'))button.onclick=async()=>{
  const side=button.dataset.zeroSide,label=side==='left'?'左':'右';
  if(busy){message('录制或维护进行中');return}
- if(!await confirmAction('此操作会覆盖'+label+'编码器零位，错误操作会导致测量偏差。必须使用指定标零治具。确认仅对'+label+'侧执行？',true))return;
- try{await post('/api/v1/execute',{kind:'zeroing',side,confirm:true,fixture:'FIXTURE_READY'});message();refresh()}catch(e){message(e.message)}
+ const password=await confirmAction('此操作会覆盖'+label+'编码器零位，错误操作会导致测量偏差。必须使用指定标零治具。确认仅对'+label+'侧执行？',true,true);if(!password)return;
+ try{await post('/api/v1/execute',{kind:'zeroing',side,confirm:true,fixture:'FIXTURE_READY'},password);message();refresh()}catch(e){message(e.message)}
 };
 $('#configurationForm').onchange=()=>{settingsDirty=true};
 $('#configurationForm').onsubmit=async e=>{
  e.preventDefault();const form=e.currentTarget;if(busy){message('录制或维护进行中');return}
  const settings=Object.fromEntries(new FormData(form));
- if(!await confirmAction('警告：修改设备参数将影响录制，并重启数采服务。请确认以下设置：\n'+Object.entries(settings).map(([k,v])=>k+' = '+v).join('\n')))return;
+ const password=await confirmAction('警告：修改设备参数将影响录制，并重启数采服务。请确认以下设置：\n'+Object.entries(settings).map(([k,v])=>k+' = '+v).join('\n'),false,true);if(!password)return;
  const button=form.querySelector('button');button.disabled=true;
- try{await post('/api/v1/execute',{kind:'configuration',settings,confirm:true});message('配置任务已提交，应用结果见任务进度。');settingsDirty=false;}catch(e){message(e.message)}finally{button.disabled=false;refresh()}
+ try{await post('/api/v1/execute',{kind:'configuration',settings,confirm:true},password);message('配置任务已提交，应用结果见任务进度。');settingsDirty=false;}catch(e){message(e.message)}finally{button.disabled=false;refresh()}
 };
 refresh();setInterval(refresh,3000);
 

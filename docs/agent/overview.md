@@ -22,8 +22,9 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - 主服务：`pack_script/ugripper.service`
 - 主入口：`/opt/ugripper/run_record.sh`
 - 主运行时：`/opt/ugripper/bin/UgripperRuntime/UgripperRuntime`
-- 独立维护 Web 服务：`standalone/UgripperWebServer/` 提供 HTTPS 客户页面，接网线即可免登录访问（无账号、密码或会话），维护写请求保留跨站防护与操作确认，默认绑定以太网 `192.168.2.240:8080`，独立 `ugripper-webserver.service`（ubuntu）与 `ugripper-maintenance.service`（本地 root worker）。设备状态、日志下载、数据浏览/下载、白名单软件升级、左右主摄/夹爪固件升级、治具确认后的左右独立编码器标零通过受控 API 提供。主摄 iSerial 与夹爪固件版本按左右展示，由 UGripper 维护 `/dev/shm/ugripper/firmware_status.json`，Web 仅读取快照，概览左右设备标题后显示各自夹爪 SN（由已有身份缓存写入快照，断连或过期显示 —）；夹爪复用 HMI 驱动在空闲时读取，启动/重连自动刷新，失败每 30 秒重试且每次连接最多 3 次，录制期间不查询；配置页支持空闲时查看左右编码器原始计数、角度与弧度；每次位置查询在录制/维护共享锁内打开并关闭串口，只发送 Modbus 读命令，支持 1Mbps/115200 且不改设备配置。四个环境参数（语言、编码、胸部主摄开关、电源频率）提供下拉配置，确认后由 root 专用 helper 限定写入 `/etc/environment` 并重启数采。录制与维护/下载共用 `/run/ugripper/maintenance.lock` 原子锁，持有到各自收尾结束；主摄升级固定调用包内 dfu-util。配置及测试说明见 `standalone/UgripperWebServer/README.md`。
+- 独立维护 Web 服务：`standalone/UgripperWebServer/` 提供 HTTPS 客户页面，接网线即可免登录访问（无登录账号或会话，升级、参数保存及标零逐次校验密码），维护写请求保留跨站防护与操作确认，默认绑定以太网 `192.168.2.240:8080`，独立 `ugripper-webserver.service`（ubuntu）与 `ugripper-maintenance.service`（本地 root worker）。设备状态、日志下载、数据浏览/下载、白名单软件升级、左右主摄/夹爪固件升级、治具确认后的左右独立编码器标零通过受控 API 提供。主摄 iSerial 与夹爪固件版本按左右展示，由 UGripper 维护 `/dev/shm/ugripper/firmware_status.json`，Web 仅读取快照，概览左右设备标题后显示各自夹爪 SN（由已有身份缓存写入快照，断连或过期显示 —）；夹爪复用 HMI 驱动在空闲时读取，启动/重连自动刷新，失败每 30 秒重试且每次连接最多 3 次，录制期间不查询；配置页支持空闲时查看左右编码器原始计数、角度与弧度；每次位置查询在录制/维护共享锁内打开并关闭串口，只发送 Modbus 读命令，支持 1Mbps/115200 且不改设备配置。四个环境参数（语言、编码、胸部主摄开关、电源频率）提供下拉配置，确认后由 root 专用 helper 限定写入 `/etc/environment` 并重启数采。录制与维护/下载共用 `/run/ugripper/maintenance.lock` 原子锁，持有到各自收尾结束；主摄升级固定调用包内 dfu-util。配置及测试说明见 `standalone/UgripperWebServer/README.md`。
 - Web 配置页时间同步测试：可配置每组录制 1–3600 秒、1–100 组、毫秒表延迟 0 秒起且小于录制时长（默认 100 秒/1 组/延迟 2 秒）。复用包内毫秒表脚本，经 root worker 自动控制 GPIO139，每组前后高电平清零 5 秒，START/STOP 与 GPIO 实测边界写入 episode 的 `stopwatch_timing.json`；与生产压测/维护/下载互斥，断开网页继续执行，取消等待收尾，中断不自动续跑。采集完成不代表已通过光学同步标定。
+- Web 修改性维护操作（软件/固件上传升级、设备参数保存、编码器标零）逐次要求维护密码，服务端先校验再接收上传或派发维护；不在浏览器保存密码，不传入任务状态。页面访问、状态/下载/抓图/检测/编码器读取及自动测试仍免登录；触觉基线重置只需弹框确认，无需密码；原有治具与互斥约束保留。
 - 数据目录：`/mnt/data_disk/<device_sn_lower>/data`
 - 持久化标定目录：`/etc/ugripper/config/calibration`
 - 日志目录：`/var/log/ugripper`
@@ -667,6 +668,10 @@ Ego 电量由绑定状态探测读取指定 serial 的 `adb shell dumpsys batter
 ### Fays 无帧恢复状态
 
 双目 ready 同时要求本侧当前 recorder PID 的状态更新、视频与 IMU 时间戳新鲜。待机缺流时给本侧 20 秒总拉流恢复窗口，ready 保持 false、recovery_pending 为 true；上层健康巡检在该窗口内暂缓本侧故障升级，但仍检查其他设备。窗口跨 recorder 重启保持，恢复出帧、设备节点重新映射或 daemon 重启后重新计时。超时仍无帧按现有 ERROR_4 和持续故障确认流程触发 USB restore；已有 restore 进行中、重枚举等待及次数上限仍有效。录制中的断流不使用此待机宽限。
+
+Ego 全局播报语言随 `/etc/environment` 的 `UGRIPPER_LANG` 同步：绑定/重连和语言变更后由状态巡检发送 SET_PROMPT_LANGUAGE，读取应用偏好文件确认；失败每 10 秒重试，成功每 60 秒复核。新旧包名均按实际应用选择，单条 SPEECH_PLAY 继续显式携带当前语言。
+
+Ego 防闪烁同样随 `UGRIPPER_POWER_LINE_FREQUENCY` 同步：50/60 Hz 对应 `persist.sys.static.exp.enable=1/2`，缺省或无效配置按 50 Hz；绑定、重连、参数变更时同步，getprop 读回确认，失败 10 秒重试、成功 60 秒复核，值一致时不重复写入。
 
 Ego 绑定状态探测会同步背包的 `UGRIPPER_LANG` 与 `UGRIPPER_POWER_LINE_FREQUENCY`，分别读回应用偏好与系统属性确认。重连或配置变化立即重试，成功后每 60 秒复核，失败后每 10 秒重试；结果写入绑定状态快照的 `prompt_language` 与 `power_line_frequency`。
 

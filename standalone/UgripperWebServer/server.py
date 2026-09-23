@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Password-free Ethernet HTTPS interface. Privileged actions use a local worker."""
+"""Login-free Ethernet HTTPS interface with per-operation maintenance protection."""
 import contextlib
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,6 +22,7 @@ from telemetry import status
 from encoder_probe import read_encoders, stream_encoders
 
 CONFIG={}
+MAINTENANCE_PASSWORD_SHA256='6d809b4f1a434d31097ae94f22991f7e8bcb93b116e92f031292f59f9b800d63'
 
 def open_data(relative):
     """Walk a mounted data root using openat; never follow a path symlink."""
@@ -97,9 +98,17 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get('X-UGripper-Request')!='1':return self.json({'error':'请求校验失败'},403)
             origin=self.headers.get('Origin')
             if origin and origin!='https://'+self.headers.get('Host',''):return self.json({'error':'请求来源错误'},403)
+            if path in ('/api/v1/upload','/api/v1/execute'):
+                password=self.headers.get('X-UGripper-Maintenance-Password','')
+                digest=hashlib.sha256(password.encode('utf-8')).hexdigest()
+                if not secrets.compare_digest(digest,MAINTENANCE_PASSWORD_SHA256):
+                    # Reject before reading uploads or dispatching any worker action.
+                    self.close_connection=True
+                    return self.json({'error':'维护密码错误，请重新输入'},403)
             if path=='/api/v1/upload':return self.upload()
             size=self.body(4096);body=json.loads(self.rfile.read(size))
             if path=='/api/v1/tactile/reset':
+                if body.get('confirm') is not True:raise ValueError('请确认盖板正常且无接触')
                 return self.json(rpc(dict(body,action='tactile_reset')))
             if path=='/api/v1/snapshot':
                 return self.json(rpc(dict(action='snapshot',kind=body.get('kind'))),202)

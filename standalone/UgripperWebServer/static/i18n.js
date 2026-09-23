@@ -1,6 +1,7 @@
 'use strict';
 // Preserve source text per node so temporary language switches never alter settings.
 const translations={
+'维护密码':'Maintenance password','请向设备管理员获取维护密码；每次操作均需输入。':'Ask the device administrator for the maintenance password. Enter it for each operation.','请输入维护密码':'Enter the maintenance password','维护密码错误，请重新输入':'Incorrect maintenance password; enter it again','请先确认已安装指定标零治具':'Confirm that the specified zero-calibration fixture is installed first',
 '已与背包同步':'Synchronized with backpack','授时连接断开':'Time sync disconnected','授时异常':'Time sync error','正在与背包同步':'Synchronizing with backpack','与背包偏差':'Offset from backpack','往返延迟 RTT':'Round-trip time (RTT)','暂无测量':'No measurement','时间同步':'Time synchronization','持续同步中':'Continuously synchronized','旧版录制前校时':'Legacy pre-record sync','等待背包校时':'Waiting for backpack clock','等待同步':'Waiting for synchronization','偏差 / RTT':'Offset / RTT',
 '时间同步测试':'Time synchronization test','每组录制时长（秒）':'Recording duration per round (s)','测试组数':'Test rounds','毫秒表延迟启动（秒）':'Stopwatch start delay (s)',
 '请连接外接毫秒表。延迟从发送录制开始指令计时，必须小于录制时长。每组前后自动清零 5 秒，沿用已保存的编码和电源频率配置。关闭网页后继续运行；完成后仍需标定确认同步误差。':'Connect the external stopwatch. The delay starts at the recording START command and must be shorter than the recording duration. Each round resets the stopwatch for 5 seconds before and after recording, using the saved codec and power-line settings. The test continues after closing the page. Calibrate the recordings to measure synchronization error.',

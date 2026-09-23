@@ -3,10 +3,11 @@
 独立 HTTPS 页面服务与本地维护 worker，源代码位于此 standalone 目录。
 
 - 页面：`https://<设备以太网地址>:8080/`。默认绑定 `192.168.2.240`，不监听 Wi-Fi 或通配地址。
-- 接上网线即可直接进入页面，无账号、密码或登录步骤。首次安装只生成证书和 `/etc/ugripper-web/config.json`；覆盖安装保留网口配置和证书，清理旧密码哈希及 `initial-password` 文件。
+- 接上网线即可直接进入页面，无账号或登录步骤。首次安装只生成证书和 `/etc/ugripper-web/config.json`；覆盖安装保留网口配置和证书，清理旧登录密码哈希及 `initial-password` 文件。
+- 页面访问仍免登录；上传软件/固件、执行升级、修改设备参数、编码器标零必须逐次输入维护密码，由设备管理员保管。服务端在读取上传或调用 worker 前校验 `X-UGripper-Maintenance-Password`，错误/缺失返回 403；浏览器不保存密码，确认/取消后清空输入，不随任务写入 worker 状态。此共享口令仅用于防止随意修改，不提供个人账号或权限分级。
 - HTTPS 使用设备自签证书，首次访问可能需要浏览器接受证书；生产交付可替换为受客户电脑信任的证书。指纹可用 `openssl x509 -in /etc/ugripper-web/server.crt -noout -fingerprint -sha256` 核对。
 - HTTPS 服务以 ubuntu 运行；独立 root worker 使用 `/usr/local/lib/ugripper-web/` 的 root 专属代码与工具副本及系统 Python（包内提供 pyserial），仅监听本地 Unix socket，不提供 shell/任意命令接口。
-- 所有连接设备以太网的用户均可查看状态、下载数据/日志并操作维护功能。写请求由页面自动携带公开固定头 `X-UGripper-Request: 1`，校验 Origin 且不开放 CORS，以阻止跨站页面触发操作；不使用 Cookie、密码或会话。升级确认、治具确认与互斥锁始终生效。
+- 所有连接设备以太网的用户均可查看状态、下载数据/日志、抓图、检查盖板、读取编码器及操作自动测试；软件/固件升级、设备参数保存和编码器标零额外要求维护密码；触觉基线重置仅弹框确认。写请求由页面自动携带公开固定头 `X-UGripper-Request: 1`，校验 Origin 且不开放 CORS，以阻止跨站页面触发操作；不使用登录 Cookie 或会话。升级确认、治具确认与互斥锁始终生效。
 - 状态仅读取设备节点、系统统计和 Fays 状态快照；“已识别”不等于固件通信健康。双目帧的新鲜度使用最近帧时间，缺失证据不会显示为正常出流。
 
 - Ego 卡片与 HWS 共用 `ego_status.py`，显示绑定、连接和绑定序列号；仅读取 `/dev/shm/ugripper/ego_binding*.json`。连接快照须匹配绑定序列号且不超过 15 秒，过期/异常显示未知；未绑定不检测连接，USB 存储模式不代表 ADB 已连接。
@@ -51,7 +52,7 @@
 
 - Ego 绑定读取 `ro.internal.display.id` 固件版本与 `com.ssnwt.helloxr` 的 `versionName` 软件版本；已绑定设备的在线探测每分钟更新一次版本缓存，旧绑定自动补读，断连页面标记缓存。
 - 触觉区域按左/右夹爪及左/右触觉传感器显示，保留具体 camera key 与 USB serial。`盖板损坏检测` 按采集参数抓四路无损 PNG 图片，以运行时同样的 FFmpeg crop/scale/gray 预处理，分别对比 reference 与 persistent，输出基线/当前图/mask 状态图。正常、疑似损坏、基线不匹配、无基线和采集错误分别显示；即时结果不写入连续 episode 黄灯窗口。
-- 基线重置仅使用最近两分钟已展示且采集成功的图片，提交时重新核对 USB serial，用户须确认盖板正常且无接触。主运行时等待后台校验完成后处理固定请求文件，更新所选 reference / persistent / both 基线、对应历史和黄灯；不停止服务或双目预热。另一基线的告警保留。
+- 基线重置仅使用最近两分钟已展示且采集成功的图片，提交时重新核对 USB serial，用户须在弹框中确认盖板正常且无接触，无需维护密码。主运行时等待后台校验完成后处理固定请求文件，更新所选 reference / persistent / both 基线、对应历史和黄灯；不停止服务或双目预热。另一基线的告警保留。
 - 检测调用正式包 `bin/tactile_damage_detector/detect`，沿用系统 Python 的 NumPy/Pillow；不安装或修改运行环境依赖。例图以单张实拍图片展示，不包含基线或 mask 拼图；损坏例图采用指定的 `20260404_0021_DAP91126320032BF_left_tcam_l.jpg`，来源见 `static/tactile-examples.json`。
 - 只保留最新一次 Web 图片、预处理帧、mask 和结果；下一任务清理旧结果。Ego 本地短视频在成功、失败或超时后清理。维护服务启动清理旧预览与未完成基线请求；基线重置的请求、回复和中间帧完成后清理。正式长短期基线与固定例图持久保留。
 
