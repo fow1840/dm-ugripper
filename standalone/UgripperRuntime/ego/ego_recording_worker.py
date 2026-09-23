@@ -607,6 +607,51 @@ def read_battery(adb: Adb) -> dict:
         return {}
 
 
+def sync_prompt_language(adb: Adb, language: str) -> dict:
+    """Apply the global prompt language and verify the app preference."""
+    detail = {"status": "failed", "language": language, "updated_at_ms": now_ms()}
+    try:
+        package = select_app(adb)
+        detail["package"] = package
+        result = adb.run("shell", "am", "broadcast", "-a", f"{PACKAGE}.SET_PROMPT_LANGUAGE",
+                         "-p", package, "--es", "language", language, timeout=5)
+        if result.returncode or "Broadcast completed:" not in result.stdout:
+            raise RuntimeError("prompt language broadcast failed")
+        result = adb.run("shell", "run-as", package, "cat",
+                         f"shared_prefs/{package}_preferences.xml", timeout=5)
+        if result.returncode:
+            raise RuntimeError("cannot verify Ego prompt language preference")
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(result.stdout)
+        actual = next((node.text for node in root if node.get("name") == "prompt_language"), None)
+        if actual != language:
+            raise RuntimeError("Ego prompt language preference does not match")
+        detail["status"] = "ok"
+    except Exception as exc:
+        detail["error"] = str(exc)
+    return detail
+
+
+def sync_power_line_frequency(adb: Adb, frequency: str) -> dict:
+    mode = "2" if frequency == "60" else "1"
+    detail = {"status": "failed", "frequency": frequency, "mode": mode,
+              "updated_at_ms": now_ms()}
+    prop = "persist.sys.static.exp.enable"
+    try:
+        current = adb.run("shell", "getprop", prop, timeout=3)
+        if current.returncode or current.stdout.strip() != mode:
+            result = adb.run("shell", "setprop", prop, mode, timeout=3)
+            if result.returncode:
+                raise RuntimeError("cannot set Ego anti-flicker mode")
+            current = adb.run("shell", "getprop", prop, timeout=3)
+        if current.returncode or current.stdout.strip() != mode:
+            raise RuntimeError("Ego anti-flicker mode readback does not match")
+        detail["status"] = "ok"
+    except Exception as exc:
+        detail["error"] = str(exc)
+    return detail
+
+
 def run_probe(args: argparse.Namespace) -> int:
     status = {"status": "disconnected", "updated_at_ms": now_ms()}
     serial = ""
@@ -635,6 +680,21 @@ def run_probe(args: argparse.Namespace) -> int:
                 except Exception:
                     battery = {}
             status["battery"] = battery
+            language = "en" if read_environment_value("UGRIPPER_LANG").strip().lower() == "en" else "zh"
+            prompt = previous.get("prompt_language", {})
+            reconnected = previous.get("status") != "connected" or previous.get("serial") != serial
+            age = now_ms() - prompt.get("updated_at_ms", 0)
+            if (reconnected or prompt.get("language") != language or age < 0
+                    or age >= (60000 if prompt.get("status") == "ok" else 10000)):
+                prompt = sync_prompt_language(Adb(serial), language)
+            status["prompt_language"] = prompt
+            frequency = "60" if read_environment_value("UGRIPPER_POWER_LINE_FREQUENCY").strip() == "60" else "50"
+            flicker = previous.get("power_line_frequency", {})
+            age = now_ms() - flicker.get("updated_at_ms", 0)
+            if (reconnected or flicker.get("frequency") != frequency or age < 0
+                    or age >= (60000 if flicker.get("status") == "ok" else 10000)):
+                flicker = sync_power_line_frequency(Adb(serial), frequency)
+            status["power_line_frequency"] = flicker
         if connected and (now_ms() - binding.get("versions_checked_at_ms", 0) >= 60000
                           or previous.get("status") != "connected"
                           or previous.get("serial") != serial):

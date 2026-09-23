@@ -66,6 +66,52 @@ class EgoPackageTests(unittest.TestCase):
         self.assertIn("com.ssnwt.helloxr.SPEECH_STATUS", args)
 
 
+class EgoPromptLanguageTests(unittest.TestCase):
+    def test_apply_and_verify_both_packages_and_languages(self):
+        for package in WORKER.SUPPORTED_PACKAGES:
+            for language in ('zh', 'en'):
+                adb = mock.Mock()
+                adb.run.side_effect = [
+                    subprocess.CompletedProcess([], 0, 'Broadcast completed: result=0', ''),
+                    subprocess.CompletedProcess([], 0, f'<map><string name="prompt_language">{language}</string></map>', '')]
+                with mock.patch.object(WORKER, 'select_app', return_value=package):
+                    self.assertEqual(WORKER.sync_prompt_language(adb, language)['status'], 'ok')
+                self.assertIn(package, adb.run.call_args_list[0].args)
+                self.assertIn(language, adb.run.call_args_list[0].args)
+
+    def test_readback_failure_is_not_success(self):
+        for result in [subprocess.CompletedProcess([], 1, '', 'not debuggable'),
+                       subprocess.CompletedProcess([], 0, '<map><string name="prompt_language">zh</string></map>', '')]:
+            adb = mock.Mock()
+            adb.run.side_effect = [subprocess.CompletedProcess([], 0, 'Broadcast completed:', ''), result]
+            with mock.patch.object(WORKER, 'select_app', return_value=WORKER.PACKAGE):
+                self.assertEqual(WORKER.sync_prompt_language(adb, 'en')['status'], 'failed')
+
+
+class EgoAntiFlickerTests(unittest.TestCase):
+    def test_mapping_and_readback(self):
+        for frequency, mode in [('50', '1'), ('60', '2')]:
+            adb = mock.Mock()
+            adb.run.side_effect = [subprocess.CompletedProcess([], 0, '0', ''),
+                                   subprocess.CompletedProcess([], 0, '', ''),
+                                   subprocess.CompletedProcess([], 0, mode, '')]
+            self.assertEqual(WORKER.sync_power_line_frequency(adb, frequency)['status'], 'ok')
+            self.assertEqual(adb.run.call_args_list[1].args,
+                             ('shell', 'setprop', 'persist.sys.static.exp.enable', mode))
+
+    def test_matching_mode_is_not_rewritten(self):
+        adb = mock.Mock()
+        adb.run.return_value = subprocess.CompletedProcess([], 0, '1', '')
+        self.assertEqual(WORKER.sync_power_line_frequency(adb, '50')['status'], 'ok')
+        self.assertEqual(adb.run.call_count, 1)
+
+    def test_failed_or_mismatched_readback(self):
+        for code in [0, 1]:
+            adb = mock.Mock()
+            adb.run.return_value = subprocess.CompletedProcess([], code, '0', '')
+            self.assertEqual(WORKER.sync_power_line_frequency(adb, '60')['status'], 'failed')
+
+
 class EgoSerialSyncTests(unittest.TestCase):
     def test_status_gate_and_forward_cleanup(self):
         for state, available, offset, rtt, expected in [

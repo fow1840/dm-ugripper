@@ -668,6 +668,8 @@ Ego 电量由绑定状态探测读取指定 serial 的 `adb shell dumpsys batter
 
 双目 ready 同时要求本侧当前 recorder PID 的状态更新、视频与 IMU 时间戳新鲜。待机缺流时给本侧 20 秒总拉流恢复窗口，ready 保持 false、recovery_pending 为 true；上层健康巡检在该窗口内暂缓本侧故障升级，但仍检查其他设备。窗口跨 recorder 重启保持，恢复出帧、设备节点重新映射或 daemon 重启后重新计时。超时仍无帧按现有 ERROR_4 和持续故障确认流程触发 USB restore；已有 restore 进行中、重枚举等待及次数上限仍有效。录制中的断流不使用此待机宽限。
 
+Ego 绑定状态探测会同步背包的 `UGRIPPER_LANG` 与 `UGRIPPER_POWER_LINE_FREQUENCY`，分别读回应用偏好与系统属性确认。重连或配置变化立即重试，成功后每 60 秒复核，失败后每 10 秒重试；结果写入绑定状态快照的 `prompt_language` 与 `power_line_frequency`。
+
 ## 12. 开发架构与源码入口
 
 本仓主实现位于 `standalone/`，公共适配位于 `src/utils/`，测试位于 `test/`。`build/`、`tmp/`、`.local-deps/` 是产物或环境缓存，不是实现真源。
