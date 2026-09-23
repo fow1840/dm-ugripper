@@ -3,20 +3,18 @@
 当前仓库对应 **Ugripper V2**，默认部署形态为单机双手、本地控制的数据采集系统。
 
 ## 文档入口
-- 当前维护状态：`docs/agent/current-status.md`
-- 唯一总览文档：`docs/agent/overview.md`
-- 当前架构说明：`docs/ugripper-refactor-architecture.md`
-- 当前测试摘要：`docs/ppmain-ugripper-test-summary.md`
-- 历史变更记录：`docs/CHANGELOG.md`
-- 仓库内测试脚本说明：`test/README.md`
 
-推荐先读 `docs/agent/current-status.md`，再读 `docs/agent/overview.md`；`docs/CHANGELOG.md` 只用于追溯阶段性变更，不作为当前功能口径。
+- [当前系统总览](docs/agent/overview.md)：运行行为、源码架构、配置契约、构建部署与测试入口。
+- [测试脚本说明](test/README.md)：定向验证方法与参数。
+- [对外变更记录](docs/CHANGELOG.md)：功能变化与修复。
+
+当前实现以 overview 为统一说明入口，专题协议和用户手册按需查阅。
 
 ## 系统摘要
 - systemd 入口：`pack_script/ugripper.service`
 - 主入口：`run_record.sh`
-- 主运行时：优先 `bin/UgripperRuntime/UgripperRuntime`，兼容 fallback `build/src/record_runtime/record_runtime`
-- 默认录制集合：`left_cam_main`、`right_cam_main`、4 路 tactile、左右传感器 MCAP
+- 主运行时：`bin/UgripperRuntime/UgripperRuntime`
+- 默认录制集合：左右主摄、左右 stereo、4 路 tactile、左右 sensor/Fays MCAP；`+nostereo` 构建去掉双目/Fays，胸部主摄由配置控制
 - 数据目录：`/mnt/data_disk/<device_sn_lower>/data/episode_YYYYMMDD_NNNN`
 - 持久化标定：`/etc/ugripper/config/calibration/calibration.json`
 - U 盘入口：`auto_update/usb_auto_update.sh`

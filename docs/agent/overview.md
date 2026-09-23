@@ -667,3 +667,90 @@ Ego 电量由绑定状态探测读取指定 serial 的 `adb shell dumpsys batter
 ### Fays 无帧恢复状态
 
 双目 ready 同时要求本侧当前 recorder PID 的状态更新、视频与 IMU 时间戳新鲜。待机缺流时给本侧 20 秒总拉流恢复窗口，ready 保持 false、recovery_pending 为 true；上层健康巡检在该窗口内暂缓本侧故障升级，但仍检查其他设备。窗口跨 recorder 重启保持，恢复出帧、设备节点重新映射或 daemon 重启后重新计时。超时仍无帧按现有 ERROR_4 和持续故障确认流程触发 USB restore；已有 restore 进行中、重枚举等待及次数上限仍有效。录制中的断流不使用此待机宽限。
+
+## 12. 开发架构与源码入口
+
+本仓主实现位于 `standalone/`，公共适配位于 `src/utils/`，测试位于 `test/`。`build/`、`tmp/`、`.local-deps/` 是产物或环境缓存，不是实现真源。
+
+| 目录 / 文件 | 当前职责 |
+| --- | --- |
+| `standalone/UgripperRuntime/main.cc`、`record_runtime.cc` | 单实例入口、初始化、supervisor 主循环与装配 |
+| `runtime_process.cc`、`runtime_domain.cc` | 子进程管理、录制编排与控制领域逻辑 |
+| `runtime_controls.cc`、`runtime_cli.cc` | 录制/按键/FIFO 控制、命令行解析 |
+| `runtime_episode.cc`、`runtime_episode_validation.cc`、`runtime_episode_tactile_validation.cc` | episode、metadata、finalize 与停录校验 |
+| `runtime_devices.cc`、`runtime_recovery.cc` | 设备状态、HMI I/O、USB 恢复 |
+| `runtime_services.cc`、`runtime_support.cc`、`runtime_persistence_support.cc` | audio/stereo/ego 协调、系统与持久化 helper |
+| `standalone/CameraRecorder` | 相机应用；`camera_domain.cc` 承载配置、命令拼装与 registry 逻辑 |
+| `standalone/FaysStereoRecorder` | Fays SDK 采集、双目编码及 IMU MCAP |
+| `standalone/SensorRecorder` | `sensor_protocol` / `sensor_domain`、串口驱动、录制与 `zeroing` |
+| `standalone/GripperHmiTool` | protocol / LED effects / driver 类库与工具入口 |
+| `standalone/UgripperWebServer` | Web 页面、API 与维护 worker，详见其 README |
+| `src/utils` | UGripper 日志/错误码适配及被动 helper；不反向依赖业务模块 |
+
+上表 `runtime_*.cc` 均位于 `standalone/UgripperRuntime/`。Runtime 保留 supervisor 多进程模型，camera/sensor/audio/stereo/ego 按各自生命周期协调；FIFO、状态文件与录制锁是当前通信实现。模块扩展按上述职责归属，避免把领域逻辑集中回 supervisor 壳。
+
+C++ 基线为 C++20。Runtime 公开类型使用 `DA::Ugripper`，内部 helper 使用 `DA::Ugripper::detail`；公开接口沿用 `Initialize/Run/Stop/Get/Is` 风格，`RecordRuntime::Stop()` 只设置退出标志。`DeviceStateManager`、`UsbRecoveryCoordinator` 持有各自状态，episode 通过 DTO 与窄接口接入；录制编排按 episode、filesystem、workers、stereo、ego、feedback、logs 能力分组。
+
+日志后端与单实例能力来自主仓库 `PP_MAIN_ROOT/src/utils`，业务统一链接 `PP::utils`，本仓公共适配目标为 `UGripper::utils`。已有主仓库 `libutils.a` 时直接链接并要求匹配的 Conan 依赖元数据；缺少产物时从同一源码编译兼容桥接。独立配置找不到主仓库时需传 `-DPP_MAIN_ROOT=/path/to/pp-main`。
+
+日志使用 V3 单行外层（Unix 微秒、native TID、等级、调用点），保留业务标签，禁止 ANSI 与重复外层；错误行末尾只保留一个显式 `error_code=UGR-xx-xx`，不按消息关键词猜测错误码。
+
+## 13. Camera YAML 契约
+
+源码配置为 `config/camera_recorder.yaml`，安装位置为 `/opt/ugripper/bin/CameraRecorder/config/camera_recorder.yaml`。当前同时接受两种格式：
+
+| 格式 | 必需结构 | 输出 |
+| --- | --- | --- |
+| 平铺格式（当前默认配置） | 顶层 `cameras`；每项 `name/device/mode/width/height/fps` | `output_files`，首项为 primary output |
+| v1 格式 | 顶层 `CameraRecorder`，其下 `schema_version: 1` 与 `cameras`；每项 `id`、`device`、`record`、`output` | `output.file_name` |
+
+v1 的设备路径、宽高、帧率位于 `device.path/width/height/fps`，流水线位于 `record.pipeline`；可用 `role/side/kind/groups` 描述相机身份。相机列表不能为空、名称不能重复、宽高与帧率必须为正，未知 schema 版本会失败。旧格式仍可用，每进程只输出一次弃用提示。字段解析以 `standalone/CameraRecorder/camera_domain.cc` 为准，配置样例与兼容测试位于 `test/src/camera_recorder/`。
+
+## 14. 构建、打包与部署
+
+顶层 CMake 接入 `src/utils`、`standalone` 与可选测试，要求 `yaml-cpp`、`nlohmann_json` 和各目标开发依赖。`UGRIPPER_ENABLE_MCAP_BUILDER`、`UGRIPPER_ENABLE_PERF_LOG` 默认关闭，`UGRIPPER_ENABLE_STEREO` 默认开启。
+
+在已配置的 ARM 交叉编译容器内，从本仓根目录执行：
+
+```bash
+./scripts/build_arm_deb_in_pp_arm_dev.sh --no-clean
+# 只组包，复用已有且构建变体一致的 ARM 产物：
+./scripts/build_arm_deb_in_pp_arm_dev.sh --quick
+```
+
+脚本使用 `cmake/arm-linux-toolchain.cmake`，默认产物目录 `build/arm_container_release`；不传 `--no-clean` 时完整构建会先清空该目录。它不会创建或进入容器。环境准备见根目录 README、`docs/docker-arm-container-env-request.md` 和 `scripts/setup_arm_build_env.sh`。
+
+主包入口 `build_deb.sh` 构建/校验七个目标：`CameraRecorder`、`main_camera_xu_tool`、`SensorRecorder`、`zeroing`、`GripperHmiTool`、`UgripperRuntime`、`fays_record_example`。`-q` 跳过编译，使用 `PACKAGED_BUILD_DIR`；直接运行标准模式会本机编译，不能在 x86 主机上用它代替 ARM 交叉编译。包名为 `ugripper_<version>_arm64.deb`，版本取脚本的 `BASE_VERSION/VERSION_SUFFIX/VERSION`，双目变体由构建参数决定；文档不维护另一份版本号。
+
+主包按 `bin/<AppName>/` 安装二进制与资源，同时交付启动/维护脚本、Web、配置、udev 和 `.venv`，并检查核心二进制与 Python 的 ARM 架构。Python 版本与依赖以 `pyproject.toml` 为准；默认归档 URL 由 `build_deb.sh` 的 `PACKAGED_VENV_URL` 定义。本地 ARM 环境替代方式：
+
+```bash
+PACKAGED_VENV_URL='' PACKAGED_VENV_SOURCE=/path/to/arm64/.venv \
+  ./scripts/build_arm_deb_in_pp_arm_dev.sh --quick
+```
+
+`./scripts/build_runtime_venv.sh` 用于构建运行环境，支持 `VENV_VERSION_TAG`。独立 updater 由 `usb_updater_build.sh` 生成 `das-usb-updater` 包，USB 自动升级和开机恢复 unit 归该包所有。
+
+主包 unit 包括 `ugripper.service`、`ugripper-calibration.service`、`ugripper-network-monitor.service`、`umi-shutdown-trigger.service/.path`、`ugripper-ntp-sync.service`、`ugripper-ego-timesync.service`、`ugripper-maintenance.service` 和 `ugripper-webserver.service`；校准服务按需触发。安装清单以 `build_deb.sh` 为准，启停策略以 `pack_script/postinst` 为准。udev 规则为 `99-fixed-usb-map.rules` 与 `99-serial.rules`；运行目录权限由 `config/ugripper-tmpfiles.conf` 管理。
+
+## 15. 测试与维护入口
+
+| 层级 | 入口 | 证明范围 |
+| --- | --- | --- |
+| host 单测 | `test/src/`、GoogleTest/CTest 的 `host-only` 标签 | 无硬件逻辑、边界条件与合成输入 |
+| 离线数据校验 | `test/scripts/validate_episode_data.sh`、`check_video_windows.py`、`check_sensor_mcap` | episode 结构、视频与 MCAP 时序/覆盖率 |
+| 板端链路 | `test/scripts/board_sensor_smoke.sh`、`board_camera_stress.sh`、`board_service_integration_check.sh`、`board_service_episode_loop_check.sh` | 真实设备、服务与录制链路 |
+| 人工交互 | `test/scripts/board_gripper_hmi_active_check.sh` | 按键、灯效、蜂鸣与人工刺激 |
+| 压力与长录 | `test/scripts/` 中对应 soak/stress 脚本 | 指定设备、负载和时长下的稳定性 |
+
+host 环境安装开发依赖、GoogleTest 与 Python 后，可在仓库根目录配置独立测试目录：
+
+```bash
+cmake -S . -B build/host-tests -DBUILD_TESTING=ON -DPP_MAIN_ROOT=/path/to/pp-main
+cmake --build build/host-tests --parallel
+ctest --test-dir build/host-tests -L host-only --output-on-failure
+```
+
+详细脚本参数见 `test/README.md`。板端结果存放 `tmp/board_results/<run>/`，应记录源码/包版本、设备、命令、结论与覆盖边界；历史通过不代表当前版本已验证，host 单测也不替代板端或曝光真值验证。
+
+本文只维护当前架构、行为与使用方法。有效待办集中到 `docs/todo_list.md`，对外功能变更记录于 `docs/CHANGELOG.md`；协议、数据说明与用户手册保留为专题文档。
