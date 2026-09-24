@@ -111,6 +111,7 @@ set_target_properties(${APP_NAME} PROPERTIES
 )
 target_include_directories(${APP_NAME}
     PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../UgripperRuntime/include
 )

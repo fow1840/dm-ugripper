@@ -1,6 +1,7 @@
 #include "encoder_driver.h"
 #include "utils/ugripper_logger.h"
 #include "sensor_recorder/sensor_domain.h"
+#include "common/encoder_health.h"
 
 #include <mcap/writer.hpp>
 
@@ -327,11 +328,19 @@ int main(int argc, char *argv[]) {
 
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
+    std::signal(SIGPIPE, SIG_IGN);
 
     fs::path outputDir = ".";
+    int readyFd = -1;
     bool outputDirSet = false;
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
+        if (argument == "--ready-fd" && index + 1 < argc) {
+            try { readyFd = std::stoi(argv[++index]); }
+            catch (...) { return ugripper::sensor::kEncoderInitExit; }
+            if (readyFd < 0) return ugripper::sensor::kEncoderInitExit;
+            continue;
+        }
         if (!outputDirSet && !argument.empty() && argument[0] != '-') {
             outputDir = fs::path(argument);
             outputDirSet = true;
@@ -392,9 +401,12 @@ int main(int argc, char *argv[]) {
     rightEncoderInitThread.join();
     leftEncoderInitThread.join();
 
-    if (!rightEncoder.connected && !leftEncoder.connected) {
-        DM_LOG_ERROR_CODE("UGR-30-02", "Both encoders failed to initialize.");
-        return -1;
+    int exitCode = 0;
+    if (!rightEncoder.connected || !leftEncoder.connected) {
+        DM_LOG_ERROR_CODE("UGR-30-02", "Both encoders must initialize before recording: left={} right={}",
+                          leftEncoder.connected, rightEncoder.connected);
+        exitCode = ugripper::sensor::kEncoderInitExit;
+        g_stopFlag = true;
     }
 
     if (rightEncoder.connected) {
@@ -406,6 +418,14 @@ int main(int argc, char *argv[]) {
         leftEncoder.requestThread = std::thread(encoderRequestThreadFunc, leftEncoder.driver.get(), leftConfig.label);
     }
 
+    const auto steadyMs = []() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+    };
+    ugripper::sensor::EncoderWatchdog leftWatchdog(steadyMs());
+    ugripper::sensor::EncoderWatchdog rightWatchdog(steadyMs());
+    uint64_t leftObservedCount = 0;
+    uint64_t rightObservedCount = 0;
     while (!g_stopFlag.load()) {
         bool wroteData = false;
 
@@ -476,12 +496,46 @@ int main(int argc, char *argv[]) {
         wroteData = handleEncoder(rightEncoder, rightPendingWrites) || wroteData;
         wroteData = handleEncoder(leftEncoder, leftPendingWrites) || wroteData;
 
+        // Use monotonic time and valid emitted samples, not serial-node presence.
+        const auto checkSide = [&](EncoderRuntime& encoder,
+                                   ugripper::sensor::EncoderWatchdog& watchdog, int faultExit) {
+            if (!encoder.connected || watchdog.Expired(steadyMs())) {
+                DM_LOG_ERROR_CODE("UGR-30-07", "{} encoder stream stale or disconnected: timeout_ms={} samples={}",
+                                  encoder.config.label, ugripper::sensor::kEncoderStaleTimeoutMs,
+                                  encoder.emittedMessageCount);
+                if (exitCode == 0) exitCode = faultExit;
+                g_stopFlag = true;
+            }
+        };
+        if (rightEncoder.emittedMessageCount != rightObservedCount) {
+            rightObservedCount = rightEncoder.emittedMessageCount;
+            rightWatchdog.Observe(steadyMs());
+        }
+        if (leftEncoder.emittedMessageCount != leftObservedCount) {
+            leftObservedCount = leftEncoder.emittedMessageCount;
+            leftWatchdog.Observe(steadyMs());
+        }
+        checkSide(rightEncoder, rightWatchdog, ugripper::sensor::kEncoderStaleRightExit);
+        checkSide(leftEncoder, leftWatchdog, ugripper::sensor::kEncoderStaleLeftExit);
+        if (!g_stopFlag.load() && readyFd >= 0 && leftWatchdog.Ready() && rightWatchdog.Ready()) {
+            const char ready = 'R';
+            ssize_t written;
+            do { written = ::write(readyFd, &ready, 1); } while (written < 0 && errno == EINTR);
+            ::close(readyFd);
+            readyFd = -1;
+            if (written != 1) {
+                exitCode = ugripper::sensor::kEncoderInitExit;
+                g_stopFlag = true;
+            }
+        }
+
         if (!wroteData) {
             std::this_thread::sleep_for(std::chrono::microseconds(200));
         }
     }
 
     g_stopFlag = true;
+    if (readyFd >= 0) ::close(readyFd);
     DM_LOG_INFO("Stopping sensors...");
 
     if (rightEncoder.readThread.joinable()) {
@@ -584,5 +638,5 @@ int main(int argc, char *argv[]) {
                          << ", last_write_system_time_ns=" << leftWriter.lastWriteSystemTimeNs.load(std::memory_order_relaxed)).str());
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "Right MCAP log saved to " << rightWriter.outputFile).str());
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "Left MCAP log saved to " << leftWriter.outputFile).str());
-    return 0;
+    return exitCode;
 }

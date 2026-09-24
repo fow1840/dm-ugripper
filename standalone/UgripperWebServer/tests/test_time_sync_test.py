@@ -18,6 +18,22 @@ class TimeSyncTests(unittest.TestCase):
         for values in [dict(duration_s=0),dict(count=101),dict(count=True),dict(delay_s=1.2),dict(delay_s='2'),dict(duration_s=2),dict(delay_s=-1)]:
             with self.subTest(values=values),self.assertRaises(ValueError):sync.parameters(values)
 
+    def test_episode_root_uses_configured_serial_not_other_devices(self):
+        import environment_config
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);env=root/'environment'
+            for serial in ('other', 'abc123', 'noname_device'):
+                (root/serial/'data').mkdir(parents=True)
+            with patch.object(sync,'DATA',root),patch.object(environment_config,'ENVIRONMENT',env):
+                env.write_text('export DEVICE_SN="ABC123" # device\n')
+                self.assertEqual(sync.episode_root(),root/'abc123/data')
+                env.write_text('DEVICE_SN=missing\n')
+                with self.assertRaises(ValueError):sync.episode_root()
+                env.write_text('DEVICE_SN="../other"\n')
+                with self.assertRaises(ValueError):sync.episode_root()
+                env.write_text('')
+                self.assertEqual(sync.episode_root(),root/'noname_device/data')
+
     def test_exclusive_guard_blocks_start_without_touching_recorder(self):
         with tempfile.TemporaryDirectory() as root:
             lock=Path(root)/'production.lock';lock.touch()
@@ -65,7 +81,7 @@ class TimeSyncTests(unittest.TestCase):
             root=Path(root);(root/'time-sync-results').mkdir()
             helper=root/'helper.sh'
             helper.write_text('trap "echo cleaned; exit 0" TERM\necho WEB_PHASE=recording:30\nsleep 30 &\nwait $!\n')
-            sync.JOB.clear();sync.JOB.update(id='test',rounds=[],settings=dict(duration_s=30,delay_s=2,count=1))
+            sync.JOB.clear();sync.JOB.update(id='test',rounds=[],episode_root=str(root),settings=dict(duration_s=30,delay_s=2,count=1))
             timer=threading.Timer(0.2,sync.CANCEL.set)
             with patch.object(sync,'STATE',root),patch.object(sync,'SCRIPT',helper),patch.object(sync,'RECORD_LOCK',root/'absent'),patch.object(sync,'save'),patch.object(sync,'reset_gpio') as reset:
                 timer.start()

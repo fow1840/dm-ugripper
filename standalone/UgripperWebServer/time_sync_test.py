@@ -2,6 +2,7 @@
 import contextlib
 import fcntl
 import os
+import re
 from pathlib import Path
 import signal
 import subprocess
@@ -17,6 +18,17 @@ GPIO = Path('/sys/class/gpio/gpio139/value')
 MUTEX = threading.Lock()
 CANCEL = threading.Event()
 JOB = {}
+
+
+def episode_root():
+    from environment_config import read_settings
+    serial = read_settings(('DEVICE_SN',)).get('DEVICE_SN') or 'noname_device'
+    if not re.fullmatch(r'[A-Za-z0-9_-]+', serial):
+        raise ValueError('DEVICE_SN 无效，无法确定录制目录')
+    root = DATA / serial.lower() / 'data'
+    if not root.is_dir():
+        raise ValueError(f'当前设备录制目录不存在：{root}')
+    return root
 
 
 def parameters(values):
@@ -81,6 +93,7 @@ def run_round(number):
         with log_path.open('w') as output, log_path.open() as lines:
             process = subprocess.Popen(['/bin/bash', str(SCRIPT), '--board-run',
                 '--duration-sec',str(config['duration_s']), '--stopwatch-delay-sec',str(config['delay_s']),
+                '--episode-root',JOB['episode_root'],
                 '--target-label','web'], stdout=output, stderr=subprocess.STDOUT,
                 start_new_session=True, env={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C.UTF-8'})
             deadline = time.monotonic()+config['duration_s']+240
@@ -183,10 +196,11 @@ def start(values):
             except BlockingIOError:
                 raise Busy('U 盘升级正在执行')
             from environment_config import read_settings
+            root = episode_root()
             CANCEL.clear()
             JOB.clear()
             JOB.update(id=uuid.uuid4().hex,status='running',started=time.time(),settings=config,
-                       configuration=read_settings(),rounds=[])
+                       configuration=read_settings(),episode_root=str(root),rounds=[])
             save(phase='starting',phase_deadline=time.time()+30)
             history = STATE / 'time-sync-results'
             for old in sorted(history.glob('*.json'),key=lambda p:p.stat().st_mtime)[:-20]:

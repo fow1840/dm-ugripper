@@ -8,6 +8,7 @@
 #include "utils/env_utils.h"
 #include "utils/file_utils.hpp"
 #include "utils/time_utils.h"
+#include "common/encoder_health.h"
 
 #include <mcap/reader.hpp>
 #include <nlohmann/json.hpp>
@@ -941,9 +942,11 @@ bool loadLastTopicLogTimeFromTailChunks(const std::string &mcapPath,
             {
             }
 
-            if (!recordReader.status().ok() && errorMessage != nullptr && errorMessage->empty())
+            if (!recordReader.status().ok())
             {
-                *errorMessage = "failed to read tail chunk: " + recordReader.status().message;
+                if (errorMessage != nullptr)
+                    *errorMessage = "failed to read tail chunk: " + recordReader.status().message;
+                return false;
             }
         }
     }
@@ -972,9 +975,10 @@ bool loadLastTopicLogTimeFromTailChunks(const std::string &mcapPath,
             }
         }
 
-        if (!found && !readProblem.empty() && errorMessage != nullptr && errorMessage->empty())
+        if (!readProblem.empty())
         {
-            *errorMessage = "failed to scan mcap messages: " + readProblem;
+            if (errorMessage != nullptr) *errorMessage = "failed to scan mcap messages: " + readProblem;
+            return false;
         }
     }
 
@@ -1564,10 +1568,27 @@ bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir
 
     for (const auto &target : kEncoderTailCheckTargets)
     {
+        uint64_t referenceEndNs = 0;
+        for (const char* cameraName : target.referenceCameraNames) {
+            const auto artifact = std::find_if(artifacts.begin(), artifacts.end(),
+                [cameraName](const auto& item) { return item.cameraName == std::string(cameraName); });
+            if (artifact == artifacts.end()) continue;
+            const auto span = effectiveSpanByFile.find(artifact->fileName);
+            const std::string offsetKey = std::string(cameraName) + "_record_time_offset_us";
+            if (span == effectiveSpanByFile.end() || !timingRoot.contains(offsetKey) ||
+                !timingRoot[offsetKey].is_number_integer()) continue;
+            const int64_t offsetUs = timingRoot[offsetKey].get<int64_t>();
+            const long double endNs = static_cast<long double>(offsetUs) * 1000.0L +
+                                      static_cast<long double>(span->second) * 1000000000.0L;
+            if (offsetUs > 0 && std::isfinite(endNs) && endNs > 0 &&
+                endNs < static_cast<long double>(std::numeric_limits<uint64_t>::max()))
+                referenceEndNs = std::max(referenceEndNs, static_cast<uint64_t>(endNs));
+        }
         tailCheckFutures.push_back(std::async(
             std::launch::async,
-            [episodeDir, target]() {
+            [episodeDir, target, referenceEndNs]() {
                 TailCheckTaskResult result;
+                result.errorType = "encoder_tail_missing";
                 uint64_t lastEncoderLogTimeNs = 0;
                 uint64_t encoderMessageCount = 0;
                 std::string encoderTailError;
@@ -1583,6 +1604,14 @@ bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir
                     return result;
                 }
 
+                if (!ugripper::sensor::EncoderCoversTail(lastEncoderLogTimeNs, referenceEndNs,
+                                                        kEncoderTailMaxLagNs)) {
+                    result.errorMessage = std::string("encoder tail coverage insufficient for side=") + target.side +
+                        " last_ns=" + std::to_string(lastEncoderLogTimeNs) +
+                        " reference_end_ns=" + std::to_string(referenceEndNs) +
+                        " max_lag_ns=" + std::to_string(kEncoderTailMaxLagNs);
+                    return result;
+                }
                 result.ok = true;
                 result.detail = (::DA::utils::LogString()
                                  << "encoder_" << target.side
@@ -1659,7 +1688,7 @@ bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir
             return setEpisodeValidationFailure(
                 errorMessage,
                 errorTypes,
-                DA::Ugripper::kErrorTypeFrameLoss,
+                result.errorType,
                 result.errorMessage.empty() ? "tail check failed" : result.errorMessage);
         }
         tailDetails.push_back(result.detail);

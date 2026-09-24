@@ -15,11 +15,11 @@ OPTIONS = {
 ASSIGNMENT = re.compile(r'^\s*(?:export\s+)?([A-Za-z_][A-Za-z_0-9]*)\s*=')
 
 
-def read_settings():
-    values = {key: None for key in OPTIONS}
+def read_settings(keys=OPTIONS):
+    values = {key: None for key in keys}
     for line in ENVIRONMENT.read_text().splitlines():
         match = ASSIGNMENT.match(line)
-        if match and match[1] in OPTIONS:
+        if match and match[1] in values:
             raw = line[match.end():].strip()
             value = re.match(r'''^(?:"([^"]*)"|'([^']*)'|([^\s#]*))\s*(?:#.*)?$''', raw)
             values[match[1]] = next((v for v in value.groups() if v is not None), '') if value else raw

@@ -236,8 +236,10 @@ $('#productionCancel').onclick=async()=>{
 };
 
 let timeSyncId='';
+const timeSyncRows=new Map();
 function renderTimeSync(s){
  const job=s.time_sync||{}, running=job.status==='running', total=job.settings?.count||1;
+ if((job.id||'')!==timeSyncId){timeSyncRows.clear();$('#timeSyncDetails').replaceChildren();}
  if(job.id&&job.id!==timeSyncId&&job.settings){for(const [key,value] of Object.entries(job.settings)){const input=$('#timeSyncForm').elements.namedItem(key);if(input)input.value=value;}}
  timeSyncId=job.id||'';
  $('#timeSyncStart').disabled=!!s.busy||running;
@@ -252,10 +254,22 @@ function renderTimeSync(s){
  const label=v=>labels[v]||productionLabel(v);
  $('#timeSyncStatus').textContent=job.id?'状态：'+label(job.status)+' · '+(job.round||0)+' / '+total+' · '+label(job.phase)+(running?' · 阶段剩余约 '+Math.ceil(job.phase_remaining_s||0)+' s':'')+(job.reason?' · '+job.reason:''):'尚未运行';
  $('#timeSyncFreshness').textContent=job.id?'进度更新时间：'+new Date().toLocaleTimeString():'';
- $('#timeSyncDetails').replaceChildren(...(job.rounds||[]).map(r=>{
-  const item=el('div');item.append(el('p','#'+r.round+' · '+label(r.status)+' · '+(r.episode||'')+(r.reason?' · '+r.reason:'')));
-  if(r.log){const details=el('details');details.append(el('summary','日志'),el('pre',r.log));item.append(details);}return item;
- }));
+ const activeRounds=new Set();
+ for(const r of job.rounds||[]){
+  const key=String(r.round);activeRounds.add(key);
+  let row=timeSyncRows.get(key);
+  if(!row){
+   const item=el('div'),summary=el('p'),details=el('details'),log=el('pre');
+   log.dataset.noI18n='1';details.append(el('summary','日志'),log);item.append(summary,details);
+   row={item,summary,details,log};timeSyncRows.set(key,row);$('#timeSyncDetails').append(item);
+  }
+  const summary='#'+r.round+' · '+label(r.status)+' · '+(r.episode||'')+(r.reason?' · '+r.reason:'');
+  if(row.summaryText!==summary){row.summary.textContent=summary;row.summaryText=summary;}
+  const log=r.log||'';
+  if(row.log.textContent!==log){const top=row.log.scrollTop,left=row.log.scrollLeft;row.log.textContent=log;row.log.scrollTop=top;row.log.scrollLeft=left;}
+  row.details.hidden=!log;
+ }
+ for(const [key,row] of timeSyncRows){if(!activeRounds.has(key)){row.item.remove();timeSyncRows.delete(key);}}
 }
 $('#timeSyncForm').onsubmit=async event=>{
  event.preventDefault();

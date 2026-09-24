@@ -100,6 +100,7 @@ struct TailCheckTaskResult
     bool ok = false;
     std::string detail;
     std::string errorMessage;
+    std::string errorType = "frame_loss";
 };
 
 struct CommandCaptureResult
