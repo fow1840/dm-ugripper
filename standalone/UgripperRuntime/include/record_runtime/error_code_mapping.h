@@ -29,6 +29,9 @@ inline std::string_view UgrCodeForErrorType(
     std::string_view error_type,
     ErrorCodeContext context = ErrorCodeContext::Unknown) {
   if (error_type == "disk_mount_lost") return "UGR-10-01";
+  if (error_type == "encoder_init_failed") return "UGR-30-02";
+  if (error_type == "encoder_stream_stale") return "UGR-30-07";
+  if (error_type == "encoder_tail_missing") return "UGR-30-08";
   if (error_type == "disk_not_writable") return "UGR-10-02";
   if (error_type == "disk_full" || error_type == "disk_space_unavailable") return "UGR-10-03";
   if (error_type == "stereo_daemon_not_running" || error_type == "stereo_status_missing" ||

@@ -40,6 +40,9 @@ fays.not_ready_frame	stereo_not_ready	yes	no frame/invalid frame confirmed	UGR-2
 fays.control	stereo_control_failed	yes	FIFO/START/STOP/session control failed	UGR-22-06	mapped	-
 fays.not_ready_control	stereo_not_ready	yes	FIFO/session control failed	UGR-22-06	mapped	-
 encoder.disconnect	device_disconnected	yes	encoder device disconnected	UGR-30-01	mapped	-
+encoder.init	encoder_init_failed	no	both sides must deliver samples before recording	UGR-30-02	mapped	startup readiness handshake
+encoder.stale	encoder_stream_stale	no	encoder disconnected or no valid samples for 3 seconds	UGR-30-07	mapped	monotonic watchdog stops recording
+encoder.tail	encoder_tail_missing	no	missing encoder data or more than 1 second behind same-side video end	UGR-30-08	mapped	post-recording validation
 encoder.critical_missing	critical_devices_missing	yes	encoder missing	UGR-30-01	mapped	-
 hmi.disconnect	device_disconnected	yes	HMI device/port disconnected	UGR-40-01	mapped	-
 hmi.critical_missing	critical_devices_missing	yes	HMI device/port missing	UGR-40-01	mapped	-

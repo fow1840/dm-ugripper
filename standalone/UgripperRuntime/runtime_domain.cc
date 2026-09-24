@@ -242,6 +242,9 @@ std::string SelectPrimaryErrorType(const std::vector<std::string>& error_types)
         }
     }
     for (const char* preferred : {
+             "encoder_init_failed",
+             "encoder_stream_stale",
+             "encoder_tail_missing",
              DA::Ugripper::kErrorTypeEgoDisconnected,
              DA::Ugripper::kErrorTypeEgoPullIncomplete,
              DA::Ugripper::kErrorTypeRuntimeError,
@@ -1071,7 +1074,10 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
         }
         if (!sensor_started)
         {
-            CallLog(dependencies_.logs.log_error, "failed to launch sensor recorder");
+            if (dependencies_.logs.log_typed_error != nullptr)
+                dependencies_.logs.log_typed_error("encoder_init_failed", "sensor recorder did not confirm both encoders ready");
+            else
+                CallLog(dependencies_.logs.log_error, "failed to launch sensor recorder");
         }
         if (camera_started && dependencies_.workers.stop_worker != nullptr)
         {
@@ -1530,7 +1536,11 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     }
     if (!valid)
     {
-        CallLog(dependencies_.logs.log_error, "episode validation failed: " + final_error_message);
+        if (dependencies_.logs.log_typed_error != nullptr)
+            dependencies_.logs.log_typed_error(SelectPrimaryErrorType(error_types),
+                                               "episode validation failed: " + final_error_message);
+        else
+            CallLog(dependencies_.logs.log_error, "episode validation failed: " + final_error_message);
         if (dependencies_.episode.write_validation_error_log != nullptr)
         {
             dependencies_.episode.write_validation_error_log(state_.current_episode_dir, final_error_message);

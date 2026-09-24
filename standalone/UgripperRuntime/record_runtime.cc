@@ -9,6 +9,7 @@
 #include "utils/env_utils.h"
 #include "utils/file_utils.hpp"
 #include "utils/time_utils.h"
+#include "common/encoder_health.h"
 
 #include <mcap/reader.hpp>
 #include <nlohmann/json.hpp>
@@ -524,6 +525,18 @@ bool RecordRuntime::Initialize()
                         {
                             activeHardwareFault_ = *fault;
                         }
+                        if (!fault.has_value()) {
+                            const auto status = processSupervisor_.GetStatus(DA::Ugripper::WorkerName::SensorRecorder);
+                            const auto type = status.running ? std::string_view{} :
+                                ugripper::sensor::EncoderExitErrorType(status.last_exit_code);
+                            if (!type.empty()) {
+                                const bool left = status.last_exit_code == ugripper::sensor::kEncoderStaleLeftExit;
+                                return std::optional<DA::Ugripper::HealthFault>{DA::Ugripper::HealthFault{
+                                    DA::Ugripper::RuntimeLedState::Error2,
+                                    left ? DA::Ugripper::HardwareFaultSide::Left : DA::Ugripper::HardwareFaultSide::Right,
+                                    std::string(type), std::string(left ? "left" : "right") + " encoder failed during recording"}};
+                            }
+                        }
                         return fault;
                     },
             },
@@ -548,7 +561,24 @@ bool RecordRuntime::Initialize()
                     [this](DA::Ugripper::WorkerName worker,
                            const DA::Ugripper::ProcessSpec& spec,
                            std::string* error_message) {
-                        return processSupervisor_.Start(worker, spec, error_message);
+                        if (worker != DA::Ugripper::WorkerName::SensorRecorder)
+                            return processSupervisor_.Start(worker, spec, error_message);
+                        int readyPipe[2];
+                        if (::pipe2(readyPipe, O_CLOEXEC) != 0) return false;
+                        auto sensorSpec = spec;
+                        sensorSpec.argv.insert(sensorSpec.argv.end(),
+                                               {"--ready-fd", std::to_string(readyPipe[1])});
+                        sensorSpec.inherited_fds.push_back(readyPipe[1]);
+                        const bool started = processSupervisor_.Start(worker, sensorSpec, error_message);
+                        ::close(readyPipe[1]);
+                        const bool ready = started && ugripper::sensor::WaitEncoderReady(readyPipe[0]);
+                        ::close(readyPipe[0]);
+                        if (!ready) {
+                            DM_LOG_ERROR_CODE("UGR-30-02", "Encoder startup failed: both sides must deliver samples within {}ms",
+                                              ugripper::sensor::kEncoderReadyTimeoutMs);
+                            if (started) processSupervisor_.Stop(worker, "encoder startup failed", nullptr);
+                        }
+                        return ready;
                     },
                 .stop_worker =
                     [this](DA::Ugripper::WorkerName worker,
@@ -665,6 +695,10 @@ bool RecordRuntime::Initialize()
                 .log_error =
                     [](const std::string& message) {
                         DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString() << message << std::endl).str());
+                    },
+                .log_typed_error =
+                    [](const std::string& type, const std::string& message) {
+                        DM_LOG_ERROR_CODE(DA::Ugripper::UgrCodeForErrorType(type), "{}", message);
                     },
                 .sync_runtime_log =
                     [this](const std::string& reason) {
@@ -783,7 +817,18 @@ int RecordRuntime::Run()
 
         if (isRecordingActive() && !checkRecorderProcesses())
         {
-            stopRecording(true, "camera or sensor recorder exited unexpectedly", DA::Ugripper::kErrorTypeRuntimeError);
+            const auto status = processSupervisor_.GetStatus(DA::Ugripper::WorkerName::SensorRecorder);
+            const auto encoderError = status.running ? std::string_view{} :
+                ugripper::sensor::EncoderExitErrorType(status.last_exit_code);
+            if (!encoderError.empty()) {
+                const std::string side = status.last_exit_code == ugripper::sensor::kEncoderStaleLeftExit ? "left" :
+                    status.last_exit_code == ugripper::sensor::kEncoderStaleRightExit ? "right" : "left/right";
+                DM_LOG_ERROR_CODE(DA::Ugripper::UgrCodeForErrorType(encoderError),
+                                  "{} encoder fault; stopping recording", side);
+                stopRecording(true, side + " encoder fault", std::string(encoderError));
+            } else {
+                stopRecording(true, "camera or sensor recorder exited unexpectedly", DA::Ugripper::kErrorTypeRuntimeError);
+            }
         }
 
         const uint64_t loopElapsedMs = currentSteadyMs() - loopStartMs;

@@ -123,6 +123,7 @@ public:
         LogFn log_perf;
         LogFn log_warn;
         LogFn log_error;
+        std::function<void(const std::string&, const std::string&)> log_typed_error;
         SyncRuntimeLogFn sync_runtime_log;
     };
 

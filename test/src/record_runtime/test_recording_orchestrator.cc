@@ -44,6 +44,7 @@ struct RecordingHarness
     std::vector<std::string> flushed_stages;
     std::vector<std::string> stop_reasons;
     std::vector<std::string> logs;
+    std::vector<std::string> typed_errors;
     std::vector<std::string> lock_events;
     std::vector<std::string> sync_and_lock_events;
     std::vector<std::string> validate_error_types;
@@ -340,6 +341,11 @@ struct RecordingHarness
                      },
                  .log_error =
                      [this](const std::string& message) {
+                         logs.push_back("E:" + message);
+                     },
+                 .log_typed_error =
+                     [this](const std::string& type, const std::string& message) {
+                         typed_errors.push_back(type);
                          logs.push_back("E:" + message);
                      },
                  .sync_runtime_log =
@@ -698,6 +704,8 @@ TEST(RecordingOrchestratorTest, StartRecordingWorkerStartupFailureRollsBackStart
     auto orchestrator = harness.Make();
 
     ASSERT_FALSE(orchestrator.StartRecording(false));
+    EXPECT_EQ(harness.stereo_start_calls, 0);
+    EXPECT_EQ(harness.typed_errors, (std::vector<std::string>{"encoder_init_failed"}));
     EXPECT_FALSE(orchestrator.GetState().is_recording);
     EXPECT_EQ(orchestrator.GetState().current_episode_dir, "/tmp/episode_0001");
     EXPECT_EQ(harness.stop_reasons,
@@ -772,6 +780,32 @@ TEST(RecordingOrchestratorTest, StopRecordingDueToDiskFaultMapsToError3Output)
     EXPECT_EQ(harness.audio_commands.back(), "error");
     ASSERT_FALSE(harness.recovery_commands.empty());
     EXPECT_EQ(harness.recovery_commands.back(), "error");
+}
+
+TEST(RecordingOrchestratorTest, EncoderTailFailurePersistsSpecificTypeAndSignalsFailure)
+{
+    RecordingHarness harness;
+    harness.validate_ok = false;
+    harness.validate_error_types = {"encoder_tail_missing"};
+    harness.validate_error = "left encoder tail is 546 seconds behind video";
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+    ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
+    EXPECT_EQ(harness.metadata_error_types.back(), "encoder_tail_missing");
+    EXPECT_EQ(harness.typed_errors.back(), "encoder_tail_missing");
+    EXPECT_EQ(harness.last_validation_log, harness.validate_error);
+    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error1);
+}
+
+TEST(RecordingOrchestratorTest, EncoderStreamFailureSurvivesSuccessfulTailValidation)
+{
+    RecordingHarness harness;
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+    ASSERT_FALSE(orchestrator.StopRecording(true, "left encoder stopped", "encoder_stream_stale"));
+    EXPECT_FALSE(orchestrator.GetState().is_recording);
+    EXPECT_EQ(harness.metadata_error_types.back(), "encoder_stream_stale");
+    EXPECT_EQ(harness.typed_errors.back(), "encoder_stream_stale");
 }
 
 TEST(RecordingOrchestratorTest, StopRecordingDiskValidationFailureMapsToError3Output)

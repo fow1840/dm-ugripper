@@ -85,6 +85,16 @@ add_host_only_runtime_gtest(test_error_code_mapping
     test_error_code_mapping.cc
 )
 
+add_host_only_runtime_gtest(test_encoder_health
+    test_encoder_health.cc
+)
+
+add_test(NAME test_sensor_startup_failure
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_sensor_startup_failure.py
+            $<TARGET_FILE:SensorRecorder>)
+set_tests_properties(test_sensor_startup_failure PROPERTIES
+    LABELS "host-only;unit;sensor" SKIP_RETURN_CODE 77)
+
 add_host_only_runtime_gtest(test_shutdown_request_port
     test_shutdown_request_port.cc
 )
