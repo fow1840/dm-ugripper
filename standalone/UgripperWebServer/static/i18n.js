@@ -1,6 +1,12 @@
 'use strict';
 // Preserve source text per node so temporary language switches never alter settings.
 const translations={
+'背包电量低于 20%，禁止升级 3588 固件':'Backpack battery below 20%; RK3588 update blocked','电量数据不可用或已过期，禁止升级 3588 固件':'Battery data unavailable or stale; RK3588 update blocked','背包电量满足升级条件（至少 20%）':'Backpack battery meets the update requirement (at least 20%)','背包电量不足或不可用，禁止升级 3588 固件':'Backpack battery low or unavailable; RK3588 update blocked',
+'3588 启动固件升级':'RK3588 boot firmware update','上传并升级 3588 固件':'Upload and update RK3588 firmware',
+'仅支持适配本背包硬件的 RK3588 FIT boot.img，不支持整盘镜像、rootfs 或主摄固件。写入后将自动重启，网页会暂时断开；请保持供电，勿拔插设备。相同镜像跳过写入和重启。':'Use an RK3588 FIT boot.img compatible with this backpack hardware. Full-disk, rootfs and camera images are not supported. The device reboots after writing and the page temporarily disconnects. Keep power and devices connected. Matching images skip writing and reboot.',
+'，写入后自动重启设备，网页将暂时断开':'; the device reboots after writing and the page temporarily disconnects',
+'检查 3588 启动镜像':'Checking RK3588 boot image','写入 3588 启动分区，请勿断电':'Writing RK3588 boot partition; keep power connected','回读校验 3588 启动分区':'Verifying RK3588 boot partition','等待设备重启，恢复连接后自动校验':'Waiting for reboot; verification resumes after reconnection','3588 启动固件重启后校验通过':'RK3588 boot firmware verified after reboot','3588 启动固件校验失败':'RK3588 boot firmware verification failed','启动分区已匹配，跳过写入与重启':'Boot partition already matches; skipped writing and reboot','重启后校验通过':'Verified after reboot',
+
 '维护密码':'Maintenance password','请向设备管理员获取维护密码；每次操作均需输入。':'Ask the device administrator for the maintenance password. Enter it for each operation.','请输入维护密码':'Enter the maintenance password','维护密码错误，请重新输入':'Incorrect maintenance password; enter it again','请先确认已安装指定标零治具':'Confirm that the specified zero-calibration fixture is installed first',
 '已与背包同步':'Synchronized with backpack','授时连接断开':'Time sync disconnected','授时异常':'Time sync error','正在与背包同步':'Synchronizing with backpack','与背包偏差':'Offset from backpack','往返延迟 RTT':'Round-trip time (RTT)','暂无测量':'No measurement','时间同步':'Time synchronization','持续同步中':'Continuously synchronized','旧版录制前校时':'Legacy pre-record sync','等待背包校时':'Waiting for backpack clock','等待同步':'Waiting for synchronization','偏差 / RTT':'Offset / RTT',
 '时间同步测试':'Time synchronization test','每组录制时长（秒）':'Recording duration per round (s)','测试组数':'Test rounds','毫秒表延迟启动（秒）':'Stopwatch start delay (s)',

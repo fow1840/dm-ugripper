@@ -84,3 +84,14 @@ Web 启动任务时读取 `/etc/environment` 的 `DEVICE_SN`，转小写后选�
 结果保存在 `/var/lib/ugripper-web/time-sync.json`，`time-sync-results/` 保留最近 20 次报告和日志。数据保留在正常数据目录，每组增加 `stopwatch_timing.json`（实际 GPIO 写入边界、START/STOP 时间）。采集完成只代表录制与文件检查成功，需另行标定毫秒表评估同步误差。
 
 API：`POST /api/v1/time-sync/start`，JSON 为 `{"duration_s":100,"count":1,"delay_s":2}`；`POST /api/v1/time-sync/cancel`，JSON 为 `{"id":"任务 ID"}`。写请求仍需 `X-UGripper-Request: 1` 且通过 Origin 检查。`GET /api/v1/status` 的 `time_sync` 字段提供结果。
+
+## RK3588 启动固件升级
+
+升级页新增独立“3588 启动固件升级”卡片。上传适配当前背包硬件的 RK3588 FIT `boot.img`（非空且小于 200 MiB），输入维护密码并确认自动重启。该入口参考 production_tools 背包工具，仅更新 boot 启动分区，不支持整盘 `update.img`、rootfs、Mender artifact 或主摄 IMG。
+
+- 背包电量必须至少 20%；低于 20%（充电中也不例外）拒绝升级，20% 允许。任务接收及写入前读取蓝牙服务 `/opt/bluetooth_server/bms_latest.txt`，电量缺失、非法或源时间戳超过 20 秒时拒绝，避免数采停服后快照清空影响检查。网页同步禁用按钮并提示，断连也禁用；后台检查不能绕过。已经开始写入后不因电量下降中断，重启后的只读校验不受此门限影响。
+- root worker 解析 FIT 和默认 kernel/设备树，校验 arm64、RK3588 设备树及各镜像 SHA-256；支持内嵌数据和 FIT 外部数据。此校验不是发布者签名认证，也不能证明所有板级外设兼容，须使用交付给当前硬件的镜像。
+- 固定写入 `/dev/mmcblk0p3`，检查本机 RK3588 compatible、块设备、分区 `PARTNAME=boot/PARTN=3` 和容量；不接受客户端指定分区。分区布局不匹配时拒绝，不能自动猜测其他分区。
+- 按镜像长度比较分区 SHA-256；完全一致时跳过刷写与重启。否则在录制/维护/USB 升级互斥锁内停止数采，执行 `dd bs=4M conv=fsync`，写后回读一致才请求重启。写后校验失败不自动重启、不自动重刷。
+- 重启前将镜像长度、SHA-256、任务 ID 和 boot ID 持久写入 root 专属 `boot-pending.json`；锁持有至关机。网页临时断开，重新连接后读取任务状态。维护服务启动后只有检测到新的 boot ID、且原任务到达等待重启阶段，才进行分区回读并标记成功；单纯服务重启和中途断电不被当作成功，不自动再次刷写。
+- 没有 A/B 回滚或 Web 救砖功能。升级中不能断电；若镜像导致设备无法启动，Web 也无法恢复，需要设备既有的离线恢复流程。分区回读成功只说明字节一致与系统重新上线，不代替外设功能验收。

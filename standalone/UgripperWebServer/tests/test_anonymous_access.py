@@ -85,7 +85,7 @@ class AnonymousAccessTests(unittest.TestCase):
 
     def test_correct_password_dispatches_each_protected_operation_without_forwarding_secret(self):
         headers = {'X-UGripper-Request': '1', 'X-UGripper-Maintenance-Password': 'daimon'}
-        for kind in ('configuration', 'zeroing', 'software', 'main_camera', 'gripper'):
+        for kind in ('configuration', 'zeroing', 'software', 'main_camera', 'gripper', 'rk3588_boot'):
             with self.subTest(kind=kind), patch.object(server, 'rpc', return_value={'id': 'demo'}) as rpc:
                 code, _, _ = self.request('POST', '/api/v1/execute', json.dumps({'kind': kind, 'confirm': True, 'side': 'left'}), headers)
                 self.assertEqual(code, 202)

@@ -74,10 +74,13 @@
 | `UGR-30-01` | `device_disconnected` | Encoder 设备断开 |
 | `UGR-30-01` | `critical_devices_missing` | Encoder 缺失 |
 | `UGR-30-02` | `-` | Encoder 串口初始化、打开、重连或无响应 |
+| `UGR-30-02` | `encoder_init_failed` | 任一侧编码器初始化失败，或启动后 5 秒内未确认左右有效样本；取消起录 |
 | `UGR-30-03` | `-` | Encoder 响应或协议数据无效；仅 E/F 输出携带此码 |
 | `UGR-30-04` | `-` | Sensor MCAP 打开、写入或 finalize 失败 |
 | `UGR-30-05` | `-` | Sensor 写队列持续积压；仅 E/F 输出携带此码 |
 | `UGR-30-06` | `-` | Encoder 清零事务失败 |
+| `UGR-30-07` | `encoder_stream_stale` | 任一侧编码器连续 3 秒无有效样本或采集中断连；自动停录并保留失败原因 |
+| `UGR-30-08` | `encoder_tail_missing` | 编码器 topic/消息缺失、尾部不可读、缺少视频参考时间，或末帧落后同侧视频末尾超过 1 秒 |
 | `UGR-40-01` | `device_disconnected` | HMI 设备或端口断开 |
 | `UGR-40-01` | `critical_devices_missing` | HMI 设备或端口缺失 |
 | `UGR-40-01` | `hmi_all_disconnected` | 任意 |

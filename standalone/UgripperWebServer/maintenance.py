@@ -81,6 +81,9 @@ def camera_event(side, event):
 
 
 def execute(kind, path, force=False, side=None, settings=None):
+    if kind == 'rk3588_boot':
+        from boot_firmware import install
+        return install(path, JOB, report, run)
     if kind == 'configuration':
         report('保存设备配置')
         return write_settings(settings)
@@ -194,10 +197,13 @@ def worker(kind, path, stack, force=False, side=None, settings=None):
 
 def submit(req):
     kind=req.get('kind')
-    if kind not in ('software','main_camera','gripper','zeroing','configuration'): raise ValueError('未知任务')
+    if kind not in ('software','main_camera','gripper','rk3588_boot','zeroing','configuration'): raise ValueError('未知任务')
     if kind=='zeroing' and req.get('fixture')!='FIXTURE_READY': raise ValueError('必须确认已安装指定标零治具')
     if kind=='zeroing' and req.get('side') not in ('left','right'): raise ValueError('必须指定左侧或右侧编码器')
     if kind=='configuration': validate_settings(req.get('settings'))
+    if kind=='rk3588_boot':
+        from boot_firmware import require_battery
+        require_battery()
     if not MUTEX.acquire(False): raise Busy('已有维护任务执行中')
     stack=contextlib.ExitStack();path=None
     try:
@@ -206,7 +212,7 @@ def submit(req):
         try: fcntl.flock(usb,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError: raise Busy('U 盘升级正在执行')
         jobid=uuid.uuid4().hex
-        if kind in ('software','main_camera','gripper'):
+        if kind in ('software','main_camera','gripper','rk3588_boot'):
             token=req.get('upload','')
             if not re.fullmatch(r'[0-9a-f]{32}',token): raise ValueError('无效上传编号')
             source=STATE/'uploads'/token
@@ -215,7 +221,7 @@ def submit(req):
                 info=os.fstat(src.fileno())
                 if not stat.S_ISREG(info.st_mode) or not 0<info.st_size<MAX_UPLOAD: raise ValueError('文件过大或格式错误')
                 if shutil.disk_usage(PRIVATE).free < info.st_size*3+64*1024*1024: raise ValueError('系统盘可用空间不足')
-                path=PRIVATE/(jobid+{'software':'.deb','main_camera':'.img','gripper':'.hex'}[kind])
+                path=PRIVATE/(jobid+{'software':'.deb','main_camera':'.img','gripper':'.hex','rk3588_boot':'.img'}[kind])
                 with path.open('xb') as dst:
                     remaining=info.st_size
                     while remaining:
@@ -226,6 +232,9 @@ def submit(req):
                 if path.stat().st_size!=info.st_size: raise ValueError('上传文件发生变化')
             source.unlink(missing_ok=True)
             if kind=='gripper': validate_hex(path)
+            if kind=='rk3588_boot':
+                from boot_firmware import inspect_image
+                inspect_image(path)
         JOB.clear();JOB.update(id=jobid,kind=kind,status='running',started=time.time())
         if path: JOB['sha256']=dfu.sha256_file(path)
         report('已接收')
@@ -292,6 +301,10 @@ if __name__=='__main__':
         Path('/var/lib/ugripper/tactile_state',name).unlink(missing_ok=True)
     (RUN/'self-installing').unlink(missing_ok=True)
     # Old uploads are never resumed after interruption; firmware outcome stays explicit.
+    JOB.update(read_json(STATE/'task.json'))
+    from boot_firmware import recover as recover_boot
+    recover_boot(run)
+    JOB.clear()
     old=read_json(STATE/'task.json')
     if old.get('status')=='running':
         old.update(status='failed',stage='维护服务中断',message='请检查设备后重新执行，未自动重试烧录')
