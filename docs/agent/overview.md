@@ -289,15 +289,15 @@ BMS 串口由蓝牙服务的 `update_bms_data` 独占采集，UGripper 不再打
 
 | 相机 | 原始时间来源 | 全局时间表达 | 补偿位置 | 当前值 |
 | --- | --- | --- | --- | --- |
-| 左右/胸部主摄 | XU `Tset/Pset` + H.264/H.265 SEI `Pframe` | `start_offset_us + PTS` | CameraRecorder 写 `<camera>_record_time_offset_us` 时只调整绝对起点 | 左 `+10400us`，右 `+6800us`，其他 `+8600us`（2026-09-24-1632 固件） |
-| 四路 tcam | V4L2 采集时间经 FFmpeg 转换到 Unix，保留输入时间基 | `start_offset_us + PTS` | 采集 Unix 起点；不包含编码输出日志接收延迟 | 左 L `-1500us`，左 R/右 L `-2100us`，右 R `-1800us` |
+| 左右/胸部主摄 | XU `Tset/Pset` + H.264/H.265 SEI `Pframe` | `start_offset_us + PTS` | CameraRecorder 写 `<camera>_record_time_offset_us` 时只调整绝对起点 | 左 `+7000us`，右 `+7000us`，其他 `+8600us`（2026-09-24-1632 固件） |
+| 四路 tcam | V4L2 采集时间经 FFmpeg 转换到 Unix，保留输入时间基 | `start_offset_us + PTS` | 采集 Unix 起点；不包含编码输出日志接收延迟 | 四路统一 `-2000us` |
 | 左右 stereo camera | Fays camera 设备时间换算到 Unix | Fays MCAP `c.publishTime` | 图像采集后、进入 MCAP 队列前逐帧调整 | 左 `-1000us`（未重新标定），右 `0us` |
 | 左右 Fays IMU | Fays IMU 设备时间换算到 Unix | Fays MCAP `i.publishTime` | 不补偿 | `0us` |
 
 主摄在起流前及每 10 秒经 XU 授时；每帧按自身 SEI 对应的 `Tset + Pframe - Pset` 映射 Unix 时间。H.264/H.265 共用该映射，详见下文主摄 SEI 与周期修正规则。
 主摄打开设备后读取 `/etc/environment` 中的通用配置 `UGRIPPER_POWER_LINE_FREQUENCY`，支持 `50`/`60` Hz 并映射到标准 V4L2 `power_line_frequency` 控制；安装包在缺少该变量时写入默认值 `50`，已有值不覆盖。参数命名保持通用，当前仅主摄录制链使用，不改变录制 PTS 计算。
 
-上述逐路新值来自 episode_20260917_0002 毫秒表启动后前 10 个有效帧（有误差、use_for_sync=true、needs_review=false），使用 `新 offset = 旧 offset - 平均误差`；主摄不纳入被标记无效的重复帧。仅适用于当前标定设备及条件，10 帧小窗口不能代表所有设备。共模漂移不写入设备时间轴。主摄/tcam 固定补偿不修改 MKV packet PTS、gap 或 duration；Stereo 只改变 camera `publishTime`，不改变设备 `logTime`、IMU 或视频 PTS。metadata 从已补偿的 camera 时间建立起点，禁止重复补偿。
+左右主摄与四路触觉采用 episode_20260928_0030 去共模标定结果，经确认分别统一为 +7ms 与 -2ms；排除错误的 0026 标定。双目保持既有补偿。仅适用于当前标定设备及条件，不代表所有设备。共模漂移不写入设备时间轴。主摄/tcam 固定补偿不修改 MKV packet PTS、gap 或 duration；Stereo 只改变 camera `publishTime`，不改变设备 `logTime`、IMU 或视频 PTS。metadata 从已补偿的 camera 时间建立起点，禁止重复补偿。
 
 ### 7.3 停录强校验
 停录后当前按以下层次校验：
@@ -784,7 +784,7 @@ ctest --test-dir build/host-tests -L host-only --output-on-failure
 
 - 主摄原始 SEI encoder PTS 连续相同达到 3 帧（原帧加至少 2 个重复帧）时，通过公共 `DM_LOG_WARN` 输出标准 V3 warning `main_duplicate_pts_run`，包含相机、编码、PTS、V4L2 sequence；同一重复串仅在第 3 帧告警一次。正常两帧同 PTS 静默。检查位于时间映射和钳制之前，无效帧重置连续计数。
 
-主摄新固件补偿依据 20260924_0004～0006 标定 CSV：剔除插帧及需复核帧，分别取各组前 10 个有效帧平均误差，再取三组中位数（左 -37.6ms、右 -36ms），按旧补偿减误差计算新值。仅修正绝对起点，不平滑 gap、不补偿共模时钟漂移；其他主摄使用左右均值，未经独立光学校验。旧固件不适用该补偿。
+左右主摄补偿采用 20260928_0030 光学标定：扣除共同线性漂移后，旧补偿下左侧误差 +3.528ms、右侧 -0.440ms，统一设为 +7000us；预计固定残差左 +0.128ms、右 -0.240ms。0026 标定错误，排除。仅修改绝对起点，不平滑帧时间、不补偿共模漂移；其他主摄 fallback 仍为 +8600us，未经独立标定。需用 0031 独立复核。
 
 ### 双目录制掉帧门限
 

@@ -423,7 +423,7 @@
       "source_file": "",
       "source_location": "",
       "id": "exception",
-      "community": 48,
+      "community": 67,
       "norm_label": "exception"
     },
     {
@@ -3204,7 +3204,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_recovery.cc",
       "source_location": "L77",
       "id": "ugripperruntime_runtime_recovery_shouldrestoreusbforfailure",
-      "community": 210,
+      "community": 417,
       "norm_label": "shouldrestoreusbforfailure()"
     },
     {
@@ -4896,7 +4896,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1326",
       "id": "ugripperruntime_record_runtime_tolower",
-      "community": 210,
+      "community": 417,
       "norm_label": "tolower()"
     },
     {
@@ -4950,7 +4950,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1382",
       "id": "ugripperruntime_record_runtime_runcommandsync",
-      "community": 417,
+      "community": 41,
       "norm_label": "runcommandsync()"
     },
     {
@@ -5436,7 +5436,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_cli.cc",
       "source_location": "L1",
       "id": "standalone_ugripperruntime_runtime_cli_cc",
-      "community": 48,
+      "community": 67,
       "norm_label": "runtime_cli.cc"
     },
     {
@@ -5445,7 +5445,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_cli.cc",
       "source_location": "L12",
       "id": "ugripperruntime_runtime_cli_getruntimeusage",
-      "community": 48,
+      "community": 67,
       "norm_label": "getruntimeusage()"
     },
     {
@@ -5454,7 +5454,7 @@
       "source_file": "standalone/UgripperRuntime/runtime_cli.cc",
       "source_location": "L23",
       "id": "ugripperruntime_runtime_cli_parseruntimecli",
-      "community": 48,
+      "community": 67,
       "norm_label": "parseruntimecli()"
     },
     {
@@ -18027,7 +18027,7 @@
       "source_file": "src/utils/src/utils_smoke_test.cc",
       "source_location": "L1",
       "id": "src_utils_src_utils_smoke_test_cc",
-      "community": 762,
+      "community": 417,
       "norm_label": "utils_smoke_test.cc"
     },
     {
@@ -18036,7 +18036,7 @@
       "source_file": "src/utils/src/utils_smoke_test.cc",
       "source_location": "L17",
       "id": "src_utils_smoke_test_writeall",
-      "community": 762,
+      "community": 417,
       "norm_label": "writeall()"
     },
     {
@@ -18045,7 +18045,7 @@
       "source_file": "src/utils/src/utils_smoke_test.cc",
       "source_location": "L34",
       "id": "src_utils_smoke_test_main",
-      "community": 762,
+      "community": 417,
       "norm_label": "main()"
     },
     {
@@ -20097,7 +20097,7 @@
       "source_file": "test/src/utils/test_logging_v3.cc",
       "source_location": "L1",
       "id": "test_src_utils_test_logging_v3_cc",
-      "community": 481,
+      "community": 75,
       "norm_label": "test_logging_v3.cc"
     },
     {
@@ -20106,7 +20106,7 @@
       "source_file": "test/src/utils/test_logging_v3.cc",
       "source_location": "L10",
       "id": "utils_test_logging_v3_test",
-      "community": 481,
+      "community": 75,
       "norm_label": "test()"
     },
     {
@@ -22365,7 +22365,7 @@
       "source_file": "test/scripts/board_hmi_record_start_matrix.py",
       "source_location": "L128",
       "id": "scripts_board_hmi_record_start_matrix_hmiport_write",
-      "community": 762,
+      "community": 417,
       "norm_label": ".write()"
     },
     {
@@ -25342,7 +25342,7 @@
       "label": "v2.1.13 - 2026-09-23",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L29",
+      "source_location": "L31",
       "id": "docs_changelog_v2_1_13_2026_09_23",
       "community": 14,
       "norm_label": "v2.1.13 - 2026-09-23"
@@ -25351,7 +25351,7 @@
       "label": "v2.1.12 - 2026-09-20",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L37",
+      "source_location": "L39",
       "id": "docs_changelog_v2_1_12_2026_09_20",
       "community": 14,
       "norm_label": "v2.1.12 - 2026-09-20"
@@ -25360,7 +25360,7 @@
       "label": "v2.1.11 - 2026-09-02",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L56",
+      "source_location": "L58",
       "id": "docs_changelog_v2_1_11_2026_09_02",
       "community": 14,
       "norm_label": "v2.1.11 - 2026-09-02"
@@ -25369,7 +25369,7 @@
       "label": "v2.1.10 - 2026-07-29",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L70",
+      "source_location": "L72",
       "id": "docs_changelog_v2_1_10_2026_07_29",
       "community": 14,
       "norm_label": "v2.1.10 - 2026-07-29"
@@ -25378,7 +25378,7 @@
       "label": "v2.1.9 - 2026-07-28",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L77",
+      "source_location": "L79",
       "id": "docs_changelog_v2_1_9_2026_07_28",
       "community": 14,
       "norm_label": "v2.1.9 - 2026-07-28"
@@ -25387,7 +25387,7 @@
       "label": "v2.1.8 - 2026-07-24",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L84",
+      "source_location": "L86",
       "id": "docs_changelog_v2_1_8_2026_07_24",
       "community": 14,
       "norm_label": "v2.1.8 - 2026-07-24"
@@ -25396,7 +25396,7 @@
       "label": "v2.1.7 - 2026-07-20",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L89",
+      "source_location": "L91",
       "id": "docs_changelog_v2_1_7_2026_07_20",
       "community": 14,
       "norm_label": "v2.1.7 - 2026-07-20"
@@ -25405,7 +25405,7 @@
       "label": "v2.1.6 - 2026-07-14",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L95",
+      "source_location": "L97",
       "id": "docs_changelog_v2_1_6_2026_07_14",
       "community": 14,
       "norm_label": "v2.1.6 - 2026-07-14"
@@ -25414,7 +25414,7 @@
       "label": "v2.1.5 - 2026-07-13",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L105",
+      "source_location": "L107",
       "id": "docs_changelog_v2_1_5_2026_07_13",
       "community": 14,
       "norm_label": "v2.1.5 - 2026-07-13"
@@ -25423,7 +25423,7 @@
       "label": "v2.1.4 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L115",
+      "source_location": "L117",
       "id": "docs_changelog_v2_1_4_unreleased",
       "community": 14,
       "norm_label": "v2.1.4 - unreleased"
@@ -25432,7 +25432,7 @@
       "label": "v2.1.3 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L122",
+      "source_location": "L124",
       "id": "docs_changelog_v2_1_3_unreleased",
       "community": 14,
       "norm_label": "v2.1.3 - unreleased"
@@ -25441,7 +25441,7 @@
       "label": "v2.1.2 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L129",
+      "source_location": "L131",
       "id": "docs_changelog_v2_1_2_unreleased",
       "community": 14,
       "norm_label": "v2.1.2 - unreleased"
@@ -25450,7 +25450,7 @@
       "label": "v2.1.1 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L136",
+      "source_location": "L138",
       "id": "docs_changelog_v2_1_1_unreleased",
       "community": 14,
       "norm_label": "v2.1.1 - unreleased"
@@ -25459,7 +25459,7 @@
       "label": "v2.0.13 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L154",
+      "source_location": "L156",
       "id": "docs_changelog_v2_0_13_unreleased",
       "community": 14,
       "norm_label": "v2.0.13 - unreleased"
@@ -25468,7 +25468,7 @@
       "label": "v2.0.4 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L174",
+      "source_location": "L176",
       "id": "docs_changelog_v2_0_4_unreleased",
       "community": 14,
       "norm_label": "v2.0.4 - unreleased"
@@ -25477,7 +25477,7 @@
       "label": "v2.0.1 - 2026-05-21",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L188",
+      "source_location": "L190",
       "id": "docs_changelog_v2_0_1_2026_05_21",
       "community": 14,
       "norm_label": "v2.0.1 - 2026-05-21"
@@ -25486,7 +25486,7 @@
       "label": "v2.0.0 - 2026-04-29",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L201",
+      "source_location": "L203",
       "id": "docs_changelog_v2_0_0_2026_04_29",
       "community": 14,
       "norm_label": "v2.0.0 - 2026-04-29"
@@ -39257,7 +39257,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L56",
-      "community": 417,
+      "community": 41,
       "norm_label": "childfiledescriptorlimit()",
       "id": "ugripperruntime_record_runtime_childfiledescriptorlimit"
     },
@@ -39266,7 +39266,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L62",
-      "community": 417,
+      "community": 41,
       "norm_label": "closechildfiledescriptors()",
       "id": "ugripperruntime_record_runtime_closechildfiledescriptors"
     },
@@ -39518,7 +39518,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L597",
-      "community": 210,
+      "community": 417,
       "norm_label": "isfalselikevalue()",
       "id": "ugripperruntime_record_runtime_isfalselikevalue"
     },
@@ -39581,7 +39581,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L787",
-      "community": 41,
+      "community": 67,
       "norm_label": "findjsonpathconst()",
       "id": "ugripperruntime_record_runtime_findjsonpathconst"
     },
@@ -39770,7 +39770,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1359",
-      "community": 417,
+      "community": 41,
       "norm_label": "commandexists()",
       "id": "ugripperruntime_record_runtime_commandexists"
     },
@@ -39779,7 +39779,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1393",
-      "community": 417,
+      "community": 41,
       "norm_label": "resolvepythoncommand()",
       "id": "ugripperruntime_record_runtime_resolvepythoncommand"
     },
@@ -40022,7 +40022,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2726",
-      "community": 417,
+      "community": 41,
       "norm_label": "egoworkerargs()",
       "id": "ugripperruntime_record_runtime_egoworkerargs"
     },
@@ -40031,7 +40031,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2752",
-      "community": 417,
+      "community": 41,
       "norm_label": "egobindingworkerargs()",
       "id": "ugripperruntime_record_runtime_egobindingworkerargs"
     },
@@ -40040,7 +40040,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2767",
-      "community": 417,
+      "community": 41,
       "norm_label": "startegorecording()",
       "id": "ugripperruntime_record_runtime_startegorecording"
     },
@@ -40049,7 +40049,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2972",
-      "community": 417,
+      "community": 41,
       "norm_label": "stopegorecording()",
       "id": "ugripperruntime_record_runtime_stopegorecording"
     },
@@ -40058,7 +40058,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2999",
-      "community": 417,
+      "community": 41,
       "norm_label": "cleanupegoremote()",
       "id": "ugripperruntime_record_runtime_cleanupegoremote"
     },
@@ -40067,7 +40067,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3018",
-      "community": 417,
+      "community": 41,
       "norm_label": "loadegobinding()",
       "id": "ugripperruntime_record_runtime_loadegobinding"
     },
@@ -40076,7 +40076,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3055",
-      "community": 417,
+      "community": 41,
       "norm_label": "clearegobindingstate()",
       "id": "ugripperruntime_record_runtime_clearegobindingstate"
     },
@@ -40085,7 +40085,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3068",
-      "community": 417,
+      "community": 41,
       "norm_label": "isegorequired()",
       "id": "ugripperruntime_record_runtime_isegorequired"
     },
@@ -40094,7 +40094,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3073",
-      "community": 417,
+      "community": 41,
       "norm_label": "handleegobindingtoggle()",
       "id": "ugripperruntime_record_runtime_handleegobindingtoggle"
     },
@@ -40103,7 +40103,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3119",
-      "community": 417,
+      "community": 41,
       "norm_label": "maintainegobindingaction()",
       "id": "ugripperruntime_record_runtime_maintainegobindingaction"
     },
@@ -40112,7 +40112,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3140",
-      "community": 417,
+      "community": 41,
       "norm_label": "maintainegobindinghealth()",
       "id": "ugripperruntime_record_runtime_maintainegobindinghealth"
     },
@@ -40139,7 +40139,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3233",
-      "community": 417,
+      "community": 41,
       "norm_label": "waitforegofinalize()",
       "id": "ugripperruntime_record_runtime_waitforegofinalize"
     },
@@ -40157,7 +40157,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3436",
-      "community": 762,
+      "community": 417,
       "norm_label": "syncruntimelogtodisk()",
       "id": "ugripperruntime_record_runtime_syncruntimelogtodisk"
     },
@@ -40274,7 +40274,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4099",
-      "community": 417,
+      "community": 41,
       "norm_label": "handlebuttonaction()",
       "id": "ugripperruntime_record_runtime_handlebuttonaction"
     },
@@ -40598,7 +40598,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4541",
-      "community": 210,
+      "community": 417,
       "norm_label": "shouldrestoreusbforfailure()",
       "id": "ugripperruntime_record_runtime_shouldrestoreusbforfailure"
     },
@@ -41264,7 +41264,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1679",
-      "community": 41,
+      "community": 67,
       "norm_label": "loadfayscalibrationfromstatus()",
       "id": "ugripperruntime_record_runtime_loadfayscalibrationfromstatus"
     },
@@ -41363,7 +41363,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2624",
-      "community": 417,
+      "community": 41,
       "norm_label": "runcommandcapture()",
       "id": "ugripperruntime_record_runtime_runcommandcapture"
     },
@@ -41372,7 +41372,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2713",
-      "community": 417,
+      "community": 41,
       "norm_label": "shellseconds()",
       "id": "ugripperruntime_record_runtime_shellseconds"
     },
@@ -41381,7 +41381,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2720",
-      "community": 417,
+      "community": 41,
       "norm_label": "capturetactilegrayframe()",
       "id": "ugripperruntime_record_runtime_capturetactilegrayframe"
     },
@@ -41651,7 +41651,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L10950",
-      "community": 41,
+      "community": 67,
       "norm_label": "jsonstringpath()",
       "id": "ugripperruntime_record_runtime_jsonstringpath"
     },
@@ -64942,7 +64942,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L39",
       "_origin": "ast",
-      "community": 766,
+      "community": 284,
       "community_name": "GripperRgbCameraBlock",
       "norm_label": "gripperrgbcamerablock",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperrgbcamerablock"
@@ -64953,7 +64953,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L41",
       "_origin": "ast",
-      "community": 766,
+      "community": 284,
       "community_name": "GripperRgbCameraBlock",
       "norm_label": "cameramodelenum",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperrgbcamerablock_cameramodelenum"
@@ -64964,7 +64964,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L42",
       "_origin": "ast",
-      "community": 766,
+      "community": 284,
       "community_name": "GripperRgbCameraBlock",
       "norm_label": "distortioncoefficients",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperrgbcamerablock_distortioncoefficients"
@@ -64975,7 +64975,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L43",
       "_origin": "ast",
-      "community": 766,
+      "community": 284,
       "community_name": "GripperRgbCameraBlock",
       "norm_label": "intrinsics",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperrgbcamerablock_intrinsics"
@@ -64986,7 +64986,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L44",
       "_origin": "ast",
-      "community": 766,
+      "community": 284,
       "community_name": "GripperRgbCameraBlock",
       "norm_label": "resolution",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperrgbcamerablock_resolution"
@@ -64997,7 +64997,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L45",
       "_origin": "ast",
-      "community": 766,
+      "community": 284,
       "community_name": "GripperRgbCameraBlock",
       "norm_label": "reserved",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperrgbcamerablock_reserved"
@@ -65008,7 +65008,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L48",
       "_origin": "ast",
-      "community": 284,
+      "community": 50,
       "community_name": "scan_main_camera_mkv_issues.py",
       "norm_label": "gripperstereocamerablock",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperstereocamerablock"
@@ -65019,7 +65019,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L50",
       "_origin": "ast",
-      "community": 284,
+      "community": 50,
       "community_name": "scan_main_camera_mkv_issues.py",
       "norm_label": "cameramodelenum",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperstereocamerablock_cameramodelenum"
@@ -65030,7 +65030,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L51",
       "_origin": "ast",
-      "community": 284,
+      "community": 50,
       "community_name": "scan_main_camera_mkv_issues.py",
       "norm_label": "focallength",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperstereocamerablock_focallength"
@@ -65041,7 +65041,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L52",
       "_origin": "ast",
-      "community": 284,
+      "community": 50,
       "community_name": "scan_main_camera_mkv_issues.py",
       "norm_label": "principalpoint",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperstereocamerablock_principalpoint"
@@ -65052,7 +65052,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L53",
       "_origin": "ast",
-      "community": 284,
+      "community": 50,
       "community_name": "scan_main_camera_mkv_issues.py",
       "norm_label": "distortioncoefficients",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperstereocamerablock_distortioncoefficients"
@@ -65063,7 +65063,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_calibration_data.h",
       "source_location": "L54",
       "_origin": "ast",
-      "community": 284,
+      "community": 50,
       "community_name": "scan_main_camera_mkv_issues.py",
       "norm_label": "reserved",
       "id": "standalone_gripperhmitool_include_gripper_hmi_calibration_data_gripperstereocamerablock_reserved"
@@ -72136,7 +72136,7 @@
       "source_file": "standalone/SensorRecorder/third_party/mcap/include/mcap/types.hpp",
       "source_location": "L183",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "message()",
       "community_name": "empty",
       "id": "standalone_sensorrecorder_third_party_mcap_include_mcap_types_message"
@@ -74832,7 +74832,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L312",
       "_origin": "ast",
-      "community": 400,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "makeledeffect",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_makeledeffect"
@@ -74865,7 +74865,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L315",
       "_origin": "ast",
-      "community": 400,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "tolower",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_tolower"
@@ -74898,7 +74898,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L318",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "community_name": "empty",
       "norm_label": "currentepochms",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_currentepochms"
@@ -74920,7 +74920,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L320",
       "_origin": "ast",
-      "community": 75,
+      "community": 0,
       "community_name": "RecordRuntime",
       "norm_label": "fileexistsandnotempty",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_fileexistsandnotempty"
@@ -74942,7 +74942,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L322",
       "_origin": "ast",
-      "community": 400,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "ledstatename",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_ledstatename"
@@ -74997,7 +74997,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L329",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "gripperStateIndexForSide",
       "norm_label": "cleargripperruntimestateforside",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_cleargripperruntimestateforside"
@@ -75525,7 +75525,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L380",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "suspendstereodaemonforrestoreusb",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_suspendstereodaemonforrestoreusb"
@@ -75536,7 +75536,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L381",
       "_origin": "ast",
-      "community": 400,
+      "community": 0,
       "community_name": "RecordRuntime",
       "norm_label": "resumestereodaemonafterrestoreusb",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_resumestereodaemonafterrestoreusb"
@@ -75569,7 +75569,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L384",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "preparedatadiskforrestoreusb",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_preparedatadiskforrestoreusb"
@@ -75580,7 +75580,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L391",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "logrestoreusbrequested",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_logrestoreusbrequested"
@@ -75591,7 +75591,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L392",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "confirmrestoreusbtrigger",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_confirmrestoreusbtrigger"
@@ -75822,7 +75822,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L416",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "gripperStateIndexForSide",
       "norm_label": "marktactilereferencependingforside",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_marktactilereferencependingforside"
@@ -76020,7 +76020,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L437",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "logrestoreusbskiponce",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_logrestoreusbskiponce"
@@ -76031,7 +76031,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L438",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "RecordRuntime",
       "norm_label": "triggerrestoreusbonerror",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_triggerrestoreusbonerror"
@@ -76042,7 +76042,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L439",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "shouldrestoreusbforfailure",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_shouldrestoreusbforfailure"
@@ -76053,7 +76053,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L443",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "shoulddeferrestoreusbforside",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_shoulddeferrestoreusbforside"
@@ -76064,7 +76064,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L445",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "gripperStateIndexForSide",
       "norm_label": "sidehasanyrestoreusbdevice",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_sidehasanyrestoreusbdevice"
@@ -76075,7 +76075,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L446",
       "_origin": "ast",
-      "community": 400,
+      "community": 0,
       "community_name": "RecordRuntime",
       "norm_label": "restoreusbcriticalsymlinkspresent",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_restoreusbcriticalsymlinkspresent"
@@ -76086,7 +76086,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L447",
       "_origin": "ast",
-      "community": 400,
+      "community": 0,
       "community_name": "RecordRuntime",
       "norm_label": "restoreusbtargetrecovered",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_restoreusbtargetrecovered"
@@ -76108,7 +76108,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L449",
       "_origin": "ast",
-      "community": 400,
+      "community": 0,
       "community_name": "RecordRuntime",
       "norm_label": "triggerrestoreusbfailurealarm",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_triggerrestoreusbfailurealarm"
@@ -76119,7 +76119,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L450",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "gripperStateIndexForSide",
       "norm_label": "noterestoreusbmanualinsert",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_noterestoreusbmanualinsert"
@@ -76130,7 +76130,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime.h",
       "source_location": "L451",
       "_origin": "ast",
-      "community": 50,
+      "community": 0,
       "community_name": "RecordRuntime",
       "norm_label": "resetrestoreusberrorwindow",
       "id": "standalone_ugripperruntime_include_record_runtime_recordruntime_resetrestoreusberrorwindow"
@@ -80618,7 +80618,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime/subprocess_handle.h",
       "source_location": "L26",
       "_origin": "ast",
-      "community": 481,
+      "community": 0,
       "community_name": "SubprocessHandle",
       "norm_label": "wait",
       "id": "standalone_ugripperruntime_include_record_runtime_subprocess_handle_subprocesshandle_wait"
@@ -80629,7 +80629,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime/subprocess_handle.h",
       "source_location": "L27",
       "_origin": "ast",
-      "community": 481,
+      "community": 0,
       "community_name": "SubprocessHandle",
       "norm_label": "sendsignal",
       "id": "standalone_ugripperruntime_include_record_runtime_subprocess_handle_subprocesshandle_sendsignal"
@@ -80816,7 +80816,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L53",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "norm_label": "childfiledescriptorlimit()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_childfiledescriptorlimit"
@@ -80827,7 +80827,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L59",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "norm_label": "closechildfiledescriptors()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_closechildfiledescriptors"
@@ -80849,7 +80849,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "string",
       "id": "standalone_ugripperruntime_record_runtime_cc_string"
@@ -80871,7 +80871,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L192",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "norm_label": "shellquote()",
       "community_name": "HealthFault",
       "id": "standalone_ugripperruntime_record_runtime_shellquote"
@@ -81003,7 +81003,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "community_name": "empty",
       "norm_label": "path",
       "id": "standalone_ugripperruntime_record_runtime_cc_path"
@@ -81036,7 +81036,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L340",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "iscamerarecorderkernelhangreason()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_iscamerarecorderkernelhangreason"
@@ -81058,7 +81058,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L352",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "norm_label": "isdiskhealthfault()",
       "community_name": "HealthFault",
       "id": "standalone_ugripperruntime_record_runtime_isdiskhealthfault"
@@ -81069,7 +81069,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L361",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "norm_label": "isimmediaterestoreusbtriggercause()",
       "community_name": "HealthFault",
       "id": "standalone_ugripperruntime_record_runtime_isimmediaterestoreusbtriggercause"
@@ -81135,7 +81135,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L529",
       "_origin": "ast",
-      "community": 378,
+      "community": 282,
       "norm_label": "compactrestoreusbevidence()",
       "community_name": "HealthFault",
       "id": "standalone_ugripperruntime_record_runtime_compactrestoreusbevidence"
@@ -81146,7 +81146,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L563",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "norm_label": "iscriticaldevicemissingevidence()",
       "community_name": "HealthFault",
       "id": "standalone_ugripperruntime_record_runtime_iscriticaldevicemissingevidence"
@@ -81311,7 +81311,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "array",
       "id": "standalone_ugripperruntime_record_runtime_cc_array"
@@ -81509,7 +81509,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L635",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "tailchecktaskresult",
       "id": "standalone_ugripperruntime_record_runtime_tailchecktaskresult"
@@ -81531,7 +81531,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L638",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "detail",
       "id": "standalone_ugripperruntime_record_runtime_tailchecktaskresult_detail"
@@ -81542,7 +81542,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L639",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "errormessage",
       "id": "standalone_ugripperruntime_record_runtime_tailchecktaskresult_errormessage"
@@ -81553,7 +81553,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L642",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "commandcaptureresult",
       "id": "standalone_ugripperruntime_record_runtime_commandcaptureresult"
@@ -81564,7 +81564,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L644",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "success",
       "id": "standalone_ugripperruntime_record_runtime_commandcaptureresult_success"
@@ -81575,7 +81575,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L645",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "timedout",
       "id": "standalone_ugripperruntime_record_runtime_commandcaptureresult_timedout"
@@ -81586,7 +81586,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L646",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "exitcode",
       "id": "standalone_ugripperruntime_record_runtime_commandcaptureresult_exitcode"
@@ -81597,7 +81597,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L647",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "output",
       "id": "standalone_ugripperruntime_record_runtime_commandcaptureresult_output"
@@ -81608,7 +81608,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L650",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "tactileframemetrics",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics"
@@ -81619,7 +81619,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L652",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "robustresidualarea",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_robustresidualarea"
@@ -81630,7 +81630,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L653",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "rawresidualarea",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_rawresidualarea"
@@ -81641,7 +81641,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L654",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "residualthreshold",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_residualthreshold"
@@ -81652,7 +81652,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L655",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "residualmedian",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_residualmedian"
@@ -81663,7 +81663,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L656",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "residualmad",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_residualmad"
@@ -81674,7 +81674,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L657",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "residualmean",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_residualmean"
@@ -81685,7 +81685,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L658",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "residualp99",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_residualp99"
@@ -81696,7 +81696,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L659",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "gain",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_gain"
@@ -81707,7 +81707,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L660",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "offset",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_offset"
@@ -81718,7 +81718,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L661",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "maxresidualcomponentpixels",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_maxresidualcomponentpixels"
@@ -81729,7 +81729,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L662",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "droppedartifactcomponentpixels",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_droppedartifactcomponentpixels"
@@ -81740,7 +81740,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L663",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "droppedartifactcomponentcount",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_droppedartifactcomponentcount"
@@ -81751,7 +81751,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L664",
       "_origin": "ast",
-      "community": 438,
+      "community": 481,
       "community_name": "TactileFrameMetrics",
       "norm_label": "damaged",
       "id": "standalone_ugripperruntime_record_runtime_tactileframemetrics_damaged"
@@ -81762,7 +81762,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L671",
       "_origin": "ast",
-      "community": 28,
+      "community": 481,
       "community_name": "TactileCalibrationTarget",
       "norm_label": "tactilecalibrationtarget",
       "id": "standalone_ugripperruntime_record_runtime_tactilecalibrationtarget"
@@ -81773,7 +81773,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L673",
       "_origin": "ast",
-      "community": 28,
+      "community": 481,
       "community_name": "TactileCalibrationTarget",
       "norm_label": "cameraname",
       "id": "standalone_ugripperruntime_record_runtime_tactilecalibrationtarget_cameraname"
@@ -81784,7 +81784,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L674",
       "_origin": "ast",
-      "community": 28,
+      "community": 481,
       "community_name": "TactileCalibrationTarget",
       "norm_label": "side",
       "id": "standalone_ugripperruntime_record_runtime_tactilecalibrationtarget_side"
@@ -81795,7 +81795,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L675",
       "_origin": "ast",
-      "community": 28,
+      "community": 481,
       "community_name": "TactileCalibrationTarget",
       "norm_label": "sensorslot",
       "id": "standalone_ugripperruntime_record_runtime_tactilecalibrationtarget_sensorslot"
@@ -81806,7 +81806,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L676",
       "_origin": "ast",
-      "community": 28,
+      "community": 481,
       "community_name": "TactileCalibrationTarget",
       "norm_label": "devicepath",
       "id": "standalone_ugripperruntime_record_runtime_tactilecalibrationtarget_devicepath"
@@ -81817,7 +81817,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L677",
       "_origin": "ast",
-      "community": 28,
+      "community": 481,
       "community_name": "TactileCalibrationTarget",
       "norm_label": "jsonpath",
       "id": "standalone_ugripperruntime_record_runtime_tactilecalibrationtarget_jsonpath"
@@ -81828,7 +81828,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L678",
       "_origin": "ast",
-      "community": 28,
+      "community": 481,
       "community_name": "TactileCalibrationTarget",
       "norm_label": "serialplaceholder",
       "id": "standalone_ugripperruntime_record_runtime_tactilecalibrationtarget_serialplaceholder"
@@ -81839,7 +81839,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L680",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "norm_label": "booltext()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_booltext"
@@ -81894,7 +81894,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L723",
       "_origin": "ast",
-      "community": 481,
+      "community": 282,
       "norm_label": "camerarecorderfaultpath()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_camerarecorderfaultpath"
@@ -81927,7 +81927,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L746",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "tactilepersistentresetpath()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_tactilepersistentresetpath"
@@ -81993,7 +81993,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L793",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "norm_label": "formatfixed()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_formatfixed"
@@ -82004,7 +82004,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L800",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "norm_label": "isfalselikevalue()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_isfalselikevalue"
@@ -82048,7 +82048,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "vector",
       "id": "standalone_ugripperruntime_record_runtime_cc_vector"
@@ -82081,7 +82081,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L872",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "norm_label": "sessioncamerastreams()",
       "community_name": "initialize",
       "id": "standalone_ugripperruntime_record_runtime_sessioncamerastreams"
@@ -82092,7 +82092,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L889",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "norm_label": "joincsv()",
       "community_name": "initialize",
       "id": "standalone_ugripperruntime_record_runtime_joincsv"
@@ -82103,7 +82103,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L903",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "norm_label": "currentdatestring()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_currentdatestring"
@@ -82114,7 +82114,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L915",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "loadpersistentresetserials()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_loadpersistentresetserials"
@@ -82125,7 +82125,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "community_name": "empty",
       "norm_label": "set",
       "id": "standalone_ugripperruntime_record_runtime_cc_set"
@@ -82136,7 +82136,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L945",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "storepersistentresetserials()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_storepersistentresetserials"
@@ -82147,7 +82147,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L959",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "writebinaryfile()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_writebinaryfile"
@@ -82169,7 +82169,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1050",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "norm_label": "percentilefromsorted()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_percentilefromsorted"
@@ -82180,7 +82180,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1069",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "norm_label": "sortedframevalues()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_sortedframevalues"
@@ -82191,7 +82191,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1081",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "norm_label": "boxblurframe()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_boxblurframe"
@@ -82202,7 +82202,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1121",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "norm_label": "formattactilemetrics()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_formattactilemetrics"
@@ -82213,7 +82213,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1140",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "norm_label": "countfilteredresidualmask()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_countfilteredresidualmask"
@@ -82224,7 +82224,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1279",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "norm_label": "computetactileframemetrics()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_computetactileframemetrics"
@@ -82235,7 +82235,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1385",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "writetextfileatomically()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_writetextfileatomically"
@@ -82246,7 +82246,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1446",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "makeruntimetactilecalibrationentry()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_makeruntimetactilecalibrationentry"
@@ -82257,7 +82257,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "json",
       "id": "standalone_ugripperruntime_record_runtime_cc_json"
@@ -82268,7 +82268,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1455",
       "_origin": "ast",
-      "community": 453,
+      "community": 75,
       "norm_label": "findjsonpath()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_findjsonpath"
@@ -82279,7 +82279,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1518",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "findjsonpathconst()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_findjsonpathconst"
@@ -82301,7 +82301,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1574",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "loadcalibrationjsonfile()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_loadcalibrationjsonfile"
@@ -82312,7 +82312,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1593",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "norm_label": "gripperstateindexforside()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_gripperstateindexforside"
@@ -82323,7 +82323,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1598",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "norm_label": "maincamerajsonpathforside()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_maincamerajsonpathforside"
@@ -82334,7 +82334,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1604",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "norm_label": "stereojsonpathforside()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_stereojsonpathforside"
@@ -82345,7 +82345,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1610",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "norm_label": "imujsonpathforside()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_imujsonpathforside"
@@ -82356,7 +82356,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1616",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "makemaincameracalibrationentryfrompayload()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_makemaincameracalibrationentryfrompayload"
@@ -82367,7 +82367,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "kyuzhoupayloadsize",
       "id": "kyuzhoupayloadsize"
@@ -82378,7 +82378,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1649",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "makedefaultmaincameracalibrationentry()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_makedefaultmaincameracalibrationentry"
@@ -82389,7 +82389,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1671",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "loadfayscalibrationfromstatus()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_loadfayscalibrationfromstatus"
@@ -82400,7 +82400,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1770",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "makefayscameracalibrationentry()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_makefayscameracalibrationentry"
@@ -82411,7 +82411,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1811",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "makefaysstereocalibrationentry()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_makefaysstereocalibrationentry"
@@ -82422,7 +82422,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1855",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "makedefaultstereocalibrationentry()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_makedefaultstereocalibrationentry"
@@ -82433,7 +82433,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1898",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "makefaysimucalibrationentry()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_makefaysimucalibrationentry"
@@ -82444,7 +82444,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1936",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "makedefaultfaysimucalibrationentry()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_makedefaultfaysimucalibrationentry"
@@ -82455,7 +82455,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1953",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "makelockedcalibrationinfo()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_makelockedcalibrationinfo"
@@ -82466,7 +82466,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1961",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "norm_label": "joinarguments()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_joinarguments"
@@ -82488,7 +82488,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L1989",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "movefilewithcrossdevicefallback()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_movefilewithcrossdevicefallback"
@@ -82499,7 +82499,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "community_name": "empty",
       "norm_label": "error_code",
       "id": "error_code"
@@ -82521,7 +82521,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2049",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "flushfiletodisk()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_flushfiletodisk"
@@ -82532,7 +82532,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2081",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "flushdirectorytodisk()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_flushdirectorytodisk"
@@ -82554,7 +82554,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2154",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "flushdirectorytreetodisk()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_flushdirectorytreetodisk"
@@ -82598,7 +82598,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2390",
       "_origin": "ast",
-      "community": 481,
+      "community": 0,
       "norm_label": "maketimestampstring()",
       "community_name": "RecordRuntime",
       "id": "standalone_ugripperruntime_record_runtime_maketimestampstring"
@@ -82609,7 +82609,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2397",
       "_origin": "ast",
-      "community": 453,
+      "community": 75,
       "norm_label": "makelocaldatetimestring()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_makelocaldatetimestring"
@@ -82620,7 +82620,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2409",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "norm_label": "writevalidationerrorlog()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_writevalidationerrorlog"
@@ -82642,7 +82642,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2469",
       "_origin": "ast",
-      "community": 481,
+      "community": 378,
       "norm_label": "resolvepythoncommand()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_resolvepythoncommand"
@@ -82664,7 +82664,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2493",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "norm_label": "asciilower()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_asciilower"
@@ -82675,7 +82675,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2501",
       "_origin": "ast",
-      "community": 453,
+      "community": 75,
       "norm_label": "resolveegoadbcommand()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_resolveegoadbcommand"
@@ -82686,7 +82686,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2515",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "norm_label": "readtrimmedsysfstext()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_readtrimmedsysfstext"
@@ -82719,7 +82719,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2559",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "norm_label": "parsedoublestrict()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_parsedoublestrict"
@@ -82730,7 +82730,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2578",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "norm_label": "extractjsonnumberfield()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_extractjsonnumberfield"
@@ -82741,7 +82741,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2589",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "norm_label": "extractjsonintegerfield()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_extractjsonintegerfield"
@@ -82752,7 +82752,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2616",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "norm_label": "runcommandcapture()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_runcommandcapture"
@@ -82763,7 +82763,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2705",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "norm_label": "shellseconds()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_shellseconds"
@@ -82774,7 +82774,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2712",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "norm_label": "capturetactilegrayframe()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_capturetactilegrayframe"
@@ -82807,7 +82807,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2874",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "isyuzhoumaincamerasn()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_isyuzhoumaincamerasn"
@@ -82818,7 +82818,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2893",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "yuzhoumaincameraidentity",
       "id": "standalone_ugripperruntime_record_runtime_yuzhoumaincameraidentity"
@@ -82829,7 +82829,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2895",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "cameraname",
       "id": "standalone_ugripperruntime_record_runtime_yuzhoumaincameraidentity_cameraname"
@@ -82840,7 +82840,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2896",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "devicepath",
       "id": "standalone_ugripperruntime_record_runtime_yuzhoumaincameraidentity_devicepath"
@@ -82851,7 +82851,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2897",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "resolvedtarget",
       "id": "standalone_ugripperruntime_record_runtime_yuzhoumaincameraidentity_resolvedtarget"
@@ -82862,7 +82862,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2898",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "serialnumber",
       "id": "standalone_ugripperruntime_record_runtime_yuzhoumaincameraidentity_serialnumber"
@@ -82873,7 +82873,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2899",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "calibrationpayloadcached",
       "id": "standalone_ugripperruntime_record_runtime_yuzhoumaincameraidentity_calibrationpayloadcached"
@@ -82884,7 +82884,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2900",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "calibrationpayload",
       "id": "standalone_ugripperruntime_record_runtime_yuzhoumaincameraidentity_calibrationpayload"
@@ -82895,7 +82895,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2895",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "readyuzhouxuchunk()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_readyuzhouxuchunk"
@@ -82906,7 +82906,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L2946",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "validateyuzhoumaincameracalibrationpayload()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_validateyuzhoumaincameracalibrationpayload"
@@ -82917,7 +82917,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3015",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "readyuzhoumaincameraidentity()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_readyuzhoumaincameraidentity"
@@ -82928,7 +82928,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3088",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "norm_label": "probemaincameraserialfordevicenode()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_probemaincameraserialfordevicenode"
@@ -83049,7 +83049,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3948",
       "_origin": "ast",
-      "community": 400,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::makeledeffect()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_makeledeffect"
@@ -83060,7 +83060,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 400,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "ledstate",
       "id": "standalone_ugripperruntime_record_runtime_cc_ledstate"
@@ -83071,7 +83071,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L3988",
       "_origin": "ast",
-      "community": 400,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::toledstate()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_toledstate"
@@ -83082,7 +83082,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 400,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "runtimeledstate",
       "id": "standalone_ugripperruntime_record_runtime_cc_runtimeledstate"
@@ -83093,7 +83093,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4022",
       "_origin": "ast",
-      "community": 400,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::ledstatename()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_ledstatename"
@@ -83192,7 +83192,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4686",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::setaudiorecoverycommand()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_setaudiorecoverycommand"
@@ -83291,7 +83291,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4808",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::writestereocontrol()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_writestereocontrol"
@@ -83302,7 +83302,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4837",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::waitforstereofinalize()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_waitforstereofinalize"
@@ -83313,7 +83313,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4759",
       "_origin": "ast",
-      "community": 211,
+      "community": 378,
       "norm_label": "egoworkerargs()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_egoworkerargs"
@@ -83478,7 +83478,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5452",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "community_name": "empty",
       "norm_label": "recordruntime::syncruntimelogtodisk()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_syncruntimelogtodisk"
@@ -83511,7 +83511,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5834",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "gripperStateIndexForSide",
       "norm_label": "recordruntime::handlegripperconnectionevents()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_handlegripperconnectionevents"
@@ -83533,7 +83533,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5920",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "gripperStateIndexForSide",
       "norm_label": "recordruntime::cleargripperruntimestateforside()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_cleargripperruntimestateforside"
@@ -83544,7 +83544,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5933",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "gripperStateIndexForSide",
       "norm_label": "recordruntime::refreshgripperruntimestateforside()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_refreshgripperruntimestateforside"
@@ -83632,7 +83632,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6278",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::marktactilereferencependingforside()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_marktactilereferencependingforside"
@@ -83643,7 +83643,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6288",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "recordruntime::applytactilevalidationfindings()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_applytactilevalidationfindings"
@@ -83654,7 +83654,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "tactilevalidationfinding",
       "id": "tactilevalidationfinding"
@@ -83731,7 +83731,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6496",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::sendaudiocommand()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_sendaudiocommand"
@@ -83742,7 +83742,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6505",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::handlefailurestate()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_handlefailurestate"
@@ -83753,7 +83753,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6541",
       "_origin": "ast",
-      "community": 400,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::shouldrestoreusbforfailure()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_shouldrestoreusbforfailure"
@@ -83808,7 +83808,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6787",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::maincamerarestoretargetshealthy()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_maincamerarestoretargetshealthy"
@@ -83852,7 +83852,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6885",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::shoulddeferrestoreusbforside()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_shoulddeferrestoreusbforside"
@@ -83863,7 +83863,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6925",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "gripperStateIndexForSide",
       "norm_label": "recordruntime::triggerrestoreusbfailurealarm()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_triggerrestoreusbfailurealarm"
@@ -83885,7 +83885,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6968",
       "_origin": "ast",
-      "community": 50,
+      "community": 0,
       "community_name": "RecordRuntime",
       "norm_label": "recordruntime::noterestoreusbmanualinsert()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_noterestoreusbmanualinsert"
@@ -83896,7 +83896,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6996",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "gripperStateIndexForSide",
       "norm_label": "recordruntime::maintainrestoreusbdevicepresence()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_maintainrestoreusbdevicepresence"
@@ -83907,7 +83907,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7038",
       "_origin": "ast",
-      "community": 400,
+      "community": 0,
       "community_name": "RecordRuntime",
       "norm_label": "recordruntime::resetrestoreusberrorwindow()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_resetrestoreusberrorwindow"
@@ -83918,7 +83918,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7071",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::isdatadiskmounted()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_isdatadiskmounted"
@@ -83929,7 +83929,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7103",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::requestdatadiskumountforrestoreusb()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_requestdatadiskumountforrestoreusb"
@@ -83951,7 +83951,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7226",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::logrestoreusbrequested()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_logrestoreusbrequested"
@@ -83962,7 +83962,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "restoreusbtriggercontext",
       "id": "restoreusbtriggercontext"
@@ -83973,7 +83973,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7236",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::confirmrestoreusbtrigger()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_confirmrestoreusbtrigger"
@@ -83984,7 +83984,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7314",
       "_origin": "ast",
-      "community": 400,
+      "community": 0,
       "community_name": "RecordRuntime",
       "norm_label": "recordruntime::maintainrestoreusbretry()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_maintainrestoreusbretry"
@@ -83995,7 +83995,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7443",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::logrestoreusbskiponce()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_logrestoreusbskiponce"
@@ -84006,7 +84006,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7453",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::triggerrestoreusbonerror()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_triggerrestoreusbonerror"
@@ -84017,7 +84017,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7560",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "community_name": "empty",
       "norm_label": "recordruntime::attachpendingpreaudio()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_attachpendingpreaudio"
@@ -84028,7 +84028,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7584",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "community_name": "empty",
       "norm_label": "recordruntime::writerecordinglock()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_writerecordinglock"
@@ -84215,7 +84215,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8013",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "community_name": "empty",
       "norm_label": "recordruntime::markepisodeoperatorfailed()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_markepisodeoperatorfailed"
@@ -84248,7 +84248,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8148",
       "_origin": "ast",
-      "community": 481,
+      "community": 0,
       "community_name": "RecordRuntime",
       "norm_label": "recordruntime::recordaudioclip()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_recordaudioclip"
@@ -84369,7 +84369,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8792",
       "_origin": "ast",
-      "community": 400,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::setledstate()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_setledstate"
@@ -84380,7 +84380,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8813",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "gripperStateIndexForSide",
       "norm_label": "recordruntime::settactilewarningledstate()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_settactilewarningledstate"
@@ -84402,7 +84402,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8882",
       "_origin": "ast",
-      "community": 400,
+      "community": 282,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::maybetriggerrestoreusbforhardwarefault()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_maybetriggerrestoreusbforhardwarefault"
@@ -84413,7 +84413,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8913",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::readenvvalue()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_readenvvalue"
@@ -84424,7 +84424,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8918",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::querypackageversion()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_querypackageversion"
@@ -84435,7 +84435,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8947",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::tolower()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_tolower"
@@ -84446,7 +84446,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8955",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "recordruntime::jsonescape()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_jsonescape"
@@ -84490,7 +84490,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8995",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::fileexistsandnotempty()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_fileexistsandnotempty"
@@ -84501,7 +84501,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9003",
       "_origin": "ast",
-      "community": 453,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "recordruntime::runcommandsync()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_runcommandsync"
@@ -84512,7 +84512,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9040",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "recordruntime::gripperpanelmanager::connect()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_gripperpanelmanager_connect"
@@ -84567,7 +84567,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9151",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::gripperpanelmanager::sideforport()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_gripperpanelmanager_sideforport"
@@ -84578,7 +84578,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9164",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::gripperpanelmanager::finddriverindexforside()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_gripperpanelmanager_finddriverindexforside"
@@ -84633,7 +84633,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9355",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::gripperpanelmanager::requeststateforside()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_gripperpanelmanager_requeststateforside"
@@ -84644,7 +84644,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9367",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::gripperpanelmanager::readruntimeidentityforside()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_gripperpanelmanager_readruntimeidentityforside"
@@ -84655,7 +84655,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9437",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "recordruntime::gripperpanelmanager::consumeconnectionevents()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_gripperpanelmanager_consumeconnectionevents"
@@ -84666,7 +84666,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 75,
+      "community": 481,
       "community_name": "empty",
       "norm_label": "connectionevent",
       "id": "connectionevent"
@@ -84677,7 +84677,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9444",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::gripperpanelmanager::issidereadyforrefresh()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_gripperpanelmanager_issidereadyforrefresh"
@@ -84688,7 +84688,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9462",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::gripperpanelmanager::setbeepenabledforside()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_gripperpanelmanager_setbeepenabledforside"
@@ -84710,7 +84710,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9504",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::gripperpanelmanager::silencebeepforside()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_gripperpanelmanager_silencebeepforside"
@@ -84721,7 +84721,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9509",
       "_origin": "ast",
-      "community": 50,
+      "community": 453,
       "community_name": "gripperStateIndexForSide",
       "norm_label": "recordruntime::gripperpanelmanager::silencebeep()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_gripperpanelmanager_silencebeep"
@@ -84754,7 +84754,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9585",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::gripperpanelmanager::setledcolorforside()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_gripperpanelmanager_setledcolorforside"
@@ -84831,7 +84831,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9658",
       "_origin": "ast",
-      "community": 400,
+      "community": 453,
       "community_name": "HealthFault",
       "norm_label": "recordruntime::hmiledcontroller::setstate()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_hmiledcontroller_setstate"
@@ -84842,7 +84842,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9667",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::episodemanager::episodemanager()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_episodemanager_episodemanager"
@@ -84864,7 +84864,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9730",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::episodemanager::setgripperruntimestates()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_episodemanager_setgripperruntimestates"
@@ -84875,7 +84875,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "gripperruntimestate",
       "id": "standalone_ugripperruntime_record_runtime_cc_gripperruntimestate"
@@ -84886,7 +84886,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9736",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::episodemanager::setmaincameraruntimestates()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_episodemanager_setmaincameraruntimestates"
@@ -84897,7 +84897,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "maincameraruntimestate",
       "id": "maincameraruntimestate"
@@ -84941,7 +84941,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9760",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::episodemanager::cachedtactileserialforname()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_episodemanager_cachedtactileserialforname"
@@ -84963,7 +84963,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9815",
       "_origin": "ast",
-      "community": 481,
+      "community": 75,
       "community_name": "empty",
       "norm_label": "recordruntime::episodemanager::marktactilereferencependingforside()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_episodemanager_marktactilereferencependingforside"
@@ -84974,7 +84974,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L9898",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::episodemanager::prepareepisode()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_episodemanager_prepareepisode"
@@ -85084,7 +85084,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L10209",
       "_origin": "ast",
-      "community": 453,
+      "community": 75,
       "norm_label": "jsonstringpath()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_jsonstringpath"
@@ -85128,7 +85128,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L10946",
       "_origin": "ast",
-      "community": 453,
+      "community": 8,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::episodemanager::writefilteredcalibration()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_episodemanager_writefilteredcalibration"
@@ -85139,7 +85139,7 @@
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L11093",
       "_origin": "ast",
-      "community": 453,
+      "community": 282,
       "community_name": "record_runtime.cc",
       "norm_label": "recordruntime::episodemanager::prepareepisodeoutputs()",
       "id": "standalone_ugripperruntime_record_runtime_recordruntime_episodemanager_prepareepisodeoutputs"
@@ -97289,7 +97289,7 @@
       "source_file": "test/src/sensor_recorder/test_encoder_protocol.cc",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 183,
+      "community": 16,
       "community_name": "TEST",
       "norm_label": "sensor_recorder/test_encoder_protocol.cc",
       "id": "test_src_sensor_recorder_test_encoder_protocol"
@@ -98026,7 +98026,7 @@
       "source_file": "test/src/utils/test_logging_v3.cc",
       "source_location": "L10",
       "_origin": "ast",
-      "community": 16,
+      "community": 400,
       "community_name": "CustomizedLogFormatter",
       "norm_label": "test()",
       "id": "test_src_utils_test_logging_v3_test"
@@ -98037,7 +98037,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 16,
+      "community": 400,
       "community_name": "CustomizedLogFormatter",
       "norm_label": "loggingv3",
       "id": "loggingv3"
@@ -98048,7 +98048,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 16,
+      "community": 400,
       "community_name": "CustomizedLogFormatter",
       "norm_label": "validatesandappendserrorcodeperphysicalline",
       "id": "validatesandappendserrorcodeperphysicalline"
@@ -98059,7 +98059,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 16,
+      "community": 400,
       "community_name": "CustomizedLogFormatter",
       "norm_label": "splitscodedpayloadbeforesubmittingtoppmainlogger",
       "id": "splitscodedpayloadbeforesubmittingtoppmainlogger"
@@ -103323,7 +103323,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4608",
-      "community": 50,
+      "community": 453,
       "norm_label": "startstereodaemon()",
       "community_name": "initialize",
       "id": "standalone_ugripperruntime_record_runtime_startstereodaemon"
@@ -103383,7 +103383,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L4694",
-      "community": 50,
+      "community": 453,
       "norm_label": "resumestereodaemonafterrestoreusb()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_resumestereodaemonafterrestoreusb"
@@ -103463,7 +103463,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5138",
-      "community": 481,
+      "community": 75,
       "norm_label": "syncruntimelogtodisk()",
       "community_name": "initialize",
       "id": "standalone_ugripperruntime_record_runtime_syncruntimelogtodisk"
@@ -103493,7 +103493,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5520",
-      "community": 50,
+      "community": 453,
       "norm_label": "handlegripperconnectionevents()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_handlegripperconnectionevents"
@@ -103503,7 +103503,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5559",
-      "community": 50,
+      "community": 453,
       "norm_label": "processpendinggripperrefreshes()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_processpendinggripperrefreshes"
@@ -103513,7 +103513,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5606",
-      "community": 50,
+      "community": 453,
       "norm_label": "cleargripperruntimestateforside()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_cleargripperruntimestateforside"
@@ -103523,7 +103523,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5619",
-      "community": 50,
+      "community": 453,
       "norm_label": "refreshgripperruntimestateforside()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_refreshgripperruntimestateforside"
@@ -103603,7 +103603,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L5964",
-      "community": 50,
+      "community": 453,
       "norm_label": "marktactilereferencependingforside()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_marktactilereferencependingforside"
@@ -103673,7 +103673,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6159",
-      "community": 50,
+      "community": 453,
       "norm_label": "aresidecriticaldevicesready()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_aresidecriticaldevicesready"
@@ -103703,7 +103703,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6222",
-      "community": 453,
+      "community": 282,
       "norm_label": "shouldrestoreusbforfailure()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_shouldrestoreusbforfailure"
@@ -103753,7 +103753,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6468",
-      "community": 453,
+      "community": 8,
       "norm_label": "maincamerarestoretargetshealthy()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_maincamerarestoretargetshealthy"
@@ -103763,7 +103763,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6488",
-      "community": 50,
+      "community": 453,
       "norm_label": "restoreusbtargetrecovered()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_restoreusbtargetrecovered"
@@ -103803,7 +103803,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6606",
-      "community": 50,
+      "community": 453,
       "norm_label": "triggerrestoreusbfailurealarm()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_triggerrestoreusbfailurealarm"
@@ -103823,7 +103823,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6649",
-      "community": 50,
+      "community": 453,
       "norm_label": "noterestoreusbmanualinsert()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_noterestoreusbmanualinsert"
@@ -103833,7 +103833,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6677",
-      "community": 50,
+      "community": 453,
       "norm_label": "maintainrestoreusbdevicepresence()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_maintainrestoreusbdevicepresence"
@@ -103843,7 +103843,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6719",
-      "community": 50,
+      "community": 453,
       "norm_label": "resetrestoreusberrorwindow()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_resetrestoreusberrorwindow"
@@ -103853,7 +103853,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6752",
-      "community": 481,
+      "community": 75,
       "norm_label": "isdatadiskmounted()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_isdatadiskmounted"
@@ -103863,7 +103863,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6784",
-      "community": 481,
+      "community": 75,
       "norm_label": "requestdatadiskumountforrestoreusb()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_requestdatadiskumountforrestoreusb"
@@ -103873,7 +103873,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6843",
-      "community": 481,
+      "community": 75,
       "norm_label": "preparedatadiskforrestoreusb()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_preparedatadiskforrestoreusb"
@@ -103903,7 +103903,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L6995",
-      "community": 50,
+      "community": 453,
       "norm_label": "maintainrestoreusbretry()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_maintainrestoreusbretry"
@@ -103933,7 +103933,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7241",
-      "community": 481,
+      "community": 75,
       "norm_label": "attachpendingpreaudio()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_attachpendingpreaudio"
@@ -103953,7 +103953,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7283",
-      "community": 481,
+      "community": 75,
       "norm_label": "removerecordinglock()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_removerecordinglock"
@@ -104063,7 +104063,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7582",
-      "community": 481,
+      "community": 75,
       "norm_label": "markepisodeoperatorfailed()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_markepisodeoperatorfailed"
@@ -104093,7 +104093,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L7717",
-      "community": 481,
+      "community": 378,
       "norm_label": "recordaudioclip()",
       "community_name": "initialize",
       "id": "standalone_ugripperruntime_record_runtime_recordaudioclip"
@@ -104203,7 +104203,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8343",
-      "community": 50,
+      "community": 453,
       "norm_label": "settactilewarningledstate()",
       "community_name": "gripperStateIndexForSide",
       "id": "standalone_ugripperruntime_record_runtime_settactilewarningledstate"
@@ -104253,7 +104253,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8477",
-      "community": 453,
+      "community": 282,
       "norm_label": "tolower()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_tolower"
@@ -104303,7 +104303,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8525",
-      "community": 75,
+      "community": 378,
       "norm_label": "fileexistsandnotempty()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_fileexistsandnotempty"
@@ -104313,7 +104313,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8533",
-      "community": 453,
+      "community": 378,
       "norm_label": "runcommandsync()",
       "community_name": "empty",
       "id": "standalone_ugripperruntime_record_runtime_runcommandsync"
@@ -104723,7 +104723,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L10463",
-      "community": 453,
+      "community": 8,
       "norm_label": "episodemanager::writefilteredcalibration()",
       "community_name": "record_runtime.cc",
       "id": "standalone_ugripperruntime_record_runtime_episodemanager_writefilteredcalibration"
@@ -104973,7 +104973,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/runtime_process.cc",
       "source_location": "L1200",
-      "community": 50,
+      "community": 453,
       "norm_label": "startdaemon()",
       "community_name": "initialize",
       "id": "standalone_ugripperruntime_runtime_process_startdaemon"
@@ -106563,7 +106563,7 @@
       "file_type": "code",
       "source_file": "src/utils/include/utils/spd_logger.h",
       "source_location": "L193",
-      "community": 481,
+      "community": 75,
       "norm_label": "flush()",
       "community_name": "empty",
       "id": "src_utils_include_utils_spd_logger_flush"
@@ -114907,7 +114907,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L627",
-      "community": 367,
+      "community": 28,
       "norm_label": "phase 5:\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_phase_5_\u6536\u53e3\u4f4e\u98ce\u9669_helper"
@@ -114917,7 +114917,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L629",
-      "community": 367,
+      "community": 28,
       "norm_label": "\u76ee\u6807",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_\u76ee\u6807_629"
@@ -114927,7 +114927,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L633",
-      "community": 367,
+      "community": 28,
       "norm_label": "\u4f18\u5148\u8fc1\u79fb",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_\u4f18\u5148\u8fc1\u79fb"
@@ -114937,7 +114937,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L641",
-      "community": 367,
+      "community": 28,
       "norm_label": "\u6682\u7f13\u8fc1\u79fb",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_\u6682\u7f13\u8fc1\u79fb"
@@ -114947,7 +114947,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L648",
-      "community": 367,
+      "community": 28,
       "norm_label": "\u6d4b\u8bd5\u7b56\u7565",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_\u6d4b\u8bd5\u7b56\u7565_648"
@@ -114957,7 +114957,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L675",
-      "community": 367,
+      "community": 28,
       "norm_label": "\u5b8c\u6210\u6807\u51c6",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_\u5b8c\u6210\u6807\u51c6_675"
@@ -359465,5 +359465,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "508ce50992554fc958ed3835ed98f187deb87e70"
+  "built_at_commit": "3591261e9d02dd1443e1bb755aaf19edfeaafcd1"
 }

@@ -400,3 +400,20 @@ TEST(CameraCadenceTest, ReordersDelayedIntraAndRepeatTogether)
     EXPECT_GT(corrected.front(),encoder.front());
     EXPECT_LT(corrected.back(),155616387);
 }
+
+TEST(CameraTimingTest, MainCameraCalibratedOffsetsAreSevenMilliseconds)
+{
+    using namespace camera_recorder::camera_time;
+    EXPECT_EQ(CameraLatencyUs(CameraTimestampSource::Main, "left_cam_main"), 7000);
+    EXPECT_EQ(CameraLatencyUs(CameraTimestampSource::Main, "right_cam_main"), 7000);
+    EXPECT_EQ(CameraLatencyUs(CameraTimestampSource::Main, "chest_cam_main"), 8600);
+}
+
+TEST(CameraTimingTest, TactileOffsetsAreUniformlyMinusTwoMilliseconds)
+{
+    using namespace camera_recorder::camera_time;
+    for (const auto name : {"left_tcam_l", "left_tcam_r", "right_tcam_l", "right_tcam_r", ""}) {
+        EXPECT_EQ(CameraLatencyUs(CameraTimestampSource::Tactile, name), -2000);
+        EXPECT_EQ(AddCameraLatencyUs(1000000, CameraTimestampSource::Tactile, name), 998000);
+    }
+}
