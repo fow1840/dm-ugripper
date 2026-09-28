@@ -25,7 +25,7 @@ from ugripper_logger import ugripper_log
 
 
 PACKAGE = "com.ssnwt.helloxr"  # Broadcast action / Java namespace stays unchanged.
-SUPPORTED_PACKAGES = ("com.ssnwt.egoserver", PACKAGE)
+SUPPORTED_PACKAGES = (PACKAGE,)
 APP_EXTERNAL_ROOT = f"/sdcard/Android/data/{PACKAGE}/files"
 LEGACY_REMOTE_ROOT = f"{APP_EXTERNAL_ROOT}/dataset"
 REMOTE_ROOT_OVERRIDE_ENV = "UGRIPPER_EGO_REMOTE_ROOT"
@@ -295,12 +295,6 @@ def select_app(adb: Adb) -> str:
         raise RuntimeError("cannot inspect Ego application packages")
     installed = set(re.findall(r"^package:(\S+)", result.stdout, re.MULTILINE))
     candidates = [name for name in SUPPORTED_PACKAGES if name in installed]
-    if len(candidates) > 1:
-        running = [name for name in candidates
-                   if adb.run("shell", "pidof", name, timeout=3).stdout.strip()]
-        if len(running) != 1:
-            raise RuntimeError("multiple Ego applications installed; exactly one must be running")
-        candidates = running
     if not candidates:
         raise RuntimeError("no supported Ego application installed")
     adb.package = candidates[0]
@@ -931,8 +925,11 @@ def continuous_time_sync_status(adb: Adb) -> dict:
 
 
 def sync_ego_time(adb: Adb) -> dict:
-    if app_package(adb) == "com.ssnwt.egoserver":
-        return continuous_time_sync_status(adb)
+    return continuous_time_sync_status(adb)
+
+
+def legacy_sync_ego_time(adb: Adb) -> dict:
+    """Historical ADB calibration helper; not used by the recording gate."""
     started = now_ms()
     threshold_ms = max(0.0, TIME_SYNC_MAX_OFFSET_MS)
     set_ahead_ms = TIME_SYNC_SET_AHEAD_MS
@@ -1656,7 +1653,7 @@ def run_start(args: argparse.Namespace) -> int:
         last_sync_sample = None
         while True:
             sync_episode_once(adb, remote_root, remote_episode, local_episode_dir)
-            if app_package(adb) == "com.ssnwt.egoserver":
+            if app_package(adb) == PACKAGE:
                 sample = continuous_time_sync_status(adb)
                 sample_id = sample.get("updated_monotonic_s")
                 if sample_id != last_sync_sample:
@@ -1809,7 +1806,7 @@ def run_stop(args: argparse.Namespace) -> int:
             current_remote = final_episode
             current_exists = True
         else:
-            if app_package(adb) == "com.ssnwt.egoserver":
+            if app_package(adb) == PACKAGE:
                 sample = continuous_time_sync_status(adb)
                 sample_id = sample.get("updated_monotonic_s")
                 if sample_id != last_sync_sample:

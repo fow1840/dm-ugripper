@@ -44,25 +44,23 @@ class EgoPackageTests(unittest.TestCase):
             WORKER.list_dataset_roots(adb)
             command = adb.run.call_args.args[1]
             self.assertIn(f"/Android/data/{package}/files", command)
-            other = next(p for p in WORKER.SUPPORTED_PACKAGES if p != package)
+            other = "unsupported.package"
             self.assertNotIn(f"/Android/data/{other}/files", command)
 
-    def test_ambiguous_apps_rejected(self):
+    def test_unsupported_package_rejected(self):
         adb = mock.Mock()
-        adb.run.side_effect = [subprocess.CompletedProcess([], 0,
-            "\n".join("package:" + p for p in WORKER.SUPPORTED_PACKAGES), ""),
-            subprocess.CompletedProcess([], 0, "10", ""),
-            subprocess.CompletedProcess([], 0, "20", "")]
-        with self.assertRaisesRegex(RuntimeError, "multiple Ego"):
+        adb.run.return_value = subprocess.CompletedProcess([], 0,
+            "package:com.ssnwt.egoserver\n", "")
+        with self.assertRaisesRegex(RuntimeError, "no supported Ego"):
             WORKER.select_app(adb)
 
     def test_new_package_keeps_legacy_action_and_class(self):
-        adb = mock.Mock(package="com.ssnwt.egoserver")
+        adb = mock.Mock(package="com.ssnwt.helloxr")
         adb.run.return_value = subprocess.CompletedProcess([], 0,
             'Broadcast completed: result=-1, data="{}"', '')
         WORKER.app_broadcast(adb, "SpeechCommandReceiver", "SPEECH_STATUS")
         args = adb.run.call_args.args
-        self.assertIn("com.ssnwt.egoserver/com.ssnwt.helloxr.SpeechCommandReceiver", args)
+        self.assertIn("com.ssnwt.helloxr/com.ssnwt.helloxr.SpeechCommandReceiver", args)
         self.assertIn("com.ssnwt.helloxr.SPEECH_STATUS", args)
 
 
@@ -121,7 +119,7 @@ class EgoSerialSyncTests(unittest.TestCase):
                 ("synced", True, 6, .3, "error"),
                 ("synced", True, float("nan"), .3, "error"),
                 ("synced", True, .2, 20, "error")]:
-            adb = mock.Mock(serial="ego", package="com.ssnwt.egoserver")
+            adb = mock.Mock(serial="ego", package="com.ssnwt.helloxr")
             adb.run.return_value = subprocess.CompletedProcess([], 0, "18099\n", "")
             payload = {"time_sync": dict(status=state, serial_available=available,
                                          offset_ms=offset, rtt_ms=rtt)}
@@ -133,7 +131,7 @@ class EgoSerialSyncTests(unittest.TestCase):
             self.assertEqual(adb.run.call_args.args, ("forward", "--remove", "tcp:18099"))
 
     def test_http_failure_releases_only_owned_forward(self):
-        adb = mock.Mock(serial="ego", package="com.ssnwt.egoserver")
+        adb = mock.Mock(serial="ego", package="com.ssnwt.helloxr")
         adb.run.return_value = subprocess.CompletedProcess([], 0, "18099\n", "")
         with mock.patch.object(WORKER.subprocess, "run", side_effect=subprocess.TimeoutExpired("curl", 3)):
             self.assertEqual(WORKER.read_serial_time_sync(adb)["status"], "error")
@@ -300,7 +298,7 @@ class EgoRecordingWorkerTest(unittest.TestCase):
         ) as set_time, mock.patch.object(
             WORKER, "measure_time_offsets", return_value=[{"offset_ms": 8.0, "rtt_ms": 4}]
         ):
-            result = WORKER.sync_ego_time(object())
+            result = WORKER.legacy_sync_ego_time(object())
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["attempt_count"], 1)
@@ -322,7 +320,7 @@ class EgoRecordingWorkerTest(unittest.TestCase):
                 [{"offset_ms": 6.0, "rtt_ms": 4}],
             ],
         ):
-            result = WORKER.sync_ego_time(object())
+            result = WORKER.legacy_sync_ego_time(object())
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["attempt_count"], 2)
@@ -347,7 +345,7 @@ class EgoRecordingWorkerTest(unittest.TestCase):
                 [{"offset_ms": 18.5, "rtt_ms": 4}],
             ],
         ):
-            result = WORKER.sync_ego_time(object())
+            result = WORKER.legacy_sync_ego_time(object())
 
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["attempt_count"], 2)
@@ -370,7 +368,7 @@ class EgoRecordingWorkerTest(unittest.TestCase):
                 [{"offset_ms": 10.0, "rtt_ms": 4}],
             ],
         ):
-            result = WORKER.sync_ego_time(object())
+            result = WORKER.legacy_sync_ego_time(object())
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["attempt_count"], 4)
@@ -396,7 +394,7 @@ class EgoRecordingWorkerTest(unittest.TestCase):
                 [{"offset_ms": 25.0, "rtt_ms": 4}],
             ],
         ):
-            result = WORKER.sync_ego_time(object())
+            result = WORKER.legacy_sync_ego_time(object())
 
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["attempt_count"], 4)
@@ -418,7 +416,7 @@ class EgoRecordingWorkerTest(unittest.TestCase):
                 [{"offset_ms": -15.0, "rtt_ms": 4}],
             ],
         ):
-            result = WORKER.sync_ego_time(object())
+            result = WORKER.legacy_sync_ego_time(object())
 
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["attempt_count"], 2)

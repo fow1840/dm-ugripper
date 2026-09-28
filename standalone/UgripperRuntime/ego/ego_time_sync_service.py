@@ -22,7 +22,7 @@ HOST_STATUS = Path('/run/ugripper-time-source.json')
 HOST_MAX_AGE_S = 86400
 SAMPLE_MAX_AGE_S = 15
 BOOT_ID = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
-NEW_PACKAGE = 'com.ssnwt.egoserver'
+SYNC_PACKAGE = worker.PACKAGE
 HEADER = b'\xa0\x01'
 NTP_EPOCH = 2208988800
 
@@ -180,10 +180,10 @@ def main():
                 if identity and host and port and session is None:
                     adb = worker.Adb(identity)
                     package = worker.select_app(adb)
-                    if package == NEW_PACKAGE:
+                    if package == SYNC_PACKAGE:
                         session = Session(identity, port)
                     else:
-                        state.update(status='legacy', mode='adb_before_record')
+                        state.update(status='disconnected', mode='usb_acm')
                 if session:
                     applied = worker.read_serial_time_sync(worker.Adb(identity))
                     observed = session.snapshot()
@@ -202,14 +202,14 @@ def main():
                             sample_source='request_batch_and_apk_status')
                     state = combined_status(observed, applied, host)
                 elif identity and binding.get('app', {}).get('package', worker.PACKAGE) == worker.PACKAGE:
-                    state.update(status='legacy', mode='adb_before_record')
+                    state.update(status='disconnected', mode='usb_acm')
                 # Binding may have changed while ADB waited: never publish old identity as ready.
                 if worker.read_status(BINDING).get('serial', '') != identity:
                     if session:
                         session.close()
                         session = None
                     continue
-                state.update(serial=identity, package=NEW_PACKAGE if session else
+                state.update(serial=identity, package=SYNC_PACKAGE if session else
                              binding.get('app', {}).get('package', ''),
                              clock_source='backpack_system',
                              port=port, boot_id=BOOT_ID, updated_at_ms=worker.now_ms(),

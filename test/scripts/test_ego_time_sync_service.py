@@ -75,7 +75,7 @@ class SyncTests(unittest.TestCase):
              mock.patch.object(worker, 'read_status', return_value={'serial': 'bound'}), \
              mock.patch.object(sync, 'bound_port', return_value='/dev/ttyACM0'), \
              mock.patch.object(worker, 'Adb'), \
-             mock.patch.object(worker, 'select_app', return_value=sync.NEW_PACKAGE), \
+             mock.patch.object(worker, 'select_app', return_value=sync.SYNC_PACKAGE), \
              mock.patch.object(worker, 'read_serial_time_sync', return_value={'status': 'ok'}), \
              mock.patch.object(worker, 'write_json_atomic'), \
              mock.patch.object(sync, 'Session', return_value=session) as create:
@@ -83,7 +83,7 @@ class SyncTests(unittest.TestCase):
             create.assert_called_once_with('bound', '/dev/ttyACM0')
 
     def test_record_gate_never_sets_clock_and_rejects_wrong_binding(self):
-        adb = SimpleNamespace(serial='bound', package='com.ssnwt.egoserver')
+        adb = SimpleNamespace(serial='bound', package='com.ssnwt.helloxr')
         now = time.monotonic()
         state = dict(status='ok', package=adb.package, serial='bound', boot_id=sync.BOOT_ID,
                      updated_monotonic_s=now, result_monotonic_s=now, offset_ms=.1)

@@ -659,7 +659,7 @@ Ego 电量由绑定状态探测读取指定 serial 的 `adb shell dumpsys batter
 ### Ego 绑定后持续 USB 校时（2026-09-18）
 
 - `ugripper-ego-timesync.service` 随主包安装启动，独立于每条录制；只打开绑定序列号对应的 `18d1:903b` ACM 串口，2 Mbps，使用厂商 `time-sync-server` 的 24/40 字节协议。独立串口线程响应 NTP 请求、每秒心跳；ADB HTTP 状态检查不阻塞串口。解绑关闭串口，重绑、串口断开及服务重启后重新连接并重新累计健康样本。不修改 Ego USB 属性。
-- 新包 `com.ssnwt.egoserver` 与旧包 `com.ssnwt.helloxr` 可有相同 `versionName=1.0.4`，因此按安装包身份与版本共同识别。双包共存时要求恰好一包运行。数据搜索仅限所选包的 `files`，兼容 `dataset/<SN>/data` 与 `<SN>/data/dataset`；广播 action/Java 类名仍为 `com.ssnwt.helloxr`，目标 package 单独指定。停录使用起录锁定的包和数据目录，不切换到另一包历史数据。
+- Ego 仅支持 `com.ssnwt.helloxr`，不再识别 egoserver。持续 USB 授时与录制前质量门禁保留，后台状态、广播、数据目录统一使用原包名。
 - 新版起录只读取 `/dev/shm/ugripper/ego_time_sync.json`，不启动同步或通过 ADB 设置时间。要求连续 5 个新交换批次由 APK 确认为 `synced`、offset ≤5 ms、RTT ≤10 ms，服务快照 ≤5秒、有效交换 ≤15秒，且匹配绑定序列号及本次系统启动。当前 APK 不发 RESULT 时以新请求批次加 `/api/status/time_sync` 判定；重复 HTTP 读取不重复累计。旧版无此接口，保留原录制前 ADB 对时以兼容。
 - Umi 保留原待机单次 NTP 机制，不额外启用 chrony。成功后写 root 所有的 `/run/ugripper-time-source.json`，记录 boot ID、Realtime/Monotonic 锚点。Ego 授时始终使用背包当前系统时钟，不依赖该凭据或外网；NTP/PTP 调整系统时间后继续向 Ego 授时，检测到单次时钟跳变 ≥100ms 时重建串口会话并重新累计同步质量。Web 的“已与背包同步”仅代表两者对齐，不代表 UTC 已校准。
 - Web Ego 卡片显示持续同步状态及偏差/RTT，只读后台快照。每条新版 Ego 数据记录 `ego_sync.json.time_sync_quality` 与 `ego/time_sync_samples.jsonl` 的抽样质量，异常样本保留，不修改既有相机/IMU 时间域或历史时间戳。
