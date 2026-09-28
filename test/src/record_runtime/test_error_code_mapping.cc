@@ -34,3 +34,7 @@ TEST(ErrorCodeMapping, UnknownContextUsesOnlyTheDocumentedFallback) {
   EXPECT_EQ(UgrCodeForErrorType("missing_file"), "UGR-00-01");
   EXPECT_EQ(UgrCodeForErrorType("new_unclassified_type"), "UGR-00-01");
 }
+
+TEST(ErrorCodeMapping, StereoFrameLossNeedsNoContext) {
+  EXPECT_EQ(DA::Ugripper::UgrCodeForErrorType("stereo_frame_loss"), "UGR-22-04");
+}

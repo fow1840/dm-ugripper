@@ -58,6 +58,7 @@ inline std::string_view UgrCodeForErrorType(
     if (context == ErrorCodeContext::Encoder) return "UGR-30-01";
     if (context == ErrorCodeContext::Hmi) return "UGR-40-01";
   }
+  if (error_type == "stereo_frame_loss") return "UGR-22-04";
   if (error_type == "frame_loss") {
     if (context == ErrorCodeContext::MainCameraIo) return "UGR-20-03";
     if (context == ErrorCodeContext::FaysFrame) return "UGR-22-04";

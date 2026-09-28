@@ -247,6 +247,7 @@ std::string SelectPrimaryErrorType(const std::vector<std::string>& error_types)
              "encoder_tail_missing",
              DA::Ugripper::kErrorTypeEgoDisconnected,
              DA::Ugripper::kErrorTypeEgoPullIncomplete,
+             DA::Ugripper::kErrorTypeStereoFrameLoss,
              DA::Ugripper::kErrorTypeRuntimeError,
              DA::Ugripper::kErrorTypeStereoControlFailed,
              DA::Ugripper::kErrorTypeFinalizeError,

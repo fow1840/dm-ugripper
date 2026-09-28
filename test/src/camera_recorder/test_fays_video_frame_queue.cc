@@ -84,3 +84,41 @@ TEST(FaysVideoFrameQueue, ConcurrentProducerConsumerPreserveOwnership) {
 TEST(FaysVideoFrameQueue, RejectsZeroCapacity) {
     EXPECT_THROW(VideoFrameQueue(0), std::invalid_argument);
 }
+
+#include "fays_stereo_recorder/frame_loss_counter.h"
+TEST(FaysFrameLossCounter, JitterAndStrictThreeFrameThreshold) {
+    fays_stereo_recorder::FrameLossCounter count(40'000'000);
+    EXPECT_EQ(count.Observe(1'000'000'000), 0u);
+    EXPECT_EQ(count.Observe(1'041'000'000), 0u);
+    EXPECT_EQ(count.Observe(1'080'000'000), 0u);
+    EXPECT_EQ(count.Observe(1'240'000'000), 3u);
+    EXPECT_EQ(count.Total(), 3u);
+    EXPECT_EQ(count.Observe(1'320'000'000), 1u);
+    EXPECT_EQ(count.Total(), 4u);
+}
+TEST(FaysFrameLossCounter, SessionResetAndNonIncreasingTimestamps) {
+    fays_stereo_recorder::FrameLossCounter count(40'000'000);
+    count.Observe(1'000'000'000);
+    EXPECT_EQ(count.Observe(1'000'000'000), 0u);
+    EXPECT_EQ(count.Observe(900'000'000), 0u);
+    count = fays_stereo_recorder::FrameLossCounter(40'000'000);
+    EXPECT_EQ(count.Observe(5'000'000'000), 0u);
+    EXPECT_EQ(count.Total(), 0u);
+    EXPECT_EQ(count.Observe(5'200'000'000), 4u);
+}
+
+TEST(FaysFrameLossCounter, SeparateGapsDoNotTriggerConsecutiveThreshold) {
+    fays_stereo_recorder::FrameLossCounter count(40'000'000);
+    count.Observe(1'000'000'000);
+    EXPECT_EQ(count.Observe(1'120'000'000), 2u);
+    EXPECT_EQ(count.Observe(1'160'000'000), 0u);
+    EXPECT_EQ(count.Observe(1'280'000'000), 2u);
+    EXPECT_EQ(count.Total(), 4u);
+    EXPECT_EQ(count.MaxConsecutive(), 2u);
+    EXPECT_EQ(count.Observe(1'440'000'000), 3u);
+    EXPECT_EQ(count.MaxConsecutive(), 3u);
+    EXPECT_EQ(count.Observe(1'640'000'000), 4u);
+    EXPECT_EQ(count.MaxConsecutive(), 4u);
+    count.Observe(1'720'000'000);
+    EXPECT_EQ(count.MaxConsecutive(), 4u);
+}

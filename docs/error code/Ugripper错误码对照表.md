@@ -65,6 +65,7 @@
 | `UGR-22-03` | `calibration_error` | Fays SDK 配置、handle、device info 或 calibration 失败 |
 | `UGR-22-03` | `stereo_not_ready` | SDK 或初始化配置失败 |
 | `UGR-22-04` | `frame_loss` | Fays 已确认停止出帧或返回无效帧 |
+| `UGR-22-04` | `stereo_frame_loss` | 本条录制单侧单次连续缺失超过 3 帧；日志记录缺失数，延后 1 秒停录；metadata 只使用现有质量字段 |
 | `UGR-22-04` | `stereo_not_ready` | 已确认无帧或无效帧 |
 | `UGR-22-06` | `stereo_control_failed` | Fays FIFO、START/STOP 或 session 控制失败 |
 | `UGR-22-06` | `stereo_not_ready` | FIFO 或 session 控制失败 |

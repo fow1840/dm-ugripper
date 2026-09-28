@@ -266,7 +266,7 @@ BMS 串口由蓝牙服务的 `update_bms_data` 独占采集，UGripper 不再打
 - `data_uuid` 使用系统随机 UUID；若 `/proc/sys/kernel/random/uuid` 不可用则回退 `libuuid` 的 `uuid_generate/uuid_unparse`。无音频文件时 `audio_uuid` 允许为空字符串。
 - `hardware_version` 默认 `v2.5`，可通过 `UGRIPPER_HARDWARE_VERSION` 覆盖；`software_version` 来自 ugripper 主包版本并带 `v` 前缀；`das_usb_updater_version` 优先读取 `das-usb-updater` 包版本。
 - `hardware_list` 保持固定 schema：左右 gripper、左右主摄、可选胸部主摄、四路 tactile 与左右 stereo 字段始终存在；默认包从 Fays 状态写 stereo SN，`+nostereo` 变体写空字符串。
-- `quality_check_status` 取值为 `success` / `fail` / 空字符串；`quality_check_err_type` 保持单字段兼容，只写本次失败的主 `error_type`。常见取值包括 `missing_file`、`collection_duration_too_short`、`frame_loss`、`finalize_error`、`stereo_control_failed`、`calibration_error`、`runtime_error`、`device_disconnected`、人工补标的 `operator_marked_failed`，以及健康监控直接上报的 `disk_mount_lost`、`disk_not_writable`、`disk_full`、`critical_devices_missing`、`stereo_not_ready`、`hmi_*` 等 fault key；无法归类时写 `unknown`。
+- `quality_check_status` 取值为 `success` / `fail` / 空字符串；`quality_check_err_type` 保持单字段兼容，只写本次失败的主 `error_type`。常见取值包括 `missing_file`、`collection_duration_too_short`、`frame_loss`、`stereo_frame_loss`、`finalize_error`、`stereo_control_failed`、`calibration_error`、`runtime_error`、`device_disconnected`、人工补标的 `operator_marked_failed`，以及健康监控直接上报的 `disk_mount_lost`、`disk_not_writable`、`disk_full`、`critical_devices_missing`、`stereo_not_ready`、`hmi_*` 等 fault key；无法归类时写 `unknown`。
 - `collection_duration_s` 取有效视频时长最大值；默认包包含 stereo，`+nostereo` 只统计主摄/触觉。stereo 的有效时长固定使用 Fays MCAP 中首末 camera `publishTime` 的跨度，因此 Fays 设备侧 gap 会保留在实际采集时长内，不使用被固定 `25fps` 压紧的 MKV 容器 duration；`video_details` 复用停录 timing 缓存。
 - `video_details[].start_offset_us` 保存各路补偿后的绝对 `record_time_offset_us`，单位为 Unix 微秒，语义为“该视频 `PTS=0` 对应的补偿后主机 Unix 时间”，不再减去本 episode 最早视频 offset。H.265 主相机按 `start_offset_us + packet_pts_sec * 1000000` 还原 Unix 时间：首关键帧 `start_offset_us=Tset+Pfirst-Pset`，packet PTS 来自当前帧换算 Unix 时间减去首帧 Unix 时间，因此任意帧 Unix 时间等于 `Tset+Pframe-Pset`，并保留编码器时间轴上的真实 gap；H.264 主相机继续使用 V4L2 buffer 时间生成同一表达。触觉相机仍由 FFmpeg 录制链生成 PTS 和首帧 offset，目前只保证处于 Unix 时间域并执行单调/gap 校验，不把它表述为硬件曝光时间真值。
 - stereo MKV packet 与 Fays MCAP `c` topic 通过 `frameIndex`/顺序一一对应；stereo 精确逐帧 Unix 时间只使用对应已补偿的 `c.publishTime`，`video_details[].start_offset_us` 仅与首个 camera `publishTime/1000` 对齐。Stereo MKV 保持固定帧率播放时间轴，设备 gap 不要求由 MKV PTS 表达，也不得用 `start_offset_us+stereo PTS` 替代 MCAP `publishTime`。Fays 原始 `logTime` 只用于设备侧 gap/回退分析，不能作为全局 Unix 时间。
@@ -775,3 +775,11 @@ ctest --test-dir build/host-tests -L host-only --output-on-failure
 - 主摄原始 SEI encoder PTS 连续相同达到 3 帧（原帧加至少 2 个重复帧）时，通过公共 `DM_LOG_WARN` 输出标准 V3 warning `main_duplicate_pts_run`，包含相机、编码、PTS、V4L2 sequence；同一重复串仅在第 3 帧告警一次。正常两帧同 PTS 静默。检查位于时间映射和钳制之前，无效帧重置连续计数。
 
 主摄新固件补偿依据 20260924_0004～0006 标定 CSV：剔除插帧及需复核帧，分别取各组前 10 个有效帧平均误差，再取三组中位数（左 -37.6ms、右 -36ms），按旧补偿减误差计算新值。仅修正绝对起点，不平滑 gap、不补偿共模时钟漂移；其他主摄使用左右均值，未经独立光学校验。旧固件不适用该补偿。
+
+### 双目录制掉帧门限
+
+每侧按本条录制实际送入编码器的相邻原始 Fays 时间戳、名义帧率估算缺失帧数（半帧周期容差），跨会话和首帧不计间隔；SDK 暂无新帧轮询次数不计为掉帧。每侧单次连续缺失超过 3 帧复用 `UGR-22-04`，日志给出相机、累计 `dropped_frames`、本次 `gap_dropped_frames` 和帧序号。runtime 首次发现超限后用单调时钟等待 1 秒再错误停录，倒计时不阻塞控制循环、不因后续丢帧延长；用户主动停录和其他严重故障仍可优先结束。
+
+每路 `stereo_*.mkv.frame_loss.json` 为内部诊断统计文件，不扩展 metadata 协议。单侧单次连续缺失超过 3 帧时，通过现有 `quality_check_status=fail` 与 `quality_check_err_type=stereo_frame_loss` 上报；掉帧数只保存在诊断文件和日志中，不新增 metadata 字段。`stereo_frame_loss` 映射 `UGR-22-04`，原有 `frame_loss` 语义保持。统计基于保留帧时间间隔，包含可从间隔观察到的 SDK/应用队列缺帧；不是硬件序列号精确计数，首帧之前及末帧之后缺帧由既有无帧/断流检测负责。
+
+双目停录门限只比较一次相邻保留帧间隔对应的连续缺失数，不将多个间隔累加。诊断文件保存 `max_consecutive_dropped_frames`，保证一次超限不会被后续小间隔覆盖；累计 `dropped_frames` 仅用于日志统计。两次各缺 2 帧不触发停录，单次缺 4 帧触发；metadata 不增加字段。

@@ -1366,6 +1366,18 @@ bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir
                                                     std::vector<std::string> *errorTypes,
                                                     std::vector<TactileValidationFinding> *tactileFindings) const
 {
+    if (stereoEnabled_) {
+        for (const char* camera : {"stereo_left.mkv", "stereo_right.mkv"}) {
+            json loss;
+            std::string loadError;
+            if (loadJsonFile((fs::path(episodeDir) / (std::string(camera) + ".frame_loss.json")).string(), &loss, &loadError)
+                && loss.is_object() && loss.value("max_consecutive_dropped_frames", uint64_t{0}) > 3) {
+                return setEpisodeValidationFailure(errorMessage, errorTypes, DA::Ugripper::kErrorTypeStereoFrameLoss,
+                    std::string("UGR-22-04 stereo frame loss camera=") + camera +
+                    " max_consecutive_dropped_frames=" + std::to_string(loss.value("max_consecutive_dropped_frames", uint64_t{0})));
+            }
+        }
+    }
     const int64_t validateStartMs = steadyNowMs();
     logPerf((::DA::utils::LogString() << "[PERF] ValidateEpisode begin: episode_dir=" << episodeDir).str());
     json timingRoot = json::object();

@@ -266,6 +266,9 @@ private:
     void removeRecordingLock();
     bool checkRecorderProcesses();
     void monitorHardwareHealth();
+    void monitorStereoFrameLoss();
+    std::string stereoLossEpisode_;
+    uint64_t stereoLossStopDeadlineMs_ = 0;
     bool startAudioPlayer();
     void stopAudioPlayer();
     void maintainAudioPlayer();

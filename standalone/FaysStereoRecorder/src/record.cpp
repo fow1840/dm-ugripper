@@ -1,3 +1,4 @@
+#include "fays_stereo_recorder/frame_loss_counter.h"
 #include <string>
 #include <thread>
 #include <memory>
@@ -2262,6 +2263,7 @@ private:
         bool videoSessionOpen = false;
         uint32_t frameIndex = 0;
         uint64_t activeVideoSessionId = 0;
+        fays_stereo_recorder::FrameLossCounter lossCounter(1000000000ULL / std::max(1, recordFps_));
         std::string sessionOutputDir;
         auto& pendingCamSamples = pendingCamSamples_;
         std::vector<uint8_t> nv12Buffer;
@@ -2324,6 +2326,7 @@ private:
                         videoSessionOpen = true;
                         activeVideoSessionId = sessionId;
                         frameIndex = 0;
+                        lossCounter = fays_stereo_recorder::FrameLossCounter(1000000000ULL / std::max(1, recordFps_));
                         sessionWidth = vf.width;
                         sessionHeight = vf.height;
                         sessionChannels = vf.channels;
@@ -2348,6 +2351,28 @@ private:
                     } else {
                         // Color-capable SDK devices retain the existing packed BGR path.
                         mRecorder_.Write(vf.bytes.data(), pixels * 3);
+                    }
+
+                    const uint64_t missing = lossCounter.Observe(vf.faysTsNs);
+                    if (missing || frameIndex == 0) {
+                        const std::string lossPath = outputDir + videoFileName_ + ".frame_loss.json";
+                        std::ofstream lossOut(lossPath + ".tmp", std::ios::trunc);
+                        lossOut << "{\"dropped_frames\":" << lossCounter.Total()
+                                << ",\"max_consecutive_dropped_frames\":" << lossCounter.MaxConsecutive()
+                                << ",\"last_gap_dropped_frames\":" << missing
+                                << ",\"frame_index\":" << frameIndex
+                                << ",\"timestamp_ns\":" << vf.faysTsNs
+                                << ",\"method\":\"retained_frame_timestamp_gap\"}\n";
+                        lossOut.close();
+                        if (lossOut) rename((lossPath + ".tmp").c_str(), lossPath.c_str());
+                        if (missing) {
+                            if (missing > 3)
+                                DM_LOG_ERROR_CODE("UGR-22-04", "stereo frame loss camera={} dropped_frames={} gap_dropped_frames={} frame_index={}",
+                                                  videoFileName_, lossCounter.Total(), missing, frameIndex);
+                            else
+                                DM_LOG_WARN("stereo frame loss camera={} dropped_frames={} gap_dropped_frames={} frame_index={}",
+                                            videoFileName_, lossCounter.Total(), missing, frameIndex);
+                        }
                     }
 
                     CamTsQueuedSample camSample{};

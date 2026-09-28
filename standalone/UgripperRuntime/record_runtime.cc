@@ -765,6 +765,7 @@ int RecordRuntime::Run()
         maintainRestoreUsbDevicePresence();
         maintainRestoreUsbRetry();
         maintainRestoreUsbFailureAlarm();
+        monitorStereoFrameLoss();
         monitorHardwareHealth();
 
         ButtonSnapshot buttons;
@@ -935,6 +936,34 @@ bool RecordRuntime::maintainDataStorage()
 bool RecordRuntime::checkRecorderProcesses()
 {
     return recordingOrchestrator_ != nullptr && recordingOrchestrator_->CheckRecorderProcesses();
+}
+
+void RecordRuntime::monitorStereoFrameLoss()
+{
+    if (!isRecordingActive()) {
+        stereoLossEpisode_.clear();
+        stereoLossStopDeadlineMs_ = 0;
+        return;
+    }
+    const std::string episode = currentEpisodeDir();
+    if (stereoLossEpisode_ != episode) {
+        stereoLossEpisode_ = episode;
+        stereoLossStopDeadlineMs_ = 0;
+    }
+    for (const char* camera : {"stereo_left.mkv", "stereo_right.mkv"}) {
+        std::ifstream input(fs::path(episode) / (std::string(camera) + ".frame_loss.json"));
+        if (!input) continue;
+        const auto loss = json::parse(input, nullptr, false);
+        if (loss.is_discarded() || !loss.is_object()) continue;
+        const auto count = loss.value("max_consecutive_dropped_frames", uint64_t{0});
+        if (count > 3 && stereoLossStopDeadlineMs_ == 0) {
+            stereoLossStopDeadlineMs_ = currentSteadyMs() + 1000;
+            DM_LOG_ERROR_CODE("UGR-22-04", "stereo frame loss camera={} max_consecutive_dropped_frames={} stop_delay_ms=1000", camera, count);
+        }
+    }
+    if (stereoLossStopDeadlineMs_ && currentSteadyMs() >= stereoLossStopDeadlineMs_) {
+        stopRecording(true, "stereo dropped more than 3 consecutive frames; retained 1s after detection", DA::Ugripper::kErrorTypeStereoFrameLoss);
+    }
 }
 
 void RecordRuntime::monitorHardwareHealth()
