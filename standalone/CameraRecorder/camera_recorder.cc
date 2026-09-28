@@ -5,6 +5,7 @@
 #include "camera_recorder/camera_registry.h"
 #include "camera_recorder/camera_timing.h"
 #include "camera_recorder/main_camera_cadence.h"
+#include "camera_recorder/main_camera_h265_cadence.h"
 #include "camera_recorder/main_camera_h265_continuity.h"
 #include "camera_recorder/main_camera_h264_continuity.h"
 #include "camera_recorder/camera_timestamp_offsets.h"
@@ -1994,8 +1995,35 @@ private:
     bool DrainPendingFrames(bool flush) {
         while (!pending_frames_.empty()) {
             if (correct_50hz_cadence_ && previous_raw_frame_) {
-                if (pending_frames_.size() < 3 && !flush) {
+                if (pending_frames_.size() < 4U && !flush) {
                     break;
+                }
+                if (pending_frames_.size() >= 4 &&
+                    (options_.codec == "h264" || pending_frames_[0].intra)) {
+                    const std::array<int64_t,5> encoder = {
+                        previous_raw_frame_->encoder_us, pending_frames_[0].encoder_us,
+                        pending_frames_[1].encoder_us, pending_frames_[2].encoder_us,
+                        pending_frames_[3].encoder_us};
+                    if (ugripper::camera::IsMainCamera50HzDelayedPair(encoder,
+                        pending_frames_[0].continuous && pending_frames_[1].continuous &&
+                        pending_frames_[2].continuous && pending_frames_[3].continuous,
+                        {pending_frames_[0].intra, pending_frames_[1].intra,
+                         pending_frames_[2].intra, pending_frames_[3].intra},
+                        {pending_frames_[0].vcl_bytes, pending_frames_[1].vcl_bytes,
+                         pending_frames_[2].vcl_bytes, pending_frames_[3].vcl_bytes})) {
+                        const auto corrected = ugripper::camera::MainCamera50HzDelayedPairMappedTimes(
+                            encoder, {previous_raw_frame_->unix_us, pending_frames_[0].unix_us,
+                            pending_frames_[1].unix_us, pending_frames_[2].unix_us,
+                            pending_frames_[3].unix_us});
+                        // The independent pair evidence supersedes any old phase.
+                        // Do not seed a different timing mode's periodic tracker.
+                        h264_cadence_tracker_.Reset();
+                        h265_cadence_tracker_.Reset();
+                        for (const auto time : corrected) {
+                            if (!PushPendingFrame(time)) return false;
+                        }
+                        continue;
+                    }
                 }
                 bool correct = false;
                 if (pending_frames_.size() >= 3) {
@@ -2007,10 +2035,20 @@ private:
                         previous_raw_frame_->encoder_us, pending_frames_[0].encoder_us,
                         pending_frames_[1].encoder_us, pending_frames_[2].encoder_us};
                     {
-                        correct = cadence_tracker_.ShouldCorrect(pending_frames_[0].ordinal, encoder,
-                            stable, pending_frames_[0].continuous && pending_frames_[1].continuous && pending_frames_[2].continuous,
-                            previous_raw_frame_->intra, pending_frames_[0].intra,
-                            {pending_frames_[0].vcl_bytes, pending_frames_[1].vcl_bytes, pending_frames_[2].vcl_bytes});
+                        const bool continuous = pending_frames_[0].continuous &&
+                            pending_frames_[1].continuous && pending_frames_[2].continuous;
+                        const std::array<std::size_t,3> sizes = {pending_frames_[0].vcl_bytes,
+                            pending_frames_[1].vcl_bytes, pending_frames_[2].vcl_bytes};
+                        if (options_.codec == "h264") {
+                            correct = h264_cadence_tracker_.ShouldCorrect(pending_frames_[0].ordinal,
+                                encoder, stable, continuous, previous_raw_frame_->intra,
+                                pending_frames_[0].intra, sizes,
+                                {pending_frames_[1].intra, pending_frames_[2].intra});
+                        } else {
+                            correct = h265_cadence_tracker_.ShouldCorrect(pending_frames_[0].ordinal,
+                                encoder, stable, continuous, previous_raw_frame_->intra,
+                                pending_frames_[0].intra, sizes);
+                        }
                     }
                 }
                 if (correct) {
@@ -2054,6 +2092,26 @@ private:
                 : ugripper::camera::MainCameraCodec::H265);
         frame.valid = buffer_valid && timestamp.has_value();
         if (timestamp) frame.timestamp = *timestamp;
+        // Inspect firmware PTS before startup buffering, cadence correction,
+        // Unix mapping, or monotonic clamping can change its meaning.
+        if (!frame.valid) {
+            previous_capture_encoder_pts_us_.reset();
+            capture_equal_pts_run_ = 0;
+        } else {
+            const auto encoder_pts_us = timestamp->encoder_pts_us;
+            if (previous_capture_encoder_pts_us_ == encoder_pts_us) {
+                if (capture_equal_pts_run_ < 3) {
+                    ++capture_equal_pts_run_;
+                    if (capture_equal_pts_run_ == 3) {
+                        DM_LOG_WARN("[camera_recorder][main_duplicate_pts_run] name={} codec={} encoder_pts_us={} sequence={} consecutive_frames=3",
+                            config_.name, options_.codec, encoder_pts_us, sequence);
+                    }
+                }
+            } else {
+                capture_equal_pts_run_ = 1;
+            }
+            previous_capture_encoder_pts_us_ = encoder_pts_us;
+        }
         const auto inspect = [&](auto& parser, auto& continuity) {
             const auto picture = parser.Inspect(frame.data.data(), frame.data.size());
             frame.continuous = continuity.Observe(
@@ -2198,8 +2256,11 @@ private:
             }
             max_timestamp_adjustment_us_ =
                 std::max(max_timestamp_adjustment_us_, timing.adjustment_us);
-            if (timestamp_clamp_count_ == 1 ||
-                (timestamp_clamp_count_ & (timestamp_clamp_count_ - 1)) == 0) {
+            // Compare raw frame times, not the already clamped output PTS:
+            // equal times do not imply rollback; raw duplicate runs are checked at capture.
+            const bool raw_rollback = last_frame_system_time_us_ &&
+                system_time_us < *last_frame_system_time_us_;
+            if (raw_rollback) {
                 DM_LOG_WARN("{}", (::DA::utils::LogString()
                                      << "[camera_recorder][main_timestamp_clamp]"
                                      << " name=" << config_.name
@@ -2560,11 +2621,14 @@ private:
     std::optional<PendingFrame> previous_raw_frame_;
     std::deque<int64_t> preceding_encoder_times_;
     uint64_t capture_ordinal_ = 0;
-    ugripper::camera::MainCameraCadenceTracker cadence_tracker_;
+    ugripper::camera::MainCameraH264CadenceTracker h264_cadence_tracker_;
+    ugripper::camera::MainCameraH265CadenceTracker h265_cadence_tracker_;
     ugripper::camera::MainCameraH264Pictures h264_pictures_;
     ugripper::camera::MainCameraH264Continuity h264_continuity_;
     ugripper::camera::MainCameraH265Pictures h265_pictures_;
     ugripper::camera::MainCameraH265Continuity h265_continuity_;
+    std::optional<uint64_t> previous_capture_encoder_pts_us_;
+    unsigned capture_equal_pts_run_ = 0;
     std::optional<uint64_t> first_encoder_pts_us_;
     uint64_t frame_count_ = 0;
     uint64_t timestamp_clamp_count_ = 0;
@@ -2973,8 +3037,11 @@ private:
             }
             max_timestamp_adjustment_us_ =
                 std::max(max_timestamp_adjustment_us_, timing.adjustment_us);
-            if (timestamp_clamp_count_ == 1 ||
-                (timestamp_clamp_count_ & (timestamp_clamp_count_ - 1)) == 0) {
+            // Compare raw frame times, not the already clamped output PTS:
+            // equal times do not imply rollback; raw duplicate runs are checked at capture.
+            const bool raw_rollback = last_frame_system_time_us_ &&
+                system_time_us < *last_frame_system_time_us_;
+            if (raw_rollback) {
                 DM_LOG_WARN("{}", (::DA::utils::LogString()
                                      << "[camera_recorder][main_timestamp_clamp]"
                                      << " name=" << config_.name

@@ -53,26 +53,27 @@ TEST(CameraTimingTest, MinimallyClampsTimestampRollback)
 }
 
 #include "camera_recorder/main_camera_cadence.h"
+#include "camera_recorder/main_camera_h265_cadence.h"
 #include "camera_recorder/camera_timestamp_offsets.h"
 
 TEST(CameraCadenceTest, RecognizesMeasuredInsertionAndRestoresShutterSpacing)
 {
-    EXPECT_TRUE(ugripper::camera::IsMainCamera50HzDuplicate({117993,142057,145659,159568}));
+    EXPECT_TRUE(ugripper::camera::IsMainCameraH26450HzDuplicate({117993,142057,145659,159568}));
     const auto times = ugripper::camera::MainCamera50HzFrameTimes(117993);
     EXPECT_EQ(times[0],117994);
     EXPECT_EQ(times[1],137993);
     EXPECT_EQ(times[2],157993);
     EXPECT_EQ(camera_recorder::camera_time::AddCameraLatencyUs(1000000,
-        camera_recorder::camera_time::CameraTimestampSource::Main),972000);
+        camera_recorder::camera_time::CameraTimestampSource::Main),1008600);
 }
 
 TEST(CameraCadenceTest, PreservesNormalCadenceMissingFramesAndRollback)
 {
-    EXPECT_FALSE(ugripper::camera::IsMainCamera50HzDuplicate({0,20000,40000,60000}));
-    EXPECT_FALSE(ugripper::camera::IsMainCamera50HzDuplicate({0,40000,43600,57600}));
-    EXPECT_FALSE(ugripper::camera::IsMainCamera50HzDuplicate({0,24000,40000,60000}));
-    EXPECT_FALSE(ugripper::camera::IsMainCamera50HzDuplicate({0,24000,27600,80000}));
-    EXPECT_FALSE(ugripper::camera::IsMainCamera50HzDuplicate({0,-24000,27600,41600}));
+    EXPECT_FALSE(ugripper::camera::IsMainCameraH26450HzDuplicate({0,20000,40000,60000}));
+    EXPECT_FALSE(ugripper::camera::IsMainCameraH26450HzDuplicate({0,40000,43600,57600}));
+    EXPECT_FALSE(ugripper::camera::IsMainCameraH26450HzDuplicate({0,24000,40000,60000}));
+    EXPECT_FALSE(ugripper::camera::IsMainCameraH26450HzDuplicate({0,24000,27600,80000}));
+    EXPECT_FALSE(ugripper::camera::IsMainCameraH26450HzDuplicate({0,-24000,27600,41600}));
 }
 
 TEST(CameraCadenceTest, MatchesMeasuredStopwatchExample)
@@ -80,7 +81,7 @@ TEST(CameraCadenceTest, MatchesMeasuredStopwatchExample)
     const std::array<int64_t,4> raw = {
         1789551335615000LL-8000,1789551335639000LL-8000,
         1789551335642000LL-8000,1789551335656000LL-8000};
-    ASSERT_TRUE(ugripper::camera::IsMainCamera50HzDuplicate(raw));
+    ASSERT_TRUE(ugripper::camera::IsMainCameraH26450HzDuplicate(raw));
     const auto corrected = ugripper::camera::MainCamera50HzFrameTimes(raw[0]);
     EXPECT_EQ(corrected[0]-28000,1789551335579001LL);
     EXPECT_EQ(corrected[1]-28000,1789551335599000LL);
@@ -90,10 +91,10 @@ TEST(CameraCadenceTest, MatchesMeasuredStopwatchExample)
 TEST(CameraCadenceTest, AcceptsJitterWithoutUsingFrameNumber)
 {
     // Earlier narrow bounds rejected all of these valid long/short patterns.
-    EXPECT_TRUE(ugripper::camera::IsMainCamera50HzDuplicate({0,21000,30000,44000}));
-    EXPECT_TRUE(ugripper::camera::IsMainCamera50HzDuplicate({0,33000,33400,44500}));
-    EXPECT_TRUE(ugripper::camera::IsMainCamera50HzDuplicate({0,24000,33500,44000}));
-    EXPECT_FALSE(ugripper::camera::IsMainCamera50HzDuplicate({0,24000,40000,60000}));
+    EXPECT_TRUE(ugripper::camera::IsMainCameraH26450HzDuplicate({0,21000,30000,44000}));
+    EXPECT_TRUE(ugripper::camera::IsMainCameraH26450HzDuplicate({0,33000,33400,44500}));
+    EXPECT_TRUE(ugripper::camera::IsMainCameraH26450HzDuplicate({0,24000,33500,44000}));
+    EXPECT_FALSE(ugripper::camera::IsMainCameraH26450HzDuplicate({0,24000,40000,60000}));
 }
 
 TEST(CameraCadenceTest, PreservesEachFramesTenSecondAnchorOffset)
@@ -117,13 +118,13 @@ TEST(CameraCadenceTest, PreservesEachFramesTenSecondAnchorOffset)
 TEST(CameraCadenceTest, RecognizesScreenshotDelayedPairAndCorrectsOnlyWindow)
 {
     const std::array<int64_t,4> raw = {0,26587,38223,42648};
-    ASSERT_TRUE(ugripper::camera::IsMainCamera50HzDuplicate(raw));
+    ASSERT_TRUE(ugripper::camera::IsMainCameraH26450HzDuplicate(raw));
     const auto mapped = ugripper::camera::MainCamera50HzMappedFrameTimes(
         raw,{1000000,1026587,1038223,1042648});
     EXPECT_EQ(mapped[0],1000001);
     EXPECT_EQ(mapped[1],1020000);
     EXPECT_EQ(mapped[2],1040000);
-    EXPECT_FALSE(ugripper::camera::IsMainCamera50HzDuplicate({0,26587,38223,90000}));
+    EXPECT_FALSE(ugripper::camera::IsMainCameraH26450HzDuplicate({0,26587,38223,90000}));
 }
 
 TEST(CameraCadenceTest, RequiresThreeOriginalStableIntervalsBeforeCandidate)
@@ -140,7 +141,7 @@ TEST(CameraCadenceTest, RequiresThreeOriginalStableIntervalsBeforeCandidate)
 
 TEST(CameraCadenceTest, TracksWithoutRepeatingLeadInAndResetsOnLoss)
 {
-    ugripper::camera::MainCameraCadenceTracker t;
+    ugripper::camera::MainCameraH264CadenceTracker t;
     EXPECT_TRUE(t.ShouldCorrect(4,{0,24000,28000,42000},true,true,false));
     EXPECT_TRUE(t.ShouldCorrect(10,{100000,124000,128000,142000},false,true,false));
     EXPECT_TRUE(t.tracked);
@@ -151,7 +152,7 @@ TEST(CameraCadenceTest, TracksWithoutRepeatingLeadInAndResetsOnLoss)
 
 TEST(CameraCadenceTest, RephasesOnNearbySignalAndTracksConfirmedPostIntra)
 {
-    ugripper::camera::MainCameraCadenceTracker t;
+    ugripper::camera::MainCameraH264CadenceTracker t;
     ASSERT_TRUE(t.ShouldCorrect(4,{0,24000,28000,42000},true,true,false));
     EXPECT_TRUE(t.ShouldCorrect(9,{100000,124000,128000,142000},false,true,false));
     EXPECT_TRUE(t.ShouldCorrect(15,{200000,234000,244000,248000},true,true,true));
@@ -184,7 +185,7 @@ TEST(CameraCadenceTest, H265RejectsMissingAndTruncatedHeaders)
 
 TEST(CameraCadenceTest, UsesCompressedEvidenceForRepeatAfterIntra)
 {
-    ugripper::camera::MainCameraCadenceTracker t;
+    ugripper::camera::MainCameraH264CadenceTracker t;
     EXPECT_TRUE(t.ShouldCorrect(51,{0,9600,13200,27000},false,true,true,false,{500,2500,2400}));
     EXPECT_FALSE(t.ShouldCorrect(101,{0,9600,13200,27000},false,true,true,false,{2400,2500,2400}));
     EXPECT_FALSE(t.ShouldCorrect(151,{0,9600,13200,27000},true,false,true,false,{500,2500,2400}));
@@ -192,7 +193,7 @@ TEST(CameraCadenceTest, UsesCompressedEvidenceForRepeatAfterIntra)
 
 TEST(CameraCadenceTest, DistinguishesRepeatedIntraFromDelayedRealIntra)
 {
-    ugripper::camera::MainCameraCadenceTracker t;
+    ugripper::camera::MainCameraH264CadenceTracker t;
     EXPECT_TRUE(t.ShouldCorrect(4,{0,24000,28000,42000},true,true,false));
     EXPECT_FALSE(t.ShouldCorrect(10,{0,34000,43600,47200},true,true,false,true,{40000,500,2500}));
     EXPECT_TRUE(t.ShouldCorrect(11,{0,9600,13200,27000},false,true,true,false,{500,2500,2400}));
@@ -248,10 +249,10 @@ TEST(CameraCadenceTest, H264ContinuityRequiresBothReferenceAndTransportSequence)
 
 TEST(CameraCadenceTest, PostIntraRepeatRequiresLockedPhaseContinuityAndSignature)
 {
-    using ugripper::camera::MainCameraCadenceTracker;
+    using ugripper::camera::MainCameraH264CadenceTracker;
     const std::array<int64_t,4> measured{0,25056,37510,42156};
     const std::array<std::size_t,3> sizes{1527,1961,1688};
-    MainCameraCadenceTracker t;
+    MainCameraH264CadenceTracker t;
     EXPECT_FALSE(t.ShouldCorrect(351,measured,false,true,true,false,sizes));
     ASSERT_TRUE(t.ShouldCorrect(345,{0,24000,28000,42000},true,true,false));
     EXPECT_FALSE(t.ShouldCorrect(349,measured,false,true,true,false,sizes));
@@ -263,11 +264,11 @@ TEST(CameraCadenceTest, PostIntraRepeatRequiresLockedPhaseContinuityAndSignature
 
 TEST(CameraCadenceTest, RephasesAfterIntraWhenShortGapIsSecond)
 {
-    ugripper::camera::MainCameraCadenceTracker t;
+    ugripper::camera::MainCameraH264CadenceTracker t;
     ASSERT_TRUE(t.ShouldCorrect(5294,{0,24000,28000,42000},true,true,false));
     EXPECT_FALSE(t.ShouldCorrect(5300,{0,19000,44000,56500},false,true,false,true,{55000,1500,2000}));
-    // Failed expected I candidate advances prediction to 5306. This is not a
-    // nearby phase any more; the next call must retain the prior phase evidence.
+    // A failed I candidate retains only a one-frame grace period, without
+    // advancing its prediction or granting subsequent cycles a free pass.
     EXPECT_TRUE(t.ShouldCorrect(5301,{0,25056,37510,42156},false,true,true,false,{1527,1961,1688}));
 }
 
@@ -280,4 +281,122 @@ TEST(TactileCaptureTiming, ExactUnixOriginIgnoresRoundedDisplay)
     EXPECT_EQ(*origin, 1789621040150679LL);
     for (const auto line : {"demuxer -> off:-1789621040150679", "demuxer+ffmpeg -> off:-3132625604", "demuxer+ffmpeg -> off:NOPTS", "demuxer+ffmpeg -> off:-1789621040150679bad", "demuxer+ffmpeg -> off:-9223372036854775808"})
         EXPECT_FALSE(ugripper::camera::TactileUnixOriginFromFfmpeg(line));
+}
+
+TEST(CameraCadenceTest, DoesNotAcquirePhaseFromSizeContrastAcrossUpcomingIntra)
+{
+    ugripper::camera::MainCameraH264CadenceTracker tracker;
+    // episode_20260923_0002 left frame 99: the following I picture makes
+    // compressed-size evidence look stronger than the actual image evidence.
+    EXPECT_FALSE(tracker.ShouldCorrect(99, {0,27203,40602,46309},
+        false,true,false,false,{500,40000,4000},{true,false}));
+    EXPECT_FALSE(tracker.ShouldCorrect(105, {0,31771,42557,47914},
+        false,true,false,false,{4555,413,4626}));
+}
+
+TEST(CameraCadenceTest, CompetingNextPictureBreaksAnIncorrectPhaseImmediately)
+{
+    ugripper::camera::MainCameraH264CadenceTracker tracker;
+    ASSERT_TRUE(tracker.ShouldCorrect(219, {0,24000,28000,42000},
+        false,true,false,false,{400,4000,4000}));
+    // Actual episode 0002 frame 225 is a new exposure; frame 226 repeats it.
+    EXPECT_FALSE(tracker.ShouldCorrect(225, {0,31751,42682,48162},
+        false,true,false,false,{4555,413,4626}));
+    // The unsupported short mode is preserved, not forcibly mapped to 20ms.
+    EXPECT_FALSE(tracker.ShouldCorrect(226, {0,10931,16411,29566},
+        false,true,false,false,{413,4626,4669}));
+    EXPECT_FALSE(tracker.ShouldCorrect(231, {0,24000,28000,42000},
+        false,true,false,false,{4000,4000,4000}));
+    // Independent local evidence can reacquire immediately at a new phase.
+    EXPECT_TRUE(tracker.ShouldCorrect(232, {0,24000,28000,42000},
+        false,true,false,false,{400,4000,4000}));
+    EXPECT_TRUE(tracker.ShouldCorrect(238, {0,24000,28000,42000},
+        false,true,false,false,{400,4000,4000}));
+}
+
+TEST(CameraCadenceTest, PredictionCannotSustainUnconfirmedOrEqualCadence)
+{
+    ugripper::camera::MainCameraH264CadenceTracker tracker;
+    ASSERT_TRUE(tracker.ShouldCorrect(4, {0,24000,28000,42000},
+        false,true,false,false,{400,4000,4000}));
+    EXPECT_FALSE(tracker.ShouldCorrect(10, {0,24000,28000,42000},
+        false,true,false,false,{4000,4000,4000}));
+    EXPECT_FALSE(tracker.tracked);
+    EXPECT_FALSE(tracker.ShouldCorrect(16, {0,20000,40000,60000},
+        false,true,false,false,{400,4000,4000}));
+    EXPECT_FALSE(tracker.ShouldCorrect(22, {0,24000,28000,42000},
+        false,true,false,false,{4000,4000,4000}));
+}
+
+TEST(CameraCadenceTest, DelayedRealPairUsesEarlierAnchorAndRejectsCompetingReal)
+{
+    using namespace ugripper::camera;
+    const std::array<int64_t,5> raw{0,31751,42682,48162,61317};
+    const std::array<std::size_t,4> sizes{4555,413,4626,4669};
+    EXPECT_TRUE(IsMainCamera50HzDelayedPair(raw,true,{false,false,false,false},sizes));
+    EXPECT_FALSE(IsMainCamera50HzDelayedPair(raw,false,{false,false,false,false},sizes));
+    EXPECT_FALSE(IsMainCamera50HzDelayedPair(raw,true,{false,false,false,false},{4555,4413,4626,4669}));
+    EXPECT_FALSE(IsMainCamera50HzDelayedPair(raw,true,{false,true,false,false},sizes));
+    EXPECT_FALSE(IsMainCamera50HzDelayedPair({0,20000,40000,60000,80000},true,{},sizes));
+    EXPECT_FALSE(IsMainCamera50HzDelayedPair({0,31751,42682,88162,101317},true,{},sizes));
+    const auto times=MainCamera50HzDelayedPairMappedTimes(raw,raw);
+    EXPECT_EQ(times,(std::array<int64_t,4>{20000,20001,40000,60000}));
+    // The real frame and its repeat agree; subsequent real exposures stay 20ms apart.
+    EXPECT_EQ(times[1]-times[0],1);
+    EXPECT_EQ(times[2]-times[0],20000);
+}
+
+TEST(CameraCadenceTest, DelayedPairPreservesIndividualRtcAnchorAndIntraReferences)
+{
+    using namespace ugripper::camera;
+    const std::array<int64_t,5> raw{0,31594,38852,45863,60373};
+    EXPECT_TRUE(IsMainCamera50HzDelayedPair(raw,true,{false,false,true,false},{2220,397,90130,4233}));
+    EXPECT_FALSE(IsMainCamera50HzDelayedPair(raw,true,{false,false,true,true},{2220,397,90130,90000}));
+    // I size must not make an ordinary-sized P picture look compact.
+    EXPECT_FALSE(IsMainCamera50HzDelayedPair(raw,true,{false,false,true,false},{2220,2000,90130,4233}));
+    const std::array<int64_t,5> unix_us{1000000,1031594,1039052,1046063,1060573};
+    EXPECT_EQ(MainCamera50HzDelayedPairMappedTimes(raw,unix_us),
+        (std::array<int64_t,4>{1020000,1020201,1040200,1060200}));
+}
+
+TEST(CameraCadenceTest, KeepsExpectedNextRepeatBeforeIntraWithoutAcquiringFromIntra)
+{
+    ugripper::camera::MainCameraH264CadenceTracker tracker;
+    ASSERT_TRUE(tracker.ShouldCorrect(143,{0,24000,28000,42000},false,true,false,false,{319,4009,2965}));
+    // Right frame 148 points to the already predicted compact frame 149.
+    EXPECT_FALSE(tracker.ShouldCorrect(148,{0,19870,46142,59544},false,true,false,false,
+        {1794,319,80301},{false,true}));
+    EXPECT_TRUE(tracker.ShouldCorrect(149,{0,26272,39674,44993},false,true,false,false,
+        {319,80301,4009},{true,false}));
+    // The same I-adjacent window cannot independently acquire a new phase.
+    tracker.Reset();
+    EXPECT_FALSE(tracker.ShouldCorrect(149,{0,26272,39674,44993},false,true,false,false,
+        {319,80301,4009},{true,false}));
+}
+
+TEST(CameraCadenceTest, CodecPoliciesAreIndependent)
+{
+    ugripper::camera::MainCameraH264CadenceTracker h264;
+    ugripper::camera::MainCameraH265CadenceTracker h265;
+    ASSERT_TRUE(h264.ShouldCorrect(4,{0,24000,28000,42000},true,true,false));
+    ASSERT_TRUE(h265.ShouldCorrect(4,{0,24000,28000,42000},true,true,false));
+    // H264's field-derived competing-picture guard does not retune H265.
+    EXPECT_FALSE(h264.ShouldCorrect(10,{0,31751,42682,48162},false,true,false,false,{4555,413,4626}));
+    EXPECT_TRUE(h265.ShouldCorrect(10,{0,31751,42682,48162},false,true,false,false,{4555,413,4626}));
+}
+
+TEST(CameraCadenceTest, ReordersDelayedIntraAndRepeatTogether)
+{
+    using namespace ugripper::camera;
+    const std::array<int64_t, 5> encoder{155535889,155570327,155580966,155584658,155598017};
+    const std::array<std::size_t, 4> sizes{65954,548,2818,3305};
+    EXPECT_TRUE(IsMainCamera50HzDelayedPair(encoder,true,{true,false,false,false},sizes));
+    EXPECT_FALSE(IsMainCamera50HzDelayedPair(encoder,false,{true,false,false,false},sizes));
+    EXPECT_FALSE(IsMainCamera50HzDelayedPair(encoder,true,{true,false,true,false},sizes));
+    EXPECT_FALSE(IsMainCamera50HzDelayedPair(encoder,true,{true,true,false,false},sizes));
+    EXPECT_FALSE(IsMainCamera50HzDelayedPair(encoder,true,{true,false,false,false},{65954,2500,2818,3305}));
+    const auto corrected = MainCamera50HzDelayedPairMappedTimes(encoder,encoder);
+    EXPECT_EQ(corrected,(std::array<int64_t,4>{155555889,155555890,155575889,155595889}));
+    EXPECT_GT(corrected.front(),encoder.front());
+    EXPECT_LT(corrected.back(),155616387);
 }

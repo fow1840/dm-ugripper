@@ -9,11 +9,11 @@ namespace camera_recorder::camera_time {
 // timestamps later; negative values compensate observation latency by moving
 // timestamps earlier. Update these values when a new experiment is accepted,
 // then rebuild.
-// Main-camera absolute time now comes from the camera XU RTC plus the frame
-// encoder-completion PTS. Move its absolute anchor 28 ms earlier to estimate
-// shutter time: measured +36 ms included the previous +8 ms offset.
-// Cadence correction changes only the relative frame timing.
-inline constexpr int64_t kMainCameraLatencyUs = -28'000;
+// Firmware 2026-09-24-1632: optical exposure-end calibration, episodes
+// 20260924_0004..0006. Median of each episode's first ten valid errors:
+// left -37.6 ms, right -36 ms. New offset = old offset - measured error.
+// No clock-rate drift compensation; the fallback is the two-side mean.
+inline constexpr int64_t kMainCameraLatencyUs = 8'600;
 // Tactile now uses the V4L2 capture clock rather than first encoded-output
 // observation. The old -35ms included encoding latency and must not carry over.
 // Default capture-clock correction for streams without a per-view calibration.
@@ -32,8 +32,8 @@ constexpr int64_t CameraLatencyUs(CameraTimestampSource source, std::string_view
     switch (source)
     {
     case CameraTimestampSource::Main:
-        if (name == "left_cam_main") return -27'200;
-        if (name == "right_cam_main") return -29'200;
+        if (name == "left_cam_main") return 10'400;
+        if (name == "right_cam_main") return 6'800;
         return kMainCameraLatencyUs;
     case CameraTimestampSource::Tactile:
         if (name == "left_tcam_l") return -1'500;
