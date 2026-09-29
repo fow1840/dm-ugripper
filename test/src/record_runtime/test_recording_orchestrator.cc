@@ -64,6 +64,7 @@ struct RecordingHarness
     bool stereo_enabled = true;
     bool prepare_ok = true;
     bool validate_ok = true;
+    bool metadata_ok = true;
     bool merge_ok = true;
     bool stereo_start_ok = true;
     bool stereo_stop_ok = true;
@@ -148,6 +149,7 @@ struct RecordingHarness
                  .write_episode_metadata =
                      [this](const std::string&, bool, const std::string&, const std::string& error_type) {
                          metadata_error_types.push_back(error_type);
+                         return metadata_ok;
                      },
                  .write_validation_error_log =
                      [this](const std::string&, const std::string& error_message) {
@@ -911,3 +913,15 @@ TEST(RecordingOrchestratorTest, StopRecordingMergeFailureMapsToValidationFailed)
 }
 
 }  // namespace
+
+TEST(RecordingOrchestratorTest, MetadataWriteFailureCannotReportSuccess)
+{
+    RecordingHarness harness;
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+    harness.metadata_ok = false;
+    ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
+    EXPECT_EQ(harness.validate_calls, 1);
+    EXPECT_EQ(harness.metadata_error_types.back(), "finalize_error");
+    EXPECT_NE(harness.last_validation_log.find("failed to write final metadata.json"), std::string::npos);
+}

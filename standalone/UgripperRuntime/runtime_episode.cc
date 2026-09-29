@@ -659,6 +659,8 @@ bool DA::Ugripper::EpisodeManager::PrepareEpisode(const std::string &episodeDir,
                                                    const std::string &resetSourceDir,
                                                    std::string *errorMessage) const
 {
+    probeEpisodeKey_.clear();
+    finalizationProbes_.clear();
     if (!writeFilteredCalibration(episodeDir, errorMessage))
     {
         return false;
@@ -863,17 +865,12 @@ bool DA::Ugripper::EpisodeManager::WriteFinalMetadata(const std::string &episode
             continue;
         }
 
-        VideoProbeResult probe;
-        if (!loadCachedVideoProbe(infoRoot, artifact, &probe))
-        {
-            probe.cameraName = artifact.cameraName;
-            probe.fileName = artifact.fileName;
-            std::string probeError;
-            if (!probeVideoFile(videoPath.string(), &probe, &probeError))
-            {
-                continue;
-            }
-        }
+        const auto &tasks = finalizationVideoProbes(episodeDir);
+        const auto task = std::find_if(tasks.begin(), tasks.end(), [&](const auto &item) {
+            return item.probe.fileName == artifact.fileName;
+        });
+        if (task == tasks.end() || !task->ok) continue;
+        const auto &probe = task->probe;
 
         double detailDurationSec = probe.durationSec;
         std::string durationSource;

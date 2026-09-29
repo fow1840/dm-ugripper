@@ -50,7 +50,7 @@ public:
     using CleanupEgoRemoteFn = std::function<bool(const std::string&, std::string*)>;
     using IsEgoRequiredFn = std::function<bool()>;
     using FlushEpisodeArtifactsFn = std::function<void(const std::string&, const char*)>;
-    using WriteEpisodeMetadataFn = std::function<void(const std::string&, bool, const std::string&, const std::string&)>;
+    using WriteEpisodeMetadataFn = std::function<bool(const std::string&, bool, const std::string&, const std::string&)>;
     using WriteValidationErrorLogFn = std::function<void(const std::string&, const std::string&)>;
     using FinalizeEpisodeDirFn = std::function<std::string(const std::string&, std::string*)>;
     using DetectRecordingHardwareFaultFn = std::function<std::optional<HealthFault>(const std::string&)>;

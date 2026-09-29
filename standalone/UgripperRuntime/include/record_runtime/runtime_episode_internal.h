@@ -109,6 +109,8 @@ struct CommandCaptureResult
     bool timedOut = false;
     int exitCode = -1;
     std::string output;
+    std::string errorOutput;
+    bool outputTruncated = false;
 };
 
 struct TactileCalibrationTarget
@@ -143,7 +145,7 @@ inline constexpr double kMaxVideoSpanGapSec = 5.0;
 inline constexpr size_t kTactileHistoryWindow = 3;
 inline constexpr double kTactileEpisodeProbeSec = 0.12;
 inline constexpr int kTactileSnapshotTimeoutMs = 2500;
-inline constexpr int kVideoProbeTimeoutMs = 1500;
+inline constexpr int kVideoProbeTimeoutMs = 3000;
 
 std::filesystem::path episodeTimingPath(const std::filesystem::path &episodeDir);
 int ChildFileDescriptorLimit();

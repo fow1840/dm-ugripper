@@ -357,89 +357,66 @@ bool extractJsonIntegerField(const std::string &jsonText, const std::string &key
 CommandCaptureResult runCommandCapture(const std::vector<std::string> &arguments, int timeoutMs)
 {
     CommandCaptureResult result;
-    if (arguments.empty())
-    {
-        return result;
+    if (arguments.empty()) return result;
+    int out[2] = {-1, -1}, err[2] = {-1, -1};
+    if (pipe2(out, O_CLOEXEC) != 0) return result;
+    if (pipe2(err, O_CLOEXEC) != 0) {
+        close(out[0]); close(out[1]); return result;
     }
-
-    int pipefd[2] = {-1, -1};
-    if (pipe(pipefd) != 0)
-    {
-        return result;
-    }
-
     std::vector<char *> argv;
-    argv.reserve(arguments.size() + 1);
-    for (const auto &argument : arguments)
-    {
-        argv.push_back(const_cast<char *>(argument.c_str()));
-    }
+    for (const auto &argument : arguments) argv.push_back(const_cast<char *>(argument.c_str()));
     argv.push_back(nullptr);
-
     const int childFdLimit = ChildFileDescriptorLimit();
     const pid_t pid = fork();
-    if (pid < 0)
-    {
-        close(pipefd[0]);
-        close(pipefd[1]);
-        return result;
-    }
-
-    if (pid == 0)
-    {
-        dup2(pipefd[1], STDOUT_FILENO);
-        dup2(pipefd[1], STDERR_FILENO);
-        close(pipefd[0]);
-        close(pipefd[1]);
+    if (pid == 0) {
+        dup2(out[1], STDOUT_FILENO);
+        dup2(err[1], STDERR_FILENO);
         CloseChildFileDescriptors(childFdLimit);
         execvp(argv[0], argv.data());
         _exit(127);
     }
-
-    close(pipefd[1]);
-
+    close(out[1]); close(err[1]);
+    if (pid < 0) { close(out[0]); close(err[0]); return result; }
+    fcntl(out[0], F_SETFL, O_NONBLOCK);
+    fcntl(err[0], F_SETFL, O_NONBLOCK);
+    // Drain both pipes while the child runs; bound retained data and each drain
+    // so noisy children cannot exhaust memory or evade the deadline.
+    constexpr size_t limit = 1024 * 1024;
+    const auto drain = [&](int fd, std::string &target, bool stdoutPipe) {
+        std::array<char, 8192> buffer{};
+        for (int i = 0; i < 32; ++i) {
+            const ssize_t n = read(fd, buffer.data(), buffer.size());
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) break;
+            const size_t keep = std::min(static_cast<size_t>(n), limit - target.size());
+            target.append(buffer.data(), keep);
+            if (stdoutPipe && keep != static_cast<size_t>(n)) result.outputTruncated = true;
+        }
+    };
     int status = 0;
+    bool reaped = false;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
-    while (true)
-    {
-        const pid_t waitResult = waitpid(pid, &status, WNOHANG);
-        if (waitResult == pid)
-        {
-            break;
-        }
-        if (waitResult < 0)
-        {
-            close(pipefd[0]);
-            return result;
-        }
-        if (std::chrono::steady_clock::now() >= deadline)
-        {
+    while (true) {
+        drain(out[0], result.output, true);
+        drain(err[0], result.errorOutput, false);
+        const pid_t waited = waitpid(pid, &status, WNOHANG);
+        if (waited == pid) { reaped = true; break; }
+        if (waited < 0 && errno != EINTR) break;
+        if (std::chrono::steady_clock::now() >= deadline) {
             result.timedOut = true;
             kill(pid, SIGKILL);
-            waitpid(pid, &status, 0);
+            pid_t killed;
+            do { killed = waitpid(pid, &status, 0); } while (killed < 0 && errno == EINTR);
+            reaped = killed == pid;
             break;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
-
-    std::array<char, 512> buffer{};
-    ssize_t count = 0;
-    while ((count = read(pipefd[0], buffer.data(), buffer.size())) > 0)
-    {
-        result.output.append(buffer.data(), static_cast<size_t>(count));
-    }
-    close(pipefd[0]);
-
-    if (result.timedOut)
-    {
-        return result;
-    }
-
-    if (WIFEXITED(status))
-    {
-        result.exitCode = WEXITSTATUS(status);
-        result.success = (result.exitCode == 0);
-    }
+    drain(out[0], result.output, true);
+    drain(err[0], result.errorOutput, false);
+    close(out[0]); close(err[0]);
+    if (reaped && WIFEXITED(status)) result.exitCode = WEXITSTATUS(status);
+    result.success = reaped && !result.timedOut && !result.outputTruncated && result.exitCode == 0;
     return result;
 }
 
@@ -497,7 +474,7 @@ std::optional<std::vector<uint8_t>> captureTactileGrayFrame(const std::vector<st
     {
         if (errorMessage != nullptr)
         {
-            std::string detail = capture.output;
+            std::string detail = capture.errorOutput;
             detail.erase(std::remove(detail.begin(), detail.end(), '\r'), detail.end());
             while (!detail.empty() &&
                    (detail.back() == '\n' || detail.back() == ' ' || detail.back() == '\t'))
@@ -523,112 +500,57 @@ std::optional<std::vector<uint8_t>> captureTactileGrayFrame(const std::vector<st
 
 bool probeVideoFile(const std::string &filePath, VideoProbeResult *result, std::string *errorMessage)
 {
-    if (result == nullptr)
-    {
-        if (errorMessage != nullptr)
-        {
-            *errorMessage = "internal error: missing probe output slot";
-        }
+    if (result == nullptr) {
+        if (errorMessage) *errorMessage = "internal error: missing probe output slot";
         return false;
     }
-
-    const int64_t probeStartMs = steadyNowMs();
-    logPerf((::DA::utils::LogString() << "[PERF] ffprobe begin: file=" << filePath).str());
-    const CommandCaptureResult probe = runCommandCapture(
-        {
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=codec_type:format=start_time,duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            filePath,
-        },
-        kVideoProbeTimeoutMs);
-
-    if (probe.timedOut)
-    {
-        logPerf((::DA::utils::LogString() << "[PERF] ffprobe timeout: file=" << filePath
-                  << " elapsed_ms=" << (steadyNowMs() - probeStartMs)).str());
-        if (errorMessage != nullptr)
-        {
-            *errorMessage = "ffprobe timeout after " + std::to_string(kVideoProbeTimeoutMs) + "ms";
-        }
-        return false;
-    }
-    if (!probe.success)
-    {
-        logPerf((::DA::utils::LogString() << "[PERF] ffprobe failed: file=" << filePath
-                  << " elapsed_ms=" << (steadyNowMs() - probeStartMs)
-                  << " exit_code=" << probe.exitCode).str());
-        if (errorMessage != nullptr)
-        {
-            std::string detail = trim(probe.output);
-            if (detail.empty())
-            {
-                detail = "ffprobe exited with code " + std::to_string(probe.exitCode);
+    std::string failure;
+    for (int attempt = 1; attempt <= 2; ++attempt) {
+        const int64_t started = steadyNowMs();
+        const auto probe = runCommandCapture({
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=codec_type:format=start_time,duration",
+            "-of", "json", filePath}, kVideoProbeTimeoutMs);
+        failure.clear();
+        if (!probe.success) {
+            failure = probe.timedOut ? "ffprobe timeout" : "ffprobe process failed";
+        } else {
+            try {
+                const auto root = json::parse(probe.output);
+                const auto &streams = root.at("streams");
+                const auto &format = root.at("format");
+                if (!streams.is_array() || streams.empty() ||
+                    streams.at(0).value("codec_type", std::string()) != "video") {
+                    failure = "ffprobe did not report a readable video stream";
+                } else if (!parseDoubleStrict(format.at("start_time").get<std::string>(), &result->startTimeSec) ||
+                           !parseDoubleStrict(format.at("duration").get<std::string>(), &result->durationSec) ||
+                           !std::isfinite(result->startTimeSec) || !std::isfinite(result->durationSec)) {
+                    failure = "ffprobe returned invalid start_time/duration";
+                } else {
+                    result->spanSec = result->durationSec;
+                    if (result->startTimeSec > 0.0 && result->durationSec > result->startTimeSec)
+                        result->spanSec -= result->startTimeSec;
+                    if (!std::isfinite(result->spanSec) || result->spanSec <= 0.0)
+                        failure = "ffprobe returned non-positive video span";
+                }
+            } catch (const std::exception &ex) {
+                failure = std::string("invalid ffprobe JSON/timing: ") + ex.what();
             }
-            *errorMessage = detail;
         }
-        return false;
-    }
-
-    std::vector<std::string> lines;
-    std::stringstream stream(probe.output);
-    std::string line;
-    while (std::getline(stream, line))
-    {
-        line = trim(line);
-        if (!line.empty())
-        {
-            lines.push_back(line);
+        if (failure.empty()) {
+            if (!probe.errorOutput.empty())
+                DM_LOG_WARN("ffprobe diagnostic: file={} stderr={}", filePath, probe.errorOutput.substr(0, 2048));
+            if (errorMessage) errorMessage->clear();
+            return true;
         }
+        failure += " file=" + filePath + " attempt=" + std::to_string(attempt) +
+            " elapsed_ms=" + std::to_string(steadyNowMs() - started) +
+            " exit_code=" + std::to_string(probe.exitCode) +
+            " stderr=" + probe.errorOutput.substr(0, 2048);
+        DM_LOG_WARN("{}", failure);
     }
-
-    if (lines.size() < 3 || lines[0] != "video")
-    {
-        if (errorMessage != nullptr)
-        {
-            *errorMessage = "ffprobe did not report a readable video stream";
-        }
-        return false;
-    }
-
-    if (lines[1] == "N/A" || lines[2] == "N/A" ||
-        !parseDoubleStrict(lines[1], &result->startTimeSec) ||
-        !parseDoubleStrict(lines[2], &result->durationSec))
-    {
-        if (errorMessage != nullptr)
-        {
-            *errorMessage = "ffprobe returned invalid start_time/duration";
-        }
-        return false;
-    }
-
-    result->spanSec = result->durationSec;
-    if (result->startTimeSec > 0.0 && result->durationSec > result->startTimeSec)
-    {
-        result->spanSec = result->durationSec - result->startTimeSec;
-    }
-
-    if (!std::isfinite(result->spanSec) || result->spanSec <= 0.0)
-    {
-        if (errorMessage != nullptr)
-        {
-            *errorMessage = "ffprobe returned non-positive video span";
-        }
-        return false;
-    }
-
-    logPerf((::DA::utils::LogString() << "[PERF] ffprobe done: file=" << filePath
-              << " elapsed_ms=" << (steadyNowMs() - probeStartMs)
-              << " start_sec=" << formatSeconds(result->startTimeSec)
-              << " duration_sec=" << formatSeconds(result->durationSec)
-              << " span_sec=" << formatSeconds(result->spanSec)).str());
-    return true;
+    if (errorMessage) *errorMessage = failure;
+    return false;
 }
 
 std::vector<VideoProbeTaskResult> probeVideoFilesParallel(
@@ -1361,6 +1283,19 @@ bool setEpisodeValidationFailure(std::string *errorMessage,
 }
 }
 
+const std::vector<VideoProbeTaskResult> &DA::Ugripper::EpisodeManager::finalizationVideoProbes(
+    const std::string &episodeDir) const
+{
+    const fs::path path(episodeDir);
+    const std::string key = (path.parent_path() / stripEpisodeTempSuffix(path.filename().string())).string();
+    if (probeEpisodeKey_ != key) {
+        finalizationProbes_ = probeVideoFilesParallel(
+            episodeDir, activeEpisodeVideoArtifacts(chestCameraEnabled_, stereoEnabled_));
+        probeEpisodeKey_ = key;
+    }
+    return finalizationProbes_;
+}
+
 bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir,
                                                     std::string *errorMessage,
                                                     std::vector<std::string> *errorTypes,
@@ -1467,6 +1402,12 @@ bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir
             "ffprobe is required for episode validation but was not found in PATH");
     }
 
+    const auto &probeTasks = finalizationVideoProbes(episodeDir);
+    for (const auto &task : probeTasks) {
+        if (!task.ok) return setEpisodeValidationFailure(
+            errorMessage, errorTypes, DA::Ugripper::kErrorTypeMissingFile,
+            "video unreadable or missing timing metadata: " + task.probe.fileName + " (" + task.errorMessage + ")");
+    }
     std::string metadataError;
     if (!validateMetadataVideoDetails(fs::path(episodeDir) / "metadata.json",
                                       artifacts,
@@ -1484,7 +1425,6 @@ bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir
 
     double referenceSpanSec = 0.0;
     const int64_t videoProbeStartMs = steadyNowMs();
-    const auto probeTasks = probeVideoFilesParallel(episodeDir, artifacts);
     std::vector<VideoProbeResult> probes;
     std::map<std::string, double> effectiveSpanByFile;
     std::map<std::string, std::string> effectiveSpanSourceByFile;

@@ -77,7 +77,7 @@ struct LedBridgeHarness
                  .flush_episode_artifacts =
                      [](const std::string&, const char*) {},
                  .write_episode_metadata =
-                     [](const std::string&, bool, const std::string&, const std::string&) {},
+                     [](const std::string&, bool, const std::string&, const std::string&) { return true; },
                  .write_validation_error_log =
                      [](const std::string&, const std::string&) {},
              },

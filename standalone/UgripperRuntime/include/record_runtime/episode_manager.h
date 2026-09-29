@@ -1,6 +1,7 @@
 #pragma once
 
 #include "record_runtime/episode_types.h"
+#include "record_runtime/runtime_episode_internal.h"
 
 #include <array>
 #include <optional>
@@ -63,6 +64,9 @@ public:
     const std::string &GetDataRoot() const;
 
 private:
+    const std::vector<detail::VideoProbeTaskResult> &finalizationVideoProbes(const std::string &episodeDir) const;
+    mutable std::string probeEpisodeKey_;
+    mutable std::vector<detail::VideoProbeTaskResult> finalizationProbes_;
     bool writeFilteredCalibration(const std::string &episodeDir, std::string *errorMessage) const;
     bool prepareEpisodeOutputs(const std::string &episodeDir, std::string *errorMessage) const;
     bool updateTactileDamageMetadata(

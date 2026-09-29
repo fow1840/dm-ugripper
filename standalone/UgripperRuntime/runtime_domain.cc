@@ -1505,13 +1505,16 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         CallLog(dependencies_.logs.log_warn,
                 "skip episode validation because stereo finalize already failed: " + final_error_message);
     }
-    if (dependencies_.episode.write_episode_metadata != nullptr)
-    {
+    const bool metadata_ok = dependencies_.episode.write_episode_metadata != nullptr &&
         dependencies_.episode.write_episode_metadata(
             state_.current_episode_dir,
             !due_to_error && stereo_stop_ok && ego_required_ok,
             final_error_message,
             SelectPrimaryErrorType(error_types));
+    if (!metadata_ok) {
+        AddErrorType(&error_types, kErrorTypeFinalizeError);
+        if (!final_error_message.empty()) final_error_message += "; ";
+        final_error_message += "failed to write final metadata.json (see runtime log)";
     }
     std::vector<std::string> episode_validation_error_types;
     const bool episode_valid =
@@ -1538,7 +1541,7 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
             final_error_message += "; " + episode_validation_error;
         }
     }
-    const bool valid = !due_to_error && stereo_stop_ok && ego_required_ok && episode_valid;
+    const bool valid = !due_to_error && stereo_stop_ok && ego_required_ok && metadata_ok && episode_valid;
     CallPerfLog(dependencies_.logs,
             "[PERF] validation phase end: episode_dir=" + state_.current_episode_dir +
                 " valid=" + std::string(valid ? "true" : "false") + " elapsed_ms=" +

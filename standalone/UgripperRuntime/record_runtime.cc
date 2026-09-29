@@ -482,7 +482,7 @@ bool RecordRuntime::Initialize()
                            const std::string& error_type) {
                         if (episodeManager_ == nullptr)
                         {
-                            return;
+                            return false;
                         }
                         episodeManager_->SetTaskMarkers(
                             taskMarkerTracker_.GetTaskStartS(),
@@ -497,10 +497,11 @@ bool RecordRuntime::Initialize()
                         {
                             DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to write metadata.json: "
                                           << metadataError << std::endl).str());
-                            return;
+                            return false;
                         }
                         flushEpisodeArtifactsToDisk(
                             fs::path(episode_dir), chestCameraEnabled_, stereoEnabled_, "metadata_final");
+                        return true;
                     },
                 .write_validation_error_log =
                     [](const std::string& episode_dir, const std::string& error_message) {

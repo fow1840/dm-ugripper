@@ -793,3 +793,11 @@ ctest --test-dir build/host-tests -L host-only --output-on-failure
 每路 `stereo_*.mkv.frame_loss.json` 为内部诊断统计文件，不扩展 metadata 协议。单侧单次连续缺失超过 3 帧时，通过现有 `quality_check_status=fail` 与 `quality_check_err_type=stereo_frame_loss` 上报；掉帧数只保存在诊断文件和日志中，不新增 metadata 字段。`stereo_frame_loss` 映射 `UGR-22-04`，原有 `frame_loss` 语义保持。统计基于保留帧时间间隔，包含可从间隔观察到的 SDK/应用队列缺帧；不是硬件序列号精确计数，首帧之前及末帧之后缺帧由既有无帧/断流检测负责。
 
 双目停录门限只比较一次相邻保留帧间隔对应的连续缺失数，不将多个间隔累加。诊断文件保存 `max_consecutive_dropped_frames`，保证一次超限不会被后续小间隔覆盖；累计 `dropped_frames` 仅用于日志统计。两次各缺 2 帧不触发停录，单次缺 4 帧触发；metadata 不增加字段。
+
+### 停录 QC 视频探测一致性
+
+停录后 metadata 与 QC 共享同一组内存视频探测结果（包含失败原因），下一条/重录准备时清空；不复用上一条 episode 的结果。仍先原子写出 metadata 再执行原有 metadata 完整性检查；失败写回只更新质量结论，不重新运行 ffprobe。metadata 协议及字段不变，写入失败进入 `finalize_error`，不能报告采集成功。
+
+ffprobe 使用 JSON 输出，stdout/stderr 分离并在进程运行时持续排空；每路最多尝试两次，每次超时 3 秒，输出保留上限每管道 1 MiB，stdout 超限判失败。失败/重试日志包含视频路径、次数、耗时、退出码及 stderr。正常每路仅探测一次，各路并行；有效 JSON 不会因 stderr 诊断文字而发生位置解析错误。触觉灰度抓帧共用的进程捕获也避免 stderr 污染像素数据。
+
+原有 QC 全部保留：必需文件非空，主摄在位/SN/标定缓存，ffprobe 可用及视频可读，metadata 视频条目及时间字段，有效跨度最小 0.2 秒，各路跨度差最大 5 秒，Fays MCAP topic/消息/有效跨度与 IMU 尾部、encoder 同侧最晚视频尾部覆盖（最大落后 1 秒），双目单次连续掉帧超过 3 帧，触觉异常历史。录制进程/硬件异常、Ego finalize/拉取、stereo finalize/merge、目录 rename 等既有失败判定和优先级不变；既有失败短路语义也不变。
