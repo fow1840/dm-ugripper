@@ -8,7 +8,7 @@
 #include "utils/ugripper_logger.h"
 
 namespace DA::utils {
-enum class CpuRole { Auxiliary, Fays, Video, Sensor };
+enum class CpuRole { Auxiliary, Fays, Video, Sensor, EncoderRequest };
 struct CpuAffinityPlan {
     cpu_set_t cpus{};
     bool enabled = false;
@@ -48,7 +48,7 @@ inline CpuAffinityPlan MakeCpuAffinityPlan(CpuRole role) {
         DM_LOG_WARN("[CPU] fays_split requires all CPUs 0-7 in original allowance; keeping inherited affinity");
         return plan;
     }
-    const unsigned mask = role == CpuRole::Auxiliary ? 0x0f : role == CpuRole::Fays ? 0x30 : role == CpuRole::Video ? 0xc0 : 0xff;
+    const unsigned mask = role == CpuRole::Auxiliary ? 0x0f : (role == CpuRole::Fays || role == CpuRole::EncoderRequest) ? 0x30 : role == CpuRole::Video ? 0xc0 : 0xff;
     CPU_ZERO(&plan.cpus);
     for (int cpu = 0; cpu < 8; ++cpu) if (mask & (1u << cpu)) CPU_SET(cpu, &plan.cpus);
     plan.enabled = true;

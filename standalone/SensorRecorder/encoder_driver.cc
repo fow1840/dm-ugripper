@@ -149,13 +149,34 @@ bool EncoderDriver::sendToEncoder(uint8_t *data, uint8_t len)
         return false;
     }
 
-    sp_return result = sp_blocking_write(serialPort_, data, len, 100);
-    if (result < 0)
+    // The blocking API polls the TTY before writing; n_tty_poll can wait for
+    // receive-side workqueue flushing. Avoid coupling request timing to it.
+    // CH9344 can still sleep inside tty_write; this deadline bounds application
+    // retries only, not time spent inside an individual kernel write call.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+    size_t sent = 0;
+    while (sent < len)
     {
-        markDisconnected("write");
-        return false;
+        const auto result = sp_nonblocking_write(serialPort_, data + sent, len - sent);
+        if (result < 0)
+        {
+            markDisconnected("write");
+            return false;
+        }
+        sent += static_cast<size_t>(result);
+        if (sent == len)
+        {
+            return true;
+        }
+        if (std::chrono::steady_clock::now() >= deadline)
+        {
+            markDisconnected("write timeout");
+            return false;
+        }
+        // A short write is not success. Retry only the remaining bytes, with
+        // a bounded wait rather than spinning or resending the whole command.
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
-
     return true;
 }
 

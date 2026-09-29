@@ -208,25 +208,37 @@ void encoderReadThreadFunc(EncoderDriver *encoder, const std::string &label) {
                 encoder->updateActiveStatus();
             }
         } else {
-            std::this_thread::sleep_for(std::chrono::microseconds(100));
+            // Empty reads need no 10 kHz polling for a 1 kHz sensor.
+            // Drain available data immediately; check stop between each bounded read.
+            std::this_thread::sleep_for(std::chrono::microseconds(250));
         }
     }
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "Encoder read thread stopped for " << label).str());
 }
 
 void encoderRequestThreadFunc(EncoderDriver *encoder, const std::string &label) {
+    DA::utils::ConfigureCpuAffinity(DA::utils::CpuRole::EncoderRequest);
     auto nextTime = std::chrono::steady_clock::now();
     const auto period = std::chrono::microseconds(1000);
+    const auto minQuietPeriod = std::chrono::microseconds(500);
+    auto earliestRequest = nextTime;
 
     while (!g_stopFlag.load()) {
-        nextTime += period;
+        std::this_thread::sleep_until(std::max(nextTime, earliestRequest));
+        if (g_stopFlag.load()) {
+            break;
+        }
         if (!encoder->isConnected()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             nextTime = std::chrono::steady_clock::now();
+            earliestRequest = nextTime;
             continue;
         }
         encoder->requestState(false);
-        std::this_thread::sleep_until(nextTime);
+        // Keep the 1 kHz schedule and allow catch-up, but always leave a quiet
+        // interval after writing so missed periods cannot flood the UART.
+        nextTime += period;
+        earliestRequest = std::chrono::steady_clock::now() + minQuietPeriod;
     }
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "Encoder request thread stopped for " << label).str());
 }
