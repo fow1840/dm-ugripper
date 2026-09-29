@@ -2433,6 +2433,7 @@ bool GripperHmiDriver::readAndProcessAvailableLocked()
 
 void GripperHmiDriver::ioLoop()
 {
+    uint64_t lastCommandWriteAtMs = 0;
     std::unique_lock<std::mutex> ioLock(ioMutex_);
     while (ioRunning_ && serialPort_ != nullptr)
     {
@@ -2481,49 +2482,36 @@ void GripperHmiDriver::ioLoop()
             nowMs,
             kBeepResendIntervalMs);
 
-        // Mirror the old driver_origin split: preserve LED edges first, then use
-        // low-frequency keepalive traffic so serial writes do not mask blink transitions.
-        if (ledPrioritySend)
-        {
+        // Pending RGB is a single latest-value slot: obsolete colors never form
+        // a queue. Explicit beep changes and due health probes precede RGB edges;
+        // only redundant writes are subject to the small inter-command budget.
+        auto writeBeep = [&]() {
+            const auto frame = GripperHmiProtocol::buildSetBeepCommand(activeBeepState_);
+            if (!writeFrameLocked(frame.data(), frame.size())) return false;
+            ++txBeepCount_;
+            lastBeepWriteAtMs_ = lastCommandWriteAtMs = currentSteadyMs();
+            if (pendingBeepRetryWrites_ > 0) --pendingBeepRetryWrites_;
+            return true;
+        };
+        auto writeLed = [&]() {
             const auto frame = GripperHmiProtocol::buildSetRgbCommand(desiredColor);
-            if (writeFrameLocked(frame.data(), frame.size()))
-            {
-                ++txLedCount_;
-                lastLedWriteAtMs_ = nowMs;
-                lastRenderedColor_ = desiredColorArray;
-            }
+            if (!writeFrameLocked(frame.data(), frame.size())) return;
+            ++txLedCount_;
+            lastLedWriteAtMs_ = lastCommandWriteAtMs = currentSteadyMs();
+            lastRenderedColor_ = desiredColorArray;
             pendingLedUpdate_ = false;
             ledEffectDirty_ = false;
-        }
-
+        };
         bool sentBeepUpdate = false;
-        // The controller can discard a PWM query immediately adjacent to a
-        // beep write. Keep low-priority keepalive away from the 1Hz query;
-        // explicit beep changes still take priority and defer the query.
-        const bool queryQuiet = lastBeepWriteAtMs_ == 0 ||
-                                nowMs - lastBeepWriteAtMs_ >= 25;
-        const bool beepQuiet = lastStateRequestAtMs_ == 0 ||
-                               nowMs - lastStateRequestAtMs_ >= 25;
-        if (pendingBeepUpdate_ || (beepResendDue && !stateDue && beepQuiet))
+        if (pendingBeepUpdate_ && writeBeep())
         {
-            const auto frame = GripperHmiProtocol::buildSetBeepCommand(activeBeepState_);
-            if (writeFrameLocked(frame.data(), frame.size()))
-            {
-                ++txBeepCount_;
-                lastBeepWriteAtMs_ = nowMs;
-                if (pendingBeepRetryWrites_ > 0)
-                {
-                    --pendingBeepRetryWrites_;
-                }
-                if (pendingBeepUpdate_)
-                {
-                    pendingBeepUpdate_ = false;
-                    pendingStateRequest_ = true;
-                    sentBeepUpdate = true;
-                }
-            }
+            pendingBeepUpdate_ = false;
+            pendingStateRequest_ = true;
+            sentBeepUpdate = true;
         }
-
+        const uint64_t dispatchMs = currentSteadyMs();
+        const bool queryQuiet = lastBeepWriteAtMs_ == 0 ||
+                                dispatchMs - lastBeepWriteAtMs_ >= 25;
         if (stateDue && queryQuiet && !pendingBeepUpdate_ && !sentBeepUpdate)
         {
             const auto frame = GripperHmiProtocol::buildBeepStateRequest();
@@ -2531,53 +2519,38 @@ void GripperHmiDriver::ioLoop()
             if (writeFrameLocked(frame.data(), frame.size()))
             {
                 ++txStateRequestCount_;
-                lastStateRequestAtMs_ = nowMs;
+                lastStateRequestAtMs_ = lastCommandWriteAtMs = currentSteadyMs();
             }
         }
+        if (ledPrioritySend) writeLed();
 
-        if (!ledPrioritySend && ledShouldSend)
-        {
-            const auto frame = GripperHmiProtocol::buildSetRgbCommand(desiredColor);
-            if (writeFrameLocked(frame.data(), frame.size()))
-            {
-                ++txLedCount_;
-                lastLedWriteAtMs_ = nowMs;
-                lastRenderedColor_ = desiredColorArray;
-            }
-            pendingLedUpdate_ = false;
-            ledEffectDirty_ = false;
-        }
+        const uint64_t keepaliveMs = currentSteadyMs();
+        const bool beepQuiet = lastStateRequestAtMs_ == 0 ||
+                               keepaliveMs - lastStateRequestAtMs_ >= 25;
+        const bool beepReady = beepResendDue && !stateDue && !sentBeepUpdate && beepQuiet;
+        const bool ledReady = !ledPrioritySend && ledShouldSend;
+        const uint64_t beepInterval = !beepKeepaliveEnabled && pendingBeepRetryWrites_ == 0
+                                          ? 1000 : kBeepResendIntervalMs;
+        const auto keepalive = gripper_hmi::driver_logic::SelectKeepaliveCommand(
+            beepReady, ledReady, lastBeepWriteAtMs_ + beepInterval,
+            lastLedWriteAtMs_ + kLedResendIntervalMs, lastCommandWriteAtMs, keepaliveMs);
+        if (keepalive == gripper_hmi::driver_logic::KeepaliveCommand::Beep) writeBeep();
+        else if (keepalive == gripper_hmi::driver_logic::KeepaliveCommand::Led) writeLed();
 
-        uint64_t waitMs = kStateRequestIntervalMs;
-        if (ledEffectEnabled_)
-        {
-            const uint64_t renderWaitMs =
-                (lastLedRenderAtMs_ == 0 || (nowMs - lastLedRenderAtMs_) >= kLedRenderIntervalMs)
-                    ? 1
-                    : (kLedRenderIntervalMs - (nowMs - lastLedRenderAtMs_));
-            waitMs = std::min(waitMs, renderWaitMs);
-        }
-        if (lastStateRequestAtMs_ == 0 || (nowMs - lastStateRequestAtMs_) >= kStateRequestIntervalMs)
-        {
-            waitMs = 1;
-        }
-        else
-        {
-            waitMs = std::min(waitMs, kStateRequestIntervalMs - (nowMs - lastStateRequestAtMs_));
-        }
-        if (beepKeepaliveEnabled || pendingBeepRetryWrites_ > 0)
-        {
-            const uint64_t beepWaitMs =
-                (lastBeepWriteAtMs_ == 0 || (nowMs - lastBeepWriteAtMs_) >= kBeepResendIntervalMs)
-                    ? 1
-                    : (kBeepResendIntervalMs - (nowMs - lastBeepWriteAtMs_));
-            waitMs = std::min(waitMs, beepWaitMs);
-        }
-        waitMs = std::max<uint64_t>(1, waitMs);
+        const uint64_t waitNowMs = currentSteadyMs();
+        const uint64_t finalBeepInterval = activeBeepState_.duty == 0 && pendingBeepRetryWrites_ == 0
+                                               ? 1000 : kBeepResendIntervalMs;
+        const uint64_t waitMs = gripper_hmi::driver_logic::OwnerWaitMs(
+            waitNowMs, pendingStateRequest_, lastStateRequestAtMs_, lastBeepWriteAtMs_,
+            finalBeepInterval, lastLedWriteAtMs_, lastCommandWriteAtMs,
+            ledEffectEnabled_, lastLedRenderAtMs_);
 
-        ioCv_.wait_for(ioLock, std::chrono::milliseconds(waitMs), [this]() {
-            return !ioRunning_ || pendingStateRequest_ || pendingLedUpdate_ || pendingBeepUpdate_;
-        });
+        // Producers hold ioMutex_ when changing pending state. Atomic unlock +
+        // wait cannot lose their notification; every wake recomputes eligibility.
+        // A deferred pending query must not make the predicate permanently true.
+        // Do not wait after an I/O failure/stop observed in this iteration.
+        if (ioRunning_ && serialPort_ != nullptr)
+            ioCv_.wait_for(ioLock, std::chrono::milliseconds(waitMs));
     }
 }
 

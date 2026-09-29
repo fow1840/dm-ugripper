@@ -136,6 +136,58 @@ inline bool ShouldWriteBeepCommand(const GripperBeepState& state,
     return now_ms - last_write_at_ms >= resend_interval_ms;
 }
 
+// A pending query is not runnable until the previous beep's quiet window ends.
+inline uint64_t StateQueryWaitMs(uint64_t now_ms, bool pending,
+                                 uint64_t last_query_ms, uint64_t last_beep_ms)
+{
+    const uint64_t query_due = pending || last_query_ms == 0 ? now_ms : last_query_ms + 1000;
+    const uint64_t quiet_due = last_beep_ms == 0 ? now_ms : last_beep_ms + 25;
+    const uint64_t due = std::max(query_due, quiet_due);
+    return due > now_ms ? due - now_ms : 1;
+}
+
+// Compute from post-dispatch state: a query sent in this iteration must not
+// suppress the next beep retry or the LED keepalive for an entire second.
+inline uint64_t OwnerWaitMs(uint64_t now_ms, bool query_pending,
+                            uint64_t last_query_ms, uint64_t last_beep_ms,
+                            uint64_t beep_interval_ms, uint64_t last_led_ms,
+                            uint64_t last_write_ms, bool render_enabled,
+                            uint64_t last_render_ms)
+{
+    // Receive unsolicited key reports at least every 20ms even when no LED
+    // effect is active. This does not permit writes before their quiet deadline.
+    uint64_t wait = std::min<uint64_t>(
+        20, StateQueryWaitMs(now_ms, query_pending, last_query_ms, last_beep_ms));
+    const bool query_due = query_pending || last_query_ms == 0 || now_ms >= last_query_ms + 1000;
+    // The due query owns its quiet window. New commands still wake the owner
+    // through notification; overdue retries must not cause 1ms polling here.
+    if (query_due) return wait;
+    const uint64_t budget_due = last_write_ms == 0 ? now_ms : last_write_ms + 5;
+    const uint64_t beep_due = std::max({last_beep_ms == 0 ? now_ms : last_beep_ms + beep_interval_ms,
+                                        last_query_ms + 25, budget_due});
+    const uint64_t led_due = std::max(last_led_ms == 0 ? now_ms : last_led_ms + 250, budget_due);
+    const auto until = [now_ms](uint64_t due) { return due > now_ms ? due - now_ms : uint64_t{1}; };
+    wait = std::min({wait, until(beep_due), until(led_due)});
+    if (render_enabled)
+        wait = std::min(wait, until(last_render_ms == 0 ? now_ms : last_render_ms + 20));
+    return wait;
+}
+
+// Only redundant traffic uses this budget. Explicit changes and health probes
+// must not wait behind keepalives; ties prefer the older LED refresh.
+enum class KeepaliveCommand { None, Beep, Led };
+
+inline KeepaliveCommand SelectKeepaliveCommand(bool beep_ready, bool led_ready,
+                                               uint64_t beep_due_ms, uint64_t led_due_ms,
+                                               uint64_t last_write_ms, uint64_t now_ms)
+{
+    if (last_write_ms != 0 && now_ms >= last_write_ms && now_ms - last_write_ms < 5)
+        return KeepaliveCommand::None;
+    if (led_ready && (!beep_ready || led_due_ms <= beep_due_ms))
+        return KeepaliveCommand::Led;
+    return beep_ready ? KeepaliveCommand::Beep : KeepaliveCommand::None;
+}
+
 inline size_t RequiredCalibrationChunkCountFromHeader(const GripperCalibrationHeader& header);
 
 inline bool TryParseCalibrationHeader(const std::array<uint8_t, kCalibrationPayloadSize>& raw,

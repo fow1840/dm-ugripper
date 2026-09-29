@@ -28,6 +28,57 @@ TEST(GripperHmiDriverLogicTest, RetriesBothBeepEnableAndSilenceCommands)
     EXPECT_TRUE(gripper_hmi::driver_logic::ShouldWriteBeepCommand({0, 1000}, 0, 100, 1100, 20));
 }
 
+TEST(GripperHmiDriverLogicTest, PendingQueryWaitsForQuietWindow)
+{
+    using gripper_hmi::driver_logic::StateQueryWaitMs;
+    EXPECT_EQ(StateQueryWaitMs(100, true, 50, 100), 25u);
+    EXPECT_EQ(StateQueryWaitMs(124, true, 50, 100), 1u);
+    EXPECT_EQ(StateQueryWaitMs(125, true, 50, 100), 1u);
+    EXPECT_EQ(StateQueryWaitMs(100, false, 50, 100), 950u);
+    EXPECT_EQ(StateQueryWaitMs(100, true, 0, 0), 1u);
+}
+
+TEST(GripperHmiDriverLogicTest, PostQueryRetryUsesQuietDeadlineEvenWithoutLedEffect)
+{
+    using gripper_hmi::driver_logic::OwnerWaitMs;
+    // A query just completed at 100ms; the retry is due but needs 25ms quiet.
+    EXPECT_EQ(OwnerWaitMs(100, false, 100, 75, 20, 100, 100, false, 0), 20u);
+    EXPECT_EQ(OwnerWaitMs(120, false, 100, 75, 20, 100, 100, false, 0), 5u);
+    EXPECT_EQ(OwnerWaitMs(124, false, 100, 75, 20, 100, 100, false, 0), 1u);
+    // While a pending query awaits quiet, an overdue beep/LED cannot spin.
+    EXPECT_EQ(OwnerWaitMs(100, true, 50, 100, 20, 0, 100, true, 0), 20u);
+}
+
+TEST(GripperHmiDriverLogicTest, LedKeepaliveAndBudgetRemainScheduledWithoutEffects)
+{
+    using gripper_hmi::driver_logic::OwnerWaitMs;
+    // OFF beep and query have a 1s period; same-color refresh is still 250ms.
+    EXPECT_EQ(OwnerWaitMs(100, false, 100, 100, 1000, 100, 100, false, 0), 20u);
+    // An already-due LED yields only until the current write budget expires.
+    EXPECT_EQ(OwnerWaitMs(351, false, 100, 100, 1000, 100, 350, false, 0), 4u);
+}
+
+TEST(GripperHmiDriverLogicTest, KeepaliveBudgetDefersWithoutDroppingReadyCommands)
+{
+    using gripper_hmi::driver_logic::KeepaliveCommand;
+    using gripper_hmi::driver_logic::SelectKeepaliveCommand;
+    EXPECT_EQ(SelectKeepaliveCommand(true, true, 90, 80, 100, 104), KeepaliveCommand::None);
+    EXPECT_EQ(SelectKeepaliveCommand(true, true, 90, 80, 100, 105), KeepaliveCommand::Led);
+    // Once LED was served the still-pending beep wins at the next budget slot.
+    EXPECT_EQ(SelectKeepaliveCommand(true, false, 90, 355, 105, 110), KeepaliveCommand::Beep);
+    EXPECT_EQ(SelectKeepaliveCommand(false, false, 90, 80, 0, 100), KeepaliveCommand::None);
+}
+
+TEST(GripperHmiDriverLogicTest, KeepaliveArbitrationServesEarliestDeadline)
+{
+    using gripper_hmi::driver_logic::KeepaliveCommand;
+    using gripper_hmi::driver_logic::SelectKeepaliveCommand;
+    EXPECT_EQ(SelectKeepaliveCommand(true, true, 70, 80, 0, 100), KeepaliveCommand::Beep);
+    EXPECT_EQ(SelectKeepaliveCommand(true, true, 80, 80, 0, 100), KeepaliveCommand::Led);
+    // A beep excluded by the query quiet window cannot consume the budget.
+    EXPECT_EQ(SelectKeepaliveCommand(false, true, 70, 80, 0, 100), KeepaliveCommand::Led);
+}
+
 TEST(GripperHmiDriverLogicTest, ClassifiesRetryableAndAbortRecoveryStatuses)
 {
     EXPECT_TRUE(gripper_hmi::driver_logic::IsRetryableCalibrationStatus(GripperHmiProtocol::kStatusMissingData));

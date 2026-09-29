@@ -193,3 +193,7 @@ python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
 `/usr/bin/python3 standalone/FaysStereoRecorder/tests/test_health_snapshot.py` 在临时目录验证健康/过期/非法输入、标定和 recorder 身份变更、损坏快照、helper 卡住自动恢复，以及解析器不可用时不重启健康 SDK。测试不接触设备或服务；使用系统标准库解释器，避免交叉编译 Python 混入。
 
 板端验证还需完整录制吞吐、原始 gap、实际串口请求/回复和正常 Runtime QC；仅通过命令构建测试不能证明调度延迟已改善。
+
+## HMI 调度回归
+
+`test/src/gripper_hmi/test_hmi_driver_logic.cc` 覆盖25ms查询静默、发送后重试deadline、无灯效接收检查、低优先级5ms预算及到期仲裁。板端须对照原版/仅优先级/完整修复，验证静默期间不忙转、状态回复及setter响应；encoder补发间隔应同时核对实际TX/RX、CRC和稳态未匹配请求，不能只看最大gap或停录退出码。
