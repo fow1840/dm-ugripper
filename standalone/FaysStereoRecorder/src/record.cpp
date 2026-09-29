@@ -1,4 +1,6 @@
 #include "fays_stereo_recorder/frame_loss_counter.h"
+#include "fays_stereo_recorder/imu_callback_queue.h"
+#include "fays_stereo_recorder/imu_clock_mapper.h"
 #include <string>
 #include <thread>
 #include <memory>
@@ -882,6 +884,7 @@ public:
             return false;
         }
 
+        if (queue_.size() + pending.size() > 8192) return false;
         queue_.insert(
             queue_.end(),
             std::make_move_iterator(pending.begin()),
@@ -1503,9 +1506,7 @@ public:
           lastEncodedFrameFaysNs_(0),
           lastRuntimeStatusWriteNs_(0),
           imuGapCount_(0),
-          imuRollbackCount_(0),
-          imuToSysOffsetNs_(0),
-          hasImuTimeOffset_(false) {
+          imuRollbackCount_(0) {
         statusIntervalNs_ = ReadEnvUInt64("FAYS_RUNTIME_STATUS_INTERVAL_MS", 1000) * 1000000ULL;
         mImgData_.data = new uchar[FAYS_ATRAK_MONO_MAX_BYTES * 3];
         FaysEventLog("fays_recorder", "construct begin config=" + configPath_);
@@ -1565,6 +1566,14 @@ public:
         std::cout << "[FaysRecorder] Standby mode ready. Waiting for START command." << std::endl;
 
         std::cout << "[SDK] Version: " << FAYS_VIK_GetVersion(mptrHandle_) << std::endl;
+        callbackAccepting_.store(true);
+        if (FAYS_VIK_RegisterImuCallback(mptrHandle_, [this](const AtrakIMU& sample) { OnImuSample(sample); }) != EXIT_SUCCESS) {
+            callbackAccepting_.store(false);
+            FAYS_VIK_DestroyHandle(mptrHandle_);
+            CleanupSdkTempConfig(&sdkConfigTempPath_);
+            delete[] mImgData_.data;
+            throw std::runtime_error("cannot register Fays IMU callback");
+        }
         mptrImuThr_ = std::thread(&FaysRecorder::ImuOnlineCapture, this);
         mptrMcapWriterThr_ = std::thread(&FaysRecorder::McapWriteThread, this);
         mptrDiagnosticsThr_ = std::thread(&FaysRecorder::VideoDiagnosticsThread, this);
@@ -1576,6 +1585,7 @@ public:
     ~FaysRecorder() {
         FaysEventLog("fays_recorder", "destroy begin config=" + configPath_);
         StopRecordingSession();
+        callbackAccepting_.store(false);
         mbIsRunning_ = false;
 
         if (mptrImuThr_.joinable()) {
@@ -1623,8 +1633,9 @@ public:
 
     void Stop() {
         FaysEventLog("fays_recorder", "stop requested config=" + configPath_);
-        mbIsRunning_.store(false, std::memory_order_release);
         StopRecordingSession();
+        callbackAccepting_.store(false);
+        mbIsRunning_.store(false, std::memory_order_release);
         videoFrameQueue_.Stop();
         imuQueue_.NotifyStop();
         camTsQueue_.NotifyStop();
@@ -1635,6 +1646,15 @@ public:
         StopRecordingSession();
         std::lock_guard<std::mutex> lifecycleLock(recordingLifecycleMtx_);
         if (!mbIsRunning_.load(std::memory_order_acquire)) return;
+        // Only cold start/recovery needs a bounded wait; normal episodes reuse
+        // the continuously maintained standby mapping.
+        const auto readyDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+        while (!MappingReady() && mbIsRunning_ && std::chrono::steady_clock::now() < readyDeadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        if (!MappingReady()) {
+            DM_LOG_WARN("[IMU] START rejected: clock mapping is warming or stale config={}", configPath_);
+            return;
+        }
         std::unique_lock<std::shared_mutex> producerLock(recordingWriteMtx_);
         std::lock_guard<std::mutex> lock(recordingMtx_);
         const std::string normalizedOutputDir = NormalizeOutputDir(outputDir);
@@ -1645,8 +1665,11 @@ public:
         recordingSessionId_.store(sessionId, std::memory_order_release);
         calibrationAttempts_.store(0, std::memory_order_release);
         calibrationLimitWarned_.store(false, std::memory_order_release);
-        hasImuTimeOffset_.store(false, std::memory_order_release);
         mcapControlQueue_.PushStart(sessionId, mcapPath).get();
+        sessionMinDeviceNs_.store(DeviceAtSteady(SteadyNowNs()), std::memory_order_release);
+        sessionMaxDeviceNs_.store(UINT64_MAX, std::memory_order_release);
+        drainingSession_.store(recordingSessionId_.load(std::memory_order_acquire), std::memory_order_release);
+        callbackSession_.store(recordingSessionId_.load(std::memory_order_acquire), std::memory_order_release);
         recordingEnabled_.store(recordingSessionId_.load(std::memory_order_acquire) == sessionId,
                                 std::memory_order_release);
 
@@ -1655,11 +1678,15 @@ public:
                          " output_dir=" + recordingOutputDir_);
         std::cout << "[Control] START recording. Output directory: " << recordingOutputDir_ << std::endl;
         std::cout << "[Control] MCAP output: " << mcapPath << std::endl;
+        DM_LOG_DEBUG("[IMU] session start id={} min_device_ns={} config={}", sessionId, sessionMinDeviceNs_.load(), configPath_);
         WriteRuntimeStatus(true);
     }
 
     void StopRecordingSession() {
         std::lock_guard<std::mutex> lifecycleLock(recordingLifecycleMtx_);
+        // Keep one closed device-time interval during the bounded tail drain.
+        // Late data is never reassigned to the next session.
+        sessionMaxDeviceNs_.store(DeviceAtSteady(SteadyNowNs()), std::memory_order_release);
         bool wasRecording = recordingEnabled_.exchange(false, std::memory_order_acq_rel);
         const uint64_t stoppedSessionId = recordingSessionId_.exchange(0, std::memory_order_acq_rel);
         if (wasRecording) {
@@ -1668,15 +1695,25 @@ public:
                              " output_dir=" + recordingOutputDir_);
             std::cout << "[Control] STOP recording." << std::endl;
         }
+        if (wasRecording) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        callbackSession_.store(0, std::memory_order_seq_cst);
+        while (callbackInFlight_.load(std::memory_order_seq_cst)) std::this_thread::yield();
+        const uint64_t fence = callbackQueue_.Written();
+        {
+            std::unique_lock<std::mutex> lock(imuFenceMutex_);
+            imuFenceCv_.wait(lock, [&] { return imuProcessed_.load(std::memory_order_acquire) >= fence; });
+        }
         // No new submissions after disabling recording. Wait for any frame
         // already in the encoder and flush producer-local batches before STOP.
         std::unique_lock<std::shared_mutex> producerLock(recordingWriteMtx_);
-        while (!imuQueue_.TryPushBatch(pendingImuSamples_)) std::this_thread::yield();
         while (!camTsQueue_.TryPushBatch(pendingCamSamples_)) std::this_thread::yield();
         mRecorder_.Stop();
         if (stoppedSessionId != 0) {
             mcapControlQueue_.PushStop(stoppedSessionId).get();
         }
+        drainingSession_.store(0, std::memory_order_release);
+        if (wasRecording) DM_LOG_DEBUG("[IMU] session stop id={} max_device_ns={} processed={} callback_drops={} config={}",
+            stoppedSessionId, sessionMaxDeviceNs_.load(), imuProcessed_.load(), callbackDrops_.load(), configPath_);
         WriteRuntimeStatus(true);
     }
 
@@ -1943,19 +1980,36 @@ private:
                                      .count());
     }
 
-    void UpdateImuTimeOffset(uint64_t imuTsNs, uint64_t systemTsNs) {
-        const int64_t offsetNs = static_cast<int64_t>(systemTsNs) - static_cast<int64_t>(imuTsNs);
-        imuToSysOffsetNs_.store(offsetNs, std::memory_order_relaxed);
-        hasImuTimeOffset_.store(true, std::memory_order_release);
+    bool MappingReady() const {
+        std::lock_guard<std::mutex> lock(clockMutex_);
+        return clockMapper_.Ready(SteadyNowNs());
+    }
+
+    uint64_t DeviceAtSteady(uint64_t steady) const {
+        std::lock_guard<std::mutex> lock(clockMutex_);
+        const int64_t device = static_cast<int64_t>(steady) - clockMapper_.SteadyOffset();
+        return device > 0 ? static_cast<uint64_t>(device) : 0;
     }
 
     uint64_t AlignFaysTsToSystem(uint64_t faysTsNs) const {
-        if (!hasImuTimeOffset_.load(std::memory_order_acquire)) {
-            return SystemNowNs();
+        std::lock_guard<std::mutex> lock(clockMutex_);
+        if (!clockMapper_.Ready(SteadyNowNs())) return 0;
+        const int64_t aligned = static_cast<int64_t>(faysTsNs) + clockMapper_.EpochOffset();
+        return aligned > 0 ? static_cast<uint64_t>(aligned) : 0;
+    }
+
+    void OnImuSample(const AtrakIMU& imu) {
+        callbackInFlight_.fetch_add(1, std::memory_order_seq_cst);
+        if (callbackAccepting_.load(std::memory_order_acquire)) {
+            CallbackSample sample{};
+            sample.imu = imu;
+            sample.steadyNs = SteadyNowNs();
+            sample.wallNs = SystemNowNs();
+            sample.sessionId = callbackSession_.load(std::memory_order_seq_cst);
+            lastImuSystemNs_.store(sample.wallNs, std::memory_order_release);
+            if (!callbackQueue_.Push(sample)) callbackDrops_.fetch_add(1, std::memory_order_relaxed);
         }
-        const int64_t offsetNs = imuToSysOffsetNs_.load(std::memory_order_relaxed);
-        const int64_t aligned = static_cast<int64_t>(faysTsNs) + offsetNs;
-        return aligned > 0 ? static_cast<uint64_t>(aligned) : 0ULL;
+        callbackInFlight_.fetch_sub(1, std::memory_order_seq_cst);
     }
 
     bool GetRecordingState(std::string* outDir = nullptr, uint64_t* outSessionId = nullptr) const {
@@ -1971,59 +2025,31 @@ private:
     }
 
     void ImuOnlineCapture() {
-        AtrakIMU imuData;
-        const uint64_t IMU_THRESHOLD_NS = 10000000;
-        auto& pendingSamples = pendingImuSamples_;
-
-        while (mbIsRunning_) {
-            bool gotData = false;
-            while (FAYS_VIK_GetImuData(mptrHandle_, &imuData) == EXIT_SUCCESS) {
-                gotData = true;
-
-                if (lastImuTimestamp_ != 0) {
-                    if (imuData.timestamp < lastImuTimestamp_) {
-                        imuRollbackCount_++;
-                    } else {
-                        const uint64_t timeDiff = imuData.timestamp - lastImuTimestamp_;
-                        if (timeDiff > IMU_THRESHOLD_NS) {
-                            imuGapCount_++;
-                        }
-                    }
-                }
-                lastImuTimestamp_ = imuData.timestamp;
-
-                const uint64_t capturedSessionId = recordingEnabled_.load(std::memory_order_acquire)
-                    ? recordingSessionId_.load(std::memory_order_acquire) : 0;
-                const uint64_t systemNowNs = SystemNowNs();
-                lastImuSystemNs_.store(systemNowNs, std::memory_order_release);
-                UpdateImuTimeOffset(imuData.timestamp, systemNowNs);
-
-                std::shared_lock<std::shared_mutex> producerLock(recordingWriteMtx_);
-                uint64_t sessionId = 0;
-                if (GetRecordingState(nullptr, &sessionId) && sessionId != 0 && sessionId == capturedSessionId) {
-                    ImuQueuedSample sample{};
-                    sample.imu = imuData;
-                    sample.publishTimeNs = systemNowNs;
-                    sample.sessionId = sessionId;
-                    pendingSamples.push_back(sample);
-                    imuQueue_.TryPushBatch(pendingSamples);
-                }
-            }
-
+        CallbackSample sample{};
+        while (callbackAccepting_.load(std::memory_order_acquire) || callbackInFlight_.load() || callbackQueue_.Size()) {
+            if (!callbackQueue_.Pop(sample)) continue;
+            const bool rollback = lastImuTimestamp_ && sample.imu.timestamp < lastImuTimestamp_;
+            if (rollback) ++imuRollbackCount_;
+            if (lastImuTimestamp_ && sample.imu.timestamp > lastImuTimestamp_ + 10'000'000ULL) ++imuGapCount_;
+            lastImuTimestamp_ = sample.imu.timestamp;
             {
-                std::shared_lock<std::shared_mutex> producerLock(recordingWriteMtx_);
-                if (!pendingSamples.empty()) imuQueue_.TryPushBatch(pendingSamples);
+                std::lock_guard<std::mutex> lock(clockMutex_);
+                clockMapper_.Observe(sample.imu.timestamp, sample.steadyNs, sample.wallNs);
+                imuDelayed_.store(clockMapper_.Delayed());
+                imuClockResets_.store(clockMapper_.Resets());
             }
-            if (!gotData) {
-                std::this_thread::sleep_for(std::chrono::microseconds(50));
+            if (rollback && sample.sessionId) imuSessionFault_.store(true);
+            // Receipt-time session ID AND device-time bounds are required:
+            // old SDK buffers delivered after START cannot enter this episode.
+            if (!rollback && sample.sessionId && sample.sessionId == drainingSession_.load(std::memory_order_acquire)
+                && sample.imu.timestamp >= sessionMinDeviceNs_.load(std::memory_order_acquire)
+                && sample.imu.timestamp <= sessionMaxDeviceNs_.load(std::memory_order_acquire)) {
+                pendingImuSamples_.push_back({sample.imu, sample.wallNs, sample.sessionId});
             }
-        }
-
-        std::shared_lock<std::shared_mutex> producerLock(recordingWriteMtx_);
-        while (!pendingSamples.empty()) {
-            if (!imuQueue_.TryPushBatch(pendingSamples)) {
-                std::this_thread::sleep_for(std::chrono::microseconds(100));
-            }
+            while (!imuQueue_.TryPushBatch(pendingImuSamples_))
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            imuProcessed_.fetch_add(1, std::memory_order_release);
+            { std::lock_guard<std::mutex> lock(imuFenceMutex_); imuFenceCv_.notify_all(); }
         }
         imuQueue_.NotifyStop();
     }
@@ -2179,6 +2205,11 @@ private:
                 vf.previousFaysTsNs = lastImgTimestamp_;
                 if (lastImgTimestamp_ && mImgData_.timestamp > lastImgTimestamp_ + 60'000'000ULL)
                     sdkFrameGapCount_.fetch_add(1, std::memory_order_relaxed);
+                if (lastImgTimestamp_ && mImgData_.timestamp <= lastImgTimestamp_) {
+                    if (captureSessionId && mImgData_.timestamp < lastImgTimestamp_) imuSessionFault_.store(true);
+                    lastImgTimestamp_ = mImgData_.timestamp;
+                    continue;
+                }
                 lastImgTimestamp_ = mImgData_.timestamp;
                 vf.width = mImgData_.width;
                 vf.height = mImgData_.height;
@@ -2196,9 +2227,14 @@ private:
                 vf.faysTsNs = mImgData_.timestamp;
                 vf.capturedSteadyNs = startedNs;
                 vf.sessionId = captureSessionId;
-                // Align at acquisition, before any consumer backlog can delay it.
-                vf.publishTimeNs = fays_stereo_recorder::camera_time::AddStereoCameraLatencyNs(
-                    AlignFaysTsToSystem(mImgData_.timestamp), videoFileName_);
+                const uint64_t alignedNs = AlignFaysTsToSystem(mImgData_.timestamp);
+                if (!alignedNs || (captureSessionId && mImgData_.timestamp < sessionMinDeviceNs_.load())) continue;
+                // Never compress a genuine device gap; only fence adjustments
+                // of the clock mapping against the last published camera time.
+                const uint64_t compensatedNs = fays_stereo_recorder::camera_time::AddStereoCameraLatencyNs(alignedNs, videoFileName_);
+                vf.publishTimeNs = std::max(compensatedNs, lastMappedCameraNs_ + 1);
+                if (vf.publishTimeNs != compensatedNs) ++cameraMonotonicClamps_;
+                lastMappedCameraNs_ = vf.publishTimeNs;
                 videoFrameQueue_.Push(std::move(vf));
                 CaptureMaximum(captureHandoffMaxNs_, SteadyNowNs() - returnedNs);
             } else {
@@ -2223,7 +2259,14 @@ private:
         fays_stereo_recorder::SdkWarningGate warnings(VIKIT_RET_NO_NEW_FRAME, Clock::now());
         uint64_t observedFrameNs = 0, previousCounts[4] = {};
         uint64_t lastSummaryNs = 0, lastDrops = 0, lastInvalid = 0;
+        uint64_t previousClamps = 0, previousResets = 0;
         while (mbIsRunning_) {
+            if (callbackDrops_.load() || imuSessionFault_.load()) {
+                DM_LOG_ERROR_CODE("UGR-22-06", "[IMU] capture integrity failure: callback_drops={} clock_reset_in_session={}", callbackDrops_.load(), imuSessionFault_.load());
+                callbackAccepting_.store(false);
+                mbIsRunning_.store(false);
+                break;
+            }
             const auto now = Clock::now();
             const uint64_t frameNs = lastFrameSteadyNs_.load(std::memory_order_acquire);
             if (frameNs && frameNs != observedFrameNs) {
@@ -2252,6 +2295,13 @@ private:
                     lastDrops = drops;
                     lastInvalid = invalid;
                 }
+                const auto delayed = imuDelayed_.load(), clamps = cameraMonotonicClamps_.load();
+                if (clamps != previousClamps)
+                    DM_LOG_WARN("[IMU] camera monotonic protection: total={} delayed_samples={} config={}", clamps, delayed, configPath_);
+                const auto resets = imuClockResets_.load();
+                if (resets != previousResets)
+                    DM_LOG_WARN("[IMU] clock mapping reacquisition: count={} ready={} config={}", resets, MappingReady(), configPath_);
+                previousResets = resets; previousClamps = clamps;
                 lastSummaryNs = nowNs;
             }
             WriteRuntimeStatus(false); // Still runs when the SDK or encoder is stalled.
@@ -2453,6 +2503,12 @@ private:
         out << "  \"video_queue_drops\": " << videoFrameQueue_.GetDropCount() << ",\n";
         out << "  \"video_queue_high_water\": " << videoFrameQueue_.HighWater() << ",\n";
         out << "  \"invalid_video_frames\": " << invalidFrameCount_.load() << ",\n";
+        out << "  \"imu_callback_drops\": " << callbackDrops_.load() << ",\n";
+        out << "  \"imu_callback_processed\": " << imuProcessed_.load() << ",\n";
+        out << "  \"imu_clock_resets\": " << imuClockResets_.load() << ",\n";
+        out << "  \"imu_delayed_samples\": " << imuDelayed_.load() << ",\n";
+        out << "  \"imu_mapping_ready\": " << (MappingReady() ? "true" : "false") << ",\n";
+        out << "  \"camera_monotonic_clamps\": " << cameraMonotonicClamps_.load() << ",\n";
         out << "  \"status_write_system_ns\": " << nowNs << "\n";
         out << "}\n";
         out.close();
@@ -2560,8 +2616,18 @@ private:
     std::atomic<uint64_t> lastEncodedFrameSystemNs_;
     std::atomic<uint64_t> lastEncodedFrameFaysNs_;
     std::atomic<uint64_t> lastRuntimeStatusWriteNs_;
-    std::atomic<int64_t> imuToSysOffsetNs_;
-    std::atomic<bool> hasImuTimeOffset_;
+    struct CallbackSample { AtrakIMU imu{}; uint64_t steadyNs = 0, wallNs = 0, sessionId = 0; };
+    fays_stereo_recorder::ImuCallbackQueue<CallbackSample, 8192> callbackQueue_;
+    std::atomic<bool> callbackAccepting_{false}, imuSessionFault_{false};
+    std::atomic<uint64_t> callbackInFlight_{0}, callbackSession_{0}, drainingSession_{0};
+    std::atomic<uint64_t> sessionMinDeviceNs_{0}, sessionMaxDeviceNs_{UINT64_MAX};
+    std::atomic<uint64_t> callbackDrops_{0}, imuProcessed_{0}, imuDelayed_{0}, imuClockResets_{0};
+    std::atomic<uint64_t> cameraMonotonicClamps_{0};
+    uint64_t lastMappedCameraNs_ = 0;
+    std::mutex imuFenceMutex_;
+    std::condition_variable imuFenceCv_;
+    mutable std::mutex clockMutex_;
+    fays_stereo_recorder::ImuClockMapper clockMapper_;
     std::vector<std::string> monitoredDevicePaths_;
     std::vector<std::string> monitoredResolvedPaths_;
     std::vector<UsbWatchdogStatus> monitoredWatchdogStatus_;
@@ -2676,6 +2742,7 @@ static void RunControlLoop(FaysRecorder& recorder, const std::string& fifoPath) 
 int main(int argc, char** argv) {
     DM_LOG_INIT("FaysStereoRecorder", "info", "./logs/FaysStereoRecorder.log",
                 1024 * 1024 * 10, 3, false);
+    DA::utils::ConfigureCpuAffinity(DA::utils::CpuRole::Fays);
     if (argc < 2) {
         std::cerr << "Usage: error_code=UGR-70-01" << std::endl;
         std::cerr << "  ./fays_record_example <config_path> [output_directory] [--video-name name] [--mcap-name name]" << std::endl;

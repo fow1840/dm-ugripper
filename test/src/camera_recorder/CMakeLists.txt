@@ -81,3 +81,9 @@ set_tests_properties(test_check_video_windows_rules PROPERTIES
 add_host_only_camera_xu_gtest(test_main_camera_startup
     test_main_camera_startup.cc
 )
+
+add_executable(test_fays_imu_clock test_fays_imu_clock.cc)
+target_include_directories(test_fays_imu_clock PRIVATE
+    ${PROJECT_SOURCE_DIR}/standalone/FaysStereoRecorder/include)
+target_link_libraries(test_fays_imu_clock PRIVATE GTest::gtest_main pthread)
+gtest_discover_tests(test_fays_imu_clock PROPERTIES LABELS "host-only;unit;camera")
