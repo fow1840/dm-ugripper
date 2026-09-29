@@ -125,7 +125,9 @@ inline bool ShouldWriteBeepCommand(const GripperBeepState& state,
 {
     if (retry_writes_remaining == 0 && state.duty == 0)
     {
-        return false;
+        // Keep OFF alive at low rate after the initial burst. A lost burst
+        // must not leave hardware buzzing indefinitely; no extra state machine.
+        resend_interval_ms = 1000;
     }
     if (last_write_at_ms == 0 || now_ms < last_write_at_ms)
     {

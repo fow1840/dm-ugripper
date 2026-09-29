@@ -2497,7 +2497,14 @@ void GripperHmiDriver::ioLoop()
         }
 
         bool sentBeepUpdate = false;
-        if (pendingBeepUpdate_ || beepResendDue)
+        // The controller can discard a PWM query immediately adjacent to a
+        // beep write. Keep low-priority keepalive away from the 1Hz query;
+        // explicit beep changes still take priority and defer the query.
+        const bool queryQuiet = lastBeepWriteAtMs_ == 0 ||
+                                nowMs - lastBeepWriteAtMs_ >= 25;
+        const bool beepQuiet = lastStateRequestAtMs_ == 0 ||
+                               nowMs - lastStateRequestAtMs_ >= 25;
+        if (pendingBeepUpdate_ || (beepResendDue && !stateDue && beepQuiet))
         {
             const auto frame = GripperHmiProtocol::buildSetBeepCommand(activeBeepState_);
             if (writeFrameLocked(frame.data(), frame.size()))
@@ -2517,7 +2524,7 @@ void GripperHmiDriver::ioLoop()
             }
         }
 
-        if (stateDue && !pendingBeepUpdate_ && !sentBeepUpdate)
+        if (stateDue && queryQuiet && !pendingBeepUpdate_ && !sentBeepUpdate)
         {
             const auto frame = GripperHmiProtocol::buildBeepStateRequest();
             pendingStateRequest_ = false;

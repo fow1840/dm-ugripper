@@ -22,6 +22,10 @@ TEST(GripperHmiDriverLogicTest, RetriesBothBeepEnableAndSilenceCommands)
 
     EXPECT_TRUE(gripper_hmi::driver_logic::ShouldWriteBeepCommand(enabled, 0, 100, 120, 20));
     EXPECT_FALSE(gripper_hmi::driver_logic::ShouldWriteBeepCommand(silenced, 0, 100, 120, 20));
+    EXPECT_FALSE(gripper_hmi::driver_logic::ShouldWriteBeepCommand(silenced, 0, 100, 1099, 20));
+    EXPECT_TRUE(gripper_hmi::driver_logic::ShouldWriteBeepCommand(silenced, 0, 100, 1100, 20));
+    // Some firmware retains the last frequency while duty=0 (already silent).
+    EXPECT_TRUE(gripper_hmi::driver_logic::ShouldWriteBeepCommand({0, 1000}, 0, 100, 1100, 20));
 }
 
 TEST(GripperHmiDriverLogicTest, ClassifiesRetryableAndAbortRecoveryStatuses)
