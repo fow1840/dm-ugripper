@@ -8,6 +8,8 @@ import sys
 import time
 from pathlib import Path
 
+from audio_common import USB_HEADSET_ENABLED
+
 from pulse_audio_utils import (
     get_forced_usb_audio_target,
     is_supported_usb_audio_input_device,
@@ -155,6 +157,10 @@ class VolumeKeyListener:
 
 
 def main() -> int:
+    # Share the runtime retirement policy: manual launch must not restart the
+    # periodic udevadm scan while acquisition is running. See audio_common.py.
+    if not USB_HEADSET_ENABLED:
+        return 0
     listener = VolumeKeyListener()
     listener.run()
     return 0

@@ -6,6 +6,13 @@ import threading
 import time
 
 
+# USB headset playback and keys are retired in the normal runtime. When the
+# headset is absent, the legacy loops repeatedly spawn udevadm/pactl and compete
+# with acquisition threads. Keep disabled until discovery is event-driven or
+# cached; Ego voice is delivered through its independent control channel.
+USB_HEADSET_ENABLED = False
+
+
 _LEVELS = {"TRACE": "T", "DEBUG": "D", "INFO": "I", "WARN": "W", "ERROR": "E", "FATAL": "F"}
 _ERROR_CODE_RE = re.compile(r"^UGR-[0-9]{2}-[0-9]{2}$")
 

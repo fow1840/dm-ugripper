@@ -26,7 +26,13 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - 运行时状态 JSON（不是 episode metadata）记录回调处理数/溢出数、映射恢复数/ready、迟到样本数和相机单调保护次数；debug 启停日志包含会话设备时间上下界，正常 info 级别不输出逐段诊断。没有新增 metadata 字段。
 - 可在 `ugripper.service` 的 systemd drop-in 设置 `Environment=UGRIPPER_CPU_PROFILE=fays_split`，重启服务后生效；安装服务默认启用该均衡分工，设置 `off` 可关闭；直接运行独立程序且未设置环境变量时保持原亲和性。RK3588 且原始允许 CPU 0–7 时，Runtime 及其普通子进程用 0–3，Fays/SDK 用 4–5，CameraRecorder/其编码线程及 Fays FFmpeg 用 6–7，SensorRecorder 用 0–7。服务入口先将 shell、日志转发器及辅助进程放到 0–3，录制子进程在日志初始化后切换到各自核心组，因此日志线程仍在 0–3；服务外部进程保持原亲和性；此配置不独占或隔离系统 CPU。未知 profile/不支持的拓扑保留原设置并告警。亲和性在进程启动和 FFmpeg fork 时一次设置，没有周期性扫描、运行时迁移或每次 START/STOP 的重新分核；绑核本身不额外引入启停等待，但负载下调度延迟仍需实测。
 
+### 辅助任务与视频线程开销
+
+
+- 闲置 USB 耳机本地播放及按键功能通过 `audio_common.py` 的 `USB_HEADSET_ENABLED = False` 禁用；audio daemon 保留 FIFO 生命周期但不启动后台 udevadm/pactl 探测，不伪造音频 ready。本地默认扬声器 fallback 同时停用，Ego 语音链路不受影响。恢复前须用事件通知或缓存替代缺席设备的周期扫描。
+
 ### 编码器录制健康约束
+
 
 - SensorRecorder 任一侧初始化失败均取消起录；主运行时通过继承管道等待左右均已产生有效编码器样本，最多等待 5 秒，失败停止已启动的录制子进程并报 `encoder_init_failed` / `UGR-30-02`，不进入 Recording。
 - 采集过程中使用单调时钟监测有效样本，任一侧连续 3 秒无数据或发生串口断连，报 `encoder_stream_stale` / `UGR-30-07`，排空写队列、关闭 MCAP 后退出，主运行时自动停录并保存失败原因。设备节点仍存在不能替代数据健康检查；此故障不主动触发全局 USB 断电恢复。

@@ -11,7 +11,7 @@ import time
 import wave
 from pathlib import Path
 
-from audio_common import audio_log, read_env_file_value
+from audio_common import USB_HEADSET_ENABLED, audio_log, read_env_file_value
 from pulse_audio_utils import (
     PulseAudioProbeError,
     PulseAudioTargetNotFoundError,
@@ -156,10 +156,13 @@ class AudioPlayer:
             sound_name: None for sound_name in self.sound_paths
         }
 
-        self.key_thread.start()
-        self.backend_thread.start()
+        # Keep the FIFO alive for existing Runtime lifecycle/command handling,
+        # but do not probe a retired headset or claim its backend is ready.
+        if USB_HEADSET_ENABLED:
+            self.key_thread.start()
+            self.backend_thread.start()
         audio_log("INFO", f"audio language: {self.lang}; search dirs: {self.audio_dirs}")
-        audio_log("INFO", "audio daemon started. Waiting for preferred audio device and commands...")
+        audio_log("INFO", "audio command daemon started; USB headset enabled=" + str(USB_HEADSET_ENABLED))
 
     def _ensure_pipe(self):
         try:
@@ -385,6 +388,9 @@ class AudioPlayer:
             return None
 
     def play_sound(self, sound_name: str):
+        if not USB_HEADSET_ENABLED:
+            return
+
         if not self.refresh_audio_backend(log_missing=True):
             audio_log("WARN", f"skip sound because no audio backend is ready: {sound_name}")
             return

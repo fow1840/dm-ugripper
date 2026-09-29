@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+
+
+- 停用闲置 USB 耳机播放/按键扫描，避免周期启动 udevadm/pactl；Ego 语音保持独立。
+
+
 ## V2.1.13 - 2026-09-29
 
 - Ego 起录前查询真实录制状态；残留录制先 STOP 并确认 idle 与旧 episode 完成 rename，保留旧数据后重新起录。恢复等待 20 秒，Runtime 恢复启动总窗口 60 秒，失败阻止本次起录；不新增 metadata 字段。
