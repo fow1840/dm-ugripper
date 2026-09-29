@@ -1,3 +1,4 @@
+#include "utils/cpu_affinity.h"
 #include "camera_recorder/camera_recorder.h"
 #include "utils/ugripper_logger.h"
 
@@ -59,6 +60,7 @@ int main(int argc, char** argv) {
                 1024 * 1024 * 10,
                 3,
                 false);
+    DA::utils::ConfigureCpuAffinity(DA::utils::CpuRole::Video);
 
     try {
         using namespace camera_recorder;

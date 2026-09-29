@@ -1,3 +1,4 @@
+#include "utils/cpu_affinity.h"
 #include "record_runtime.h"
 #include "record_runtime/runtime_cli.h"
 #include "utils/ugripper_logger.h"
@@ -32,6 +33,7 @@ int main(int argc, char **argv)
                 1024 * 1024 * 10,
                 3,
                 false);
+    DA::utils::ConfigureCpuAffinity(DA::utils::CpuRole::Auxiliary);
 
     std::unique_ptr<DA::utils::SingleProcessInstance> single_process_instance;
     try

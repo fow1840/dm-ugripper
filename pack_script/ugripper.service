@@ -10,7 +10,8 @@ WorkingDirectory=/opt/ugripper
 
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStartPre=-+/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/uvc_workqueue_affinity.py apply
-ExecStart=/bin/bash -lc '/opt/ugripper/run_record.sh'
+Environment="UGRIPPER_CPU_PROFILE=fays_split"
+ExecStart=/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/cpu_affinity.py -- /bin/bash -lc '/opt/ugripper/run_record.sh'
 ExecStopPost=-+/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/uvc_workqueue_affinity.py restore
 
 Restart=always

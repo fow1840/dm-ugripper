@@ -1,3 +1,4 @@
+#include "utils/cpu_affinity.h"
 #include "encoder_driver.h"
 #include "utils/ugripper_logger.h"
 #include "sensor_recorder/sensor_domain.h"
@@ -325,6 +326,7 @@ int main(int argc, char *argv[]) {
                 1024 * 1024 * 10,
                 3,
                 false);
+    DA::utils::ConfigureCpuAffinity(DA::utils::CpuRole::Sensor);
 
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);

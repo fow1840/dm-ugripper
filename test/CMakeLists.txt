@@ -16,3 +16,9 @@ add_test(
 set_tests_properties(check_logging_sources_v3 PROPERTIES LABELS "host-only;static;logging")
 
 add_subdirectory(src)
+
+add_test(
+    NAME test_cpu_affinity_python
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_cpu_affinity.py
+)
+set_tests_properties(test_cpu_affinity_python PROPERTIES LABELS "host-only;unit;runtime")

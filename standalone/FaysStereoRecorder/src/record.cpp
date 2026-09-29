@@ -1,3 +1,4 @@
+#include "utils/cpu_affinity.h"
 #include "fays_stereo_recorder/frame_loss_counter.h"
 #include "fays_stereo_recorder/imu_callback_queue.h"
 #include "fays_stereo_recorder/imu_clock_mapper.h"
@@ -1306,6 +1307,7 @@ public:
         }
 
         const int childFdLimit = ChildFileDescriptorLimit();
+        const auto videoCpuPlan = DA::utils::MakeCpuAffinityPlan(DA::utils::CpuRole::Video);
         const pid_t pid = fork();
         if (pid < 0) {
             std::cerr << "[FFmpeg] Failed to fork: " << std::strerror(errno)
@@ -1316,6 +1318,7 @@ public:
         }
 
         if (pid == 0) {
+            if (!videoCpuPlan.Apply()) _exit(126);
             setpgid(0, 0);
             close(pipeFds[1]);
             if (dup2(pipeFds[0], STDIN_FILENO) < 0) {
