@@ -125,3 +125,42 @@ TEST(EgoSpeechPolicyTest, ErrorsAreQueuedAndRecordingStartIsProtected) {
     EXPECT_EQ(p.Next(3200,{},false),1205);
     EXPECT_FALSE(p.Next(3300,{},false));
 }
+
+#include "record_runtime/ego_sync_policy.h"
+
+TEST(EgoSyncPolicy, RequiresFreshCurrentBindingAndBoot)
+{
+    using nlohmann::json;
+    const json binding = {{"serial", "ego"}, {"bound_at_ms", 42}};
+    json state = {{"serial", "ego"}, {"bound_at_ms", 42}, {"boot_id", "boot"},
+                  {"package", "com.ssnwt.helloxr"}, {"status", "ok"},
+                  {"updated_monotonic_s", 100.0}, {"result_monotonic_s", 99.0}};
+    EXPECT_TRUE(EgoSyncReady(state, binding, "ego", "boot", 101));
+    EXPECT_FALSE(EgoSyncReady(state, binding, "ego", "boot", 106));
+    EXPECT_FALSE(EgoSyncReady(state, binding, "ego", "old-boot", 101));
+    EXPECT_FALSE(EgoSyncReady(state, binding, "other", "boot", 101));
+    EXPECT_FALSE(EgoSyncReady(state, {{"serial", "ego"}, {"bound_at_ms", 43}}, "ego", "boot", 101));
+    state["status"] = "waiting";
+    EXPECT_FALSE(EgoSyncReady(state, binding, "ego", "boot", 101));
+    state["status"] = "ok";
+    state["result_monotonic_s"] = 80;
+    EXPECT_FALSE(EgoSyncReady(state, binding, "ego", "boot", 101));
+    EXPECT_FALSE(EgoSyncReady(json::object(), binding, "ego", "boot", 101));
+}
+
+TEST(EgoSyncPolicy, RisingCueThenRepeatingTripleBeepsWithSilence)
+{
+    EXPECT_EQ(EgoSyncTone(0), 1000);
+    EXPECT_EQ(EgoSyncTone(120), 0);
+    EXPECT_EQ(EgoSyncTone(190), 2000);
+    EXPECT_EQ(EgoSyncTone(380), 4000);
+    EXPECT_EQ(EgoSyncTone(500), 0);
+    for (const auto cycle : {0U, 1500U, 3000U})
+    {
+        EXPECT_EQ(EgoSyncTone(570 + cycle), 2000);
+        EXPECT_EQ(EgoSyncTone(760 + cycle), 2000);
+        EXPECT_EQ(EgoSyncTone(950 + cycle), 2000);
+        EXPECT_EQ(EgoSyncTone(1070 + cycle), 0);
+        EXPECT_EQ(EgoSyncTone(2069 + cycle), 0);
+    }
+}

@@ -1,4 +1,5 @@
 #include "record_runtime.h"
+#include "record_runtime/ego_sync_policy.h"
 #include "record_runtime/runtime_episode_internal.h"
 #include "record_runtime/runtime_split_internal.h"
 #include "record_runtime/runtime_support_internal.h"
@@ -359,7 +360,8 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
         egoRecordingWorker_.reset();
         egoRecordingAttempted_ = false;
     };
-    while ((currentSteadyMs() - startMs) < kEgoStartAckWaitMs)
+    uint64_t startAckWaitMs = kEgoStartAckWaitMs;
+    while ((currentSteadyMs() - startMs) < startAckWaitMs)
     {
         json status = json::object();
         std::string loadError;
@@ -367,6 +369,10 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
         {
             lastStatus = status;
             const std::string state = status.value("status", std::string());
+            if (state == "recovering")
+            {
+                startAckWaitMs = 60000;
+            }
             if (state == "time_sync_failed")
             {
                 if (errorMessage != nullptr)
@@ -621,6 +627,9 @@ void RecordRuntime::handleEgoBindingToggle()
         }
         DM_LOG_INFO("{}", (::DA::utils::LogString()
             << "ego binding removed serial=" << egoBoundSerial_ << std::endl).str());
+        stopEgoSyncFeedback();
+        egoSyncWaiting_ = false;
+        egoSyncReady_ = false;
         egoBoundSerial_.clear();
         egoBoundConnected_ = true;
         egoProbeFailureCount_ = 0;
@@ -635,9 +644,14 @@ void RecordRuntime::handleEgoBindingToggle()
         options_.egoBindingFile,
         options_.egoBindingStatusFile);
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "ego binding started" << std::endl).str());
+    egoSyncReady_ = false;
+    egoSyncWaiting_ = true;
+    egoSyncSlowLogged_ = false;
+    egoSyncFeedbackStartMs_ = currentSteadyMs();
     egoBindingActionFuture_ = std::async(std::launch::async, [args]() {
         return RecordRuntime::runCommandSync(args);
     });
+    applyIdleState();
 }
 
 void RecordRuntime::maintainEgoBindingAction()
@@ -653,12 +667,92 @@ void RecordRuntime::maintainEgoBindingAction()
         egoBoundConnected_ = true;
         DM_LOG_INFO("{}", (::DA::utils::LogString()
             << "ego binding completed serial=" << egoBoundSerial_ << std::endl).str());
-        playHmiFeedback(DA::Ugripper::HmiFeedbackEvent::EgoBound);
+        egoSyncLastCheckMs_ = 0; // Finish feedback only when synchronization is ready.
         return;
     }
+    stopEgoSyncFeedback();
+    egoSyncWaiting_ = false;
     DM_LOG_ERROR_CODE("UGR-82-03", "{}",
                       (::DA::utils::LogString() << "ego binding failed" << std::endl).str());
     playHmiFeedback(DA::Ugripper::HmiFeedbackEvent::EgoBindingFailed);
+}
+
+bool RecordRuntime::isEgoSyncPending() const
+{
+    return egoBindingActionFuture_.valid() || (isEgoRequired() && !egoSyncReady_);
+}
+
+bool RecordRuntime::isEgoSyncReady() const
+{
+    json state, binding;
+    std::string error, boot;
+    std::ifstream bootFile("/proc/sys/kernel/random/boot_id");
+    bootFile >> boot;
+    return loadJsonFile("/dev/shm/ugripper/ego_time_sync.json", &state, &error) &&
+           loadJsonFile(options_.egoBindingFile, &binding, &error) &&
+           EgoSyncReady(state, binding, egoBoundSerial_, boot, currentSteadyMs() / 1000.0);
+}
+
+void RecordRuntime::stopEgoSyncFeedback()
+{
+    if (egoSyncToneOwned_)
+    {
+        // Driver owner repeats the OFF command five times; do not block the
+        // supervisor on firmware state readback before showing ready.
+        panelManager_.setBeepStateForSide("left", GripperBeepState{0, 0});
+        panelManager_.setBeepStateForSide("right", GripperBeepState{0, 0});
+        egoSyncToneOwned_ = false;
+        egoSyncToneHz_ = 0;
+    }
+}
+
+void RecordRuntime::maintainEgoSyncFeedback()
+{
+    const auto now = currentSteadyMs();
+    if (egoSyncLastCheckMs_ == 0 || now - egoSyncLastCheckMs_ >= 100)
+    {
+        egoSyncLastCheckMs_ = now;
+        egoSyncReady_ = isEgoRequired() && isEgoSyncReady();
+    }
+    const bool pending = isEgoSyncPending();
+    if (pending != egoSyncWaiting_)
+    {
+        egoSyncWaiting_ = pending;
+        if (pending)
+        {
+            egoSyncFeedbackStartMs_ = now;
+            egoSyncSlowLogged_ = false;
+        }
+        else
+        {
+            stopEgoSyncFeedback();
+            DM_LOG_INFO("ego sync ready={} elapsed_ms={}", egoSyncReady_, now - egoSyncFeedbackStartMs_);
+        }
+        if (!isRecordingActive()) applyIdleState();
+    }
+    if (pending && !egoSyncSlowLogged_ && now - egoSyncFeedbackStartMs_ >= 7000)
+    {
+        egoSyncSlowLogged_ = true;
+        DM_LOG_WARN("ego sync exceeds 7000ms target; recording remains blocked");
+    }
+    // Hardware alarms and recording own their feedback; never overwrite them.
+    const bool audible = pending && !isRecordingActive() && episodeManagerInitialized_ &&
+                         !egoBindingFaultActive_ && !currentHealthFault().has_value();
+    if (!audible)
+    {
+        stopEgoSyncFeedback();
+        return;
+    }
+    const auto tone = EgoSyncTone(now - egoSyncFeedbackStartMs_);
+    if (!egoSyncToneOwned_ || tone != egoSyncToneHz_)
+    {
+        const GripperBeepState beep = tone ? GripperBeepState{GripperHmiDriver::kDefaultBeepDuty, tone}
+                                          : GripperBeepState{0, 0};
+        panelManager_.setBeepStateForSide("left", beep);
+        panelManager_.setBeepStateForSide("right", beep);
+        egoSyncToneOwned_ = true;
+        egoSyncToneHz_ = tone;
+    }
 }
 
 void RecordRuntime::maintainEgoBindingHealth()

@@ -869,6 +869,33 @@ def summarize_set_time_result(result: dict) -> dict:
     return detail
 
 
+def bootstrap_ego_time(adb: Adb) -> dict:
+    """One bounded coarse correction, before opening the continuous USB session.
+
+    Never step the clock during recording; this is not a readiness result.
+    """
+    if Path('/tmp/umi_recording.lock').exists():
+        return {"status": "skipped", "reason": "recording"}
+    started = time.monotonic()
+    guard = None
+    try:
+        guard = Path('/run/ugripper/maintenance.lock').open('a')
+        fcntl.flock(guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if Path('/tmp/umi_recording.lock').exists():
+            return {"status": "skipped", "reason": "recording"}
+        target = now_ms() + int(round(TIME_SYNC_SET_AHEAD_MS))
+        result = adb.run("shell", "cmd", "alarm", "set-time", str(target), timeout=1)
+        return {"status": "ok" if result.returncode == 0 else "error",
+                "returncode": result.returncode,
+                "elapsed_ms": round((time.monotonic() - started) * 1000)}
+    except Exception as exc:
+        return {"status": "error", "error": str(exc),
+                "elapsed_ms": round((time.monotonic() - started) * 1000)}
+    finally:
+        if guard is not None:
+            guard.close()
+
+
 def read_serial_time_sync(adb: Adb) -> dict:
     """Read the APK's applied-sync status; never set its clock through ADB."""
     detail = {"status": "error", "mode": "usb_acm", "serial": adb.serial,
@@ -915,6 +942,7 @@ def continuous_time_sync_status(adb: Adb) -> dict:
         sample_fresh = 0 <= time.monotonic() - state['result_monotonic_s'] <= 15
         valid = (fresh and sample_fresh and state.get('boot_id') == boot_id
                  and state.get('serial') == adb.serial == binding.get('serial')
+                 and state.get('bound_at_ms') == binding.get('bound_at_ms')
                  and state.get('package') == app_package(adb)
                  and state.get('status') == 'ok')
     except (KeyError, TypeError, ValueError, OSError):
@@ -1543,6 +1571,59 @@ def final_name(temp_episode: str) -> str:
     return temp_episode[:-5] if temp_episode.endswith("-temp") else temp_episode
 
 
+def read_recording_state(adb: Adb) -> str:
+    """Read app state, failing closed when STOP/START ownership is uncertain."""
+    port = ""
+    try:
+        result = adb.run("forward", "tcp:0", "tcp:8080", timeout=3)
+        port = result.stdout.strip()
+        if result.returncode or not port.isdigit() or not 0 < int(port) < 65536:
+            port = ""
+            raise RuntimeError("cannot forward Ego recording status endpoint")
+        reply = subprocess.run(
+            ["curl", "--http0.9", "--fail", "--silent", "--show-error", "--max-time", "2",
+             f"http://127.0.0.1:{port}/api/status"],
+            capture_output=True, text=True, timeout=3, check=True)
+        state = json.loads(reply.stdout).get("recording", {}).get("status")
+        if state not in ("idle", "recording", "stopping"):
+            raise RuntimeError(f"unknown Ego recording state: {state!r}")
+        return state
+    finally:
+        if port:
+            adb.run("forward", "--remove", "tcp:" + port, timeout=3)
+
+
+def recover_previous_recording(adb: Adb, status: dict, status_file: Path) -> None:
+    if read_recording_state(adb) == "idle":
+        return
+    status.update(status="recovering", phase="recover", updated_at_ms=now_ms())
+    write_status(status_file, status)
+    previous = snapshot_temp_episodes(adb)
+    if not any(previous.values()):
+        raise RuntimeError("Ego is recording but its episode cannot be identified")
+    ugripper_log("WARN", "Ego still recording; stopping previous session before new START",
+                 component="ego")
+    result = adb.run("shell", "am", "broadcast", "-a", f"{PACKAGE}.STOP_RECORDING",
+                     "-p", app_package(adb), timeout=10)
+    if result.returncode:
+        raise RuntimeError("Ego recovery STOP broadcast failed")
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        if read_recording_state(adb) == "idle":
+            # A stale crash directory may remain: require an actual rename, not
+            # disappearance of every historical temp directory. Never pull/delete it.
+            finalized = any(
+                remote_dir_missing(adb, root, episode)
+                and remote_dir_exists(adb, root, episode[:-5])
+                for root, episodes in previous.items() for episode in episodes)
+            if finalized:
+                status.update(status="starting", phase="start", updated_at_ms=now_ms())
+                write_status(status_file, status)
+                return
+        time.sleep(0.25)
+    raise RuntimeError("Ego recovery timed out waiting for idle and previous episode finalization")
+
+
 def run_start(args: argparse.Namespace) -> int:
     status = {
         "status": "starting",
@@ -1590,6 +1671,10 @@ def run_start(args: argparse.Namespace) -> int:
             write_status(args.status_file, status)
             return 1
 
+        recover_previous_recording(adb, status, args.status_file)
+        # Recovery may outlive the freshness window: recheck before START.
+        if sync_ego_time(adb).get("status") != "ok":
+            raise RuntimeError("Ego time sync became unavailable during recording recovery")
         existing_temp_episodes = snapshot_temp_episodes(adb)
         status["remote_roots"] = sorted(existing_temp_episodes)
         status["video_codec"] = set_ego_video_codec(adb, args.codec)

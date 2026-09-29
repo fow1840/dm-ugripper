@@ -768,6 +768,7 @@ int RecordRuntime::Run()
         maintainRestoreUsbFailureAlarm();
         monitorStereoFrameLoss();
         monitorHardwareHealth();
+        maintainEgoSyncFeedback();
 
         ButtonSnapshot buttons;
         panelManager_.poll(options_.pollMs, &buttons);
@@ -842,6 +843,7 @@ int RecordRuntime::Run()
 
     stopRecording(false, "shutdown");
     stopStereoDaemon();
+    stopEgoSyncFeedback();
     setLedState(LedState::Exit);
     return 0;
 }

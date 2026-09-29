@@ -659,6 +659,36 @@ class EgoRecordingWorkerTest(unittest.TestCase):
             self.assertEqual(status["status"], "unbound")
             self.assertNotIn("serial", status)
 
+    def test_recovery_idle_does_not_stop(self):
+        adb = mock.Mock()
+        with mock.patch.object(WORKER, "read_recording_state", return_value="idle"):
+            WORKER.recover_previous_recording(adb, {}, Path("unused"))
+        adb.run.assert_not_called()
+
+    def test_recovery_waits_for_idle_and_rename_preserving_stale_temp(self):
+        adb = mock.Mock()
+        adb.run.return_value = subprocess.CompletedProcess([], 0, "", "")
+        with mock.patch.object(WORKER, "read_recording_state", side_effect=["recording", "recording", "idle"]), mock.patch.object(
+            WORKER, "snapshot_temp_episodes", return_value={"/data": {"episode_old-temp", "episode_stale-temp"}}
+        ), mock.patch.object(WORKER, "remote_dir_missing", side_effect=lambda a, r, e: e == "episode_old-temp"), mock.patch.object(
+            WORKER, "remote_dir_exists", return_value=True
+        ), mock.patch.object(WORKER, "write_status"), mock.patch.object(WORKER.time, "sleep"):
+            status = {}
+            WORKER.recover_previous_recording(adb, status, Path("unused"))
+        self.assertEqual(status["status"], "starting")
+        self.assertEqual(adb.run.call_count, 1)
+        self.assertIn("com.ssnwt.helloxr.STOP_RECORDING", adb.run.call_args.args)
+
+    def test_recovery_timeout_does_not_start_or_delete(self):
+        adb = mock.Mock()
+        adb.run.return_value = subprocess.CompletedProcess([], 0, "", "")
+        with mock.patch.object(WORKER, "read_recording_state", return_value="recording"), mock.patch.object(
+            WORKER, "snapshot_temp_episodes", return_value={"/data": {"episode_old-temp"}}
+        ), mock.patch.object(WORKER, "write_status"), mock.patch.object(WORKER.time, "monotonic", side_effect=[0, 21]):
+            with self.assertRaisesRegex(RuntimeError, "timed out"):
+                WORKER.recover_previous_recording(adb, {}, Path("unused"))
+        self.assertEqual(adb.run.call_count, 1)
+
     def test_start_uses_non_terminal_status_while_preparing_bound_ego(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -676,7 +706,7 @@ class EgoRecordingWorkerTest(unittest.TestCase):
 
             with mock.patch.object(WORKER, "detect_ego", return_value=(adb, {})), mock.patch.object(
                 WORKER, "sync_ego_time", return_value={"status": "ok"}
-            ), mock.patch.object(WORKER, "snapshot_temp_episodes", return_value={}), mock.patch.object(
+            ), mock.patch.object(WORKER, "read_recording_state", return_value="idle"), mock.patch.object(WORKER, "snapshot_temp_episodes", return_value={}), mock.patch.object(
                 WORKER, "set_ego_video_codec", return_value={"returncode": 0}
             ), mock.patch.object(
                 WORKER,

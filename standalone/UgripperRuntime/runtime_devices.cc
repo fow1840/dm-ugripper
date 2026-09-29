@@ -897,6 +897,11 @@ void RecordRuntime::applyIdleState()
         }
         return;
     }
+    if (isEgoSyncPending())
+    {
+        setLedState(LedState::Warning);
+        return;
+    }
     if (tactileWarningActive_)
     {
         setTactileWarningLedState();
@@ -1471,7 +1476,7 @@ bool RecordRuntime::GripperPanelManager::confirmBeepSilenced(size_t index,
             if (lastSnapshot.beepStateCount > previousStateCount)
             {
                 receivedNewState = true;
-                if (lastSnapshot.beepState.duty == 0 && lastSnapshot.beepState.frequency == 0)
+                if (lastSnapshot.beepState.duty == 0)
                 {
                     return true;
                 }

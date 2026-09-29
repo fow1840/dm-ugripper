@@ -21,6 +21,8 @@ STATUS = RUNTIME / 'ego_time_sync.json'
 HOST_STATUS = Path('/run/ugripper-time-source.json')
 HOST_MAX_AGE_S = 86400
 SAMPLE_MAX_AGE_S = 15
+REQUIRED_GOOD_SAMPLES = 2
+FAST_POLL_S = .1
 BOOT_ID = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
 SYNC_PACKAGE = worker.PACKAGE
 HEADER = b'\xa0\x01'
@@ -39,6 +41,12 @@ def response(request, received):
     struct.pack_into('>Q', packet, 16, received)
     struct.pack_into('>Q', packet, 24, ntp_now())
     return packet
+
+
+def stop_packet():
+    # Vendor time-sync-server: host -> Ego graceful stop is a 40-byte response.
+    # 0x05 is the opposite-direction session-end packet, not this command.
+    return HEADER + b'\xff\x00' + bytes(36)
 
 
 def pop_packet(buffer):
@@ -74,6 +82,16 @@ def bound_port(identity, ports=None):
     return matches[0] if len(matches) == 1 else None
 
 
+class PendingRequestSerial(serial.Serial):
+    def _reset_input_buffer(self):
+        # pyserial POSIX open() flushes input by default. The connected APK may
+        # already be waiting for a reply: dropping that request forces its
+        # exchange timeout plus serial-reopen backoff (about four seconds).
+        # Keep framed requests; the parser resynchronizes garbage and the APK
+        # still owns RTT/offset validation. Used only by this request server.
+        pass
+
+
 class Session:
     def __init__(self, identity, port):
         self.identity, self.port = identity, port
@@ -96,47 +114,57 @@ class Session:
 
     def run(self):
         try:
-            with serial.Serial(self.port, 2000000, timeout=.1, write_timeout=.5,
+            with PendingRequestSerial(self.port, 2000000, timeout=.1, write_timeout=.5,
                                exclusive=True) as stream:
-                stream.reset_input_buffer()
-                stream.write(b'\xee')
-                buffer = bytearray()
-                heartbeat = time.monotonic()
-                while not self.stop.is_set():
-                    buffer.extend(stream.read(max(1, min(stream.in_waiting, 4096))))
-                    while (packet := pop_packet(buffer)) is not None:
-                        received = ntp_now()
-                        kind = packet[2]
-                        if kind in (1, 4):
-                            data = response(packet, received)
-                            if stream.write(data) != len(data):
-                                raise RuntimeError('short ACM write')
+                try:
+                    stream.write(b'\xee')
+                    buffer = bytearray()
+                    last_activity = time.monotonic()
+                    while not self.stop.is_set():
+                        chunk = stream.read(max(1, min(stream.in_waiting, 4096)))
+                        if chunk:
+                            last_activity = time.monotonic()
+                            buffer.extend(chunk)
+                        while (packet := pop_packet(buffer)) is not None:
+                            received = ntp_now()
+                            kind = packet[2]
+                            if kind in (1, 4):
+                                data = response(packet, received)
+                                if stream.write(data) != len(data):
+                                    raise RuntimeError('short ACM write')
+                                stream.flush()
+                                now = time.monotonic()
+                                with self.lock:
+                                    new_batch = now - self.state.get('last_request_monotonic_s', -1e9) > .05
+                                    self.state.update(
+                                        request_count=self.state['request_count'] + 1,
+                                        request_batches=self.state['request_batches'] + int(new_batch),
+                                        last_request_monotonic_s=now)
+                            elif kind == 3:
+                                round_number, offset_us, rtt_us = struct.unpack('>iiI', packet[4:16])
+                                good = abs(offset_us) <= 5000 and rtt_us <= 10000
+                                with self.lock:
+                                    count = self.state['good_samples']
+                                    if round_number == 1:
+                                        count = 0
+                                    self.state.update(status='measured', round=round_number,
+                                        offset_ms=offset_us / 1000, rtt_ms=rtt_us / 1000,
+                                        result_count=self.state['result_count'] + 1,
+                                        good_samples=count + 1 if good else 0,
+                                        result_monotonic_s=time.monotonic())
+                            elif kind == 5:
+                                with self.lock:
+                                    self.state.update(status='waiting', good_samples=0)
+                        if time.monotonic() - last_activity >= 1:
+                            stream.write(b'\xee')
+                            last_activity = time.monotonic()
+                finally:
+                    if self.stop.is_set():
+                        try:
+                            stream.write(stop_packet())
                             stream.flush()
-                            now = time.monotonic()
-                            with self.lock:
-                                new_batch = now - self.state.get('last_request_monotonic_s', -1e9) > .05
-                                self.state.update(
-                                    request_count=self.state['request_count'] + 1,
-                                    request_batches=self.state['request_batches'] + int(new_batch),
-                                    last_request_monotonic_s=now)
-                        elif kind == 3:
-                            round_number, offset_us, rtt_us = struct.unpack('>iiI', packet[4:16])
-                            good = abs(offset_us) <= 5000 and rtt_us <= 10000
-                            with self.lock:
-                                count = self.state['good_samples']
-                                if round_number == 1:
-                                    count = 0
-                                self.state.update(status='measured', round=round_number,
-                                    offset_ms=offset_us / 1000, rtt_ms=rtt_us / 1000,
-                                    result_count=self.state['result_count'] + 1,
-                                    good_samples=count + 1 if good else 0,
-                                    result_monotonic_s=time.monotonic())
-                        elif kind == 5:
-                            with self.lock:
-                                self.state.update(status='waiting', good_samples=0)
-                    if time.monotonic() - heartbeat >= 1:
-                        stream.write(b'\xee')
-                        heartbeat = time.monotonic()
+                        except Exception:
+                            pass  # Device removal may make graceful STOP impossible.
         except Exception as exc:
             with self.lock:
                 self.state.update(status='disconnected', error=str(exc), good_samples=0)
@@ -146,9 +174,25 @@ def combined_status(session, applied, host, now=None):
     now = time.monotonic() if now is None else now
     fresh = 0 <= now - session.get('result_monotonic_s', -1e9) <= SAMPLE_MAX_AGE_S
     good = (host and fresh and session.get('status') == 'measured'
-            and session.get('good_samples', 0) >= 5 and applied.get('status') == 'ok')
+            and session.get('good_samples', 0) >= REQUIRED_GOOD_SAMPLES and applied.get('status') == 'ok')
     return dict(session, status='ok' if good else 'waiting', mode='usb_acm',
                 host_time_ready=host, sample_fresh=fresh, applied=applied)
+
+
+def confirm_applied_batch(session, observed, applied):
+    """One confirmation per new observed request batch; repeated HTTP is not evidence."""
+    if observed['result_count'] == 0:
+        batch = observed['request_batches']
+        if applied.get('status') != 'ok' or observed.get('status') == 'disconnected':
+            session.confirmed_batches = 0
+        elif batch > session.previous_batch:
+            session.confirmed_batches += 1
+        session.previous_batch = batch
+        observed.update(status='measured', good_samples=session.confirmed_batches,
+            offset_ms=applied.get('final_offset_ms'), rtt_ms=applied.get('rtt_ms'),
+            result_monotonic_s=observed.get('last_request_monotonic_s', -1e9),
+            sample_source='request_batch_and_apk_status')
+    return observed
 
 
 def main():
@@ -160,19 +204,24 @@ def main():
         signal.signal(sig, lambda *_: stopping.set())
     session = None
     last_identity = ''
+    session_binding = None
+    bootstrap_binding = None
+    bootstrap = {}
+    session_started = 0.0
     clock_anchor = time.time() - time.monotonic()
     try:
         while not stopping.is_set():
             try:
                 binding = worker.read_status(BINDING)
                 identity = str(binding.get('serial') or '')
+                generation = (identity, binding.get('bound_at_ms'))
                 # Serve the backpack clock even offline or when PTP/NTP owns it.
                 host = True
                 anchor = time.time() - time.monotonic()
                 clock_changed = abs(anchor - clock_anchor) >= .1
                 clock_anchor = anchor
                 port = bound_port(identity) if identity else None
-                if session and (clock_changed or identity != session.identity or port != session.port
+                if session and (clock_changed or generation != session_binding or identity != session.identity or port != session.port
                                 or not session.thread.is_alive()):
                     session.close()
                     session = None
@@ -181,35 +230,40 @@ def main():
                     adb = worker.Adb(identity)
                     package = worker.select_app(adb)
                     if package == SYNC_PACKAGE:
+                        worker.write_json_atomic(STATUS, dict(status='waiting', serial=identity,
+                            bound_at_ms=binding.get('bound_at_ms'), boot_id=BOOT_ID,
+                            updated_monotonic_s=time.monotonic(), updated_at_ms=worker.now_ms()))
+                        if generation != bootstrap_binding:
+                            bootstrap_binding = generation
+                            bootstrap = worker.bootstrap_ego_time(adb)
                         session = Session(identity, port)
+                        session_binding = generation
+                        session_started = time.monotonic()
                     else:
                         state.update(status='disconnected', mode='usb_acm')
                 if session:
-                    applied = worker.read_serial_time_sync(worker.Adb(identity))
+                    # Only batches already present before the HTTP request may be
+                    # confirmed by its reply. Do not attribute an old reply to a
+                    # request that arrived while HTTP was in flight.
                     observed = session.snapshot()
+                    applied = worker.read_serial_time_sync(worker.Adb(identity))
                     # This APK does not emit RESULT packets. Count only new request
                     # batches confirmed by its applied-status endpoint, never repeated polls.
-                    if observed['result_count'] == 0:
-                        batch = observed['request_batches']
-                        if applied.get('status') != 'ok':
-                            session.confirmed_batches = 0
-                        elif batch > session.previous_batch:
-                            session.confirmed_batches += 1
-                        session.previous_batch = batch
-                        observed.update(status='measured', good_samples=session.confirmed_batches,
-                            offset_ms=applied.get('final_offset_ms'), rtt_ms=applied.get('rtt_ms'),
-                            result_monotonic_s=observed.get('last_request_monotonic_s', -1e9),
-                            sample_source='request_batch_and_apk_status')
+                    observed = confirm_applied_batch(session, observed, applied)
                     state = combined_status(observed, applied, host)
+                    state.update(bootstrap=bootstrap,
+                                 sync_elapsed_ms=round((time.monotonic() - session_started) * 1000),
+                                 required_good_samples=REQUIRED_GOOD_SAMPLES)
                 elif identity and binding.get('app', {}).get('package', worker.PACKAGE) == worker.PACKAGE:
                     state.update(status='disconnected', mode='usb_acm')
                 # Binding may have changed while ADB waited: never publish old identity as ready.
-                if worker.read_status(BINDING).get('serial', '') != identity:
+                latest_binding = worker.read_status(BINDING)
+                if (latest_binding.get('serial', ''), latest_binding.get('bound_at_ms')) != generation:
                     if session:
                         session.close()
                         session = None
                     continue
-                state.update(serial=identity, package=SYNC_PACKAGE if session else
+                state.update(serial=identity, bound_at_ms=binding.get('bound_at_ms'), package=SYNC_PACKAGE if session else
                              binding.get('app', {}).get('package', ''),
                              clock_source='backpack_system',
                              port=port, boot_id=BOOT_ID, updated_at_ms=worker.now_ms(),
@@ -225,7 +279,7 @@ def main():
                     session = None
                 worker.write_json_atomic(STATUS, dict(status='error', error=str(exc),
                     updated_at_ms=worker.now_ms(), updated_monotonic_s=time.monotonic(), boot_id=BOOT_ID))
-            stopping.wait(1)
+            stopping.wait(1 if session and state.get('status') == 'ok' else FAST_POLL_S)
     finally:
         if session:
             session.close()

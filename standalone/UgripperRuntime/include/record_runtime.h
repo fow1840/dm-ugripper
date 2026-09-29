@@ -316,6 +316,10 @@ private:
     std::optional<DA::Ugripper::HealthFault> detectDataDiskHealthFault(const std::string &path);
     void maintainEgoBindingAction();
     void maintainEgoBindingHealth();
+    bool isEgoSyncReady() const;
+    bool isEgoSyncPending() const;
+    void maintainEgoSyncFeedback();
+    void stopEgoSyncFeedback();
     void setEgoBindingFault(const std::string &detail);
     void clearEgoBindingFault();
     bool mergeEpisodeInfo(const std::string &episodeDir, std::string *errorMessage) const;
@@ -522,6 +526,13 @@ private:
     bool egoRecordingAttempted_ = false;
     std::string egoBoundSerial_;
     bool egoBoundConnected_ = true;
+    bool egoSyncReady_ = false;
+    bool egoSyncWaiting_ = false;
+    uint64_t egoSyncFeedbackStartMs_ = 0;
+    uint64_t egoSyncLastCheckMs_ = 0;
+    uint16_t egoSyncToneHz_ = 0;
+    bool egoSyncToneOwned_ = false;
+    bool egoSyncSlowLogged_ = false;
     bool egoBindingFaultActive_ = false;
     int egoProbeFailureCount_ = 0;
     uint64_t egoLastProbeStartMs_ = 0;

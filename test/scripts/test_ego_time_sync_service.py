@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 import importlib.util
 import json
+import os
+import pty
+import tty
+import threading
 from pathlib import Path
 import struct
 import sys
@@ -17,6 +21,63 @@ import ego_recording_worker as worker
 
 
 class SyncTests(unittest.TestCase):
+    def test_heartbeat_only_when_request_stream_is_idle(self):
+        for active in (False, True):
+            with self.subTest(active=active):
+                session = sync.Session.__new__(sync.Session)
+                session.port = '/unused'
+                session.stop = threading.Event()
+                session.lock = threading.Lock()
+                session.state = dict(request_count=0, request_batches=0)
+                clock = [0.0]
+                reads = [0]
+                def receive(_):
+                    clock[0] += .6
+                    reads[0] += 1
+                    if reads[0] == 3:
+                        session.stop.set()
+                    return b'\xa0\x01\x01' + bytes(21) if active else b''
+                stream = mock.MagicMock()
+                stream.in_waiting = 0
+                stream.read.side_effect = receive
+                stream.write.side_effect = len
+                with mock.patch.object(sync, 'PendingRequestSerial') as serial_type, \
+                     mock.patch.object(sync.time, 'monotonic', side_effect=lambda: clock[0]):
+                    serial_type.return_value.__enter__.return_value = stream
+                    session.run()
+                writes = [call.args[0] for call in stream.write.call_args_list]
+                self.assertEqual(writes.count(b'\xee'), 1 if active else 2)
+                self.assertEqual(writes[-1], sync.stop_packet())
+                self.assertEqual(session.state['request_count'], 3 if active else 0)
+
+    def test_graceful_close_sends_vendor_stop_from_serial_owner(self):
+        session = sync.Session.__new__(sync.Session)
+        session.port = '/unused'
+        session.stop = mock.Mock()
+        session.stop.is_set.side_effect = [True, True]
+        session.lock = mock.MagicMock()
+        session.state = {}
+        stream = mock.MagicMock()
+        with mock.patch.object(sync, 'PendingRequestSerial') as serial_type:
+            serial_type.return_value.__enter__.return_value = stream
+            session.run()
+        self.assertEqual(sync.stop_packet(), b'\xa0\x01\xff\x00' + bytes(36))
+        self.assertEqual(stream.write.call_args_list,
+                         [mock.call(b'\xee'), mock.call(sync.stop_packet())])
+        stream.flush.assert_called_once()
+
+    def test_open_preserves_already_waiting_request(self):
+        master, slave = pty.openpty()
+        try:
+            tty.setraw(slave)
+            request = b'\xa0\x01\x01' + bytes(21)
+            os.write(master, request)
+            with sync.PendingRequestSerial(os.ttyname(slave), 2000000, timeout=.2) as stream:
+                self.assertEqual(stream.read(len(request)), request)
+        finally:
+            os.close(master)
+            os.close(slave)
+
     def test_wire_format_and_fragment_recovery(self):
         request = bytearray(24)
         request[:3] = b'\xa0\x01\x01'
@@ -51,10 +112,10 @@ class SyncTests(unittest.TestCase):
         self.assertFalse(sync.host_ready(dict(state, boot_id='old'), 101, 1001))
 
     def test_applied_confirmation_and_real_sample_freshness(self):
-        state = dict(status='measured', good_samples=5, result_monotonic_s=100)
+        state = dict(status='measured', good_samples=2, result_monotonic_s=100)
         self.assertEqual(sync.combined_status(state, {'status': 'ok'}, True, 101)['status'], 'ok')
         for changed, applied, host, now in [
-                (dict(state, good_samples=4), {'status': 'ok'}, True, 101),
+                (dict(state, good_samples=1), {'status': 'ok'}, True, 101),
                 (state, {'status': 'error'}, True, 101),
                 (state, {'status': 'ok'}, False, 101),
                 (state, {'status': 'ok'}, True, 116),
@@ -76,11 +137,48 @@ class SyncTests(unittest.TestCase):
              mock.patch.object(sync, 'bound_port', return_value='/dev/ttyACM0'), \
              mock.patch.object(worker, 'Adb'), \
              mock.patch.object(worker, 'select_app', return_value=sync.SYNC_PACKAGE), \
+             mock.patch.object(worker, 'bootstrap_ego_time', return_value={'status': 'ok'}), \
              mock.patch.object(worker, 'read_serial_time_sync', return_value={'status': 'ok'}), \
              mock.patch.object(worker, 'write_json_atomic'), \
              mock.patch.object(sync, 'Session', return_value=session) as create:
             sync.main()
             create.assert_called_once_with('bound', '/dev/ttyACM0')
+
+    def test_repeated_http_and_failed_batches_do_not_accumulate(self):
+        session = SimpleNamespace(confirmed_batches=0, previous_batch=0)
+        def confirm(batch, status='ok'):
+            return sync.confirm_applied_batch(session, dict(result_count=0, request_batches=batch,
+                last_request_monotonic_s=100), {'status':status})['good_samples']
+        self.assertEqual(confirm(1), 1)
+        self.assertEqual(confirm(1), 1)
+        self.assertEqual(confirm(2, 'error'), 0)
+        self.assertEqual(confirm(2), 0)
+        self.assertEqual(confirm(3), 1)
+        self.assertEqual(confirm(4), 2)
+
+    def test_old_same_serial_binding_is_not_ready(self):
+        now = time.monotonic()
+        state = dict(status='ok', serial='bound', package=worker.PACKAGE,
+                     boot_id=sync.BOOT_ID, bound_at_ms=100,
+                     updated_monotonic_s=now, result_monotonic_s=now)
+        with mock.patch.object(worker, 'read_status', side_effect=[state, {'serial':'bound', 'bound_at_ms':101}]):
+            self.assertEqual(worker.sync_ego_time(SimpleNamespace(serial='bound', package=worker.PACKAGE))['status'], 'error')
+
+    def test_bootstrap_never_steps_recording_clock(self):
+        adb = mock.Mock()
+        with mock.patch.object(Path, 'exists', return_value=True):
+            self.assertEqual(worker.bootstrap_ego_time(adb)['status'], 'skipped')
+        adb.run.assert_not_called()
+
+    def test_bootstrap_is_single_bounded_call(self):
+        adb = mock.Mock()
+        adb.run.return_value.returncode = 0
+        with tempfile.TemporaryFile(mode='w+') as lock, \
+             mock.patch.object(Path, 'exists', return_value=False), \
+             mock.patch.object(Path, 'open', return_value=lock):
+            self.assertEqual(worker.bootstrap_ego_time(adb)['status'], 'ok')
+        adb.run.assert_called_once()
+        self.assertEqual(adb.run.call_args.kwargs['timeout'], 1)
 
     def test_record_gate_never_sets_clock_and_rejects_wrong_binding(self):
         adb = SimpleNamespace(serial='bound', package='com.ssnwt.helloxr')

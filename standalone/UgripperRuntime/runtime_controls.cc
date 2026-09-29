@@ -120,6 +120,15 @@ void RecordRuntime::removeRecordingLock()
 
 bool RecordRuntime::startRecording(bool resetRecording)
 {
+    // Reject before creating an episode or recording lock. Do not queue a start.
+    if (egoBindingActionFuture_.valid() || (isEgoRequired() && !isEgoSyncReady()))
+    {
+        egoSyncReady_ = false;
+        DM_LOG_WARN("recording rejected: ego binding/time synchronization pending");
+        maintainEgoSyncFeedback();
+        applyIdleState();
+        return false;
+    }
     // Fast user-facing rejection. writeRecordingLock takes the authoritative lock
     // atomically before any recorder or episode is created.
     const int guard = open("/run/ugripper/maintenance.lock", O_RDWR | O_CREAT | O_CLOEXEC, 0660);
