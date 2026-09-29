@@ -186,3 +186,10 @@ python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
 ## 双目守护脚本恢复回归
 
 执行 `/usr/bin/python3 test/scripts/test_fays_daemon_recovery.py`，无需相机硬件。测试在 Bash `set -euo pipefail` 环境调用生产函数，覆盖残留 FIFO 时重新启动、维护 worker 异常退出时拒绝应用部分结果，以及空结果保留原 PID。
+
+
+## Fays 常驻健康解析回归
+
+`/usr/bin/python3 standalone/FaysStereoRecorder/tests/test_health_snapshot.py` 在临时目录验证健康/过期/非法输入、标定和 recorder 身份变更、损坏快照、helper 卡住自动恢复，以及解析器不可用时不重启健康 SDK。测试不接触设备或服务；使用系统标准库解释器，避免交叉编译 Python 混入。
+
+板端验证还需完整录制吞吐、原始 gap、实际串口请求/回复和正常 Runtime QC；仅通过命令构建测试不能证明调度延迟已改善。

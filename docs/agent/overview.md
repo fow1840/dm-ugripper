@@ -28,6 +28,7 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 
 ### 辅助任务与视频线程开销
 
+- Fays 守护健康解析由一个常驻标准库 Python helper 每 100ms 批量读取左右 runtime，标定按文件身份变化更新缓存；只写私有原子快照，不新增 episode metadata 字段。shell 按原始帧/IMU 时刻与原有阈值实时判断，快照年龄采用 BOOTTIME（与 `/proc/uptime` 同为 10ms 精度），超过 500ms 不接受。helper 卡住超过 1.5s 会重建，创建/恢复首份快照最多等待 500ms；正常控制循环不新增等待。解析器不可用与相机故障分开，不直接重启健康 SDK，录制中通过现有 session error 表达监控不可用；状态 JSON 仍独立检查实时数据。退出清理 helper，父进程消失时 helper 自行退出。状态写入及多设备 serial 检查仍有周期 Python 启动，后续继续合并。
 
 - 闲置 USB 耳机本地播放及按键功能通过 `audio_common.py` 的 `USB_HEADSET_ENABLED = False` 禁用；audio daemon 保留 FIFO 生命周期但不启动后台 udevadm/pactl 探测，不伪造音频 ready。本地默认扬声器 fallback 同时停用，Ego 语音链路不受影响。恢复前须用事件通知或缓存替代缺席设备的周期扫描。
 

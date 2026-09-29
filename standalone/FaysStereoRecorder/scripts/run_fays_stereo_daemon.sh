@@ -733,14 +733,19 @@ check_side_working_state_reason() {
         return 1
     fi
 
-    if calibration_serial "$calib_json" >/dev/null 2>&1; then
-        if runtime_frame_fresh "$side" && runtime_imu_fresh "$side"; then
+    local SIDE_CALIB_READY=false SIDE_FRAME_FRESH=false SIDE_IMU_FRESH=false
+    local health_result=0
+    read_side_health "$side" "$calib_json" || health_result=$?
+    # Parser unavailability is not evidence that the SDK needs restarting.
+    [ "$health_result" -ne 2 ] || return 2
+    if [ "$SIDE_CALIB_READY" = "true" ]; then
+        if [ "$SIDE_FRAME_FRESH" = "true" ] && [ "$SIDE_IMU_FRESH" = "true" ]; then
             return 0
         fi
         if side_in_health_grace "$side"; then
             return 0
         fi
-        if ! runtime_imu_fresh "$side"; then
+        if [ "$SIDE_IMU_FRESH" != "true" ]; then
             printf 'IMU stream stale or missing after %ss\n' "$IMU_STALE_SEC"
             return 1
         fi
@@ -845,6 +850,97 @@ clear_side_last_unhealthy_reason() {
     set_side_last_unhealthy_reason "$side" ""
 }
 
+# A single parser serves both parallel maintenance workers. Only immutable,
+# atomically replaced snapshots cross the boundary; no shared FIFO responses.
+# A dead/stalled helper must never leave a permanently healthy cached result.
+HEALTH_HELPER_PID=""
+HEALTH_SNAPSHOT_DIR=""
+HEALTH_HELPER_STARTED_MS=0
+health_monotonic_ms() {
+    local uptime ignored whole fraction
+    read -r uptime ignored < /proc/uptime
+    whole="${uptime%.*}"
+    fraction="${uptime#*.}000"
+    HEALTH_MONOTONIC_MS=$((10#$whole * 1000 + 10#${fraction:0:3}))
+}
+ensure_health_helper() {
+    local stamp side_stamp side ignored attempt now_ms
+    health_monotonic_ms
+    now_ms="$HEALTH_MONOTONIC_MS"
+    if [ -n "$HEALTH_HELPER_PID" ] && kill -0 "$HEALTH_HELPER_PID" 2>/dev/null; then
+        stamp="$now_ms"
+        for side in left right; do
+            side_stamp="$HEALTH_HELPER_STARTED_MS"
+            if [ -r "$HEALTH_SNAPSHOT_DIR/$side" ]; then
+                read -r side_stamp ignored < "$HEALTH_SNAPSHOT_DIR/$side" || side_stamp=0
+            fi
+            case "$side_stamp" in ''|*[!0-9]*) side_stamp=0 ;; esac
+            [ "${#side_stamp}" -le 16 ] || side_stamp=0
+            side_stamp=$((10#$side_stamp))
+            [ "$side_stamp" -ge "$stamp" ] || stamp="$side_stamp"
+        done
+        if [ "$now_ms" -ge "$stamp" ] && [ $((now_ms - stamp)) -le 1500 ]; then
+            return 0
+        fi
+        # Also recover a live but stalled parser; no blocking request/response IPC.
+        kill -KILL "$HEALTH_HELPER_PID" 2>/dev/null || true
+        wait "$HEALTH_HELPER_PID" 2>/dev/null || true
+    fi
+    if [ -z "$HEALTH_SNAPSHOT_DIR" ]; then
+        HEALTH_SNAPSHOT_DIR="$(mktemp -d /dev/shm/ugripper/fays-health.XXXXXX)"
+    fi
+    rm -f "$HEALTH_SNAPSHOT_DIR/left" "$HEALTH_SNAPSHOT_DIR/right"
+    python3 "$SCRIPT_DIR/fays_health_snapshot.py" "$HEALTH_SNAPSHOT_DIR" \
+        "$LEFT_CALIB_JSON" "$LEFT_RUNTIME_STATUS_JSON" \
+        "$RIGHT_CALIB_JSON" "$RIGHT_RUNTIME_STATUS_JSON" "$FRAME_STALE_SEC" "$IMU_STALE_SEC" 9>&- &
+    HEALTH_HELPER_PID=$!
+    HEALTH_HELPER_STARTED_MS="$now_ms"
+    # Bootstrap only on helper creation/recovery. Otherwise an empty snapshot
+    # could incorrectly restart healthy recorders before the parser gets CPU.
+    for ((attempt = 0; attempt < 20; attempt++)); do
+        if [ -s "$HEALTH_SNAPSHOT_DIR/left" ] && [ -s "$HEALTH_SNAPSHOT_DIR/right" ]; then
+            return 0
+        fi
+        kill -0 "$HEALTH_HELPER_PID" 2>/dev/null || break
+        sleep 0.025
+    done
+    return 0
+}
+
+read_side_health() {
+    local side="$1" calib_json="$2" sampled valid pid frame imu now_ms expected_pid runtime value
+    SIDE_CALIB_READY=false
+    SIDE_FRAME_FRESH=false
+    SIDE_IMU_FRESH=false
+    [ -n "$HEALTH_HELPER_PID" ] && kill -0 "$HEALTH_HELPER_PID" 2>/dev/null || return 2
+    [ -r "$HEALTH_SNAPSHOT_DIR/$side" ] || return 2
+    read -r sampled valid pid frame imu < "$HEALTH_SNAPSHOT_DIR/$side" || return 2
+    for value in "$sampled" "$valid" "$pid" "$frame" "$imu"; do
+        case "$value" in ''|*[!0-9]*) return 2 ;; esac
+        [ "${#value}" -le 16 ] || return 2
+    done
+    sampled=$((10#$sampled))
+    health_monotonic_ms
+    [ "$sampled" -le "$HEALTH_MONOTONIC_MS" ] && [ $((HEALTH_MONOTONIC_MS - sampled)) -le 500 ] || return 2
+    runtime="$(runtime_status_path "$side")"
+    [ -f "$runtime" ] && [ -f "$calib_json" ] || return 1
+    # Bash's realtime clock avoids launching date for every health query.
+    now_ms="${EPOCHREALTIME/./}"
+    now_ms=$((10#$now_ms / 1000))
+    expected_pid="$(side_pid "$side")"
+    [ -n "$expected_pid" ] && [ "$pid" = "$expected_pid" ] || return 1
+    # Calibration is infrequently replaced; don't accept its previous identity.
+    [ "$calib_json" -nt "$HEALTH_SNAPSHOT_DIR/$side" ] && return 1
+    [ "$valid" = 1 ] && SIDE_CALIB_READY=true
+    if [ "$frame" -gt 0 ] && [ "$now_ms" -le "$frame" ]; then
+        SIDE_FRAME_FRESH=true
+    fi
+    if [ "$imu" -gt 0 ] && [ "$now_ms" -le "$imu" ]; then
+        SIDE_IMU_FRESH=true
+    fi
+    return 0
+}
+
 calibration_serial() {
     local calib_json="$1"
     python3 - "$calib_json" <<'PY'
@@ -941,14 +1037,19 @@ check_side_working_state() {
         [ "$quiet" = "true" ] || fays_log "$side process not running"
         return 1
     fi
-    if calibration_serial "$calib_json" >/dev/null 2>&1; then
-        if runtime_frame_fresh "$side" && runtime_imu_fresh "$side"; then
+    local SIDE_CALIB_READY=false SIDE_FRAME_FRESH=false SIDE_IMU_FRESH=false
+    local health_result=0
+    read_side_health "$side" "$calib_json" || health_result=$?
+    # Parser unavailability is not evidence that the SDK needs restarting.
+    [ "$health_result" -ne 2 ] || return 2
+    if [ "$SIDE_CALIB_READY" = "true" ]; then
+        if [ "$SIDE_FRAME_FRESH" = "true" ] && [ "$SIDE_IMU_FRESH" = "true" ]; then
             return 0
         fi
         if side_in_health_grace "$side"; then
             return 0
         fi
-        if ! runtime_imu_fresh "$side"; then
+        if [ "$SIDE_IMU_FRESH" != "true" ]; then
             [ "$quiet" = "true" ] || fays_log "$side IMU stream stale or missing after ${IMU_STALE_SEC}s"
             return 1
         fi
@@ -1027,12 +1128,14 @@ wait_for_side_start_complete() {
     fi
 
     deadline_ms=$(($(now_ms) + START_COMPLETE_TIMEOUT_SEC * 1000))
+    local SIDE_CALIB_READY=false SIDE_FRAME_FRESH=false SIDE_IMU_FRESH=false
     while true; do
         pid="$(side_pid "$side")"
+        read_side_health "$side" "$calib_json" || true
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null &&
            check_side_device_paths "$side" "$config" "$fifo" true true &&
-           calibration_serial "$calib_json" >/dev/null 2>&1 &&
-           runtime_frame_fresh "$side" && runtime_imu_fresh "$side"; then
+           [ "$SIDE_CALIB_READY" = "true" ] &&
+           [ "$SIDE_FRAME_FRESH" = "true" ] && [ "$SIDE_IMU_FRESH" = "true" ]; then
             fays_log "$side recorder SDK startup complete: pid=$pid fifo=$fifo"
             return 0
         fi
@@ -1166,10 +1269,18 @@ maintain_side_daemon() {
         return 0
     fi
 
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ -p "$fifo" ] &&
-       check_side_working_state "$side" "$config" "$fifo" "$calib_json" "$pid" true; then
-        clear_side_last_unhealthy_reason "$side"
-        return 0
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && [ -p "$fifo" ]; then
+        local health_result=0
+        check_side_working_state "$side" "$config" "$fifo" "$calib_json" "$pid" true || health_result=$?
+        if [ "$health_result" -eq 0 ]; then
+            clear_side_last_unhealthy_reason "$side"
+            return 0
+        elif [ "$health_result" -eq 2 ]; then
+            # Keep the camera running while the parent recovers its parser.
+            # write_status still checks live runtime data independently.
+            mark_session_error "Fays health parser unavailable during session"
+            return 0
+        fi
     fi
 
     if [ -n "$pid" ] || [ -p "$fifo" ]; then
@@ -1635,6 +1746,11 @@ cleanup() {
         return 0
     fi
     CLEANED_UP=true
+    if [ -n "$HEALTH_HELPER_PID" ]; then
+        kill -KILL "$HEALTH_HELPER_PID" 2>/dev/null || true
+        wait "$HEALTH_HELPER_PID" 2>/dev/null || true
+    fi
+    [ -z "$HEALTH_SNAPSHOT_DIR" ] || rm -rf "$HEALTH_SNAPSHOT_DIR"
     exec 9>&- 2>/dev/null || true
     rm -f "$CONTROL_FIFO"
     stop_side_daemon left "$LEFT_FIFO" "$LEFT_PID"
@@ -1647,12 +1763,14 @@ trap 'cleanup; exit 0' INT TERM
 
 ensure_control_fifo
 exec 9<>"$CONTROL_FIFO"
+ensure_health_helper
 
 start_daemons
 clear_recovery_error_if_ready
 write_status
 
 while true; do
+    ensure_health_helper
     drain_control_fifo 0.001
     current_ms="$(now_ms)"
     if [ "$LAST_HEALTH_CHECK_MS" -eq 0 ] ||
