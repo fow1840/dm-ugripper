@@ -148,3 +148,59 @@ def reset_baseline(output, camera, scope, serial):
         request.unlink(missing_ok=True)
         frame.unlink(missing_ok=True)
         response.unlink(missing_ok=True)
+
+
+def latest_alarm(include_masks=False):
+    """Single atomic runtime snapshot, independent of manual inspection previews."""
+    path = TACTILE_STATE / 'latest_alarm.json'
+    try:
+        if path.stat().st_size > 512 * 1024:
+            raise ValueError('告警图像文件过大')
+        value = json.loads(path.read_text())
+        if (not isinstance(value, dict) or value.get('width') != 160 or
+                value.get('height') != 120 or not isinstance(value.get('id'), str) or
+                not isinstance(value.get('images'), list) or len(value['images']) > 8):
+            raise ValueError('告警图像格式无效')
+        images = []
+        for item in value['images']:
+            if (not isinstance(item, dict) or item.get('camera') not in CAMERAS or
+                    item.get('scope') not in ('reference', 'persistent') or
+                    not isinstance(item.get('mask'), str) or len(item['mask']) != 19200 or
+                    set(item['mask']) - {'0', '1'}):
+                raise ValueError('告警 mask 格式无效')
+            frame = item.get('current_gray_hex')
+            if not isinstance(frame, str) or len(frame) != 38400 or set(frame) - set('0123456789abcdef'):
+                raise ValueError('告警缺少有效盖板底图，等待下一次录制检测更新')
+            images.append(dict(item) if include_masks else
+                          {k: v for k, v in item.items() if k not in ('mask', 'current_gray_hex')})
+        return dict(value, images=images)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, TypeError) as exc:
+        return {'error': str(exc)}
+
+
+def alarm_mask_png(generation, camera, scope):
+    """Overlay the saved decision mask on its exact cover frame, in translucent red."""
+    import struct
+    import zlib
+    saved = latest_alarm(include_masks=True)
+    if saved.get('id') != generation or not generation:
+        raise ValueError('告警图像已更新，请刷新页面')
+    item = next((v for v in saved.get('images', [])
+                 if v['camera'] == camera and v['scope'] == scope), None)
+    if item is None:
+        raise ValueError('没有对应的告警图像')
+    frame = bytes.fromhex(item['current_gray_hex'])
+    pixels = bytearray()
+    for gray, mask in zip(frame, item['mask']):
+        if mask == '1':
+            pixels.extend(((gray * 45 + 255 * 55 + 50) // 100,
+                           (gray * 45 + 50) // 100, (gray * 45 + 50) // 100))
+        else:
+            pixels.extend((gray, gray, gray))
+    scanlines = b''.join(b'\0' + pixels[y*480:(y+1)*480] for y in range(120))
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 160, 120, 8, 2, 0, 0, 0)) +
+            chunk(b'IDAT', zlib.compress(scanlines)) + chunk(b'IEND', b''))

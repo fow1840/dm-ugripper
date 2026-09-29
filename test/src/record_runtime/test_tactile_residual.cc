@@ -250,5 +250,25 @@ TEST(TactileResidualTest, ExpensiveSpatialToleranceIsDisabledByDefault)
     EXPECT_EQ(kTactileEdgeLocalToleranceRadius, 0);
 }
 
+TEST(TactileResidualTest, ExportedMaskMatchesDecisionWithoutChangingMetrics)
+{
+    const auto baseline = makeTexture();
+    auto current = baseline;
+    for (int y = 45; y < 61; ++y)
+        for (int x = 68; x < 84; ++x)
+            current[y * kTactileFrameWidth + x] = static_cast<uint8_t>(
+                std::min(255, static_cast<int>(current[y * kTactileFrameWidth + x]) + 70));
+    const auto original = computeTactileFrameMetrics(baseline, current);
+    std::vector<uint8_t> mask;
+    const auto exported = computeTactileFrameMetrics(baseline, current, &mask);
+    EXPECT_EQ(formatTactileMetrics(original), formatTactileMetrics(exported));
+    ASSERT_TRUE(exported.damaged);
+    ASSERT_EQ(mask.size(), kTactileFrameBytes);
+    EXPECT_EQ(std::count(mask.begin(), mask.end(), 255), exported.solidCorePixels);
+    const auto clean = computeTactileFrameMetrics(baseline, baseline, &mask);
+    EXPECT_FALSE(clean.damaged);
+    EXPECT_EQ(std::count(mask.begin(), mask.end(), 255), 0);
+}
+
 }  // namespace
 }  // namespace DA::Ugripper::detail

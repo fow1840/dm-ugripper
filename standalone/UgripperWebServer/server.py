@@ -85,6 +85,12 @@ class Handler(BaseHTTPRequestHandler):
         return size
     def dispatch(self,post=False):
         path=urlsplit(self.path).path
+        if not post and path == '/api/v1/tactile/alarm-mask':
+            from tactile_panel import alarm_mask_png
+            query = parse_qs(urlsplit(self.path).query)
+            value = lambda key: query.get(key, [''])[0]
+            b = alarm_mask_png(value('id'), value('camera'), value('scope'))
+            self.headers_out(200, 'image/png', len(b)); self.wfile.write(b); return
         if not post and path in ('/tactile-normal.png','/tactile-damaged.png'):
             b=(BASE/'static'/path[1:]).read_bytes()
             self.headers_out(200,'image/png',len(b));self.wfile.write(b);return

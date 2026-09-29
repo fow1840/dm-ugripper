@@ -7,7 +7,7 @@ from common import DATA, STATE, command, read_json, operation_lock, Busy, ALLOW
 
 from environment_config import read_settings
 from ego_status import ego_status
-from tactile_panel import panel_status
+from tactile_panel import panel_status, latest_alarm
 
 CPU_PREV = None
 
@@ -95,6 +95,6 @@ def status():
                 cpu_percent=usage, memory=dict(total=mem['MemTotal'], used=mem['MemTotal']-mem['MemAvailable']),
                 disks=dict(data=disk(DATA, True), system=disk('/')), busy=busy,
                 recording=Path('/tmp/umi_recording.lock').exists(),
-                firmware=firmware_status(), battery=battery_status(), configuration=read_settings(), ego=ego_status(), tactile=panel_status(),
+                firmware=firmware_status(), battery=battery_status(), configuration=read_settings(), ego=ego_status(), tactile=panel_status(), tactile_alarm=latest_alarm(),
                 task=read_json(STATE/'task.json'),
                 service_active=command(['systemctl','is-active','ugripper.service']).returncode == 0)

@@ -51,6 +51,7 @@ void DA::Ugripper::EpisodeManager::ValidateTactileEpisode(
     }
 
     bool historyDirty = false;
+    json alarmImages = json::array();
     if (tactileFindings != nullptr)
     {
         tactileFindings->clear();
@@ -249,7 +250,9 @@ void DA::Ugripper::EpisodeManager::ValidateTactileEpisode(
             continue;
         }
 
-        const TactileFrameMetrics metrics = computeTactileFrameMetrics(baselineFrame, *currentFrame);
+        std::vector<uint8_t> referenceMask, persistentMask;
+        TactileFrameMetrics persistentMetrics;
+        const TactileFrameMetrics metrics = computeTactileFrameMetrics(baselineFrame, *currentFrame, &referenceMask);
         bool warningActiveBefore = false;
         const json &recentBefore = cameraHistory["recent"];
         if (recentBefore.size() >= kTactileHistoryWindow)
@@ -279,8 +282,8 @@ void DA::Ugripper::EpisodeManager::ValidateTactileEpisode(
 
         if (hasPersistentBaseline && !persistentNeedsUpdate && !initializedPersistentFromEpisode)
         {
-            const TactileFrameMetrics persistentMetrics =
-                computeTactileFrameMetrics(persistentBaseline, *currentFrame);
+            persistentMetrics =
+                computeTactileFrameMetrics(persistentBaseline, *currentFrame, &persistentMask);
             json &persistentRecent = cameraHistory["persistent_recent"];
             persistentRecent.push_back(persistentMetrics.damaged);
             while (persistentRecent.size() > kTactileHistoryWindow)
@@ -325,6 +328,29 @@ void DA::Ugripper::EpisodeManager::ValidateTactileEpisode(
             historyDirty = true;
         }
 
+        // Preserve the decision mask and the same preprocessed cover frame.
+        // Hex keeps the entire latest group in one atomic diagnostic snapshot.
+        const auto retainMask = [&](const char *scope, const TactileFrameMetrics &value,
+                                    const std::vector<uint8_t> &mask) {
+            if (!value.damaged || mask.size() != kTactileFrameBytes) return;
+            std::string pixels;
+            pixels.reserve(mask.size());
+            for (const auto pixel : mask) pixels.push_back(pixel != 0 ? '1' : '0');
+            static constexpr char hex[] = "0123456789abcdef";
+            std::string frameHex;
+            frameHex.reserve(currentFrame->size() * 2);
+            for (const auto pixel : *currentFrame) {
+                frameHex.push_back(hex[pixel >> 4]);
+                frameHex.push_back(hex[pixel & 15]);
+            }
+            alarmImages.push_back({{"camera", target.cameraName}, {"serial", serial},
+                {"scope", scope}, {"mask", std::move(pixels)}, {"current_gray_hex", std::move(frameHex)},
+                {"detail", formatTactileMetrics(value)},
+                {"kind", value.largeStructuralDamage ? "structural_blocks" : "solid_core"}});
+        };
+        if (warningActive) retainMask("reference", metrics, referenceMask);
+        if (persistentWarningActiveAfter) retainMask("persistent", persistentMetrics, persistentMask);
+
         TactileValidationFinding finding;
         finding.cameraName = target.cameraName;
         finding.serialNumber = serial;
@@ -346,6 +372,15 @@ void DA::Ugripper::EpisodeManager::ValidateTactileEpisode(
         }
     }
 
+    if (!alarmImages.empty())
+    {
+        const json evidence = {{"id", bootId + ":" + fs::path(episodeDir).filename().string() + ":" + std::to_string(dependencies_.currentEpochMs())}, {"episode", stripEpisodeTempSuffix(fs::path(episodeDir).filename().string())},
+            {"updated_at_ms", dependencies_.currentEpochMs()},
+            {"width", kTactileFrameWidth}, {"height", kTactileFrameHeight}, {"images", std::move(alarmImages)}};
+        std::string writeError;
+        if (!writeTextFileAtomically(fs::path(tactileStateDir_) / "latest_alarm.json", evidence.dump() + "\n", &writeError))
+            DM_LOG_WARN("failed to retain tactile alarm masks: {}", writeError);
+    }
     if (historyDirty)
     {
         std::string writeError;

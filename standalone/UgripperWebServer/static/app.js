@@ -7,7 +7,7 @@ function post(url,value,password){const headers={'Content-Type':'application/jso
 function bytes(n){return (n/1024**3).toFixed(1)+' GiB'}
 function metric(label,value,detail){const p=el('article',undefined,'panel metric');p.append(el('p',label,'muted'),el('div',value,'value'),el('p',detail,'muted'));return p}
 function row(label,value,good){const d=el('div',undefined,'device');d.append(el('span',label),el('span',value,'state '+(good===null?'':good?'good':'bad')));return d}
-function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProduction(s.production||{});renderTimeSync(s);last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording?'录制中':s.busy?'维护 / 传输中':'空闲';
+function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProduction(s.production||{});renderTimeSync(s);last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);renderTactileAlarm(s.tactile_alarm||{},s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording?'录制中':s.busy?'维护 / 传输中':'空闲';
  const d=s.disks.data,m=s.memory;$('#metrics').replaceChildren(metric('CPU 占用',s.cpu_percent===null?'—':s.cpu_percent+'%','设备系统'),metric('内存使用',Math.round(m.used/m.total*100)+'%',bytes(m.used)+' / '+bytes(m.total)),metric('数据盘剩余',d.mounted?bytes(d.free):'未挂载',d.mounted?'总容量 '+bytes(d.total):'请连接数据盘'),metric('系统盘剩余',bytes(s.disks.system.free),'总容量 '+bytes(s.disks.system.total)));
  const battery=s.battery||{};const bootBlocked=battery.connected!==true||!Number.isInteger(battery.percent)||battery.percent<20||battery.percent>100;const bootButton=$('form[data-kind=rk3588_boot] button');bootButton.disabled=busy||uploading||bootBlocked;$('#bootBatteryStatus').textContent=bootBlocked?(battery.connected===true&&Number.isInteger(battery.percent)&&battery.percent>=0&&battery.percent<20?'背包电量低于 20%，禁止升级 3588 固件':'电量数据不可用或已过期，禁止升级 3588 固件'):'背包电量满足升级条件（至少 20%）';const batteryMetric=metric('背包电量',battery.connected?battery.percent+'%':'电量不可用',battery.connected?(battery.charging?'充电中':battery.discharging?'放电中':'已连接'):'请检查蓝牙电量服务');
  batteryMetric.id='batteryMetric';if(battery.connected&&battery.percent<=10)batteryMetric.classList.add('battery-low');$('#metrics').prepend(batteryMetric);
@@ -282,3 +282,24 @@ $('#timeSyncCancel').onclick=async()=>{
  $('#timeSyncCancel').disabled=true;
  try{await post('/api/v1/time-sync/cancel',{id:timeSyncId});message('正在取消，等待录制收尾');await refresh()}catch(e){message(e.message);$('#timeSyncCancel').disabled=false;}
 };
+
+let tactileAlarmKey=null;
+function renderTactileAlarm(saved,states){
+ const alarms=states.filter(s=>s.warning===true&&!s.error&&s.serial);
+ $('#tactileAlarmPanel').hidden=alarms.length===0;
+ const key=JSON.stringify([saved.id,saved.error,alarms.map(s=>[s.camera,s.serial])]);
+ if(key===tactileAlarmKey)return;
+ tactileAlarmKey=key;
+ const container=$('#tactileAlarmImages');container.replaceChildren();
+ $('#tactileAlarmInfo').textContent=saved.error?'告警图像读取失败：'+saved.error:!saved.id?'暂无留存告警图像':
+  (saved.episode||'')+' · '+new Date(saved.updated_at_ms).toLocaleString();
+ const images=(saved.images||[]).filter(item=>alarms.some(s=>s.camera===item.camera&&s.serial===item.serial));
+ if(alarms.length&&!images.length)$('#tactileAlarmInfo').textContent='当前告警暂无留存图像，等待下一次录制检测';
+ for(const item of images){
+  const card=el('div');
+  card.append(el('h4',tactileLabel(item.camera)),el('p','SN: '+item.serial+' · '+(item.scope==='reference'?'短期基线':'长期基线')));
+  const link=el('a');link.href='/api/v1/tactile/alarm-mask?'+new URLSearchParams({id:saved.id,camera:item.camera,scope:item.scope});link.target='_blank';link.rel='noopener';
+  const img=el('img');img.src=link.href;img.alt=tactileLabel(item.camera)+' 盖板告警叠加图';img.className='capture-image';link.append(img);card.append(link);
+  card.append(el('p',item.kind==='structural_blocks'?'结构异常区域':'异常核心区域','muted'));container.append(card);
+ }
+}

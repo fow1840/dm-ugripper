@@ -801,3 +801,5 @@ ctest --test-dir build/host-tests -L host-only --output-on-failure
 ffprobe 使用 JSON 输出，stdout/stderr 分离并在进程运行时持续排空；每路最多尝试两次，每次超时 3 秒，输出保留上限每管道 1 MiB，stdout 超限判失败。失败/重试日志包含视频路径、次数、耗时、退出码及 stderr。正常每路仅探测一次，各路并行；有效 JSON 不会因 stderr 诊断文字而发生位置解析错误。触觉灰度抓帧共用的进程捕获也避免 stderr 污染像素数据。
 
 原有 QC 全部保留：必需文件非空，主摄在位/SN/标定缓存，ffprobe 可用及视频可读，metadata 视频条目及时间字段，有效跨度最小 0.2 秒，各路跨度差最大 5 秒，Fays MCAP topic/消息/有效跨度与 IMU 尾部、encoder 同侧最晚视频尾部覆盖（最大落后 1 秒），双目单次连续掉帧超过 3 帧，触觉异常历史。录制进程/硬件异常、Ego finalize/拉取、stereo finalize/merge、目录 rename 等既有失败判定和优先级不变；既有失败短路语义也不变。
+
+正式停录触觉检测导出同次 C++ 判定的 mask（普通残差为过滤后的实心核心，结构损坏为不匹配块）；不改变损坏阈值或三次历史规则。处于告警状态且本次仍损坏的短期/长期比较按 episode 汇成一组，原子写入 tactile_state/latest_alarm.json，后续告警组覆盖旧组；无新告警保留历史。Web 概览仅在当前黄灯告警且 SN 匹配时显示 SN、位置、基线类型、episode/时间及盖板底图叠加红色半透明 mask 的 PNG；正常或断连时隐藏，底层以只读接口提供图像，固定尺寸/白名单校验并绑定组 ID，避免覆盖期间混看不同组。仅保留一个诊断 JSON，不增加 metadata 字段；最多 8 张 160×120 mask，不累积历史文件。

@@ -64,7 +64,8 @@ struct TactileFrameMetrics
 };
 
 TactileFrameMetrics computeTactileFrameMetrics(const std::vector<uint8_t> &baseline,
-                                                const std::vector<uint8_t> &current);
+                                                const std::vector<uint8_t> &current,
+                                                std::vector<uint8_t> *mask = nullptr);
 std::string formatTactileMetrics(const TactileFrameMetrics &metrics);
 
 }  // namespace DA::Ugripper::detail

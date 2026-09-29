@@ -139,7 +139,8 @@ double blockCorrelation(const std::vector<double> &first,
 }
 
 double matchingBlockRatio(const std::vector<double> &baseline,
-                          const std::vector<double> &candidate)
+                          const std::vector<double> &candidate,
+                          std::vector<uint8_t> *mismatchMask)
 {
     size_t matchingBlocks = 0;
     size_t totalBlocks = 0;
@@ -155,6 +156,12 @@ double matchingBlockRatio(const std::vector<double> &baseline,
                 kTactileBaselineBlockMinCorrelation)
             {
                 ++matchingBlocks;
+            }
+            else if (mismatchMask != nullptr)
+            {
+                for (int y = yBegin; y < yEnd; ++y)
+                    for (int x = xBegin; x < xEnd; ++x)
+                        (*mismatchMask)[static_cast<size_t>(y) * kWidth + x] = 255;
             }
             ++totalBlocks;
         }
@@ -489,7 +496,7 @@ struct SolidCoreResult
     size_t droppedCurveComponents = 0;
 };
 
-SolidCoreResult countSolidCorePixels(const std::vector<uint8_t> &rawMask)
+SolidCoreResult countSolidCorePixels(const std::vector<uint8_t> &rawMask, std::vector<uint8_t> *mask)
 {
     std::vector<uint8_t> neighborMask(rawMask.size(), 0);
     for (int y = 0; y < kTactileFrameHeight; ++y)
@@ -604,6 +611,9 @@ SolidCoreResult countSolidCorePixels(const std::vector<uint8_t> &rawMask)
             else
             {
                 result.solidCorePixels += componentCorePixels;
+                if (mask != nullptr)
+                    for (const size_t pixel : stack)
+                        if (coreMask[pixel] != 0) (*mask)[pixel] = 255;
             }
         }
     }
@@ -613,8 +623,10 @@ SolidCoreResult countSolidCorePixels(const std::vector<uint8_t> &rawMask)
 }  // namespace
 
 TactileFrameMetrics computeTactileFrameMetrics(const std::vector<uint8_t> &baseline,
-                                                const std::vector<uint8_t> &current)
+                                                const std::vector<uint8_t> &current,
+                                                std::vector<uint8_t> *mask)
 {
+    if (mask != nullptr) mask->assign(kTactileFrameBytes, 0);
     TactileFrameMetrics metrics;
     if (baseline.size() != kTactileFrameBytes || current.size() != kTactileFrameBytes)
     {
@@ -662,7 +674,7 @@ TactileFrameMetrics computeTactileFrameMetrics(const std::vector<uint8_t> &basel
     const std::vector<double> &selectedCandidate =
         metrics.toneLutApplied ? toneMappedCurrent : alignment.frame;
     metrics.baselineMatchingBlockRatio =
-        matchingBlockRatio(baselineValues, selectedCandidate);
+        matchingBlockRatio(baselineValues, selectedCandidate, mask);
     metrics.gain = selectedEvaluation.gain;
     metrics.offset = selectedEvaluation.offset;
     metrics.residualMean = selectedEvaluation.residualMean;
@@ -688,6 +700,7 @@ TactileFrameMetrics computeTactileFrameMetrics(const std::vector<uint8_t> &basel
         metrics.maxSolidCoreComponentPixels = 0;
         metrics.solidCorePixels = 0;
         metrics.damaged = false;
+        if (mask != nullptr) std::fill(mask->begin(), mask->end(), 0);
         return metrics;
     }
     if (lowGlobalCorrelation)
@@ -704,6 +717,7 @@ TactileFrameMetrics computeTactileFrameMetrics(const std::vector<uint8_t> &basel
         return metrics;
     }
 
+    if (mask != nullptr) std::fill(mask->begin(), mask->end(), 0);
     std::vector<double> lowFrequencyDiff(baseline.size(), 0.0);
     std::vector<double> localResidual;
     std::vector<uint8_t> baselineEdges;
@@ -747,7 +761,7 @@ TactileFrameMetrics computeTactileFrameMetrics(const std::vector<uint8_t> &basel
     metrics.rawResidualArea =
         static_cast<double>(rawResidualMaskCount) / static_cast<double>(baseline.size());
 
-    const SolidCoreResult coreResult = countSolidCorePixels(rawResidualMask);
+    const SolidCoreResult coreResult = countSolidCorePixels(rawResidualMask, mask);
     metrics.maxResidualComponentPixels = coreResult.maxComponentPixels;
     metrics.maxSolidCoreComponentPixels = coreResult.maxSolidCoreComponentPixels;
     metrics.solidCorePixels = coreResult.solidCorePixels;
