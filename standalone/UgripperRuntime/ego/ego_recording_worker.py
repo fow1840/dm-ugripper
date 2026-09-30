@@ -902,7 +902,9 @@ def read_serial_time_sync(adb: Adb) -> dict:
               "threshold_ms": 5.0, "updated_at_ms": now_ms()}
     port = ""
     try:
-        forward = adb.run("forward", "tcp:0", "tcp:8080", timeout=3)
+        # Bundled ADB can wait 3s before acknowledging a cold server start.
+        # Allow startup overhead so killing the client does not abort the server's ACK.
+        forward = adb.run("forward", "tcp:0", "tcp:8080", timeout=5)
         port = forward.stdout.strip()
         if forward.returncode or not port.isdigit() or not 0 < int(port) < 65536:
             port = ""
