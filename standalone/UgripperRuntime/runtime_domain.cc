@@ -852,6 +852,16 @@ bool RecordingOrchestrator::StartRecording(bool reset_recording, std::string* er
                         "ego recording startup rollback failed: " +
                             (ego_stop_error.empty() ? std::string("unknown error") : ego_stop_error));
             }
+            // Stop now starts a child asynchronously; rollback must join it
+            // before releasing the recording lock or preparing another episode.
+            if (dependencies_.ego.wait_for_finalize != nullptr)
+            {
+                std::string finalize_error;
+                std::string finalize_error_type;
+                if (!dependencies_.ego.wait_for_finalize(state_.current_episode_dir,
+                        options_.stereo_finalize_timeout_ms, &finalize_error, &finalize_error_type))
+                    CallLog(dependencies_.logs.log_warn, "ego startup rollback finalize failed: " + finalize_error);
+            }
             ego_started_for_episode = false;
         };
 
@@ -1225,6 +1235,25 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     CallLog(dependencies_.logs.log_info,
             "[STOP_DIAG] stop phase begin: reason=" + reason + " episode_dir=" + state_.current_episode_dir);
 
+    bool ego_stop_ok = true;
+    std::string ego_failure_error;
+    std::string ego_failure_error_type;
+    if (dependencies_.ego.stop_recording != nullptr)
+    {
+        std::string ego_stop_error;
+        ego_stop_ok = dependencies_.ego.stop_recording(
+            state_.current_episode_dir, stop_system_time_us, &ego_stop_error);
+        if (!ego_stop_ok)
+        {
+            ego_failure_error = ego_stop_error.empty()
+                                    ? std::string("ego recording stop failed")
+                                    : ego_stop_error;
+            CallLog(dependencies_.logs.log_warn,
+                    "ego recording stop failed: " +
+                        ego_failure_error);
+        }
+    }
+
     std::string stereo_error;
     bool stereo_stop_ok = true;
     if (options_.stereo_enabled)
@@ -1309,25 +1338,6 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     if (dependencies_.feedback.set_led_state != nullptr)
     {
         dependencies_.feedback.set_led_state(RuntimeLedState::Writing, 0.0);
-    }
-
-    bool ego_stop_ok = true;
-    std::string ego_failure_error;
-    std::string ego_failure_error_type;
-    if (dependencies_.ego.stop_recording != nullptr)
-    {
-        std::string ego_stop_error;
-        ego_stop_ok = dependencies_.ego.stop_recording(
-            state_.current_episode_dir, stop_system_time_us, &ego_stop_error);
-        if (!ego_stop_ok)
-        {
-            ego_failure_error = ego_stop_error.empty()
-                                    ? std::string("ego recording stop failed")
-                                    : ego_stop_error;
-            CallLog(dependencies_.logs.log_warn,
-                    "ego recording stop failed: " +
-                        ego_failure_error);
-        }
     }
 
     const int64_t write_phase_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;

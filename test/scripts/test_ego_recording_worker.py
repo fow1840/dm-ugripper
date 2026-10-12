@@ -2,6 +2,9 @@
 import importlib.util
 import argparse
 import json
+import multiprocessing
+import threading
+import time
 import subprocess
 import tempfile
 import unittest
@@ -1000,6 +1003,199 @@ class EgoRecordingWorkerTest(unittest.TestCase):
         self.assertEqual(error_type, "ego_disconnected")
         sync.assert_not_called()
         sleep.assert_called_once_with(WORKER.FINAL_SYNC_RETRY_INTERVAL_SEC)
+
+
+class EgoStopDeadlineTests(unittest.TestCase):
+    def args(self, root, budget=60):
+        episode = Path(root) / "episode_0001-temp"
+        status_file = episode / "ego" / "ego_sync.json"
+        WORKER.write_status(status_file, {"status": "recording", "serial": "test",
+            "remote_root": "/remote", "remote_episode": "episode_0001-temp"})
+        return argparse.Namespace(episode_dir=episode, status_file=status_file,
+                                  serial="test", finalize_timeout=budget, interval=0.01)
+
+    def test_slow_final_sync_cannot_succeed_after_shared_deadline(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = self.args(root)
+            clock = [0.0]
+            def slow_sync(*unused, **kwargs):
+                clock[0] += 61
+                return {}
+            adb = mock.Mock()
+            adb.run.return_value = subprocess.CompletedProcess([], 0, "ok", "")
+            with mock.patch.object(WORKER, "Adb", return_value=adb), \
+                 mock.patch.object(WORKER, "adb_device_ready", return_value=(True, "")), \
+                 mock.patch.object(WORKER, "remote_dir_exists", side_effect=[False, True]), \
+                 mock.patch.object(WORKER, "sync_episode_once", side_effect=slow_sync), \
+                 mock.patch.object(WORKER, "recover_finalized_episode_files") as recovery, \
+                 mock.patch.object(WORKER.time, "monotonic", side_effect=lambda: clock[0]), \
+                 mock.patch.object(WORKER, "ugripper_log"):
+                self.assertEqual(WORKER.run_stop(args), 1)
+            recovery.assert_not_called()
+            status = WORKER.read_status(args.status_file)
+            self.assertEqual(status["status"], "finalize_timeout")
+            self.assertEqual(status["error_type"], "ego_pull_incomplete")
+
+    def test_adb_timeout_is_clamped_to_remaining_budget(self):
+        adb = WORKER.Adb.__new__(WORKER.Adb)
+        adb.bin = "adb"
+        adb.serial = "test"
+        with mock.patch.object(WORKER.time, "monotonic", return_value=10), \
+             mock.patch.object(WORKER.subprocess, "run") as run, \
+             WORKER.operation_budget(12):
+            adb.run("shell", "stat", timeout=8)
+            self.assertEqual(run.call_args.kwargs["timeout"], 2)
+        with mock.patch.object(WORKER.time, "monotonic", return_value=12), \
+             mock.patch.object(WORKER.subprocess, "check_output") as pull, \
+             WORKER.operation_budget(12):
+            with self.assertRaises(WORKER.StopDeadlineExceeded):
+                adb.exec_out_bytes("remote", 0, 100)
+            pull.assert_not_called()
+
+    def test_expired_transfer_stops_before_next_file(self):
+        clock = [0.0]
+        def first_file(*unused, **kwargs):
+            clock[0] = 10
+            return 1
+        with mock.patch.object(WORKER.time, "monotonic", side_effect=lambda: clock[0]), \
+             mock.patch.object(WORKER, "sync_one_file", side_effect=first_file) as sync, \
+             WORKER.operation_budget(10):
+            with self.assertRaises(WORKER.StopDeadlineExceeded):
+                WORKER.sync_episode_once(object(), "/remote", "episode", Path("unused"))
+        self.assertEqual(sync.call_count, 1)
+
+    def test_missing_remote_directories_publish_timeout_instead_of_crashing(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = self.args(root, 0.03)
+            adb = mock.Mock()
+            adb.run.return_value = subprocess.CompletedProcess([], 0, "ok", "")
+            with mock.patch.object(WORKER, "Adb", return_value=adb), \
+                 mock.patch.object(WORKER, "adb_device_ready", return_value=(True, "")), \
+                 mock.patch.object(WORKER, "remote_dir_exists", return_value=False), \
+                 mock.patch.object(WORKER, "continuous_time_sync_status", return_value={"updated_monotonic_s": 1}), \
+                 mock.patch.object(WORKER, "ugripper_log"):
+                WORKER.run_stop(args)
+            status = WORKER.read_status(args.status_file)
+            self.assertEqual(status["status"], "finalize_timeout")
+            self.assertNotIn("last_sync_sample", status["error"])
+
+    def test_delayed_start_preserves_pending_stop_and_never_broadcasts_start(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = self.args(root)
+            WORKER.write_json_atomic(WORKER.stop_request_path(args.status_file),
+                                    {"deadline_monotonic_s": time.monotonic() + 60})
+            with mock.patch.object(WORKER, "detect_ego") as detect:
+                self.assertEqual(WORKER.run_start(args), 0)
+            detect.assert_not_called()
+            self.assertTrue(WORKER.stop_request_path(args.status_file).exists())
+
+    def test_drain_timeout_does_not_overwrite_active_owner_status(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = self.args(root, 0.02)
+            original = args.status_file.read_bytes()
+            adb = mock.Mock()
+            adb.run.return_value = subprocess.CompletedProcess([], 0, "ok", "")
+            with WORKER.episode_sync_owner(args.status_file), \
+                 mock.patch.object(WORKER, "Adb", return_value=adb), \
+                 mock.patch.object(WORKER, "adb_device_ready", return_value=(True, "")), \
+                 mock.patch.object(WORKER, "finish_stop") as finish, \
+                 mock.patch.object(WORKER, "ugripper_log"):
+                self.assertEqual(WORKER.run_stop(args), 1)
+            finish.assert_not_called()
+            self.assertEqual(args.status_file.read_bytes(), original)
+            self.assertTrue(WORKER.stop_request_path(args.status_file).exists())
+
+    def test_cleanup_uses_original_stop_deadline_and_retains_remote_on_expiry(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = self.args(root)
+            args.deadline_monotonic = 10
+            WORKER.write_status(args.status_file, {"status": "finalized", "serial": "test",
+                "remote_root": "/remote", "remote_episode": "episode_0001"})
+            adb = mock.Mock()
+            with mock.patch.object(WORKER.time, "monotonic", return_value=10), \
+                 mock.patch.object(WORKER, "Adb", return_value=adb), \
+                 mock.patch.object(WORKER, "remote_dir_exists", return_value=True), \
+                 mock.patch.object(WORKER, "remove_remote_episode") as delete, \
+                 mock.patch.object(WORKER, "ugripper_log"):
+                self.assertEqual(WORKER.run_cleanup(args), 1)
+            delete.assert_not_called()
+            adb.run.assert_not_called()
+            status = WORKER.read_status(args.status_file)
+            self.assertEqual(status["status"], "finalized")
+            self.assertEqual(status["remote_cleanup"]["status"], "error")
+            self.assertIn("deadline", status["remote_cleanup"]["error"])
+
+    def test_stop_broadcast_precedes_drain_and_final_writer_waits_for_owner(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = self.args(root, 3)
+            ctx = multiprocessing.get_context("fork")
+            copying = ctx.Event()
+            release = ctx.Event()
+            rounds = ctx.Value("i", 0)
+            payload = args.episode_dir / "ego" / "sensor.mcap"
+            def incremental_child():
+                adb = mock.Mock(serial="test")
+                adb.run.return_value = subprocess.CompletedProcess([], 0, "ok", "")
+                def copy(*unused, **kwargs):
+                    rounds.value += 1
+                    payload.write_bytes(b"first")
+                    copying.set()
+                    if not release.wait(2):
+                        raise RuntimeError("test drain release missing")
+                    with payload.open("ab") as output:
+                        output.write(b"tail")
+                        output.flush()
+                        WORKER.os.fsync(output.fileno())
+                    return {}
+                with mock.patch.object(WORKER, "detect_ego", return_value=(adb, {})), \
+                     mock.patch.object(WORKER, "sync_ego_time", return_value={"status": "ok"}), \
+                     mock.patch.object(WORKER, "recover_previous_recording"), \
+                     mock.patch.object(WORKER, "snapshot_temp_episodes", return_value={}), \
+                     mock.patch.object(WORKER, "set_ego_video_codec", return_value={}), \
+                     mock.patch.object(WORKER, "find_new_temp_episodes", return_value=[("/remote", "episode_0001-temp")]), \
+                     mock.patch.object(WORKER, "sync_episode_once", side_effect=copy), \
+                     mock.patch.object(WORKER, "continuous_time_sync_status", return_value={"updated_monotonic_s": 1}), \
+                     mock.patch.object(WORKER, "ugripper_log"):
+                    args.codec = "h264"
+                    args.detect_timeout = 1
+                    raise SystemExit(WORKER.run_start(args))
+            child = ctx.Process(target=incremental_child)
+            child.start()
+            self.assertTrue(copying.wait(2))
+            broadcast = threading.Event()
+            adb = mock.Mock()
+            def broadcast_reply(*unused, **kwargs):
+                broadcast.set()
+                return subprocess.CompletedProcess([], 0, "ok", "")
+            adb.run.side_effect = broadcast_reply
+            def finish(*unused):
+                self.assertTrue(broadcast.is_set())
+                self.assertEqual(payload.read_bytes(), b"firsttail")
+                self.assertEqual(rounds.value, 1)
+                return 0
+            def allow_drain():
+                if broadcast.wait(1):
+                    until = time.monotonic() + 1
+                    while not WORKER.stop_request_path(args.status_file).exists() and time.monotonic() < until:
+                        time.sleep(0.005)
+                release.set()
+            releaser = threading.Thread(target=allow_drain)
+            releaser.start()
+            try:
+                with mock.patch.object(WORKER, "Adb", return_value=adb), \
+                     mock.patch.object(WORKER, "adb_device_ready", return_value=(True, "")), \
+                     mock.patch.object(WORKER, "finish_stop", side_effect=finish), \
+                     mock.patch.object(WORKER, "ugripper_log"):
+                    self.assertEqual(WORKER.run_stop(args), 0)
+            finally:
+                release.set()
+                releaser.join(2)
+                child.join(2)
+                if child.is_alive():
+                    child.terminate()
+                    child.join(2)
+            self.assertEqual(child.exitcode, 0)
+            self.assertEqual(rounds.value, 1)
 
 
 if __name__ == "__main__":

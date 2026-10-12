@@ -84,6 +84,7 @@ struct RecordingHarness
     bool write_lock_ok = true;
     bool sync_log_ok = true;
     bool ready_before_log_sync = false;
+    bool workers_stopped_before_ego_request = false;
     std::string prepare_error = "prepare episode failed";
     std::string validate_error = "episode validation failed";
     std::string merge_error = "merge episode info failed";
@@ -228,6 +229,7 @@ struct RecordingHarness
                          const std::lock_guard<std::mutex> lock(worker_mutex);
                          const char* worker_name =
                              worker == WorkerName::CameraRecorder ? "camera_recorder" : "sensor_recorder";
+                         if (ego_stop_calls == 0) workers_stopped_before_ego_request = true;
                          stop_reasons.push_back(std::string(worker_name) + ":" + reason);
                          worker_status[worker].running = false;
                          worker_status[worker].state = ProcessState::ExitedExpected;
@@ -341,6 +343,7 @@ struct RecordingHarness
              .logs = {
                  .log_info =
                      [this](const std::string& message) {
+                         const std::lock_guard<std::mutex> lock(worker_mutex);
                          logs.push_back("I:" + message);
                      },
                  .log_warn =
@@ -934,6 +937,18 @@ TEST(RecordingOrchestratorTest, StopRecordingMergeFailureMapsToValidationFailed)
     EXPECT_EQ(harness.recovery_commands.back(), "validation_failed");
     EXPECT_EQ(harness.last_validation_log, "episode info merge failed");
     EXPECT_EQ(harness.sync_reason, "video stop");
+}
+
+TEST(RecordingOrchestratorTest, RequestsEgoStopBeforeWaitingForLocalWorkers)
+{
+    RecordingHarness harness;
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+    ASSERT_TRUE(orchestrator.StopRecording(false, "concurrent stop"));
+    EXPECT_EQ(harness.ego_stop_calls, 1);
+    EXPECT_FALSE(harness.workers_stopped_before_ego_request);
+    EXPECT_EQ(harness.ego_finalize_calls, 1);
+    EXPECT_EQ(harness.ego_cleanup_calls, 1);
 }
 
 }  // namespace

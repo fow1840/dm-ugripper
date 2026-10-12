@@ -503,34 +503,26 @@ bool RecordRuntime::stopEgoRecording(const std::string &episodeDir,
                                      int64_t,
                                      std::string *errorMessage)
 {
-    const auto workerStopStartMs = currentSteadyMs();
-    if (egoRecordingWorker_.has_value())
-    {
-        std::string ignoredError;
-        egoRecordingWorker_->Stop(
-            DA::Ugripper::ProcessStopMode::SigTermThenKill,
-            1500,
-            &ignoredError);
-        egoRecordingWorker_.reset();
-    }
-    DM_LOG_INFO("[STOP_DIAG] ego incremental worker stopped: elapsed_ms={}",
-                currentSteadyMs() - workerStopStartMs);
-
     if (!fs::exists(options_.egoRecordingScript))
     {
         if (errorMessage != nullptr)
-        {
             *errorMessage = "ego recording script not found: " + options_.egoRecordingScript;
-        }
         return false;
     }
-
-    const auto stopStartMs = currentSteadyMs();
-    const bool stopped = runCommandSync(egoWorkerArgs(
-        options_.egoRecordingScript, "stop", episodeDir, "", egoBoundSerial_));
-    DM_LOG_INFO("[STOP_DIAG] ego stop worker finished: ok={} elapsed_ms={}",
-                stopped, currentSteadyMs() - stopStartMs);
-    return stopped;
+    // STOP broadcasts immediately in this child, then waits for the incremental
+    // owner's current round. Camera/sensor shutdown proceeds concurrently.
+    egoStopDeadlineMs_ = currentSteadyMs() + 60000;
+    egoStopWorker_.emplace("ego_stop_worker");
+    auto args = egoWorkerArgs(options_.egoRecordingScript, "stop", episodeDir, "", egoBoundSerial_);
+    args.insert(args.end(), {"--finalize-timeout", "60", "--deadline-monotonic",
+                            std::to_string(egoStopDeadlineMs_ / 1000.0)});
+    if (!egoStopWorker_->Start(args, {}, errorMessage))
+    {
+        egoStopWorker_.reset();
+        return false;
+    }
+    DM_LOG_INFO("[STOP_DIAG] ego stop worker started: pid={}", egoStopWorker_->GetPid());
+    return true;
 }
 
 bool RecordRuntime::cleanupEgoRemote(const std::string &episodeDir,
@@ -548,8 +540,26 @@ bool RecordRuntime::cleanupEgoRemote(const std::string &episodeDir,
         }
         return false;
     }
-    return runCommandSync(egoWorkerArgs(
-        options_.egoRecordingScript, "cleanup", episodeDir, "", egoBoundSerial_));
+    const auto now = currentSteadyMs();
+    if (now >= egoStopDeadlineMs_)
+    {
+        if (errorMessage != nullptr) *errorMessage = "ego remote cleanup skipped: stop deadline exceeded";
+        return false;
+    }
+    DA::Ugripper::SubprocessHandle cleanupWorker("ego_cleanup_worker");
+    auto args = egoWorkerArgs(options_.egoRecordingScript, "cleanup", episodeDir, "", egoBoundSerial_);
+    args.insert(args.end(), {"--deadline-monotonic", std::to_string(egoStopDeadlineMs_ / 1000.0)});
+    if (!cleanupWorker.Start(args, {}, errorMessage)) return false;
+    const auto started = currentSteadyMs();
+    const int remainingMs = started < egoStopDeadlineMs_
+        ? static_cast<int>(egoStopDeadlineMs_ - started) : 0;
+    if (!cleanupWorker.Wait(remainingMs))
+    {
+        cleanupWorker.Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
+        if (errorMessage != nullptr) *errorMessage = "ego remote cleanup deadline exceeded";
+        return false;
+    }
+    return cleanupWorker.GetLastExitCode() == 0;
 }
 
 bool RecordRuntime::loadEgoBinding()
@@ -856,7 +866,7 @@ void RecordRuntime::clearEgoBindingFault()
 }
 
 bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
-                                       int timeoutMs,
+                                       int,
                                        std::string *errorMessage,
                                        std::string *errorType)
 {
@@ -864,28 +874,58 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
     {
         errorType->clear();
     }
+    const auto stopStartMs = currentSteadyMs();
+    bool stopWorkerOk = false;
+    if (egoStopWorker_.has_value())
+    {
+        const auto now = currentSteadyMs();
+        const int remainingMs = now < egoStopDeadlineMs_
+            ? static_cast<int>(egoStopDeadlineMs_ - now) : 0;
+        const bool exited = !egoStopWorker_->IsRunning() || egoStopWorker_->Wait(remainingMs);
+        stopWorkerOk = exited && egoStopWorker_->GetLastExitCode() == 0;
+        if (!exited)
+            egoStopWorker_->Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
+        egoStopWorker_.reset();
+        if (!stopWorkerOk && errorMessage != nullptr)
+            *errorMessage = exited ? "ego stop worker exited with failure" : "ego stop worker deadline exceeded";
+    }
+    if (egoRecordingWorker_.has_value())
+    {
+        // The stop child holds the writer lock through finalization. A healthy
+        // incremental owner has already drained and exited before that lock moves.
+        if (egoRecordingWorker_->IsRunning() && !egoRecordingWorker_->Wait(1000))
+        {
+            egoRecordingWorker_->Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
+            stopWorkerOk = false;
+        }
+        egoRecordingWorker_.reset();
+    }
+    const fs::path egoDir = fs::path(episodeDir) / "ego";
+    for (const auto *name : {"ego_sync.stop-request.json", "ego_sync.sync-lock"})
+    {
+        std::error_code removeError;
+        fs::remove(egoDir / name, removeError);
+        if (removeError) DM_LOG_WARN("failed to remove ego handoff file {}: {}", name, removeError.message());
+    }
+    DM_LOG_INFO("[STOP_DIAG] ego stop worker joined: ok={} elapsed_ms={}",
+                stopWorkerOk, currentSteadyMs() - stopStartMs);
+    // Even without a local Ego START, join the insurance STOP child before Ready.
     if (!egoRecordingAttempted_)
     {
         if (isEgoRequired() && errorMessage != nullptr)
-        {
             *errorMessage = "required ego recording was not attempted";
-        }
         if (isEgoRequired() && errorType != nullptr)
-        {
             *errorType = DA::Ugripper::kErrorTypeEgoPullIncomplete;
-        }
         return !isEgoRequired();
     }
     const fs::path statusPath = fs::path(episodeDir) / "ego" / kEgoSyncStatusFileName;
-    const uint64_t startMs = currentSteadyMs();
-    while ((currentSteadyMs() - startMs) < static_cast<uint64_t>(std::max(timeoutMs, 0)))
     {
         json status = json::object();
         std::string loadError;
         if (loadJsonFile(statusPath.string(), &status, &loadError) && status.is_object())
         {
             const std::string state = status.value("status", std::string());
-            if (state == "finalized")
+            if (state == "finalized" && stopWorkerOk)
             {
                 return true;
             }
@@ -929,12 +969,11 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
                 return false;
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(kEgoFinalizeWaitPollMs));
     }
 
     if (errorMessage != nullptr)
     {
-        *errorMessage = "timed out waiting for ego finalize status";
+        if (errorMessage->empty()) *errorMessage = "ego stop worker did not publish a successful terminal status";
     }
     if (errorType != nullptr)
     {

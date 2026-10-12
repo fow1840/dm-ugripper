@@ -121,9 +121,9 @@ void RecordRuntime::maintainFirmwareStatus()
             cache = {};
         }
         // Serial ownership stays with the HMI driver. Never pause its I/O for
-        // version queries during recording; retries are bounded per connection.
+        // version queries during recording; each query is bounded and retries are rate limited.
         if (connected && !isRecordingActive() && cache.version.empty() &&
-            cache.attempts < 3 && now >= cache.nextAttemptMs)
+            now >= cache.nextAttemptMs)
         {
             ++cache.attempts;
             cache.nextAttemptMs = now + 30000;
@@ -139,8 +139,7 @@ void RecordRuntime::maintainFirmwareStatus()
             {"serial", connected ? gripperRuntimeStates_[gripperStateIndexForSide(side)].serialNumber : ""},
             {"connected", connected},
             {"checked_at", cache.checkedAtMs / 1000.0},
-            {"status", !connected ? "disconnected" : !cache.version.empty() ? "ready" :
-                       cache.attempts >= 3 ? "unavailable" : "pending"},
+            {"status", !connected ? "disconnected" : !cache.version.empty() ? "ready" : "pending"},
         };
 
         std::string iserial;

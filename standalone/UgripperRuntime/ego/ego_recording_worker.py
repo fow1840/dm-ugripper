@@ -10,6 +10,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import signal
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -65,6 +66,79 @@ SXR_PROPS = {
 }
 
 
+
+# One monotonic budget covers broadcast, cooperative drain and final transfer.
+_OPERATION_DEADLINE = None
+_INCREMENTAL_STOP_REQUESTED = False
+_INCREMENTAL_STATUS_FILE = None
+
+
+class StopDeadlineExceeded(TimeoutError):
+    pass
+
+
+def check_operation_budget() -> None:
+    if _OPERATION_DEADLINE is not None and time.monotonic() >= _OPERATION_DEADLINE:
+        raise StopDeadlineExceeded("Ego stop deadline exceeded")
+
+
+def operation_timeout(timeout: float) -> float:
+    if _OPERATION_DEADLINE is None:
+        return timeout
+    remaining = _OPERATION_DEADLINE - time.monotonic()
+    if remaining <= 0:
+        raise StopDeadlineExceeded("Ego stop deadline exceeded")
+    return min(timeout, remaining)
+
+
+@contextmanager
+def operation_budget(deadline: float):
+    global _OPERATION_DEADLINE
+    previous = _OPERATION_DEADLINE
+    _OPERATION_DEADLINE = deadline
+    try:
+        yield
+    finally:
+        _OPERATION_DEADLINE = previous
+
+
+def stop_request_path(status_file: Path) -> Path:
+    return status_file.with_suffix(".stop-request.json")
+
+
+@contextmanager
+def episode_sync_owner(status_file: Path, wait: bool = True):
+    status_file.parent.mkdir(parents=True, exist_ok=True)
+    with status_file.with_suffix(".sync-lock").open("a") as lock:
+        while True:
+            check_operation_budget()
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if not wait:
+                    raise
+                time.sleep(operation_timeout(0.05))
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def incremental_stop_requested(status_file: Path) -> bool:
+    global _OPERATION_DEADLINE
+    request = read_status(stop_request_path(status_file))
+    deadline = request.get("deadline_monotonic_s")
+    if type(deadline) in (int, float) and math.isfinite(deadline):
+        _OPERATION_DEADLINE = deadline
+    return bool(request) or _INCREMENTAL_STOP_REQUESTED
+
+
+def request_incremental_stop(_signal, _frame):
+    global _INCREMENTAL_STOP_REQUESTED
+    _INCREMENTAL_STOP_REQUESTED = True
+
+
 def now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -91,7 +165,7 @@ class Adb:
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=timeout,
+            timeout=operation_timeout(timeout),
             check=check,
         )
 
@@ -101,7 +175,7 @@ class Adb:
             f"dd if={remote_q} bs=4096 skip={offset} count={count} "
             "iflag=skip_bytes,count_bytes 2>/dev/null"
         )
-        return subprocess.check_output(self.command("exec-out", "sh", "-c", command), timeout=timeout)
+        return subprocess.check_output(self.command("exec-out", "sh", "-c", command), timeout=operation_timeout(timeout))
 
 
 def resolve_adb_bin() -> str:
@@ -116,10 +190,12 @@ def resolve_adb_bin() -> str:
                 [str(bundled), "version"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=3,
+                timeout=operation_timeout(3),
                 check=True,
             )
             return str(bundled)
+        except StopDeadlineExceeded:
+            raise
         except Exception:
             pass
 
@@ -902,7 +978,9 @@ def read_serial_time_sync(adb: Adb) -> dict:
               "threshold_ms": 5.0, "updated_at_ms": now_ms()}
     port = ""
     try:
-        forward = adb.run("forward", "tcp:0", "tcp:8080", timeout=3)
+        # Bundled ADB can wait 3s before acknowledging a cold server start.
+        # Allow startup overhead so killing the client does not abort the server's ACK.
+        forward = adb.run("forward", "tcp:0", "tcp:8080", timeout=5)
         port = forward.stdout.strip()
         if forward.returncode or not port.isdigit() or not 0 < int(port) < 65536:
             port = ""
@@ -1133,11 +1211,17 @@ def sync_episode_once(
 ) -> dict:
     copied = {}
     for file_name in FILES:
+        if _INCREMENTAL_STATUS_FILE is not None:
+            incremental_stop_requested(_INCREMENTAL_STATUS_FILE)
+        check_operation_budget()
         started = time.monotonic()
         file_timing = {}
         try:
             delta = sync_one_file(adb, remote_root, remote_episode, local_episode_dir, file_name, replace_shrunk=replace_shrunk, timings=file_timing if timings is not None else None)
+        except StopDeadlineExceeded:
+            raise
         except Exception as exc:
+            check_operation_budget()
             copied[file_name] = {"delta": 0, "error": str(exc)}
         else:
             copied[file_name] = {"delta": delta}
@@ -1301,6 +1385,7 @@ def refresh_final_mp4_header(
 def refresh_final_mp4_headers(adb: Adb, remote_root: str, remote_episode: str, local_episode_dir: Path) -> dict:
     details = {}
     for file_name in MP4_FILES:
+        check_operation_budget()
         try:
             details[file_name] = refresh_final_mp4_header(adb, remote_root, remote_episode, local_episode_dir, file_name)
         except Exception as exc:
@@ -1327,6 +1412,7 @@ class Mp4RepairReader:
         self.boxes_read = 0
 
     def read(self, offset: int, count: int) -> bytes:
+        check_operation_budget()
         if count < 0 or count > MP4_REPAIR_BLOCK_BYTES:
             raise ValueError("invalid MP4 read size")
         if offset < 0 or offset + count > self.size:
@@ -1492,10 +1578,13 @@ def repair_mp4_mdat_largesize(path: Path) -> dict:
 def repair_mp4_files(local_episode_dir: Path) -> dict:
     details = {}
     for file_name in MP4_FILES:
+        check_operation_budget()
         path = local_episode_dir / file_name
         try:
             details[file_name] = repair_mp4_mdat_largesize(path)
             ugripper_log("INFO", "MP4 repair check " + json.dumps(details[file_name], sort_keys=True), component="ego")
+        except StopDeadlineExceeded:
+            raise
         except Exception as exc:
             details[file_name] = {"file": file_name, "status": "error", "error": str(exc)}
     return details
@@ -1539,6 +1628,7 @@ def verify_remote_and_local_file_sizes(
     details = {}
     ok = True
     for file_name in FILES:
+        check_operation_budget()
         local_file = local_episode_dir / file_name
         local_size = local_file.stat().st_size if local_file.exists() else None
         remote_size = remote_file_size(adb, remote_path(remote_root, remote_episode, file_name))
@@ -1565,6 +1655,7 @@ def recover_finalized_episode_files(
     last_error = "remote/local ego file sizes do not match"
     last_error_type = "ego_pull_incomplete"
     for attempt in range(1, max(1, attempts) + 1):
+        check_operation_budget()
         ready, ready_error = adb_device_ready(adb)
         detail = {
             "attempt": attempt,
@@ -1637,6 +1728,14 @@ def remove_remote_episode(adb: Adb, remote_root: str, remote_episode: str) -> tu
 
 
 def run_cleanup(args: argparse.Namespace) -> int:
+    deadline = getattr(args, "deadline_monotonic", None)
+    if deadline is None:
+        deadline = time.monotonic() + getattr(args, "finalize_timeout", 60.0)
+    with operation_budget(deadline):
+        return _run_cleanup(args)
+
+
+def _run_cleanup(args: argparse.Namespace) -> int:
     cleanup_started = time.monotonic()
     status = read_status(args.status_file)
     status.setdefault("started_at_ms", now_ms())
@@ -1781,6 +1880,22 @@ def recover_previous_recording(adb: Adb, status: dict, status_file: Path) -> Non
 
 
 def run_start(args: argparse.Namespace) -> int:
+    global _INCREMENTAL_STOP_REQUESTED, _INCREMENTAL_STATUS_FILE, _OPERATION_DEADLINE
+    _INCREMENTAL_STOP_REQUESTED = False
+    _INCREMENTAL_STATUS_FILE = args.status_file
+    previous_deadline = _OPERATION_DEADLINE
+    with episode_sync_owner(args.status_file):
+        try:
+            # A delayed START child must not discard an already requested STOP.
+            if incremental_stop_requested(args.status_file):
+                return 0
+            return _run_start(args)
+        finally:
+            _INCREMENTAL_STATUS_FILE = None
+            _OPERATION_DEADLINE = previous_deadline
+
+
+def _run_start(args: argparse.Namespace) -> int:
     status = {
         "status": "starting",
         "phase": "start",
@@ -1837,6 +1952,11 @@ def run_start(args: argparse.Namespace) -> int:
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
 
+        if incremental_stop_requested(args.status_file):
+            status.update(phase="drained", updated_at_ms=now_ms())
+            write_status(args.status_file, status)
+            return 0
+
         result = adb.run("shell", "am", "broadcast", "-a", f"{PACKAGE}.START_RECORDING", "-p", app_package(adb), timeout=10)
         status["start_broadcast_returncode"] = result.returncode
         status["updated_at_ms"] = now_ms()
@@ -1892,7 +2012,7 @@ def run_start(args: argparse.Namespace) -> int:
 
         local_episode_dir = args.episode_dir / "ego"
         last_sync_sample = None
-        while True:
+        while not incremental_stop_requested(args.status_file):
             sync_episode_once(adb, remote_root, remote_episode, local_episode_dir)
             if app_package(adb) == PACKAGE:
                 sample = continuous_time_sync_status(adb)
@@ -1910,7 +2030,12 @@ def run_start(args: argparse.Namespace) -> int:
                         output.write(json.dumps(compact_time_sync(sample)) + "\n")
             status["updated_at_ms"] = now_ms()
             write_status(args.status_file, status)
+            if incremental_stop_requested(args.status_file):
+                break
             time.sleep(args.interval)
+        status.update(phase="drained", updated_at_ms=now_ms())
+        write_status(args.status_file, status)
+        return 0
     except KeyboardInterrupt:
         return 0
     except Exception as exc:
@@ -1923,6 +2048,28 @@ def run_start(args: argparse.Namespace) -> int:
 
 
 def run_stop(args: argparse.Namespace) -> int:
+    deadline = getattr(args, "deadline_monotonic", None)
+    if deadline is None:
+        deadline = time.monotonic() + args.finalize_timeout
+    try:
+        with operation_budget(deadline):
+            return _run_stop(args, deadline)
+    except Exception as exc:
+        # A drain timeout may leave the incremental owner writing its status.
+        # Do not race its atomic replace; Runtime treats this nonzero exit as failure.
+        try:
+            with episode_sync_owner(args.status_file, wait=False):
+                status = read_status(args.status_file)
+                status.update(status="finalize_timeout" if isinstance(exc, StopDeadlineExceeded) else "error",
+                              phase="done", error_type="ego_pull_incomplete", error=str(exc), updated_at_ms=now_ms())
+                write_status(args.status_file, status)
+        except BlockingIOError:
+            pass
+        ugripper_log("ERROR", str(exc), component="ego", error_code="UGR-82-05")
+        return 1
+
+
+def _run_stop(args: argparse.Namespace, deadline: float) -> int:
     status = read_status(args.status_file)
     status.setdefault("started_at_ms", now_ms())
     status.update({"phase": "stop", "updated_at_ms": now_ms()})
@@ -1934,12 +2081,16 @@ def run_stop(args: argparse.Namespace) -> int:
     adb = Adb(serial) if serial else None
     if adb is not None:
         adb.package = status.get("app", {}).get("package", PACKAGE)
+    # Publish before the broadcast so a delayed startup cannot send START
+    # after the insurance STOP. This does not wait for the incremental owner.
+    write_json_atomic(stop_request_path(args.status_file), {"deadline_monotonic_s": deadline})
     broadcast_started = time.monotonic()
     stop_attempts = []
     stop_succeeded = False
     last_failure_status = "not_found"
     last_error = "no SXR/SXR_1 ego device found during stop"
     for attempt in range(1, STOP_BROADCAST_ATTEMPTS + 1):
+        check_operation_budget()
         detail = {"attempt": attempt, "started_at_ms": now_ms()}
         try:
             if adb is None:
@@ -1987,13 +2138,36 @@ def run_stop(args: argparse.Namespace) -> int:
         stop_attempts.append(detail)
         status["stop_attempts"] = stop_attempts
         status["updated_at_ms"] = now_ms()
-        write_status(args.status_file, status)
         if stop_succeeded:
             break
         if attempt < STOP_BROADCAST_ATTEMPTS:
-            time.sleep(STOP_BROADCAST_RETRY_INTERVAL_SEC)
+            time.sleep(operation_timeout(STOP_BROADCAST_RETRY_INTERVAL_SEC))
 
     status.setdefault("stop_timings_ms", {})["stop_broadcast"] = round((time.monotonic() - broadcast_started) * 1000, 3)
+
+    drain_started = time.monotonic()
+    with episode_sync_owner(args.status_file):
+        latest = read_status(args.status_file)
+        # Preserve all samples written by the incremental owner during the drain.
+        latest.update(phase="stop", updated_at_ms=now_ms(), stop_attempts=stop_attempts)
+        latest.setdefault("stop_timings_ms", {}).update(status.get("stop_timings_ms", {}))
+        elapsed = round((time.monotonic() - drain_started) * 1000, 3)
+        latest["stop_timings_ms"]["incremental_drain"] = elapsed
+        ugripper_log("INFO", f"stop stage=incremental_drain elapsed_ms={elapsed}", component="ego")
+        remote_root = str(latest.get("remote_root") or remote_root).rstrip("/")
+        remote_episode = str(latest.get("remote_episode") or remote_episode)
+        recording_started = bool(remote_episode)
+        if recording_started and latest.get("status") == "error":
+            latest.update(phase="done", error_type="ego_pull_incomplete")
+            write_status(args.status_file, latest)
+            return 1
+        write_status(args.status_file, latest)
+        return finish_stop(args, adb, latest, stop_succeeded, recording_started,
+                           last_failure_status, last_error, remote_root, remote_episode, deadline)
+
+
+def finish_stop(args, adb, status, stop_succeeded, recording_started,
+                last_failure_status, last_error, remote_root, remote_episode, deadline):
 
     if not stop_succeeded:
         status["status"] = last_failure_status if recording_started else "not_found"
@@ -2026,7 +2200,7 @@ def run_stop(args: argparse.Namespace) -> int:
     local_episode_dir = args.episode_dir / "ego"
     final_episode = final_name(remote_episode)
     final_local_dir = args.episode_dir / "ego"
-    deadline = time.monotonic() + args.finalize_timeout
+    last_sync_sample = None
     while time.monotonic() < deadline:
         try:
             temp_exists = remote_dir_exists(adb, remote_root, remote_episode)
@@ -2066,7 +2240,7 @@ def run_stop(args: argparse.Namespace) -> int:
                         output.write(json.dumps(compact_time_sync(sample)) + "\n")
             status["updated_at_ms"] = now_ms()
             write_status(args.status_file, status)
-            time.sleep(args.interval)
+            time.sleep(operation_timeout(args.interval))
             continue
         if current_exists:
             with ego_stop_stage(status, "file_sync"):
@@ -2079,6 +2253,7 @@ def run_stop(args: argparse.Namespace) -> int:
                     timings=status.setdefault("stop_file_sync", {}),
                 )
         if current_remote == final_episode:
+            check_operation_budget()
             with ego_stop_stage(status, "verify_recovery"):
                 recovered, recovery_detail, recovery_error, recovery_error_type = recover_finalized_episode_files(
                     adb,
@@ -2109,10 +2284,13 @@ def run_stop(args: argparse.Namespace) -> int:
                     error_code="UGR-82-01" if recovery_error_type == "ego_disconnected" else "UGR-82-04",
                 )
                 return 1
+            check_operation_budget()
             with ego_stop_stage(status, "header_refresh"):
                 header_refresh_detail = refresh_final_mp4_headers(adb, remote_root, final_episode, final_local_dir)
+            check_operation_budget()
             with ego_stop_stage(status, "mp4_repair"):
                 repair_detail = repair_mp4_files(final_local_dir)
+            check_operation_budget()
             finalize_detail = summarize_finalize_repair(header_refresh_detail, repair_detail)
             if finalize_detail["status"] == "error":
                 status.update(status="error", phase="done", error_type="ego_pull_incomplete",
@@ -2137,7 +2315,7 @@ def run_stop(args: argparse.Namespace) -> int:
             return 0
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
-        time.sleep(args.interval)
+        time.sleep(operation_timeout(args.interval))
 
     status["status"] = "finalize_timeout"
     status["error_type"] = "ego_pull_incomplete"
@@ -2159,6 +2337,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interval", type=float, default=float(os.environ.get("UGRIPPER_EGO_SYNC_INTERVAL_SEC", "1")))
     parser.add_argument("--detect-timeout", type=float, default=15.0)
     parser.add_argument("--finalize-timeout", type=float, default=60.0)
+    parser.add_argument("--deadline-monotonic", type=float)
     parser.add_argument("--codec", choices=("h264", "h265"), default="h264")
     parser.add_argument("--speech-code", type=int, choices=(1302, 1003, 1203, 1204, 1205), default=1203)
     return parser.parse_args()
@@ -2182,6 +2361,7 @@ def main() -> int:
         raise SystemExit("--episode-dir and --status-file are required")
     args.episode_dir.mkdir(parents=True, exist_ok=True)
     if args.command == "start":
+        signal.signal(signal.SIGTERM, request_incremental_stop)
         return run_start(args)
     if args.command == "stop":
         return run_stop(args)

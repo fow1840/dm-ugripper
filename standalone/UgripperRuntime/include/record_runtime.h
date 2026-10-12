@@ -523,6 +523,8 @@ private:
     std::unique_ptr<DA::Ugripper::StereoSessionClient> stereoSessionClient_;
     std::unique_ptr<DA::Ugripper::ShutdownRequestPort> shutdownRequestPort_;
     std::optional<DA::Ugripper::SubprocessHandle> egoRecordingWorker_;
+    std::optional<DA::Ugripper::SubprocessHandle> egoStopWorker_;
+    uint64_t egoStopDeadlineMs_ = 0;
     bool egoRecordingAttempted_ = false;
     std::string egoBoundSerial_;
     bool egoBoundConnected_ = true;

@@ -40,7 +40,7 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 
 - SensorRecorder 任一侧初始化失败均取消起录；主运行时通过继承管道等待左右均已产生有效编码器样本，最多等待 5 秒，失败停止已启动的录制子进程并报 `encoder_init_failed` / `UGR-30-02`，不进入 Recording。
 - 采集过程中使用单调时钟监测有效样本，任一侧连续 3 秒无数据或发生串口断连，报 `encoder_stream_stale` / `UGR-30-07`，排空写队列、关闭 MCAP 后退出，主运行时自动停录并保存失败原因。设备节点仍存在不能替代数据健康检查；此故障不主动触发全局 USB 断电恢复。
-- 停录校验读取左右编码器末帧 Unix 时间，与同侧已启用视频的 Unix 起点加有效时长所得最晚末尾比较，最大允许落后 1 秒。topic/消息缺失、不可读、缺少参考时间或尾部不足报 `encoder_tail_missing` / `UGR-30-08`；适用于含双目与 `+nostereo` 两种包。该检查不替代逐帧 gap 深度校验。
+- 停录校验读取左右编码器末帧 Unix 时间，与同侧已启用视频的 Unix 起点加有效时长所得最晚末尾比较，最大允许落后 1 秒。topic/消息缺失、不可读、缺少参考时间或尾部不足报 `encoder_tail_missing` / `UGR-30-08`；适用于含双目与 `+nostereo` 两种包。该检查不替代逐帧 gap 深度校验。 查询要求 MCAP chunk 索引可用，只检查末尾最多 4 个 chunk；索引缺失或该窗口内找不到 encoder 消息直接报错，不回退全量消息扫描。
 
 - Web 时间同步测试按 `/etc/environment` 的 `DEVICE_SN` 小写选择当前设备数据目录，并显式传入毫秒表脚本；未配置 SN 时使用运行时相同的 `noname_device`。不依赖数据盘仅存在一个设备目录；状态轮询保留每组日志展开和滚动状态。
 ## 2. 安装布局与入口
@@ -58,7 +58,7 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - 持久化标定目录：`/etc/ugripper/config/calibration`
 - 日志目录：`/var/log/ugripper`
 - 运行日志镜像目录：`/mnt/data_disk/logs`
-- 每次停录收尾会将 systemd journal（系统服务、内核、USB 等）增量保存到 `/mnt/data_disk/logs/system_<device_sn>_<YYYYMMDD>.log`；游标保存在日志目录，支持重启后续写。journal 清理、游标失效或恢复读取时会按完整日志与已有内容去重后原子替换，避免重复；保存失败不影响停录。
+- 每次停录收尾同步保存 systemd journal 快照：以请求时刻为读取上界，正常只追加游标后的增量到 `/mnt/data_disk/logs/system_<device_sn>_<YYYYMMDD>.log`，不扫描/去重/重写旧文件。并发请求持锁串行等待，绝不遗留后台数据盘写入；journal 读取默认 10 秒超时，超时不提交部分输出或推进游标，该超时不截断必要的磁盘刷写。保留 `sync -f`，数据刷盘成功后才原子替换游标并刷写目录；停录期间保持 Writing，系统日志、Runtime 日志和目录刷写完成并释放录制锁后才恢复 Ready/播放 ready，日志保存或目录刷写失败进入错误态，不亮绿灯。单个当天系统日志及单次导出临时文件默认上限 100MiB，超限原子替换为最近约 75MiB 的完整行，留出追加空间，避免到达上限后每次停录都重写。可通过 `UGRIPPER_SYSTEM_LOG_MAX_BYTES` 调整上限、`UGRIPPER_SYSTEM_LOG_READ_TIMEOUT_S` 调整读取超时；可选 `--sync <epoch> <YYYYMMDD>` 供维护验证固定快照边界。游标丢失时读取本次开机日志恢复，不再全文件去重，因此恢复或中断追加后重试可能重复日志；增量追加加互斥锁，但不承诺读者看到完整旧/新文件的原子切换。
 - 终端硬件检查：`/usr/local/bin/hws`。HWS 与 Web 概览均显示 Ego 绑定状态、连接状态和绑定序列号，共用只读快照解析；绑定以 `/dev/shm/ugripper/ego_binding.json` 为准，连接要求状态快照序列号匹配且 15 秒内更新，否则显示未知。未绑定时连接显示未检测，不额外运行 ADB，也不把 USB 存储枚举当作 Ego 在线。
 - U 盘升级入口：`auto_update/usb_auto_update.sh`
 
@@ -68,11 +68,9 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 
 双目起录等待 MCAP 打开后再允许编码/IMU 提交。停录先禁止新的会话提交，通过共享/独占锁等待在途编码与 IMU 提交结束，刷新生产者本地批次并关闭视频输入；MCAP 写线程排空当前会话的本地批次与队列后关闭文件并确认，下一轮才可开始。进程退出也须等待生产者全部结束后让 MCAP 写线程退出，避免只因队列暂空而提前关闭。SDK 采集线程不持有编码收尾锁。
 
-- 每次停录收尾同步保存 systemd journal 快照：以请求时刻为读取上界，正常只追加游标后的增量到 `/mnt/data_disk/logs/system_<device_sn>_<YYYYMMDD>.log`，不扫描/去重/重写旧文件。并发请求持锁串行等待，绝不遗留后台数据盘写入；journal 读取默认 10 秒超时，超时不提交部分输出或推进游标，该超时不截断必要的磁盘刷写。保留 `sync -f`，数据刷盘成功后才原子替换游标并刷写目录；停录期间保持 Writing，系统日志、Runtime 日志和目录刷写完成并释放录制锁后才恢复 Ready/播放 ready，日志保存或目录刷写失败进入错误态，不亮绿灯。单个当天系统日志及单次导出临时文件默认上限 100MiB，超限原子替换为最近约 75MiB 的完整行，留出追加空间，避免到达上限后每次停录都重写。可通过 `UGRIPPER_SYSTEM_LOG_MAX_BYTES` 调整上限、`UGRIPPER_SYSTEM_LOG_READ_TIMEOUT_S` 调整读取超时；可选 `--sync <epoch> <YYYYMMDD>` 供维护验证固定快照边界。游标丢失时读取本次开机日志恢复，不再全文件去重，因此恢复或中断追加后重试可能重复日志；增量追加加互斥锁，但不承诺读者看到完整旧/新文件的原子切换。
-
-停录保持 Writing，视频、Ego 数据、metadata、系统日志与 Runtime 日志同步刷写和目录提交全部完成后才恢复 Ready；取消停录中途的 Ready，日志落盘失败进入错误态，不亮绿灯。
-
 Ego 停录 MP4 检查按 box 头读取并 seek 跳过媒体数据，普通 mdat 立即结束该兼容检查；64 位 mdat 长度异常时仅在文件尾做有界搜索，每块 64KiB、总读取最多 16MiB、最多解析 2048 个 box。只在 moov 结构及至 EOF 的后续 box 链可验证且候选唯一时修复 8 字节长度，随后同步 fsync 并回读；不能安全判断或刷盘失败则收尾失败、保留远端副本，不降级为成功。Ego 状态保存各停录阶段及逐文件补拉/fsync 耗时；MP4 检查记录读取量和耗时，Runtime 停录阶段与 flush 边界日志无需开启全局 PERF，超过 1 秒的单文件刷盘记录告警。同步刷盘等待仍可能超过循环检查期限，不能承诺固定停录时长。
+
+按现场反馈，部分停录蓝灯等待来自 Ego App：收到 STOP 后，App 生成 metadata 时通过厂商 SDK 查询头带固件版本，失败重试本次观察额外约 11.4 秒。该值不是固定延迟；需结合 App 日志区分其版本查询与 UGripper 的补拉、校验及刷盘耗时。测试清单见 `docs/v2.1.14-test-checklist.md`。
 
 ## 3. 模块总览
 | 模块 | 入口 | 当前职责 | 关键输入/输出 |
@@ -255,10 +253,10 @@ BMS 串口由蓝牙服务的 `update_bms_data` 独占采集，UGripper 不再打
 - encoder 连接会优先在 `1Mbps` 下做 3 次快速验证重试（总验证窗口约 `150ms`，目标控制在 `200ms` 内），仍无响应才回退 `115200`；若 `115200` 可响应，则切回 `1Mbps` 后再次验证。
 
 ### 6.4 停止录制
-1. `record_runtime` 并发停止普通录制模式下的 `camera_recorder` 与 `sensor_recorder`，降低两条独立链路顺序收尾带来的蓝灯等待。
+1. `record_runtime` 在进入 STOP 时立即异步启动 Ego stop worker（本条未启动 Ego 也发送保险 STOP），随后并发停止普通录制模式下的 `camera_recorder` 与 `sensor_recorder`，Ego 广播与本地停录重叠。
 2. 默认包同时发送 Fays `STOP` 并等待 stereo/Fays finalize；`+nostereo` 变体跳过这些动作。
 3. 先发送 `recording_stop`，随后立即切到 `writing`；`writing` 会抢占仍在播放的上一条提示。
-4. 若本条 episode 已拉起 Ego sidecar，则停止增量同步并完成 Ego finalize。STOP 广播最多发送 `3` 次，失败重试固定间隔 `100ms`，每次 ADB 状态、广播返回码和结果写入 `ego/ego_sync.json`；只要 Ego 已实际进入 recording，三次 STOP 全失败或设备消失都写 `ego_disconnected`，即使运行时绑定快照丢失也会使 episode 失败并进入 `ERROR_5`。finalize 后先按本地文件长度从 Ego 远端 offset 续传，落盘后核对全部远端/本地文件大小；不一致时重新检查远端数据并有限重试，远端缩小或本地大于远端时仅重拉异常文件。设备不可用归类 `ego_disconnected`，设备在线但远端文件缺失或重复拉取仍不一致归类 `ego_pull_incomplete`；绑定模式下两者均为录制硬失败。只有最终大小一致才尝试清理远端 episode，远端删除失败或 cleanup 跳过只记录状态，不覆盖主结果，也不单独使 episode 失败；不新增 MP4/MCAP 深度内容校验。
+4. Ego stop worker 不等待增量排空就广播 STOP，并通过请求文件通知增量 worker 协作退出；延迟启动的 start worker 检查请求后不得再发送 START。正常情况下增量 worker 完成当前轮文件拉取、同步落盘与状态写入，不进入下一轮，释放 episode 独占锁后才由收尾 worker 接管。录制中的增量同步与本地 recorder 并行，但单个 Ego worker 仍按文件顺序拉取，并未改为多文件并发。Runtime 从发起 STOP 起设置同一个 60 秒单调时钟截止时间，覆盖广播、排空、远端 rename 等待、尾部补拉/重试、核对、MP4 头刷新/修复与后续远端清理；ADB 每次调用按剩余预算限制。Runtime 等待子进程只使用剩余预算，退出后读取一次终态，取消额外的状态轮询等待。超时不报告 finalized；保险 STOP 也必须先回收子进程再返回。超时后可能增加信号升级和进程回收时间，磁盘 fsync/内核不可中断 I/O 不承诺硬性 60 秒完成。远端清理预算不足时跳过并保留副本。STOP 广播最多发送 `3` 次，失败重试固定间隔 `100ms`，每次 ADB 状态、广播返回码和结果写入 `ego/ego_sync.json`；只要 Ego 已实际进入 recording，三次 STOP 全失败或设备消失都写 `ego_disconnected`，即使运行时绑定快照丢失也会使 episode 失败并进入 `ERROR_5`。finalize 后先按本地文件长度从 Ego 远端 offset 续传，落盘后核对全部远端/本地文件大小；不一致时重新检查远端数据并有限重试，远端缩小或本地大于远端时仅重拉异常文件。设备不可用归类 `ego_disconnected`，设备在线但远端文件缺失或重复拉取仍不一致归类 `ego_pull_incomplete`；绑定模式下两者均为录制硬失败。只有最终大小一致才尝试清理远端 episode，远端删除失败或 cleanup 跳过只记录状态，不覆盖主结果，也不单独使 episode 失败；不新增 MP4/MCAP 深度内容校验。
 5. `writing` 阶段分阶段 flush 普通相机、左右 sensor、`calibration.json`、可选音频、ego 文件和最终 metadata；默认包还会 flush stereo/Fays 产物，`+nostereo` 变体不会。
 6. 生成最终 `metadata.json` 后执行稳定校验；视频探测结果尽量写入 `/dev/shm` timing 缓存供 metadata 复用。
 7. 停录硬校验完成后异步执行触觉实时 reference 与持久化 baseline 的单帧比较，不阻塞 stop 返回，也不反改本条 episode 的 `quality_check_status`。
