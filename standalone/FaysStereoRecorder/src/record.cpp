@@ -1660,6 +1660,12 @@ public:
         }
         std::unique_lock<std::shared_mutex> producerLock(recordingWriteMtx_);
         std::lock_guard<std::mutex> lock(recordingMtx_);
+        {
+            std::lock_guard<std::mutex> clockLock(clockMutex_);
+            // Readiness may have changed while taking the lifecycle locks.
+            if (!clockMapper_.Ready(SteadyNowNs())) return;
+            clockMapper_.SetRecording(true);
+        }
         const std::string normalizedOutputDir = NormalizeOutputDir(outputDir);
         const std::string mcapPath = normalizedOutputDir + mcapFileName_;
 
@@ -1715,6 +1721,11 @@ public:
             mcapControlQueue_.PushStop(stoppedSessionId).get();
         }
         drainingSession_.store(0, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> clockLock(clockMutex_);
+            // Old-session video and MCAP submissions are now fully drained.
+            clockMapper_.SetRecording(false);
+        }
         if (wasRecording) DM_LOG_DEBUG("[IMU] session stop id={} max_device_ns={} processed={} callback_drops={} config={}",
             stoppedSessionId, sessionMaxDeviceNs_.load(), imuProcessed_.load(), callbackDrops_.load(), configPath_);
         WriteRuntimeStatus(true);
@@ -2035,12 +2046,16 @@ private:
             if (rollback) ++imuRollbackCount_;
             if (lastImuTimestamp_ && sample.imu.timestamp > lastImuTimestamp_ + 10'000'000ULL) ++imuGapCount_;
             lastImuTimestamp_ = sample.imu.timestamp;
+            bool wallClockFault = false;
             {
                 std::lock_guard<std::mutex> lock(clockMutex_);
                 clockMapper_.Observe(sample.imu.timestamp, sample.steadyNs, sample.wallNs);
                 imuDelayed_.store(clockMapper_.Delayed());
                 imuClockResets_.store(clockMapper_.Resets());
+                wallClockFault = clockMapper_.WallClockFault();
             }
+            if (wallClockFault && !imuSessionFault_.exchange(true))
+                DM_LOG_ERROR_CODE("UGR-22-06", "[IMU] confirmed system clock step during recording config={}", configPath_);
             if (rollback && sample.sessionId) imuSessionFault_.store(true);
             // Receipt-time session ID AND device-time bounds are required:
             // old SDK buffers delivered after START cannot enter this episode.
@@ -2232,12 +2247,11 @@ private:
                 vf.sessionId = captureSessionId;
                 const uint64_t alignedNs = AlignFaysTsToSystem(mImgData_.timestamp);
                 if (!alignedNs || (captureSessionId && mImgData_.timestamp < sessionMinDeviceNs_.load())) continue;
-                // Never compress a genuine device gap; only fence adjustments
-                // of the clock mapping against the last published camera time.
+                // A previous session/standby frame must not fence a newly
+                // aligned session after a backward system-clock adjustment.
                 const uint64_t compensatedNs = fays_stereo_recorder::camera_time::AddStereoCameraLatencyNs(alignedNs, videoFileName_);
-                vf.publishTimeNs = std::max(compensatedNs, lastMappedCameraNs_ + 1);
+                vf.publishTimeNs = cameraTimestampFence_.Apply(compensatedNs, captureSessionId);
                 if (vf.publishTimeNs != compensatedNs) ++cameraMonotonicClamps_;
-                lastMappedCameraNs_ = vf.publishTimeNs;
                 videoFrameQueue_.Push(std::move(vf));
                 CaptureMaximum(captureHandoffMaxNs_, SteadyNowNs() - returnedNs);
             } else {
@@ -2626,7 +2640,7 @@ private:
     std::atomic<uint64_t> sessionMinDeviceNs_{0}, sessionMaxDeviceNs_{UINT64_MAX};
     std::atomic<uint64_t> callbackDrops_{0}, imuProcessed_{0}, imuDelayed_{0}, imuClockResets_{0};
     std::atomic<uint64_t> cameraMonotonicClamps_{0};
-    uint64_t lastMappedCameraNs_ = 0;
+    fays_stereo_recorder::camera_time::SessionTimestampFence cameraTimestampFence_;
     std::mutex imuFenceMutex_;
     std::condition_variable imuFenceCv_;
     mutable std::mutex clockMutex_;
