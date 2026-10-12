@@ -10,6 +10,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import signal
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -65,6 +66,79 @@ SXR_PROPS = {
 }
 
 
+
+# One monotonic budget covers broadcast, cooperative drain and final transfer.
+_OPERATION_DEADLINE = None
+_INCREMENTAL_STOP_REQUESTED = False
+_INCREMENTAL_STATUS_FILE = None
+
+
+class StopDeadlineExceeded(TimeoutError):
+    pass
+
+
+def check_operation_budget() -> None:
+    if _OPERATION_DEADLINE is not None and time.monotonic() >= _OPERATION_DEADLINE:
+        raise StopDeadlineExceeded("Ego stop deadline exceeded")
+
+
+def operation_timeout(timeout: float) -> float:
+    if _OPERATION_DEADLINE is None:
+        return timeout
+    remaining = _OPERATION_DEADLINE - time.monotonic()
+    if remaining <= 0:
+        raise StopDeadlineExceeded("Ego stop deadline exceeded")
+    return min(timeout, remaining)
+
+
+@contextmanager
+def operation_budget(deadline: float):
+    global _OPERATION_DEADLINE
+    previous = _OPERATION_DEADLINE
+    _OPERATION_DEADLINE = deadline
+    try:
+        yield
+    finally:
+        _OPERATION_DEADLINE = previous
+
+
+def stop_request_path(status_file: Path) -> Path:
+    return status_file.with_suffix(".stop-request.json")
+
+
+@contextmanager
+def episode_sync_owner(status_file: Path, wait: bool = True):
+    status_file.parent.mkdir(parents=True, exist_ok=True)
+    with status_file.with_suffix(".sync-lock").open("a") as lock:
+        while True:
+            check_operation_budget()
+            try:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if not wait:
+                    raise
+                time.sleep(operation_timeout(0.05))
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def incremental_stop_requested(status_file: Path) -> bool:
+    global _OPERATION_DEADLINE
+    request = read_status(stop_request_path(status_file))
+    deadline = request.get("deadline_monotonic_s")
+    if type(deadline) in (int, float) and math.isfinite(deadline):
+        _OPERATION_DEADLINE = deadline
+    return bool(request) or _INCREMENTAL_STOP_REQUESTED
+
+
+def request_incremental_stop(_signal, _frame):
+    global _INCREMENTAL_STOP_REQUESTED
+    _INCREMENTAL_STOP_REQUESTED = True
+
+
 def now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -91,7 +165,7 @@ class Adb:
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=timeout,
+            timeout=operation_timeout(timeout),
             check=check,
         )
 
@@ -101,7 +175,7 @@ class Adb:
             f"dd if={remote_q} bs=4096 skip={offset} count={count} "
             "iflag=skip_bytes,count_bytes 2>/dev/null"
         )
-        return subprocess.check_output(self.command("exec-out", "sh", "-c", command), timeout=timeout)
+        return subprocess.check_output(self.command("exec-out", "sh", "-c", command), timeout=operation_timeout(timeout))
 
 
 def resolve_adb_bin() -> str:
@@ -116,10 +190,12 @@ def resolve_adb_bin() -> str:
                 [str(bundled), "version"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=3,
+                timeout=operation_timeout(3),
                 check=True,
             )
             return str(bundled)
+        except StopDeadlineExceeded:
+            raise
         except Exception:
             pass
 
@@ -1076,6 +1152,18 @@ def adb_device_ready(adb: Adb) -> tuple[bool, str]:
     return False, error or f"adb get-state returned {result.returncode} state={state or 'unknown'}"
 
 
+@contextmanager
+def ego_stop_stage(status: dict, name: str):
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        elapsed = round((time.monotonic() - started) * 1000, 3)
+        timings = status.setdefault("stop_timings_ms", {})
+        timings[name] = round(timings.get(name, 0) + elapsed, 3)
+        ugripper_log("INFO", f"stop stage={name} elapsed_ms={elapsed}", component="ego")
+
+
 def sync_one_file(
     adb: Adb,
     remote_root: str,
@@ -1083,6 +1171,7 @@ def sync_one_file(
     local_episode_dir: Path,
     file_name: str,
     replace_shrunk: bool = False,
+    timings: dict | None = None,
 ) -> int:
     remote_file = remote_path(remote_root, remote_episode, file_name)
     size = remote_file_size(adb, remote_file)
@@ -1097,11 +1186,18 @@ def sync_one_file(
     if size <= local_size:
         return 0
     delta = size - local_size
+    pull_started = time.monotonic()
     data = adb.exec_out_bytes(remote_file, local_size, delta)
+    if timings is not None:
+        timings["pull_ms"] = (time.monotonic() - pull_started) * 1000
+        timings["bytes"] = len(data)
     with local_file.open("ab") as output:
         output.write(data)
         output.flush()
+        sync_started = time.monotonic()
         os.fsync(output.fileno())
+        if timings is not None:
+            timings["fsync_ms"] = (time.monotonic() - sync_started) * 1000
     return len(data)
 
 
@@ -1111,15 +1207,31 @@ def sync_episode_once(
     remote_episode: str,
     local_episode_dir: Path,
     replace_shrunk: bool = False,
+    timings: dict | None = None,
 ) -> dict:
     copied = {}
     for file_name in FILES:
+        if _INCREMENTAL_STATUS_FILE is not None:
+            incremental_stop_requested(_INCREMENTAL_STATUS_FILE)
+        check_operation_budget()
+        started = time.monotonic()
+        file_timing = {}
         try:
-            delta = sync_one_file(adb, remote_root, remote_episode, local_episode_dir, file_name, replace_shrunk=replace_shrunk)
+            delta = sync_one_file(adb, remote_root, remote_episode, local_episode_dir, file_name, replace_shrunk=replace_shrunk, timings=file_timing if timings is not None else None)
+        except StopDeadlineExceeded:
+            raise
         except Exception as exc:
+            check_operation_budget()
             copied[file_name] = {"delta": 0, "error": str(exc)}
         else:
             copied[file_name] = {"delta": delta}
+        finally:
+            if timings is not None:
+                file_timing["elapsed_ms"] = (time.monotonic() - started) * 1000
+                aggregate = timings.setdefault(file_name, {})
+                for key, value in file_timing.items():
+                    aggregate[key] = round(aggregate.get(key, 0) + value, 3)
+                ugripper_log("INFO", f"stop file={file_name} " + json.dumps(file_timing, sort_keys=True), component="ego")
     return copied
 
 
@@ -1273,6 +1385,7 @@ def refresh_final_mp4_header(
 def refresh_final_mp4_headers(adb: Adb, remote_root: str, remote_episode: str, local_episode_dir: Path) -> dict:
     details = {}
     for file_name in MP4_FILES:
+        check_operation_budget()
         try:
             details[file_name] = refresh_final_mp4_header(adb, remote_root, remote_episode, local_episode_dir, file_name)
         except Exception as exc:
@@ -1280,76 +1393,198 @@ def refresh_final_mp4_headers(adb: Adb, remote_root: str, remote_episode: str, l
     return details
 
 
-def find_valid_box_marker(data: bytes, box_name: bytes, start: int) -> int | None:
-    marker = start
-    while True:
-        marker = data.find(box_name, marker)
-        if marker < 4:
-            return None
-        box_start = marker - 4
-        box_size = struct.unpack(">I", data[box_start:marker])[0]
-        if box_size == 1 and box_start + 16 <= len(data):
-            box_size = struct.unpack(">Q", data[box_start + 8 : box_start + 16])[0]
-            header_size = 16
-        else:
-            header_size = 8
-        if box_size >= header_size and box_start + box_size <= len(data):
-            return box_start
-        marker += 4
+# Repair checks have fixed memory/I/O bounds, independent of media file size.
+MP4_REPAIR_BLOCK_BYTES = 64 * 1024
+MP4_REPAIR_MAX_READ_BYTES = 16 * 1024 * 1024
+MP4_REPAIR_MAX_BOXES = 2048
+
+
+class Mp4RepairLimitError(RuntimeError):
+    pass
+
+
+class Mp4RepairReader:
+    def __init__(self, stream):
+        self.stream = stream
+        self.identity = os.fstat(stream.fileno())
+        self.size = self.identity.st_size
+        self.bytes_read = 0
+        self.boxes_read = 0
+
+    def read(self, offset: int, count: int) -> bytes:
+        check_operation_budget()
+        if count < 0 or count > MP4_REPAIR_BLOCK_BYTES:
+            raise ValueError("invalid MP4 read size")
+        if offset < 0 or offset + count > self.size:
+            raise ValueError("truncated MP4 box")
+        if self.bytes_read + count > MP4_REPAIR_MAX_READ_BYTES:
+            raise Mp4RepairLimitError("MP4 repair read budget exceeded")
+        self.stream.seek(offset)
+        data = self.stream.read(count)
+        self.bytes_read += len(data)
+        if len(data) != count:
+            raise ValueError("MP4 changed or truncated during inspection")
+        return data
+
+    def box(self, offset: int, end: int, allow_bad_mdat: bool = False) -> tuple:
+        self.boxes_read += 1
+        if self.boxes_read > MP4_REPAIR_MAX_BOXES:
+            raise Mp4RepairLimitError("MP4 repair box limit exceeded")
+        if offset + 8 > end:
+            raise ValueError("truncated MP4 box header")
+        size32, kind = struct.unpack(">I4s", self.read(offset, 8))
+        header = 16 if size32 == 1 else 8
+        if offset + header > end:
+            raise ValueError("truncated extended MP4 box header")
+        size = struct.unpack(">Q", self.read(offset + 8, 8))[0] if size32 == 1 else size32
+        if size32 == 0:
+            size = end - offset
+        if not (allow_bad_mdat and kind == b"mdat" and size32 == 1):
+            if size < header or offset + size > end:
+                raise ValueError("invalid MP4 box boundary")
+        return kind, size, header
+
+    def children(self, start: int, end: int):
+        while start < end:
+            kind, size, header = self.box(start, end)
+            yield start, kind, size, header
+            start += size
+
+
+def _validated_tail_moov(reader: Mp4RepairReader, offset: int) -> bool:
+    """Require a movie structure plus a valid box chain ending exactly at EOF."""
+    kind, size, header = reader.box(offset, reader.size)
+    if kind != b"moov":
+        return False
+    has_mvhd = False
+    has_track = False
+    for pos, child, length, child_header in reader.children(offset + header, offset + size):
+        if child == b"mvhd":
+            if length - child_header < 100:
+                return False
+            has_mvhd = True
+        elif child == b"trak":
+            track_children = {k for _, k, _, _ in reader.children(pos + child_header, pos + length)}
+            if not {b"tkhd", b"mdia"}.issubset(track_children):
+                return False
+            has_track = True
+    if not has_mvhd or not has_track:
+        return False
+    for _, following, _, _ in reader.children(offset + size, reader.size):
+        if following not in (b"free", b"skip", b"uuid", b"mfra"):
+            return False
+    return True
+
+
+def _find_bounded_tail_moov(reader: Mp4RepairReader, data_start: int) -> int:
+    # Reserve a block of the total budget for candidate structure validation.
+    start = max(data_start, reader.size - (MP4_REPAIR_MAX_READ_BYTES - MP4_REPAIR_BLOCK_BYTES))
+    overlap = b""
+    found = None
+    while start < reader.size:
+        block = reader.read(start, min(MP4_REPAIR_BLOCK_BYTES, reader.size - start))
+        data = overlap + block  # At most one block plus seven overlap bytes.
+        base = start - len(overlap)
+        marker = data.find(b"moov")
+        while marker >= 0:
+            candidate = base + marker - 4
+            if candidate >= data_start:
+                try:
+                    valid = _validated_tail_moov(reader, candidate)
+                except ValueError:
+                    valid = False
+                if valid:
+                    if found is not None and found != candidate:
+                        raise ValueError("ambiguous MP4 moov candidates")
+                    found = candidate
+            marker = data.find(b"moov", marker + 4)
+        overlap = data[-7:]
+        start += len(block)
+    if found is None:
+        raise ValueError("cannot locate a safe moov within MP4 repair budget")
+    return found
 
 
 def repair_mp4_mdat_largesize(path: Path) -> dict:
     detail = {"file": path.name, "status": "skipped", "reason": ""}
-    if not path.exists() or path.stat().st_size < 64:
-        detail["reason"] = "missing_or_too_small"
-        return detail
-
-    data = path.read_bytes()
-    mdat_type = data.find(b"mdat")
-    if mdat_type < 4:
-        detail["reason"] = "mdat_not_found"
-        return detail
-    mdat_start = mdat_type - 4
-    header_size = struct.unpack(">I", data[mdat_start:mdat_type])[0]
-    if header_size != 1:
-        detail["reason"] = "mdat_not_extended_size"
-        detail["mdat_header_size"] = header_size
-        return detail
-
-    moov_start = find_valid_box_marker(data, b"moov", mdat_type + 4)
-    if moov_start is None or moov_start <= mdat_start + 16:
-        detail["reason"] = "moov_not_found"
-        return detail
-
-    mdat_size = moov_start - mdat_start
-    old_size = struct.unpack(">Q", data[mdat_start + 8 : mdat_start + 16])[0]
-    detail.update(
-        {
-            "status": "ok",
-            "mdat_offset": mdat_start,
-            "moov_offset": moov_start,
-            "old_mdat_largesize": old_size,
-            "new_mdat_largesize": mdat_size,
-        }
-    )
-    if old_size == mdat_size:
-        detail["status"] = "unchanged"
-        return detail
-
-    with path.open("r+b") as output:
-        output.seek(mdat_start + 8)
-        output.write(struct.pack(">Q", mdat_size))
-        output.flush()
-        os.fsync(output.fileno())
+    started = time.monotonic()
+    reader = None
+    try:
+        with path.open("rb") as source:
+            reader = Mp4RepairReader(source)
+            offset = 0
+            movie_before_data = False
+            while offset < reader.size:
+                kind, size, header = reader.box(offset, reader.size, allow_bad_mdat=True)
+                if kind == b"mdat":
+                    break
+                movie_before_data |= kind == b"moov"
+                offset += size
+            else:
+                raise ValueError("MP4 mdat box missing")
+            detail["mdat_offset"] = offset
+            if header != 16:
+                detail["reason"] = "mdat_not_extended_size"
+                return detail
+            old_size = size
+            detail["old_mdat_largesize"] = old_size
+            if movie_before_data:
+                if size < header or offset + size > reader.size:
+                    raise ValueError("invalid mdat size in moov-first MP4")
+                detail.update(status="unchanged", reason="moov_before_mdat")
+                return detail
+            declared_end = offset + old_size
+            valid_declared = False
+            if old_size >= header and declared_end + 8 <= reader.size:
+                try:
+                    valid_declared = _validated_tail_moov(reader, declared_end)
+                except ValueError:
+                    pass
+            if valid_declared:
+                detail.update(status="unchanged", reason="valid_mdat_largesize")
+                return detail
+            moov = _find_bounded_tail_moov(reader, offset + header)
+            new_size = moov - offset
+            detail.update(moov_offset=moov, new_mdat_largesize=new_size)
+        # Check identity/size and the old field again before changing eight bytes.
+        with path.open("r+b") as output:
+            current = os.fstat(output.fileno())
+            if (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns) != (
+                reader.identity.st_dev, reader.identity.st_ino, reader.size, reader.identity.st_mtime_ns
+            ):
+                raise ValueError("MP4 changed before repair")
+            output.seek(offset + 8)
+            if output.read(8) != struct.pack(">Q", old_size):
+                raise ValueError("MP4 mdat header changed before repair")
+            output.seek(offset + 8)
+            if output.write(struct.pack(">Q", new_size)) != 8:
+                raise OSError("short MP4 repair write")
+            output.flush()
+            sync_started = time.monotonic()
+            os.fsync(output.fileno())
+            detail["fsync_ms"] = round((time.monotonic() - sync_started) * 1000, 3)
+            output.seek(offset + 8)
+            if output.read(8) != struct.pack(">Q", new_size):
+                raise OSError("MP4 repair readback mismatch")
+        detail.update(status="ok", reason="mdat_largesize_repaired")
+    except Exception as exc:
+        detail.update(status="error", error=str(exc))
+    finally:
+        detail["bytes_read"] = reader.bytes_read if reader is not None else 0
+        detail["elapsed_ms"] = round((time.monotonic() - started) * 1000, 3)
     return detail
 
 
 def repair_mp4_files(local_episode_dir: Path) -> dict:
     details = {}
     for file_name in MP4_FILES:
+        check_operation_budget()
         path = local_episode_dir / file_name
         try:
             details[file_name] = repair_mp4_mdat_largesize(path)
+            ugripper_log("INFO", "MP4 repair check " + json.dumps(details[file_name], sort_keys=True), component="ego")
+        except StopDeadlineExceeded:
+            raise
         except Exception as exc:
             details[file_name] = {"file": file_name, "status": "error", "error": str(exc)}
     return details
@@ -1393,6 +1628,7 @@ def verify_remote_and_local_file_sizes(
     details = {}
     ok = True
     for file_name in FILES:
+        check_operation_budget()
         local_file = local_episode_dir / file_name
         local_size = local_file.stat().st_size if local_file.exists() else None
         remote_size = remote_file_size(adb, remote_path(remote_root, remote_episode, file_name))
@@ -1419,6 +1655,7 @@ def recover_finalized_episode_files(
     last_error = "remote/local ego file sizes do not match"
     last_error_type = "ego_pull_incomplete"
     for attempt in range(1, max(1, attempts) + 1):
+        check_operation_budget()
         ready, ready_error = adb_device_ready(adb)
         detail = {
             "attempt": attempt,
@@ -1491,6 +1728,15 @@ def remove_remote_episode(adb: Adb, remote_root: str, remote_episode: str) -> tu
 
 
 def run_cleanup(args: argparse.Namespace) -> int:
+    deadline = getattr(args, "deadline_monotonic", None)
+    if deadline is None:
+        deadline = time.monotonic() + getattr(args, "finalize_timeout", 60.0)
+    with operation_budget(deadline):
+        return _run_cleanup(args)
+
+
+def _run_cleanup(args: argparse.Namespace) -> int:
+    cleanup_started = time.monotonic()
     status = read_status(args.status_file)
     status.setdefault("started_at_ms", now_ms())
     status.update({"phase": "cleanup", "updated_at_ms": now_ms()})
@@ -1501,6 +1747,9 @@ def run_cleanup(args: argparse.Namespace) -> int:
     serial = str(status.get("serial") or args.serial or "")
 
     def finish(detail: dict, ok: bool = True) -> int:
+        elapsed = round((time.monotonic() - cleanup_started) * 1000, 3)
+        status.setdefault("stop_timings_ms", {})["remote_cleanup"] = elapsed
+        ugripper_log("INFO", f"stop stage=remote_cleanup elapsed_ms={elapsed}", component="ego")
         status["remote_cleanup"] = detail
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
@@ -1513,6 +1762,10 @@ def run_cleanup(args: argparse.Namespace) -> int:
             )
         return 0 if ok else 1
 
+    if status.get("finalize", {}).get("status") == "error":
+        error = status["finalize"].get("error") or "ego media finalize failed"
+        status.update(status="error", error_type="ego_pull_incomplete", error=error)
+        return finish(cleanup_status("skipped", remote_episode, error), False)
     if status.get("status") != "finalized":
         return finish(cleanup_status("skipped", remote_episode, "ego sync status is not finalized"))
     if not safe_remote_episode_name(remote_episode):
@@ -1627,6 +1880,22 @@ def recover_previous_recording(adb: Adb, status: dict, status_file: Path) -> Non
 
 
 def run_start(args: argparse.Namespace) -> int:
+    global _INCREMENTAL_STOP_REQUESTED, _INCREMENTAL_STATUS_FILE, _OPERATION_DEADLINE
+    _INCREMENTAL_STOP_REQUESTED = False
+    _INCREMENTAL_STATUS_FILE = args.status_file
+    previous_deadline = _OPERATION_DEADLINE
+    with episode_sync_owner(args.status_file):
+        try:
+            # A delayed START child must not discard an already requested STOP.
+            if incremental_stop_requested(args.status_file):
+                return 0
+            return _run_start(args)
+        finally:
+            _INCREMENTAL_STATUS_FILE = None
+            _OPERATION_DEADLINE = previous_deadline
+
+
+def _run_start(args: argparse.Namespace) -> int:
     status = {
         "status": "starting",
         "phase": "start",
@@ -1683,6 +1952,11 @@ def run_start(args: argparse.Namespace) -> int:
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
 
+        if incremental_stop_requested(args.status_file):
+            status.update(phase="drained", updated_at_ms=now_ms())
+            write_status(args.status_file, status)
+            return 0
+
         result = adb.run("shell", "am", "broadcast", "-a", f"{PACKAGE}.START_RECORDING", "-p", app_package(adb), timeout=10)
         status["start_broadcast_returncode"] = result.returncode
         status["updated_at_ms"] = now_ms()
@@ -1738,7 +2012,7 @@ def run_start(args: argparse.Namespace) -> int:
 
         local_episode_dir = args.episode_dir / "ego"
         last_sync_sample = None
-        while True:
+        while not incremental_stop_requested(args.status_file):
             sync_episode_once(adb, remote_root, remote_episode, local_episode_dir)
             if app_package(adb) == PACKAGE:
                 sample = continuous_time_sync_status(adb)
@@ -1756,7 +2030,12 @@ def run_start(args: argparse.Namespace) -> int:
                         output.write(json.dumps(compact_time_sync(sample)) + "\n")
             status["updated_at_ms"] = now_ms()
             write_status(args.status_file, status)
+            if incremental_stop_requested(args.status_file):
+                break
             time.sleep(args.interval)
+        status.update(phase="drained", updated_at_ms=now_ms())
+        write_status(args.status_file, status)
+        return 0
     except KeyboardInterrupt:
         return 0
     except Exception as exc:
@@ -1769,6 +2048,28 @@ def run_start(args: argparse.Namespace) -> int:
 
 
 def run_stop(args: argparse.Namespace) -> int:
+    deadline = getattr(args, "deadline_monotonic", None)
+    if deadline is None:
+        deadline = time.monotonic() + args.finalize_timeout
+    try:
+        with operation_budget(deadline):
+            return _run_stop(args, deadline)
+    except Exception as exc:
+        # A drain timeout may leave the incremental owner writing its status.
+        # Do not race its atomic replace; Runtime treats this nonzero exit as failure.
+        try:
+            with episode_sync_owner(args.status_file, wait=False):
+                status = read_status(args.status_file)
+                status.update(status="finalize_timeout" if isinstance(exc, StopDeadlineExceeded) else "error",
+                              phase="done", error_type="ego_pull_incomplete", error=str(exc), updated_at_ms=now_ms())
+                write_status(args.status_file, status)
+        except BlockingIOError:
+            pass
+        ugripper_log("ERROR", str(exc), component="ego", error_code="UGR-82-05")
+        return 1
+
+
+def _run_stop(args: argparse.Namespace, deadline: float) -> int:
     status = read_status(args.status_file)
     status.setdefault("started_at_ms", now_ms())
     status.update({"phase": "stop", "updated_at_ms": now_ms()})
@@ -1780,11 +2081,16 @@ def run_stop(args: argparse.Namespace) -> int:
     adb = Adb(serial) if serial else None
     if adb is not None:
         adb.package = status.get("app", {}).get("package", PACKAGE)
+    # Publish before the broadcast so a delayed startup cannot send START
+    # after the insurance STOP. This does not wait for the incremental owner.
+    write_json_atomic(stop_request_path(args.status_file), {"deadline_monotonic_s": deadline})
+    broadcast_started = time.monotonic()
     stop_attempts = []
     stop_succeeded = False
     last_failure_status = "not_found"
     last_error = "no SXR/SXR_1 ego device found during stop"
     for attempt in range(1, STOP_BROADCAST_ATTEMPTS + 1):
+        check_operation_budget()
         detail = {"attempt": attempt, "started_at_ms": now_ms()}
         try:
             if adb is None:
@@ -1832,11 +2138,36 @@ def run_stop(args: argparse.Namespace) -> int:
         stop_attempts.append(detail)
         status["stop_attempts"] = stop_attempts
         status["updated_at_ms"] = now_ms()
-        write_status(args.status_file, status)
         if stop_succeeded:
             break
         if attempt < STOP_BROADCAST_ATTEMPTS:
-            time.sleep(STOP_BROADCAST_RETRY_INTERVAL_SEC)
+            time.sleep(operation_timeout(STOP_BROADCAST_RETRY_INTERVAL_SEC))
+
+    status.setdefault("stop_timings_ms", {})["stop_broadcast"] = round((time.monotonic() - broadcast_started) * 1000, 3)
+
+    drain_started = time.monotonic()
+    with episode_sync_owner(args.status_file):
+        latest = read_status(args.status_file)
+        # Preserve all samples written by the incremental owner during the drain.
+        latest.update(phase="stop", updated_at_ms=now_ms(), stop_attempts=stop_attempts)
+        latest.setdefault("stop_timings_ms", {}).update(status.get("stop_timings_ms", {}))
+        elapsed = round((time.monotonic() - drain_started) * 1000, 3)
+        latest["stop_timings_ms"]["incremental_drain"] = elapsed
+        ugripper_log("INFO", f"stop stage=incremental_drain elapsed_ms={elapsed}", component="ego")
+        remote_root = str(latest.get("remote_root") or remote_root).rstrip("/")
+        remote_episode = str(latest.get("remote_episode") or remote_episode)
+        recording_started = bool(remote_episode)
+        if recording_started and latest.get("status") == "error":
+            latest.update(phase="done", error_type="ego_pull_incomplete")
+            write_status(args.status_file, latest)
+            return 1
+        write_status(args.status_file, latest)
+        return finish_stop(args, adb, latest, stop_succeeded, recording_started,
+                           last_failure_status, last_error, remote_root, remote_episode, deadline)
+
+
+def finish_stop(args, adb, status, stop_succeeded, recording_started,
+                last_failure_status, last_error, remote_root, remote_episode, deadline):
 
     if not stop_succeeded:
         status["status"] = last_failure_status if recording_started else "not_found"
@@ -1869,7 +2200,7 @@ def run_stop(args: argparse.Namespace) -> int:
     local_episode_dir = args.episode_dir / "ego"
     final_episode = final_name(remote_episode)
     final_local_dir = args.episode_dir / "ego"
-    deadline = time.monotonic() + args.finalize_timeout
+    last_sync_sample = None
     while time.monotonic() < deadline:
         try:
             temp_exists = remote_dir_exists(adb, remote_root, remote_episode)
@@ -1909,23 +2240,27 @@ def run_stop(args: argparse.Namespace) -> int:
                         output.write(json.dumps(compact_time_sync(sample)) + "\n")
             status["updated_at_ms"] = now_ms()
             write_status(args.status_file, status)
-            time.sleep(args.interval)
+            time.sleep(operation_timeout(args.interval))
             continue
         if current_exists:
-            sync_episode_once(
-                adb,
-                remote_root,
-                current_remote,
-                local_episode_dir,
-                replace_shrunk=(current_remote == final_episode),
-            )
+            with ego_stop_stage(status, "file_sync"):
+                sync_episode_once(
+                    adb,
+                    remote_root,
+                    current_remote,
+                    local_episode_dir,
+                    replace_shrunk=(current_remote == final_episode),
+                    timings=status.setdefault("stop_file_sync", {}),
+                )
         if current_remote == final_episode:
-            recovered, recovery_detail, recovery_error, recovery_error_type = recover_finalized_episode_files(
-                adb,
-                remote_root,
-                final_episode,
-                final_local_dir,
-            )
+            check_operation_budget()
+            with ego_stop_stage(status, "verify_recovery"):
+                recovered, recovery_detail, recovery_error, recovery_error_type = recover_finalized_episode_files(
+                    adb,
+                    remote_root,
+                    final_episode,
+                    final_local_dir,
+                )
             status["pull_recovery"] = recovery_detail
             if not recovered:
                 status.update(
@@ -1949,15 +2284,28 @@ def run_stop(args: argparse.Namespace) -> int:
                     error_code="UGR-82-01" if recovery_error_type == "ego_disconnected" else "UGR-82-04",
                 )
                 return 1
-            header_refresh_detail = refresh_final_mp4_headers(adb, remote_root, final_episode, final_local_dir)
-            repair_detail = repair_mp4_files(final_local_dir)
+            check_operation_budget()
+            with ego_stop_stage(status, "header_refresh"):
+                header_refresh_detail = refresh_final_mp4_headers(adb, remote_root, final_episode, final_local_dir)
+            check_operation_budget()
+            with ego_stop_stage(status, "mp4_repair"):
+                repair_detail = repair_mp4_files(final_local_dir)
+            check_operation_budget()
+            finalize_detail = summarize_finalize_repair(header_refresh_detail, repair_detail)
+            if finalize_detail["status"] == "error":
+                status.update(status="error", phase="done", error_type="ego_pull_incomplete",
+                              error=finalize_detail["error"], finalize=finalize_detail,
+                              updated_at_ms=now_ms())
+                write_status(args.status_file, status)
+                ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-05")
+                return 1
             status.update(
                 {
                     "status": "finalized",
                     "phase": "done",
                     "remote_episode": final_episode,
                     "local_episode": str(final_local_dir),
-                    "finalize": summarize_finalize_repair(header_refresh_detail, repair_detail),
+                    "finalize": finalize_detail,
                     "updated_at_ms": now_ms(),
                 }
             )
@@ -1967,7 +2315,7 @@ def run_stop(args: argparse.Namespace) -> int:
             return 0
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
-        time.sleep(args.interval)
+        time.sleep(operation_timeout(args.interval))
 
     status["status"] = "finalize_timeout"
     status["error_type"] = "ego_pull_incomplete"
@@ -1989,6 +2337,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interval", type=float, default=float(os.environ.get("UGRIPPER_EGO_SYNC_INTERVAL_SEC", "1")))
     parser.add_argument("--detect-timeout", type=float, default=15.0)
     parser.add_argument("--finalize-timeout", type=float, default=60.0)
+    parser.add_argument("--deadline-monotonic", type=float)
     parser.add_argument("--codec", choices=("h264", "h265"), default="h264")
     parser.add_argument("--speech-code", type=int, choices=(1302, 1003, 1203, 1204, 1205), default=1203)
     return parser.parse_args()
@@ -2012,6 +2361,7 @@ def main() -> int:
         raise SystemExit("--episode-dir and --status-file are required")
     args.episode_dir.mkdir(parents=True, exist_ok=True)
     if args.command == "start":
+        signal.signal(signal.SIGTERM, request_incremental_stop)
         return run_start(args)
     if args.command == "stop":
         return run_stop(args)

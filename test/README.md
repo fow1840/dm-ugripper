@@ -32,6 +32,8 @@
 这些脚本当前不属于 `ugripper.service` 主链路，也没有进入默认 `deb` 打包清单；它们更适合作为临时验证、回归或故障抓取工具使用。
 
 ## 当前脚本
+- `test/scripts/test_system_log_snapshot.py`
+  - 无硬件回归：快照截止时间、游标增量/空快照、100MiB 上限策略（缩小容量验证）、刷盘失败/读取超时不提交游标、失效游标恢复，并发快照串行等待、慢刷盘完成后才返回，以及绿灯必须晚于日志同步/同步失败不亮绿灯。使用开发机原生 Python 执行（本交叉编译环境为 `.venv/bin/python test/scripts/test_system_log_snapshot.py`）。
 - `test/scripts/camera_test.sh`
   - 直接拉起多路 `ffmpeg`，验证非主相机录制稳定性，并收集 `vmstat`、`top`、`ps` 等运行态信息。
 - `test/scripts/camera_crash_capture.sh`
@@ -197,3 +199,20 @@ python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
 ## HMI 调度回归
 
 `test/src/gripper_hmi/test_hmi_driver_logic.cc` 覆盖25ms查询静默、发送后重试deadline、无灯效接收检查、低优先级5ms预算及到期仲裁。板端须对照原版/仅优先级/完整修复，验证静默期间不忙转、状态回复及setter响应；encoder补发间隔应同时核对实际TX/RX、CRC和稳态未匹配请求，不能只看最大gap或停录退出码。
+
+### Ego 停录 MP4 与日志快照回归
+
+- `test/scripts/test_ego_mp4_repair.py`：普通/fragmented MP4 与 1GiB 稀疏文件仅检查头部、旧 64 位 mdat 修复、伪/歧义 moov、分块边界、截断及越界、读取/box 上限、fsync 失败，以及失败时禁止 finalized/远端删除。
+- `test/scripts/test_system_log_snapshot.py`：有限快照、增量游标、容量上限、失败不推进游标、同步刷盘及并发串行等待。
+- 原生 Python 执行上述测试；交叉编译容器使用主工作区 `.venv/bin/python`，不要调用 ARM Python。
+- Runtime 停录与 LED host 测试验证日志同步完成前不切 Ready，日志失败不亮绿灯。
+
+### Ego STOP 交接与总预算回归
+
+- `test/scripts/test_ego_recording_worker.py`：真实子进程验证 STOP 广播先于增量排空、当前轮写入完成后收尾接管且不再开始下一轮；覆盖共享截止时间、ADB 剩余预算、预算耗尽不再拉下一个文件、不报告 finalized、排空超时不覆盖增量状态、cleanup 不重置预算且超时保留远端。
+- `test_recording_orchestrator`：STOP 请求先于等待本地 recorder，启动回滚等待异步 Ego 收尾完成。
+- 240 保险 STOP 定向结果见 `tmp/board_results/20261012_ego_stop_latency/`（已安装旧 worker）及 `tmp/board_results/20261012_ego_stop_fixed_latency/`（临时新 worker）；保险广播耗时不能代表录制中完整收尾耗时。
+
+### V2.1.14 板端修复回归
+
+测试工程师清单见 [V2.1.14 修复回归测试清单](../docs/v2.1.14-test-checklist.md)，包括停录蓝灯/长录、NTP 正负授时、红灯、Ego 交接超时、安装及版本重试，并说明 Ego App 固件版本查询重试本次额外约 11.4 秒的耗时来源。

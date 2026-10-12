@@ -153,7 +153,7 @@ struct LedBridgeHarness
                  .log_info = [](const std::string&) {},
                  .log_warn = [](const std::string&) {},
                  .log_error = [](const std::string&) {},
-                 .sync_runtime_log = [](const std::string&) {},
+                 .sync_runtime_log = [](const std::string&) { return true; },
              },
             },
             &FakeEpochUs,
@@ -180,9 +180,8 @@ TEST(LedStateBridgeTest, StopRecordingSuccessReturnsToReadyLed)
     g_steady_ms += 100;
     ASSERT_TRUE(orchestrator.StopRecording(false, "stop"));
 
-    ASSERT_GE(harness.led_states.size(), 4U);
+    ASSERT_GE(harness.led_states.size(), 3U);
     EXPECT_EQ(harness.led_states[0], RuntimeLedState::Recording);
-    EXPECT_EQ(harness.led_states[harness.led_states.size() - 3], RuntimeLedState::Ready);
     EXPECT_EQ(harness.led_states[harness.led_states.size() - 2], RuntimeLedState::Writing);
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Ready);
 }

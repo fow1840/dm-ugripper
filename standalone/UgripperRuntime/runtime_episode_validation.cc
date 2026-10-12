@@ -875,40 +875,21 @@ bool loadLastTopicLogTimeFromTailChunks(const std::string &mcapPath,
 
     if (!found)
     {
-        std::string readProblem;
-        mcap::ReadMessageOptions options;
-        options.topicFilter = [&topic](std::string_view candidateTopic) {
-            return candidateTopic == topic;
-        };
-
-        for (const auto &messageView : reader.readMessages(
-                 [&readProblem](const mcap::Status &status) {
-                     if (readProblem.empty())
-                     {
-                         readProblem = status.message;
-                     }
-                 },
-                 options))
+        if (errorMessage != nullptr)
         {
-            if (!found || messageView.message.logTime > *lastLogTimeNs)
+            if (dataSource == nullptr)
             {
-                *lastLogTimeNs = messageView.message.logTime;
-                found = true;
+                *errorMessage = "mcap data source unavailable: " + topic;
             }
-        }
-
-        if (!readProblem.empty())
-        {
-            if (errorMessage != nullptr) *errorMessage = "failed to scan mcap messages: " + readProblem;
-            return false;
-        }
-    }
-
-    if (!found)
-    {
-        if (errorMessage != nullptr && errorMessage->empty())
-        {
-            *errorMessage = "topic has zero messages: " + topic;
+            else if (chunkIndexes.empty())
+            {
+                *errorMessage = "mcap chunk indexes missing: " + topic;
+            }
+            else
+            {
+                *errorMessage = "topic not found in last " +
+                    std::to_string(kEncoderTailChunkScanLimit) + " mcap chunks: " + topic;
+            }
         }
         return false;
     }
