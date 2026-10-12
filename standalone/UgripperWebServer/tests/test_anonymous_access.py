@@ -136,7 +136,7 @@ class AnonymousAccessTests(unittest.TestCase):
             (etc / 'initial-password').write_text('obsolete')
             (etc / 'server.crt').write_text('existing certificate')
             (etc / 'server.key').write_text('existing key')
-            with patch('pathlib.Path', side_effect=lambda p: root / p.lstrip('/')), patch('os.chown'), patch('subprocess.run') as command, patch('pwd.getpwnam') as user:
+            with patch('pathlib.Path', side_effect=lambda p: root / p.lstrip('/')), patch('os.chown'), patch('subprocess.run') as command, patch('ssl.SSLContext') as tls, patch('pwd.getpwnam') as user:
                 user.return_value.pw_uid = 1000
                 user.return_value.pw_gid = 1000
                 runpy.run_path(str(script))
@@ -145,6 +145,7 @@ class AnonymousAccessTests(unittest.TestCase):
             self.assertFalse((etc / 'initial-password').exists())
             self.assertEqual((etc / 'server.crt').read_text(), 'existing certificate')
             command.assert_not_called()
+            self.assertEqual(tls.return_value.load_cert_chain.call_count, 2)
 
 
 if __name__ == '__main__':

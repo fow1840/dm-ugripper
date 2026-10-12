@@ -489,6 +489,7 @@ BMS 串口由蓝牙服务的 `update_bms_data` 独占采集，UGripper 不再打
 `pack_script/postinst` 当前会：
 - 停掉旧的录制相关进程。
 - 初始化持久化标定目录；若 `calibration.json` 缺失、空文件或非法 JSON，则自动用 `bin/UgripperRuntime/config/fakeCamCalib.json` 修复。
+- 初始化 Web 配置与 HTTPS 证书：配置缺失、空白、非法 JSON 或非对象时直接重建默认配置；证书/私钥缺失、为空、损坏或不匹配时成对重建，不备份。保留有效配置与证书，配置经临时文件同步落盘后原子替换；权限、存储及证书生成错误仍使安装失败。
 - 自动配置 exfat 提前加载：若现场仍使用 `/home/user/lib/exfat.ko` 外部模块，安装时会把它复制进 `/lib/modules/<kernel>/extra/`、写入 `/etc/modules-load.d/ugripper-exfat.conf`，并在本次安装窗口内尝试立即加载。
 - 在重放相机/音频/串口 udev 规则前再次停止 `ugripper.service` 并等待停稳，避免 Fays warmup daemon 持有 stereo/IMU video 节点时被 trigger 扰动。
 - 重新加载 udev 规则，并只重放 Fays USB、video4linux、sound、input 与已枚举 CH9344 tty 事件；不主动触发 block add，避免升级期间重复拉起 USB updater。

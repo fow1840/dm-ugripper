@@ -774,7 +774,7 @@
       "source_file": "py_script/encoder.py",
       "source_location": "L66",
       "id": "py_script_encoder_serialencoder_disconnect",
-      "community": 177,
+      "community": 335,
       "norm_label": ".disconnect()"
     },
     {
@@ -18225,7 +18225,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L1",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_h",
-      "community": 782,
+      "community": 16,
       "norm_label": "camera_recorder.h"
     },
     {
@@ -18234,7 +18234,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L14",
       "id": "camera_recorder_camera_recorder_camera_recorder",
-      "community": 782,
+      "community": 16,
       "norm_label": "camera_recorder()"
     },
     {
@@ -18243,7 +18243,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L44",
       "id": "camera_recorder_camera_recorder_camerarecorder",
-      "community": 782,
+      "community": 16,
       "norm_label": "camerarecorder()"
     },
     {
@@ -21060,7 +21060,7 @@
       "source_file": "test/src/camera_recorder/test_stereo_control_json.cc",
       "source_location": "L1",
       "id": "test_src_camera_recorder_test_stereo_control_json_cc",
-      "community": 63,
+      "community": 142,
       "norm_label": "test_stereo_control_json.cc"
     },
     {
@@ -21069,7 +21069,7 @@
       "source_file": "test/src/camera_recorder/test_stereo_control_json.cc",
       "source_location": "L9",
       "id": "camera_recorder_test_stereo_control_json_test",
-      "community": 63,
+      "community": 142,
       "norm_label": "test()"
     },
     {
@@ -21402,7 +21402,7 @@
       "source_file": "test/src/camera/test_stereo_control_json.cc",
       "source_location": "L1",
       "id": "test_src_camera_test_stereo_control_json_cc",
-      "community": 63,
+      "community": 142,
       "norm_label": "test_stereo_control_json.cc"
     },
     {
@@ -21411,7 +21411,7 @@
       "source_file": "test/src/camera/test_stereo_control_json.cc",
       "source_location": "L9",
       "id": "camera_test_stereo_control_json_test",
-      "community": 63,
+      "community": 142,
       "norm_label": "test()"
     },
     {
@@ -26656,7 +26656,7 @@
       "label": "V2.1.13 - 2026-09-29",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L23",
+      "source_location": "L24",
       "id": "docs_changelog_v2_1_13_2026_09_29",
       "community": 14,
       "norm_label": "v2.1.13 - 2026-09-29"
@@ -26665,7 +26665,7 @@
       "label": "v2.1.12 - 2026-09-20",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L43",
+      "source_location": "L44",
       "id": "docs_changelog_v2_1_12_2026_09_20",
       "community": 14,
       "norm_label": "v2.1.12 - 2026-09-20"
@@ -26674,7 +26674,7 @@
       "label": "v2.1.11 - 2026-09-02",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L62",
+      "source_location": "L63",
       "id": "docs_changelog_v2_1_11_2026_09_02",
       "community": 14,
       "norm_label": "v2.1.11 - 2026-09-02"
@@ -26683,7 +26683,7 @@
       "label": "v2.1.10 - 2026-07-29",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L76",
+      "source_location": "L77",
       "id": "docs_changelog_v2_1_10_2026_07_29",
       "community": 14,
       "norm_label": "v2.1.10 - 2026-07-29"
@@ -26692,7 +26692,7 @@
       "label": "v2.1.9 - 2026-07-28",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L83",
+      "source_location": "L84",
       "id": "docs_changelog_v2_1_9_2026_07_28",
       "community": 14,
       "norm_label": "v2.1.9 - 2026-07-28"
@@ -26701,7 +26701,7 @@
       "label": "v2.1.8 - 2026-07-24",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L90",
+      "source_location": "L91",
       "id": "docs_changelog_v2_1_8_2026_07_24",
       "community": 14,
       "norm_label": "v2.1.8 - 2026-07-24"
@@ -26710,7 +26710,7 @@
       "label": "v2.1.7 - 2026-07-20",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L95",
+      "source_location": "L96",
       "id": "docs_changelog_v2_1_7_2026_07_20",
       "community": 14,
       "norm_label": "v2.1.7 - 2026-07-20"
@@ -26719,7 +26719,7 @@
       "label": "v2.1.6 - 2026-07-14",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L101",
+      "source_location": "L102",
       "id": "docs_changelog_v2_1_6_2026_07_14",
       "community": 14,
       "norm_label": "v2.1.6 - 2026-07-14"
@@ -26728,7 +26728,7 @@
       "label": "v2.1.5 - 2026-07-13",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L111",
+      "source_location": "L112",
       "id": "docs_changelog_v2_1_5_2026_07_13",
       "community": 14,
       "norm_label": "v2.1.5 - 2026-07-13"
@@ -26737,7 +26737,7 @@
       "label": "v2.1.4 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L121",
+      "source_location": "L122",
       "id": "docs_changelog_v2_1_4_unreleased",
       "community": 14,
       "norm_label": "v2.1.4 - unreleased"
@@ -26746,7 +26746,7 @@
       "label": "v2.1.3 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L128",
+      "source_location": "L129",
       "id": "docs_changelog_v2_1_3_unreleased",
       "community": 14,
       "norm_label": "v2.1.3 - unreleased"
@@ -26755,7 +26755,7 @@
       "label": "v2.1.2 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L135",
+      "source_location": "L136",
       "id": "docs_changelog_v2_1_2_unreleased",
       "community": 14,
       "norm_label": "v2.1.2 - unreleased"
@@ -26764,7 +26764,7 @@
       "label": "v2.1.1 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L142",
+      "source_location": "L143",
       "id": "docs_changelog_v2_1_1_unreleased",
       "community": 14,
       "norm_label": "v2.1.1 - unreleased"
@@ -26773,7 +26773,7 @@
       "label": "v2.0.13 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L160",
+      "source_location": "L161",
       "id": "docs_changelog_v2_0_13_unreleased",
       "community": 14,
       "norm_label": "v2.0.13 - unreleased"
@@ -26782,7 +26782,7 @@
       "label": "v2.0.4 - Unreleased",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L180",
+      "source_location": "L181",
       "id": "docs_changelog_v2_0_4_unreleased",
       "community": 14,
       "norm_label": "v2.0.4 - unreleased"
@@ -26791,7 +26791,7 @@
       "label": "v2.0.1 - 2026-05-21",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L194",
+      "source_location": "L195",
       "id": "docs_changelog_v2_0_1_2026_05_21",
       "community": 14,
       "norm_label": "v2.0.1 - 2026-05-21"
@@ -26800,7 +26800,7 @@
       "label": "v2.0.0 - 2026-04-29",
       "file_type": "document",
       "source_file": "docs/CHANGELOG.md",
-      "source_location": "L207",
+      "source_location": "L208",
       "id": "docs_changelog_v2_0_0_2026_04_29",
       "community": 14,
       "norm_label": "v2.0.0 - 2026-04-29"
@@ -27495,7 +27495,7 @@
       "source_file": "docs/agent/overview.md",
       "source_location": "L6",
       "id": "agent_overview_1_\u5f53\u524d\u7cfb\u7edf\u4e00\u53e5\u8bdd",
-      "community": 206,
+      "community": 782,
       "norm_label": "1. \u5f53\u524d\u7cfb\u7edf\u4e00\u53e5\u8bdd"
     },
     {
@@ -27504,7 +27504,7 @@
       "source_file": "docs/agent/overview.md",
       "source_location": "L20",
       "id": "agent_overview_fays_imu_\u56de\u8c03_\u6388\u65f6\u4e0e_cpu_\u5206\u5de5",
-      "community": 206,
+      "community": 782,
       "norm_label": "fays imu \u56de\u8c03\u3001\u6388\u65f6\u4e0e cpu \u5206\u5de5"
     },
     {
@@ -27513,7 +27513,7 @@
       "source_file": "docs/agent/overview.md",
       "source_location": "L29",
       "id": "agent_overview_\u8f85\u52a9\u4efb\u52a1\u4e0e\u89c6\u9891\u7ebf\u7a0b\u5f00\u9500",
-      "community": 206,
+      "community": 782,
       "norm_label": "\u8f85\u52a9\u4efb\u52a1\u4e0e\u89c6\u9891\u7ebf\u7a0b\u5f00\u9500"
     },
     {
@@ -27522,7 +27522,7 @@
       "source_file": "docs/agent/overview.md",
       "source_location": "L36",
       "id": "agent_overview_\u7f16\u7801\u5668\u5f55\u5236\u5065\u5eb7\u7ea6\u675f",
-      "community": 206,
+      "community": 782,
       "norm_label": "\u7f16\u7801\u5668\u5f55\u5236\u5065\u5eb7\u7ea6\u675f"
     },
     {
@@ -27808,7 +27808,7 @@
       "label": "9.6 \u7f51\u7ebf\u76d1\u6d4b\u884c\u4e3a",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L510",
+      "source_location": "L511",
       "id": "agent_overview_9_6_\u7f51\u7ebf\u76d1\u6d4b\u884c\u4e3a",
       "community": 373,
       "norm_label": "9.6 \u7f51\u7ebf\u76d1\u6d4b\u884c\u4e3a"
@@ -27817,7 +27817,7 @@
       "label": "9.7 \u4e3b\u5305\u6253\u5305\u7ea6\u675f",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L516",
+      "source_location": "L517",
       "id": "agent_overview_9_7_\u4e3b\u5305\u6253\u5305\u7ea6\u675f",
       "community": 373,
       "norm_label": "9.7 \u4e3b\u5305\u6253\u5305\u7ea6\u675f"
@@ -27826,7 +27826,7 @@
       "label": "Web \u89e6\u89c9\u76d6\u677f\u8bca\u65ad\u4e0e Ego \u7248\u672c",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L524",
+      "source_location": "L525",
       "id": "agent_overview_web_\u89e6\u89c9\u76d6\u677f\u8bca\u65ad\u4e0e_ego_\u7248\u672c",
       "community": 206,
       "norm_label": "web \u89e6\u89c9\u76d6\u677f\u8bca\u65ad\u4e0e ego \u7248\u672c"
@@ -27835,7 +27835,7 @@
       "label": "\u624b\u52a8\u76f8\u673a\u6293\u56fe",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L531",
+      "source_location": "L532",
       "id": "agent_overview_\u624b\u52a8\u76f8\u673a\u6293\u56fe",
       "community": 206,
       "norm_label": "\u624b\u52a8\u76f8\u673a\u6293\u56fe"
@@ -27844,7 +27844,7 @@
       "label": "10. \u5e38\u7528\u68c0\u67e5\u4e0e\u6392\u969c\u5165\u53e3",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L537",
+      "source_location": "L538",
       "id": "agent_overview_10_\u5e38\u7528\u68c0\u67e5\u4e0e\u6392\u969c\u5165\u53e3",
       "community": 237,
       "norm_label": "10. \u5e38\u7528\u68c0\u67e5\u4e0e\u6392\u969c\u5165\u53e3"
@@ -27853,7 +27853,7 @@
       "label": "10.1 \u670d\u52a1\u7ba1\u7406",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L538",
+      "source_location": "L539",
       "id": "agent_overview_10_1_\u670d\u52a1\u7ba1\u7406",
       "community": 237,
       "norm_label": "10.1 \u670d\u52a1\u7ba1\u7406"
@@ -27862,7 +27862,7 @@
       "label": "code:bash (sudo systemctl status ugripper.service)",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L539",
+      "source_location": "L540",
       "id": "agent_overview_codeblock_1",
       "community": 237,
       "norm_label": "code:bash (sudo systemctl status ugripper.service)"
@@ -27871,7 +27871,7 @@
       "label": "10.2 \u5f55\u5236\u76f8\u5173\u8fdb\u7a0b",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L545",
+      "source_location": "L546",
       "id": "agent_overview_10_2_\u5f55\u5236\u76f8\u5173\u8fdb\u7a0b",
       "community": 237,
       "norm_label": "10.2 \u5f55\u5236\u76f8\u5173\u8fdb\u7a0b"
@@ -27880,7 +27880,7 @@
       "label": "10.3 U \u76d8\u6d41\u7a0b\u65e5\u5fd7",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L551",
+      "source_location": "L552",
       "id": "agent_overview_10_3_u_\u76d8\u6d41\u7a0b\u65e5\u5fd7",
       "community": 237,
       "norm_label": "10.3 u \u76d8\u6d41\u7a0b\u65e5\u5fd7"
@@ -27889,7 +27889,7 @@
       "label": "code:bash (sudo tail -n 200 /var/log/ugripper/usb_auto_update.log)",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L552",
+      "source_location": "L553",
       "id": "agent_overview_codeblock_2",
       "community": 237,
       "norm_label": "code:bash (sudo tail -n 200 /var/log/ugripper/usb_auto_update.log)"
@@ -27898,7 +27898,7 @@
       "label": "10.4 \u8fd0\u884c\u65e5\u5fd7",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L557",
+      "source_location": "L558",
       "id": "agent_overview_10_4_\u8fd0\u884c\u65e5\u5fd7",
       "community": 237,
       "norm_label": "10.4 \u8fd0\u884c\u65e5\u5fd7"
@@ -27907,7 +27907,7 @@
       "label": "code:bash (tail -n 200 /tmp/umi_sys_<device_sn_lower>_$(date +%Y%m%d).l)",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L561",
+      "source_location": "L562",
       "id": "agent_overview_codeblock_3",
       "community": 237,
       "norm_label": "code:bash (tail -n 200 /tmp/umi_sys_<device_sn_lower>_$(date +%y%m%d).l)"
@@ -27916,7 +27916,7 @@
       "label": "10.5 \u8bbe\u5907\u6620\u5c04\u4f18\u5148\u68c0\u67e5",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L566",
+      "source_location": "L567",
       "id": "agent_overview_10_5_\u8bbe\u5907\u6620\u5c04\u4f18\u5148\u68c0\u67e5",
       "community": 237,
       "norm_label": "10.5 \u8bbe\u5907\u6620\u5c04\u4f18\u5148\u68c0\u67e5"
@@ -27925,7 +27925,7 @@
       "label": "10.6 \u5feb\u901f\u5b9a\u4f4d\u5efa\u8bae",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L580",
+      "source_location": "L581",
       "id": "agent_overview_10_6_\u5feb\u901f\u5b9a\u4f4d\u5efa\u8bae",
       "community": 237,
       "norm_label": "10.6 \u5feb\u901f\u5b9a\u4f4d\u5efa\u8bae"
@@ -27934,7 +27934,7 @@
       "label": "10.7 tactile serial \u5b9a\u5411\u6838\u5bf9",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L591",
+      "source_location": "L592",
       "id": "agent_overview_10_7_tactile_serial_\u5b9a\u5411\u6838\u5bf9",
       "community": 237,
       "norm_label": "10.7 tactile serial \u5b9a\u5411\u6838\u5bf9"
@@ -27943,7 +27943,7 @@
       "label": "code:bash (journalctl -u ugripper.service --since \"2 hours ago\" | grep )",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L592",
+      "source_location": "L593",
       "id": "agent_overview_codeblock_4",
       "community": 237,
       "norm_label": "code:bash (journalctl -u ugripper.service --since \"2 hours ago\" | grep )"
@@ -27952,7 +27952,7 @@
       "label": "10.8 HMI \u7248\u672c\u8bfb\u53d6",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L622",
+      "source_location": "L623",
       "id": "agent_overview_10_8_hmi_\u7248\u672c\u8bfb\u53d6",
       "community": 237,
       "norm_label": "10.8 hmi \u7248\u672c\u8bfb\u53d6"
@@ -27961,7 +27961,7 @@
       "label": "10.9 \u4ed3\u5e93\u5185\u6d4b\u8bd5\u811a\u672c",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L628",
+      "source_location": "L629",
       "id": "agent_overview_10_9_\u4ed3\u5e93\u5185\u6d4b\u8bd5\u811a\u672c",
       "community": 237,
       "norm_label": "10.9 \u4ed3\u5e93\u5185\u6d4b\u8bd5\u811a\u672c"
@@ -27970,7 +27970,7 @@
       "label": "11. \u5f53\u524d\u4f7f\u7528\u6ce8\u610f\u70b9",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L649",
+      "source_location": "L650",
       "id": "agent_overview_11_\u5f53\u524d\u4f7f\u7528\u6ce8\u610f\u70b9",
       "community": 206,
       "norm_label": "11. \u5f53\u524d\u4f7f\u7528\u6ce8\u610f\u70b9"
@@ -27979,7 +27979,7 @@
       "label": "Web \u751f\u4ea7\u538b\u6d4b\u3001\u7f16\u7801\u5668\u4e0e\u754c\u9762\u8bed\u8a00",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L657",
+      "source_location": "L658",
       "id": "agent_overview_web_\u751f\u4ea7\u538b\u6d4b_\u7f16\u7801\u5668\u4e0e\u754c\u9762\u8bed\u8a00",
       "community": 634,
       "norm_label": "web \u751f\u4ea7\u538b\u6d4b\u3001\u7f16\u7801\u5668\u4e0e\u754c\u9762\u8bed\u8a00"
@@ -27988,7 +27988,7 @@
       "label": "\u4e3b\u6444 50 Hz \u63d2\u8865\u65f6\u95f4\u4fee\u6b63",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L668",
+      "source_location": "L669",
       "id": "agent_overview_\u4e3b\u6444_50_hz_\u63d2\u8865\u65f6\u95f4\u4fee\u6b63",
       "community": 634,
       "norm_label": "\u4e3b\u6444 50 hz \u63d2\u8865\u65f6\u95f4\u4fee\u6b63"
@@ -27997,7 +27997,7 @@
       "label": "H.265 \u63d2\u8865\u76f8\u4f4d\u8ddf\u8e2a",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L680",
+      "source_location": "L681",
       "id": "agent_overview_h_265_\u63d2\u8865\u76f8\u4f4d\u8ddf\u8e2a",
       "community": 634,
       "norm_label": "h.265 \u63d2\u8865\u76f8\u4f4d\u8ddf\u8e2a"
@@ -28006,7 +28006,7 @@
       "label": "H.264 \u65b0\u56fa\u4ef6\u9002\u914d\uff082026-09-16\uff09",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L686",
+      "source_location": "L687",
       "id": "agent_overview_h_264_\u65b0\u56fa\u4ef6\u9002\u914d_2026_09_16",
       "community": 634,
       "norm_label": "h.264 \u65b0\u56fa\u4ef6\u9002\u914d(2026-09-16)"
@@ -28015,7 +28015,7 @@
       "label": "Ego \u7ed1\u5b9a\u540e\u6301\u7eed USB \u6821\u65f6\uff082026-09-18\uff09",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L695",
+      "source_location": "L696",
       "id": "agent_overview_ego_\u7ed1\u5b9a\u540e\u6301\u7eed_usb_\u6821\u65f6_2026_09_18",
       "community": 634,
       "norm_label": "ego \u7ed1\u5b9a\u540e\u6301\u7eed usb \u6821\u65f6(2026-09-18)"
@@ -28024,7 +28024,7 @@
       "label": "\u4e3b\u6444\u542f\u52a8\u951a\u70b9\u4e0e\u751f\u4ea7\u65e5\u5fd7",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L708",
+      "source_location": "L709",
       "id": "agent_overview_\u4e3b\u6444\u542f\u52a8\u951a\u70b9\u4e0e\u751f\u4ea7\u65e5\u5fd7",
       "community": 634,
       "norm_label": "\u4e3b\u6444\u542f\u52a8\u951a\u70b9\u4e0e\u751f\u4ea7\u65e5\u5fd7"
@@ -28033,7 +28033,7 @@
       "label": "Fays \u65e0\u5e27\u6062\u590d\u72b6\u6001",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L714",
+      "source_location": "L715",
       "id": "agent_overview_fays_\u65e0\u5e27\u6062\u590d\u72b6\u6001",
       "community": 634,
       "norm_label": "fays \u65e0\u5e27\u6062\u590d\u72b6\u6001"
@@ -28042,7 +28042,7 @@
       "label": "12. \u5f00\u53d1\u67b6\u6784\u4e0e\u6e90\u7801\u5165\u53e3",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L724",
+      "source_location": "L725",
       "id": "agent_overview_12_\u5f00\u53d1\u67b6\u6784\u4e0e\u6e90\u7801\u5165\u53e3",
       "community": 206,
       "norm_label": "12. \u5f00\u53d1\u67b6\u6784\u4e0e\u6e90\u7801\u5165\u53e3"
@@ -28051,7 +28051,7 @@
       "label": "13. Camera YAML \u5951\u7ea6",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L751",
+      "source_location": "L752",
       "id": "agent_overview_13_camera_yaml_\u5951\u7ea6",
       "community": 206,
       "norm_label": "13. camera yaml \u5951\u7ea6"
@@ -28060,7 +28060,7 @@
       "label": "14. \u6784\u5efa\u3001\u6253\u5305\u4e0e\u90e8\u7f72",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L762",
+      "source_location": "L763",
       "id": "agent_overview_14_\u6784\u5efa_\u6253\u5305\u4e0e\u90e8\u7f72",
       "community": 206,
       "norm_label": "14. \u6784\u5efa\u3001\u6253\u5305\u4e0e\u90e8\u7f72"
@@ -28069,7 +28069,7 @@
       "label": "code:bash (./scripts/build_arm_deb_in_pp_arm_dev.sh --no-clean)",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L768",
+      "source_location": "L769",
       "id": "agent_overview_codeblock_5",
       "community": 206,
       "norm_label": "code:bash (./scripts/build_arm_deb_in_pp_arm_dev.sh --no-clean)"
@@ -28078,7 +28078,7 @@
       "label": "code:bash (PACKAGED_VENV_URL='' PACKAGED_VENV_SOURCE=/path/to/arm64/.ve)",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L780",
+      "source_location": "L781",
       "id": "agent_overview_codeblock_6",
       "community": 206,
       "norm_label": "code:bash (packaged_venv_url='' packaged_venv_source=/path/to/arm64/.ve)"
@@ -28087,7 +28087,7 @@
       "label": "15. \u6d4b\u8bd5\u4e0e\u7ef4\u62a4\u5165\u53e3",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L789",
+      "source_location": "L790",
       "id": "agent_overview_15_\u6d4b\u8bd5\u4e0e\u7ef4\u62a4\u5165\u53e3",
       "community": 390,
       "norm_label": "15. \u6d4b\u8bd5\u4e0e\u7ef4\u62a4\u5165\u53e3"
@@ -28096,7 +28096,7 @@
       "label": "code:bash (cmake -S . -B build/host-tests -DBUILD_TESTING=ON -DPP_MAIN_)",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L801",
+      "source_location": "L802",
       "id": "agent_overview_codeblock_7",
       "community": 390,
       "norm_label": "code:bash (cmake -s . -b build/host-tests -dbuild_testing=on -dpp_main_)"
@@ -28105,7 +28105,7 @@
       "label": "\u4e3b\u6444\u91cd\u590d PTS \u65e5\u5fd7\u53e3\u5f84",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L811",
+      "source_location": "L812",
       "id": "agent_overview_\u4e3b\u6444\u91cd\u590d_pts_\u65e5\u5fd7\u53e3\u5f84",
       "community": 390,
       "norm_label": "\u4e3b\u6444\u91cd\u590d pts \u65e5\u5fd7\u53e3\u5f84"
@@ -28114,7 +28114,7 @@
       "label": "\u53cc\u76ee\u5f55\u5236\u6389\u5e27\u95e8\u9650",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L819",
+      "source_location": "L820",
       "id": "agent_overview_\u53cc\u76ee\u5f55\u5236\u6389\u5e27\u95e8\u9650",
       "community": 390,
       "norm_label": "\u53cc\u76ee\u5f55\u5236\u6389\u5e27\u95e8\u9650"
@@ -28123,7 +28123,7 @@
       "label": "\u505c\u5f55 QC \u89c6\u9891\u63a2\u6d4b\u4e00\u81f4\u6027",
       "file_type": "document",
       "source_file": "docs/agent/overview.md",
-      "source_location": "L827",
+      "source_location": "L828",
       "id": "agent_overview_\u505c\u5f55_qc_\u89c6\u9891\u63a2\u6d4b\u4e00\u81f4\u6027",
       "community": 390,
       "norm_label": "\u505c\u5f55 qc \u89c6\u9891\u63a2\u6d4b\u4e00\u81f4\u6027"
@@ -39104,7 +39104,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/equivalence-checklist.md",
       "source_location": "L1",
-      "community": 142,
+      "community": 36,
       "norm_label": "equivalence-checklist.md",
       "id": "docs_archive_2026_refactor_history_baseline_equivalence_checklist_md"
     },
@@ -39113,7 +39113,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/equivalence-checklist.md",
       "source_location": "L1",
-      "community": 142,
+      "community": 36,
       "norm_label": "equivalence checklist baseline",
       "id": "baseline_equivalence_checklist_equivalence_checklist_baseline"
     },
@@ -39122,7 +39122,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/equivalence-checklist.md",
       "source_location": "L9",
-      "community": 142,
+      "community": 36,
       "norm_label": "1. \u5f53\u524d\u672c\u5730\u73af\u5883\u8bf4\u660e",
       "id": "baseline_equivalence_checklist_1_\u5f53\u524d\u672c\u5730\u73af\u5883\u8bf4\u660e"
     },
@@ -39131,7 +39131,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/equivalence-checklist.md",
       "source_location": "L23",
-      "community": 142,
+      "community": 36,
       "norm_label": "2. \u884c\u4e3a\u7b49\u4ef7\u68c0\u67e5\u6e05\u5355",
       "id": "baseline_equivalence_checklist_2_\u884c\u4e3a\u7b49\u4ef7\u68c0\u67e5\u6e05\u5355"
     },
@@ -39140,7 +39140,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/equivalence-checklist.md",
       "source_location": "L38",
-      "community": 142,
+      "community": 36,
       "norm_label": "3. \u5f53\u524d\u5df2\u6267\u884c\u7684\u672c\u5730\u9a8c\u8bc1",
       "id": "baseline_equivalence_checklist_3_\u5f53\u524d\u5df2\u6267\u884c\u7684\u672c\u5730\u9a8c\u8bc1"
     },
@@ -39149,7 +39149,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/equivalence-checklist.md",
       "source_location": "L40",
-      "community": 142,
+      "community": 36,
       "norm_label": "3.1 shell \u8bed\u6cd5\u68c0\u67e5",
       "id": "baseline_equivalence_checklist_3_1_shell_\u8bed\u6cd5\u68c0\u67e5"
     },
@@ -39158,7 +39158,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/equivalence-checklist.md",
       "source_location": "L52",
-      "community": 142,
+      "community": 36,
       "norm_label": "3.2 python \u8bed\u6cd5\u68c0\u67e5",
       "id": "baseline_equivalence_checklist_3_2_python_\u8bed\u6cd5\u68c0\u67e5"
     },
@@ -39167,7 +39167,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/equivalence-checklist.md",
       "source_location": "L59",
-      "community": 142,
+      "community": 36,
       "norm_label": "3.3 \u6700\u5c0f\u547d\u4ee4\u63a2\u6d4b",
       "id": "baseline_equivalence_checklist_3_3_\u6700\u5c0f\u547d\u4ee4\u63a2\u6d4b"
     },
@@ -39176,7 +39176,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/equivalence-checklist.md",
       "source_location": "L71",
-      "community": 142,
+      "community": 36,
       "norm_label": "4. \u5f53\u524d\u4e0d\u80fd\u5728\u672c\u5730 linux \u5b8c\u6210\u7684\u9a8c\u8bc1",
       "id": "baseline_equivalence_checklist_4_\u5f53\u524d\u4e0d\u80fd\u5728\u672c\u5730_linux_\u5b8c\u6210\u7684\u9a8c\u8bc1"
     },
@@ -39185,7 +39185,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/equivalence-checklist.md",
       "source_location": "L82",
-      "community": 142,
+      "community": 36,
       "norm_label": "5. \u540e\u7eed\u4f7f\u7528\u65b9\u5f0f",
       "id": "baseline_equivalence_checklist_5_\u540e\u7eed\u4f7f\u7528\u65b9\u5f0f"
     },
@@ -51266,7 +51266,7 @@
       "source_file": "scripts/logging/ugripper_logger.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "community_name": ".open",
       "norm_label": "ugripper_logger.py",
       "id": "scripts_logging_ugripper_logger"
@@ -51277,7 +51277,7 @@
       "source_file": "scripts/logging/ugripper_logger.py",
       "source_location": "L25",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "community_name": ".open",
       "norm_label": "_append_error_code()",
       "id": "scripts_logging_ugripper_logger_append_error_code"
@@ -51288,7 +51288,7 @@
       "source_file": "scripts/logging/ugripper_logger.py",
       "source_location": "L36",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "community_name": ".open",
       "norm_label": "ugripper_log()",
       "id": "scripts_logging_ugripper_logger_ugripper_log"
@@ -51404,7 +51404,7 @@
       "source_file": "scripts/restore_usb/auto_restore_usb.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "community_name": ".open",
       "norm_label": "auto_restore_usb.py",
       "id": "scripts_restore_usb_auto_restore_usb"
@@ -51415,7 +51415,7 @@
       "source_file": "scripts/restore_usb/auto_restore_usb.py",
       "source_location": "L24",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "norm_label": "set_gpio_value()",
       "community_name": ".open",
       "id": "scripts_restore_usb_auto_restore_usb_set_gpio_value"
@@ -51426,7 +51426,7 @@
       "source_file": "scripts/restore_usb/auto_restore_usb.py",
       "source_location": "L35",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "norm_label": "open_modbus_client()",
       "community_name": ".open",
       "id": "scripts_restore_usb_auto_restore_usb_open_modbus_client"
@@ -51437,7 +51437,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "community_name": ".open",
       "norm_label": "modbusserialclient",
       "id": "modbusserialclient"
@@ -51448,7 +51448,7 @@
       "source_file": "scripts/restore_usb/auto_restore_usb.py",
       "source_location": "L46",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "norm_label": "read_power_register()",
       "community_name": ".open",
       "id": "scripts_restore_usb_auto_restore_usb_read_power_register"
@@ -51459,7 +51459,7 @@
       "source_file": "scripts/restore_usb/auto_restore_usb.py",
       "source_location": "L63",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "norm_label": "write_power_bit()",
       "community_name": ".open",
       "id": "scripts_restore_usb_auto_restore_usb_write_power_bit"
@@ -51470,7 +51470,7 @@
       "source_file": "scripts/restore_usb/auto_restore_usb.py",
       "source_location": "L124",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "norm_label": "set_power_bit()",
       "community_name": ".open",
       "id": "scripts_restore_usb_auto_restore_usb_set_power_bit"
@@ -51481,7 +51481,7 @@
       "source_file": "scripts/restore_usb/auto_restore_usb.py",
       "source_location": "L137",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "norm_label": "verify_power_bits()",
       "community_name": ".open",
       "id": "scripts_restore_usb_auto_restore_usb_verify_power_bits"
@@ -51492,7 +51492,7 @@
       "source_file": "scripts/restore_usb/auto_restore_usb.py",
       "source_location": "L166",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "norm_label": "set_power_bits()",
       "community_name": ".open",
       "id": "scripts_restore_usb_auto_restore_usb_set_power_bits"
@@ -51503,7 +51503,7 @@
       "source_file": "scripts/restore_usb/auto_restore_usb.py",
       "source_location": "L186",
       "_origin": "ast",
-      "community": 335,
+      "community": 453,
       "norm_label": "main()",
       "community_name": ".open",
       "id": "scripts_restore_usb_auto_restore_usb_main"
@@ -60367,7 +60367,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L26",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "options",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options"
@@ -60378,7 +60378,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "path",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_h_path"
@@ -60389,7 +60389,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L27",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "output_dir",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_output_dir"
@@ -60400,7 +60400,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "string",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_h_string"
@@ -60411,7 +60411,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L28",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "codec",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_codec"
@@ -60422,7 +60422,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L29",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "duration_sec",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_duration_sec"
@@ -60433,7 +60433,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L30",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "dry_run",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_dry_run"
@@ -60444,7 +60444,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L31",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "allow_missing",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_allow_missing"
@@ -60455,7 +60455,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L32",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "stereo_daemon",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_stereo_daemon"
@@ -60466,7 +60466,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L33",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "ffmpeg_bin",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_ffmpeg_bin"
@@ -60477,7 +60477,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L34",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "gst_bin",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_gst_bin"
@@ -60488,7 +60488,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L35",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "config_yaml",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_config_yaml"
@@ -60499,7 +60499,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L36",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "config_yaml_explicit",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_config_yaml_explicit"
@@ -60510,7 +60510,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L37",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "control_file",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_control_file"
@@ -60521,7 +60521,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L38",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "status_file",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_status_file"
@@ -60532,7 +60532,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 16,
+      "community": 147,
       "community_name": "string",
       "norm_label": "set",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_h_set"
@@ -60543,7 +60543,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_recorder.h",
       "source_location": "L39",
       "_origin": "ast",
-      "community": 93,
+      "community": 147,
       "community_name": "Options",
       "norm_label": "only_names",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_recorder_options_only_names"
@@ -60895,7 +60895,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_registry.h",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 16,
+      "community": 147,
       "community_name": "string",
       "norm_label": "camera_registry.h",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_registry"
@@ -61346,7 +61346,7 @@
       "source_file": "standalone/CameraRecorder/include/camera_recorder/stereo_control_json.h",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 63,
+      "community": 16,
       "community_name": "json",
       "norm_label": "stereo_control_json.h",
       "id": "standalone_camerarecorder_include_camera_recorder_stereo_control_json"
@@ -61643,7 +61643,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 63,
+      "community": 16,
       "community_name": "json",
       "norm_label": "map",
       "id": "standalone_camerarecorder_include_camera_recorder_stereo_control_json_h_map"
@@ -66326,7 +66326,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L267",
       "_origin": "ast",
-      "community": 82,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "gripperhmidriver::logconnectfailurelocked()",
       "id": "standalone_gripperhmitool_gripper_hmi_driver_gripperhmidriver_logconnectfailurelocked"
@@ -66337,7 +66337,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L302",
       "_origin": "ast",
-      "community": 82,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "gripperhmidriver::resetconnectfailureloglocked()",
       "id": "standalone_gripperhmitool_gripper_hmi_driver_gripperhmidriver_resetconnectfailureloglocked"
@@ -66359,7 +66359,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L419",
       "_origin": "ast",
-      "community": 750,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "gripperhmidriver::disconnect()",
       "id": "standalone_gripperhmitool_gripper_hmi_driver_gripperhmidriver_disconnect"
@@ -66392,7 +66392,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L498",
       "_origin": "ast",
-      "community": 82,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "gripperhmidriver::handleiofailurelocked()",
       "id": "standalone_gripperhmitool_gripper_hmi_driver_gripperhmidriver_handleiofailurelocked"
@@ -66755,7 +66755,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L1942",
       "_origin": "ast",
-      "community": 82,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "gripperhmidriver::handleparsedframe()",
       "id": "standalone_gripperhmitool_gripper_hmi_driver_gripperhmidriver_handleparsedframe"
@@ -66777,7 +66777,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L2010",
       "_origin": "ast",
-      "community": 750,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "gripperhmidriver::ioloop()",
       "id": "standalone_gripperhmitool_gripper_hmi_driver_gripperhmidriver_ioloop"
@@ -66821,7 +66821,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_driver.cc",
       "source_location": "L2201",
       "_origin": "ast",
-      "community": 82,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "gripperhmidriver::isactive()",
       "id": "standalone_gripperhmitool_gripper_hmi_driver_gripperhmidriver_isactive"
@@ -67019,7 +67019,7 @@
       "source_file": "standalone/GripperHmiTool/gripper_hmi_protocol.cc",
       "source_location": "L28",
       "_origin": "ast",
-      "community": 95,
+      "community": 44,
       "community_name": "gripper_hmi_protocol.cc",
       "norm_label": "gripperhmiprotocol::decodekeyreport()",
       "id": "standalone_gripperhmitool_gripper_hmi_protocol_gripperhmiprotocol_decodekeyreport"
@@ -67030,7 +67030,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 95,
+      "community": 44,
       "community_name": "gripper_hmi_protocol.cc",
       "norm_label": "optional",
       "id": "standalone_gripperhmitool_gripper_hmi_protocol_cc_optional"
@@ -68284,7 +68284,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_driver.h",
       "source_location": "L81",
       "_origin": "ast",
-      "community": 750,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "readandprocessavailablelocked",
       "id": "standalone_gripperhmitool_include_gripper_hmi_driver_gripperhmidriver_readandprocessavailablelocked"
@@ -68526,7 +68526,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_driver.h",
       "source_location": "L112",
       "_origin": "ast",
-      "community": 82,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "logiosummarylocked",
       "id": "standalone_gripperhmitool_include_gripper_hmi_driver_gripperhmidriver_logiosummarylocked"
@@ -70418,7 +70418,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_protocol.h",
       "source_location": "L85",
       "_origin": "ast",
-      "community": 750,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "buildbeepstaterequest",
       "id": "standalone_gripperhmitool_include_gripper_hmi_protocol_gripperhmiprotocol_buildbeepstaterequest"
@@ -70429,7 +70429,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_protocol.h",
       "source_location": "L86",
       "_origin": "ast",
-      "community": 750,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "buildsetbeepcommand",
       "id": "standalone_gripperhmitool_include_gripper_hmi_protocol_gripperhmiprotocol_buildsetbeepcommand"
@@ -70440,7 +70440,7 @@
       "source_file": "standalone/GripperHmiTool/include/gripper_hmi_protocol.h",
       "source_location": "L87",
       "_origin": "ast",
-      "community": 750,
+      "community": 767,
       "community_name": "currentSteadyMs",
       "norm_label": "buildsetrgbcommand",
       "id": "standalone_gripperhmitool_include_gripper_hmi_protocol_gripperhmiprotocol_buildsetrgbcommand"
@@ -70638,7 +70638,7 @@
       "source_file": "standalone/GripperHmiTool/main.cc",
       "source_location": "L54",
       "_origin": "ast",
-      "community": 82,
+      "community": 767,
       "norm_label": "currentsteadyms()",
       "community_name": "currentSteadyMs",
       "id": "standalone_gripperhmitool_main_currentsteadyms"
@@ -72596,7 +72596,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L58",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "encoderruntime",
       "id": "standalone_sensorrecorder_main_encoderruntime"
@@ -72607,7 +72607,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L59",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "config",
       "id": "standalone_sensorrecorder_main_encoderruntime_config"
@@ -72618,7 +72618,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "unique_ptr",
       "id": "standalone_sensorrecorder_main_cc_unique_ptr"
@@ -72629,7 +72629,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L60",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "driver",
       "id": "standalone_sensorrecorder_main_encoderruntime_driver"
@@ -72640,7 +72640,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L61",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "channel",
       "id": "standalone_sensorrecorder_main_encoderruntime_channel"
@@ -72651,7 +72651,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L62",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "timestampsmoothing",
       "id": "standalone_sensorrecorder_main_encoderruntime_timestampsmoothing"
@@ -72673,7 +72673,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L63",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "readthread",
       "id": "standalone_sensorrecorder_main_encoderruntime_readthread"
@@ -72684,7 +72684,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L64",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "requestthread",
       "id": "standalone_sensorrecorder_main_encoderruntime_requestthread"
@@ -72695,7 +72695,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L65",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "sequence",
       "id": "standalone_sensorrecorder_main_encoderruntime_sequence"
@@ -72706,7 +72706,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L66",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "firstsamplelogged",
       "id": "standalone_sensorrecorder_main_encoderruntime_firstsamplelogged"
@@ -72717,7 +72717,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L67",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "warmupcounter",
       "id": "standalone_sensorrecorder_main_encoderruntime_warmupcounter"
@@ -72728,7 +72728,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L68",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "connected",
       "id": "standalone_sensorrecorder_main_encoderruntime_connected"
@@ -72739,7 +72739,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L69",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "receivedsamplecount",
       "id": "standalone_sensorrecorder_main_encoderruntime_receivedsamplecount"
@@ -72750,7 +72750,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L70",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "emittedmessagecount",
       "id": "standalone_sensorrecorder_main_encoderruntime_emittedmessagecount"
@@ -72761,7 +72761,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L71",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "lastemittedsequence",
       "id": "standalone_sensorrecorder_main_encoderruntime_lastemittedsequence"
@@ -72772,7 +72772,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L72",
       "_origin": "ast",
-      "community": 118,
+      "community": 45,
       "community_name": "EncoderRuntime",
       "norm_label": "lastemittedtimestampns",
       "id": "standalone_sensorrecorder_main_encoderruntime_lastemittedtimestampns"
@@ -73113,7 +73113,7 @@
       "source_file": "standalone/SensorRecorder/main.cc",
       "source_location": "L272",
       "_origin": "ast",
-      "community": 453,
+      "community": 78,
       "norm_label": "connectencoderwithfallback()",
       "community_name": "SensorRecorder/main.cc",
       "id": "standalone_sensorrecorder_main_connectencoderwithfallback"
@@ -82431,7 +82431,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime/stereo_session_client.h",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 16,
+      "community": 155,
       "community_name": "string",
       "norm_label": "stereo_session_client.h",
       "id": "standalone_ugripperruntime_include_record_runtime_stereo_session_client"
@@ -82805,7 +82805,7 @@
       "source_file": "standalone/UgripperRuntime/include/record_runtime/stereo_session_port.h",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 16,
+      "community": 155,
       "community_name": "string",
       "norm_label": "stereo_session_port.h",
       "id": "standalone_ugripperruntime_include_record_runtime_stereo_session_port"
@@ -89704,7 +89704,7 @@
       "source_file": "test/scripts/board_encoder_cmd_ack_latency.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 98,
+      "community": 772,
       "community_name": "board_encoder_cmd_ack_latency.py",
       "norm_label": "board_encoder_cmd_ack_latency.py",
       "id": "test_scripts_board_encoder_cmd_ack_latency_py_test_scripts_board_encoder_cmd_ack_latency"
@@ -89715,7 +89715,7 @@
       "source_file": "test/scripts/board_encoder_cmd_ack_latency.py",
       "source_location": "L17",
       "_origin": "ast",
-      "community": 98,
+      "community": 772,
       "norm_label": "crc16_modbus()",
       "community_name": "board_encoder_cmd_ack_latency.py",
       "id": "test_scripts_board_encoder_cmd_ack_latency_crc16_modbus"
@@ -89726,7 +89726,7 @@
       "source_file": "test/scripts/board_encoder_cmd_ack_latency.py",
       "source_location": "L29",
       "_origin": "ast",
-      "community": 98,
+      "community": 772,
       "norm_label": "configure_serial()",
       "community_name": "board_encoder_cmd_ack_latency.py",
       "id": "test_scripts_board_encoder_cmd_ack_latency_configure_serial"
@@ -89737,7 +89737,7 @@
       "source_file": "test/scripts/board_encoder_cmd_ack_latency.py",
       "source_location": "L43",
       "_origin": "ast",
-      "community": 98,
+      "community": 772,
       "norm_label": "percentile()",
       "community_name": "board_encoder_cmd_ack_latency.py",
       "id": "test_scripts_board_encoder_cmd_ack_latency_percentile"
@@ -89748,7 +89748,7 @@
       "source_file": "test/scripts/board_encoder_cmd_ack_latency.py",
       "source_location": "L51",
       "_origin": "ast",
-      "community": 98,
+      "community": 772,
       "norm_label": "run_side()",
       "community_name": "board_encoder_cmd_ack_latency.py",
       "id": "test_scripts_board_encoder_cmd_ack_latency_run_side"
@@ -89759,7 +89759,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 98,
+      "community": 772,
       "community_name": "board_encoder_cmd_ack_latency.py",
       "norm_label": "path",
       "id": "test_scripts_board_encoder_cmd_ack_latency_py_path"
@@ -89770,7 +89770,7 @@
       "source_file": "test/scripts/board_encoder_cmd_ack_latency.py",
       "source_location": "L144",
       "_origin": "ast",
-      "community": 98,
+      "community": 772,
       "norm_label": "main()",
       "community_name": "board_encoder_cmd_ack_latency.py",
       "id": "test_scripts_board_encoder_cmd_ack_latency_main"
@@ -93992,7 +93992,7 @@
       "source_file": "test/src/camera/test_stereo_control_json.cc",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "community_name": "gripper_hmi_toolkit.py",
       "norm_label": "camera/test_stereo_control_json.cc",
       "id": "test_src_camera_test_stereo_control_json"
@@ -94003,7 +94003,7 @@
       "source_file": "test/src/camera/test_stereo_control_json.cc",
       "source_location": "L9",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "norm_label": "test()",
       "community_name": "gripper_hmi_toolkit.py",
       "id": "test_src_camera_test_stereo_control_json_test"
@@ -94014,7 +94014,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "community_name": "gripper_hmi_toolkit.py",
       "norm_label": "stereocontroljsontest",
       "id": "test_src_camera_test_stereo_control_json_cc_stereocontroljsontest"
@@ -94025,7 +94025,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "community_name": "gripper_hmi_toolkit.py",
       "norm_label": "parsesstereocontrolcommand",
       "id": "test_src_camera_test_stereo_control_json_cc_parsesstereocontrolcommand"
@@ -94036,7 +94036,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "community_name": "gripper_hmi_toolkit.py",
       "norm_label": "rejectsnonobjectcontroljson",
       "id": "test_src_camera_test_stereo_control_json_cc_rejectsnonobjectcontroljson"
@@ -94047,7 +94047,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "community_name": "gripper_hmi_toolkit.py",
       "norm_label": "buildsstableservicestatusjson",
       "id": "test_src_camera_test_stereo_control_json_cc_buildsstableservicestatusjson"
@@ -94311,7 +94311,7 @@
       "source_file": "test/src/camera_recorder/test_stereo_control_json.cc",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "community_name": "gripper_hmi_toolkit.py",
       "norm_label": "camera_recorder/test_stereo_control_json.cc",
       "id": "test_src_camera_recorder_test_stereo_control_json"
@@ -94322,7 +94322,7 @@
       "source_file": "test/src/camera_recorder/test_stereo_control_json.cc",
       "source_location": "L9",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "norm_label": "test()",
       "community_name": "gripper_hmi_toolkit.py",
       "id": "test_src_camera_recorder_test_stereo_control_json_test"
@@ -94333,7 +94333,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "community_name": "gripper_hmi_toolkit.py",
       "norm_label": "stereocontroljsontest",
       "id": "test_src_camera_recorder_test_stereo_control_json_cc_stereocontroljsontest"
@@ -94344,7 +94344,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "community_name": "gripper_hmi_toolkit.py",
       "norm_label": "parsesstereocontrolcommand",
       "id": "test_src_camera_recorder_test_stereo_control_json_cc_parsesstereocontrolcommand"
@@ -94355,7 +94355,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "community_name": "gripper_hmi_toolkit.py",
       "norm_label": "rejectsnonobjectcontroljson",
       "id": "test_src_camera_recorder_test_stereo_control_json_cc_rejectsnonobjectcontroljson"
@@ -94366,7 +94366,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 63,
+      "community": 142,
       "community_name": "gripper_hmi_toolkit.py",
       "norm_label": "buildsstableservicestatusjson",
       "id": "test_src_camera_recorder_test_stereo_control_json_cc_buildsstableservicestatusjson"
@@ -95483,7 +95483,7 @@
       "source_file": "test/src/gripper_hmi/test_hmi_driver_logic.cc",
       "source_location": "L13",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "norm_label": "test()",
       "community_name": "TEST",
       "id": "test_src_gripper_hmi_test_hmi_driver_logic_test"
@@ -95494,7 +95494,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "gripperhmidriverlogictest",
       "id": "gripperhmidriverlogictest"
@@ -95505,7 +95505,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "retriesbothbeepenableandsilencecommands",
       "id": "retriesbothbeepenableandsilencecommands"
@@ -95516,7 +95516,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "classifiesretryableandabortrecoverystatuses",
       "id": "classifiesretryableandabortrecoverystatuses"
@@ -95527,7 +95527,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "acceptscalibrationacktokenforcurrentandnextpacket",
       "id": "acceptscalibrationacktokenforcurrentandnextpacket"
@@ -95538,7 +95538,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "parsescalibrationheaderandcomputesrequiredchunkcount",
       "id": "parsescalibrationheaderandcomputesrequiredchunkcount"
@@ -95549,7 +95549,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "rejectscalibrationheaderwhenheaderchunksmissingorinvalid",
       "id": "rejectscalibrationheaderwhenheaderchunksmissingorinvalid"
@@ -95560,7 +95560,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "checksrequiredchunkcoverageandsequentialfallbackgate",
       "id": "checksrequiredchunkcoverageandsequentialfallbackgate"
@@ -95571,7 +95571,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "decidescalibrationrangeretryactions",
       "id": "decidescalibrationrangeretryactions"
@@ -95582,7 +95582,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "decidescalibrationwritechunkstatusactions",
       "id": "decidescalibrationwritechunkstatusactions"
@@ -95593,7 +95593,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "decidescalibrationchunkreadactions",
       "id": "decidescalibrationchunkreadactions"
@@ -95604,7 +95604,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "normalizesbuffertoheaderorkeepstrailingbyte",
       "id": "normalizesbuffertoheaderorkeepstrailingbyte"
@@ -95615,7 +95615,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "scansexpectedexclusivestatusframewithskiprules",
       "id": "scansexpectedexclusivestatusframewithskiprules"
@@ -95626,7 +95626,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "scanscalibrationdataorstatusframeacrosswrongtokenanddata",
       "id": "scanscalibrationdataorstatusframeacrosswrongtokenanddata"
@@ -95637,7 +95637,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "scansrawdataorstatusframewithoversizedgarbagedrop",
       "id": "scansrawdataorstatusframewithoversizedgarbagedrop"
@@ -95648,7 +95648,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "scanssizedframeacrossbadchecksumthenvalidframe",
       "id": "scanssizedframeacrossbadchecksumthenvalidframe"
@@ -95659,7 +95659,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "scansexpectedcalibrationframeacrosswrongtokenandgarbage",
       "id": "scansexpectedcalibrationframeacrosswrongtokenandgarbage"
@@ -95670,7 +95670,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "scanssizedframekeepstrailingbytewhenheadermissing",
       "id": "scanssizedframekeepstrailingbytewhenheadermissing"
@@ -95681,7 +95681,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "evaluatesexclusivedrainstepforidleextensionandcutoff",
       "id": "evaluatesexclusivedrainstepforidleextensionandcutoff"
@@ -95692,7 +95692,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "evaluatesreadbytesstepfordatatimeoutandiofailure",
       "id": "evaluatesreadbytesstepfordatatimeoutandiofailure"
@@ -95703,7 +95703,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "collectscalibrationrangechunkandparsesheadercompletion",
       "id": "collectscalibrationrangechunkandparsesheadercompletion"
@@ -95714,7 +95714,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 44,
+      "community": 93,
       "community_name": "TEST",
       "norm_label": "collectcalibrationrangeframeconsumesstatusanddropsgarbage",
       "id": "collectcalibrationrangeframeconsumesstatusanddropsgarbage"
@@ -98123,7 +98123,7 @@
       "source_file": "test/src/record_runtime/test_runtime_health.cc",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 63,
+      "community": 16,
       "community_name": "json",
       "norm_label": "test_runtime_health.cc",
       "id": "test_src_record_runtime_test_runtime_health"
@@ -98134,7 +98134,7 @@
       "source_file": "test/src/record_runtime/test_runtime_health.cc",
       "source_location": "L17",
       "_origin": "ast",
-      "community": 63,
+      "community": 16,
       "norm_label": "fakenowms()",
       "community_name": "json",
       "id": "test_src_record_runtime_test_runtime_health_fakenowms"
@@ -98541,7 +98541,7 @@
       "source_file": "test/src/record_runtime/test_stereo_session_client.cc",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 16,
+      "community": 155,
       "community_name": "string",
       "norm_label": "test_stereo_session_client.cc",
       "id": "test_src_record_runtime_test_stereo_session_client"
@@ -99861,7 +99861,7 @@
       "source_file": "test/src/sensor_recorder/test_sensor_mcap_checker.cc",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 145,
+      "community": 16,
       "community_name": "TEST",
       "norm_label": "test_sensor_mcap_checker.cc",
       "id": "test_src_sensor_recorder_test_sensor_mcap_checker"
@@ -106708,7 +106708,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8570",
-      "community": 453,
+      "community": 78,
       "norm_label": "gripperpanelmanager::connect()",
       "community_name": "silenceBeep",
       "id": "standalone_ugripperruntime_record_runtime_gripperpanelmanager_connect"
@@ -106808,7 +106808,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/record_runtime.cc",
       "source_location": "L8885",
-      "community": 453,
+      "community": 17,
       "norm_label": "gripperpanelmanager::requeststateforside()",
       "community_name": "silenceBeep",
       "id": "standalone_ugripperruntime_record_runtime_gripperpanelmanager_requeststateforside"
@@ -107608,7 +107608,7 @@
       "file_type": "code",
       "source_file": "standalone/UgripperRuntime/include/record_runtime/stereo_session_client.h",
       "source_location": "L11",
-      "community": 16,
+      "community": 155,
       "norm_label": "ugripper()",
       "community_name": "string",
       "id": "standalone_ugripperruntime_include_record_runtime_stereo_session_client_ugripper"
@@ -108518,7 +108518,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L31",
-      "community": 453,
+      "community": 78,
       "norm_label": "encoderdriver()",
       "community_name": "encoder_driver.cc",
       "id": "standalone_sensorrecorder_encoder_driver_encoderdriver"
@@ -108528,7 +108528,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L45",
-      "community": 453,
+      "community": 17,
       "norm_label": "markdisconnected()",
       "community_name": "encoder_driver.cc",
       "id": "standalone_sensorrecorder_encoder_driver_markdisconnected"
@@ -108538,7 +108538,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L63",
-      "community": 453,
+      "community": 78,
       "norm_label": "connect()",
       "community_name": "silenceBeep",
       "id": "standalone_sensorrecorder_encoder_driver_connect"
@@ -108548,7 +108548,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L128",
-      "community": 453,
+      "community": 78,
       "norm_label": "disconnect()",
       "community_name": "encoder_driver.cc",
       "id": "standalone_sensorrecorder_encoder_driver_disconnect"
@@ -108558,7 +108558,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L140",
-      "community": 453,
+      "community": 78,
       "norm_label": "resetbaudrate()",
       "community_name": "main",
       "id": "standalone_sensorrecorder_encoder_driver_resetbaudrate"
@@ -108568,7 +108568,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L145",
-      "community": 453,
+      "community": 17,
       "norm_label": "sendtoencoder()",
       "community_name": "encoder_driver.cc",
       "id": "standalone_sensorrecorder_encoder_driver_sendtoencoder"
@@ -108608,7 +108608,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L345",
-      "community": 453,
+      "community": 17,
       "norm_label": "getencoderposition()",
       "community_name": "encoder_driver.cc",
       "id": "standalone_sensorrecorder_encoder_driver_getencoderposition"
@@ -108618,7 +108618,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L359",
-      "community": 453,
+      "community": 17,
       "norm_label": "getencodervelocity()",
       "community_name": "encoder_driver.cc",
       "id": "standalone_sensorrecorder_encoder_driver_getencodervelocity"
@@ -108628,7 +108628,7 @@
       "file_type": "code",
       "source_file": "standalone/SensorRecorder/encoder_driver.cc",
       "source_location": "L373",
-      "community": 453,
+      "community": 17,
       "norm_label": "requeststate()",
       "community_name": "silenceBeep",
       "id": "standalone_sensorrecorder_encoder_driver_requeststate"
@@ -108918,7 +108918,7 @@
       "file_type": "code",
       "source_file": "standalone/CameraRecorder/include/camera_recorder/camera_registry.h",
       "source_location": "L8",
-      "community": 16,
+      "community": 147,
       "norm_label": "ugripper()",
       "community_name": "string",
       "id": "standalone_camerarecorder_include_camera_recorder_camera_registry_ugripper"
@@ -115072,7 +115072,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ppmain-ugripper-camera-refactor-reference.md",
       "source_location": "L1237",
-      "community": 772,
+      "community": 359,
       "norm_label": "9. \u5efa\u8bae\u7684\u8fc1\u79fb\u987a\u5e8f",
       "community_name": "9. \u5efa\u8bae\u7684\u8fc1\u79fb\u987a\u5e8f",
       "id": "docs_archive_2026_refactor_history_ppmain_ugripper_camera_refactor_reference_9_\u5efa\u8bae\u7684\u8fc1\u79fb\u987a\u5e8f"
@@ -115082,7 +115082,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ppmain-ugripper-camera-refactor-reference.md",
       "source_location": "L1241",
-      "community": 772,
+      "community": 359,
       "norm_label": "\u7b2c 1 \u6b65:\u5148\u62bd\u516c\u5171\u7c7b\u578b\u548c\u914d\u7f6e\u5c42,\u4e0d\u6539\u8fd0\u884c\u65f6\u884c\u4e3a",
       "community_name": "9. \u5efa\u8bae\u7684\u8fc1\u79fb\u987a\u5e8f",
       "id": "docs_archive_2026_refactor_history_ppmain_ugripper_camera_refactor_reference_\u7b2c_1_\u6b65_\u5148\u62bd\u516c\u5171\u7c7b\u578b\u548c\u914d\u7f6e\u5c42_\u4e0d\u6539\u8fd0\u884c\u65f6\u884c\u4e3a"
@@ -115092,7 +115092,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ppmain-ugripper-camera-refactor-reference.md",
       "source_location": "L1254",
-      "community": 772,
+      "community": 359,
       "norm_label": "\u7b2c 2 \u6b65:\u8ba9 `record_runtime` \u6539\u4e3a\u4f9d\u8d56 `cameraregistry`",
       "community_name": "9. \u5efa\u8bae\u7684\u8fc1\u79fb\u987a\u5e8f",
       "id": "docs_archive_2026_refactor_history_ppmain_ugripper_camera_refactor_reference_\u7b2c_2_\u6b65_\u8ba9_record_runtime_\u6539\u4e3a\u4f9d\u8d56_cameraregistry"
@@ -115102,7 +115102,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ppmain-ugripper-camera-refactor-reference.md",
       "source_location": "L1284",
-      "community": 772,
+      "community": 359,
       "norm_label": "\u7b2c 3 \u6b65:\u628a recorder \u7c7b\u4ece\u201c\u76f8\u673a\u7c7b\u201d\u6539\u6210\u201cbackend \u7c7b\u201d",
       "community_name": "9. \u5efa\u8bae\u7684\u8fc1\u79fb\u987a\u5e8f",
       "id": "docs_archive_2026_refactor_history_ppmain_ugripper_camera_refactor_reference_\u7b2c_3_\u6b65_\u628a_recorder_\u7c7b\u4ece_\u76f8\u673a\u7c7b_\u6539\u6210_backend_\u7c7b"
@@ -115112,7 +115112,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ppmain-ugripper-camera-refactor-reference.md",
       "source_location": "L1297",
-      "community": 772,
+      "community": 359,
       "norm_label": "\u7b2c 4 \u6b65:\u8bc4\u4f30\u4e0e `pp_main` \u8bbe\u5907\u5c42\u7684\u6536\u655b\u70b9",
       "community_name": "9. \u5efa\u8bae\u7684\u8fc1\u79fb\u987a\u5e8f",
       "id": "docs_archive_2026_refactor_history_ppmain_ugripper_camera_refactor_reference_\u7b2c_4_\u6b65_\u8bc4\u4f30\u4e0e_pp_main_\u8bbe\u5907\u5c42\u7684\u6536\u655b\u70b9"
@@ -117292,7 +117292,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L627",
-      "community": 767,
+      "community": 367,
       "norm_label": "phase 5:\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_phase_5_\u6536\u53e3\u4f4e\u98ce\u9669_helper"
@@ -117302,7 +117302,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L629",
-      "community": 767,
+      "community": 367,
       "norm_label": "\u76ee\u6807",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_\u76ee\u6807_629"
@@ -117312,7 +117312,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L633",
-      "community": 767,
+      "community": 367,
       "norm_label": "\u4f18\u5148\u8fc1\u79fb",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_\u4f18\u5148\u8fc1\u79fb"
@@ -117322,7 +117322,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L641",
-      "community": 767,
+      "community": 367,
       "norm_label": "\u6682\u7f13\u8fc1\u79fb",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_\u6682\u7f13\u8fc1\u79fb"
@@ -117332,7 +117332,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L648",
-      "community": 767,
+      "community": 367,
       "norm_label": "\u6d4b\u8bd5\u7b56\u7565",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_\u6d4b\u8bd5\u7b56\u7565_648"
@@ -117342,7 +117342,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/ugripper-refactor-plan.md",
       "source_location": "L675",
-      "community": 767,
+      "community": 367,
       "norm_label": "\u5b8c\u6210\u6807\u51c6",
       "community_name": "Phase 5\uff1a\u6536\u53e3\u4f4e\u98ce\u9669 helper",
       "id": "docs_archive_2026_refactor_history_ugripper_refactor_plan_\u5b8c\u6210\u6807\u51c6_675"
@@ -118192,7 +118192,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/runtime-paths.md",
       "source_location": "L1",
-      "community": 36,
+      "community": 254,
       "norm_label": "runtime paths baseline",
       "community_name": "Runtime Paths Baseline",
       "id": "docs_archive_2026_refactor_history_baseline_runtime_paths_runtime_paths_baseline"
@@ -118202,7 +118202,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/runtime-paths.md",
       "source_location": "L6",
-      "community": 36,
+      "community": 254,
       "norm_label": "0. \u4ed3\u5e93\u5185\u8def\u5f84\u771f\u6e90\u5206\u7c7b",
       "community_name": "Runtime Paths Baseline",
       "id": "docs_archive_2026_refactor_history_baseline_runtime_paths_0_\u4ed3\u5e93\u5185\u8def\u5f84\u771f\u6e90\u5206\u7c7b"
@@ -118212,7 +118212,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/runtime-paths.md",
       "source_location": "L30",
-      "community": 36,
+      "community": 254,
       "norm_label": "1. \u4e8c\u8fdb\u5236\u8def\u5f84",
       "community_name": "Runtime Paths Baseline",
       "id": "docs_archive_2026_refactor_history_baseline_runtime_paths_1_\u4e8c\u8fdb\u5236\u8def\u5f84"
@@ -118222,7 +118222,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/runtime-paths.md",
       "source_location": "L45",
-      "community": 36,
+      "community": 254,
       "norm_label": "2. \u811a\u672c\u8def\u5f84",
       "community_name": "Runtime Paths Baseline",
       "id": "docs_archive_2026_refactor_history_baseline_runtime_paths_2_\u811a\u672c\u8def\u5f84"
@@ -118232,7 +118232,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/runtime-paths.md",
       "source_location": "L58",
-      "community": 36,
+      "community": 254,
       "norm_label": "3. \u914d\u7f6e\u4e0e\u8d44\u6e90\u8def\u5f84",
       "community_name": "Runtime Paths Baseline",
       "id": "docs_archive_2026_refactor_history_baseline_runtime_paths_3_\u914d\u7f6e\u4e0e\u8d44\u6e90\u8def\u5f84"
@@ -118242,7 +118242,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/runtime-paths.md",
       "source_location": "L70",
-      "community": 36,
+      "community": 254,
       "norm_label": "4. \u73af\u5883\u4e0e\u6301\u4e45\u5316\u8def\u5f84",
       "community_name": "Runtime Paths Baseline",
       "id": "docs_archive_2026_refactor_history_baseline_runtime_paths_4_\u73af\u5883\u4e0e\u6301\u4e45\u5316\u8def\u5f84"
@@ -118252,7 +118252,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/runtime-paths.md",
       "source_location": "L78",
-      "community": 36,
+      "community": 254,
       "norm_label": "5. \u8fd0\u884c\u65f6\u4e34\u65f6\u8def\u5f84",
       "community_name": "Runtime Paths Baseline",
       "id": "docs_archive_2026_refactor_history_baseline_runtime_paths_5_\u8fd0\u884c\u65f6\u4e34\u65f6\u8def\u5f84"
@@ -118262,7 +118262,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/runtime-paths.md",
       "source_location": "L93",
-      "community": 36,
+      "community": 254,
       "norm_label": "6. \u6570\u636e\u76d8\u4e0e\u65e5\u5fd7\u8def\u5f84",
       "community_name": "Runtime Paths Baseline",
       "id": "docs_archive_2026_refactor_history_baseline_runtime_paths_6_\u6570\u636e\u76d8\u4e0e\u65e5\u5fd7\u8def\u5f84"
@@ -118272,7 +118272,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/runtime-paths.md",
       "source_location": "L101",
-      "community": 36,
+      "community": 254,
       "norm_label": "7. \u8bbe\u5907\u8282\u70b9\u8def\u5f84",
       "community_name": "Runtime Paths Baseline",
       "id": "docs_archive_2026_refactor_history_baseline_runtime_paths_7_\u8bbe\u5907\u8282\u70b9\u8def\u5f84"
@@ -118282,7 +118282,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/runtime-paths.md",
       "source_location": "L110",
-      "community": 36,
+      "community": 254,
       "norm_label": "8. \u5b89\u88c5\u540e\u8def\u5f84\u53e3\u5f84",
       "community_name": "Runtime Paths Baseline",
       "id": "docs_archive_2026_refactor_history_baseline_runtime_paths_8_\u5b89\u88c5\u540e\u8def\u5f84\u53e3\u5f84"
@@ -118292,7 +118292,7 @@
       "file_type": "document",
       "source_file": "docs/archive/2026-refactor-history/baseline/runtime-paths.md",
       "source_location": "L124",
-      "community": 36,
+      "community": 254,
       "norm_label": "\u5907\u6ce8",
       "community_name": "Runtime Paths Baseline",
       "id": "docs_archive_2026_refactor_history_baseline_runtime_paths_\u5907\u6ce8"
@@ -195692,9 +195692,9 @@
       "source_file": "test/scripts/test_ego_mp4_repair.py",
       "source_location": "L108",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_test_ego_mp4_repair_mp4repairtests_test_gigabyte_legacy_file_repairs_with_bounded_reads",
-      "target": "scripts_test_ego_mp4_repair_movie",
-      "confidence_score": 1.0
+      "target": "scripts_test_ego_mp4_repair_movie"
     },
     {
       "relation": "calls",
@@ -195803,9 +195803,9 @@
       "source_file": "test/scripts/test_ego_mp4_repair.py",
       "source_location": "L103",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_test_ego_mp4_repair_mp4repairtests",
-      "target": "scripts_test_ego_mp4_repair_mp4repairtests_test_gigabyte_legacy_file_repairs_with_bounded_reads",
-      "confidence_score": 1.0
+      "target": "scripts_test_ego_mp4_repair_mp4repairtests_test_gigabyte_legacy_file_repairs_with_bounded_reads"
     },
     {
       "relation": "method",
@@ -368944,5 +368944,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "a1c146b25e63c73ab0caab61da21cfc01c3d0e5a"
+  "built_at_commit": "8c3ac4c85fa1e97b6f361b7b06c519250a823291"
 }
