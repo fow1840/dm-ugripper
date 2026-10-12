@@ -60,7 +60,7 @@ public:
     using StopWorkerFn = std::function<bool(WorkerName, const std::string&, std::string*)>;
     using GetWorkerStatusFn = std::function<ProcessStatus(WorkerName)>;
     using LogFn = std::function<void(const std::string&)>;
-    using SyncRuntimeLogFn = std::function<void(const std::string&)>;
+    using SyncRuntimeLogFn = std::function<bool(const std::string&)>;
 
     struct EpisodePort
     {

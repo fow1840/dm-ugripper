@@ -639,7 +639,7 @@ void flushEpisodeArtifactsToDisk(const fs::path &episodeDir,
         }
     }
 
-    logPerf((::DA::utils::LogString() << "[PERF] flush begin: phase=" << phaseLabel
+    DM_LOG_INFO("{}", (::DA::utils::LogString() << "[STOP_DIAG] flush begin: phase=" << phaseLabel
               << " episode_dir=" << episodeDir
               << " candidate_paths=" << filteredPaths.size()).str());
 
@@ -661,6 +661,12 @@ void flushEpisodeArtifactsToDisk(const fs::path &episodeDir,
             continue;
         }
 
+        if (steadyNowMs() - artifactFlushStartMs >= 1000)
+        {
+            DM_LOG_WARN("[STOP_DIAG] slow artifact flush: phase={} path={} elapsed_ms={}",
+                        phase, path.string(), steadyNowMs() - artifactFlushStartMs);
+        }
+
         logPerf((::DA::utils::LogString() << "[PERF] flush done: phase=" << phaseLabel
                   << " path=" << path
                   << " elapsed_ms=" << (steadyNowMs() - artifactFlushStartMs)).str());
@@ -672,7 +678,7 @@ void flushEpisodeArtifactsToDisk(const fs::path &episodeDir,
     }
     flushEpisodeDirectoriesToDisk(episodeDir, phaseLabel);
 
-    logPerf((::DA::utils::LogString() << "[PERF] flush end: phase=" << phaseLabel
+    DM_LOG_INFO("{}", (::DA::utils::LogString() << "[STOP_DIAG] flush end: phase=" << phaseLabel
               << " episode_dir=" << episodeDir
               << " elapsed_ms=" << (steadyNowMs() - flushStartMs)).str());
 }

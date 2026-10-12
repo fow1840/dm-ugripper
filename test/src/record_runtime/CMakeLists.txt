@@ -199,3 +199,10 @@ add_test(
 set_tests_properties(test_validate_episode_profiles PROPERTIES
     LABELS "host-only;unit;record_runtime"
 )
+
+add_test(NAME test_ego_mp4_repair
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_ego_mp4_repair.py)
+set_tests_properties(test_ego_mp4_repair PROPERTIES LABELS "host-only;unit;record_runtime")
+add_test(NAME test_system_log_snapshot
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_system_log_snapshot.py)
+set_tests_properties(test_system_log_snapshot PROPERTIES LABELS "host-only;unit;record_runtime")

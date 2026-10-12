@@ -503,6 +503,7 @@ bool RecordRuntime::stopEgoRecording(const std::string &episodeDir,
                                      int64_t,
                                      std::string *errorMessage)
 {
+    const auto workerStopStartMs = currentSteadyMs();
     if (egoRecordingWorker_.has_value())
     {
         std::string ignoredError;
@@ -512,6 +513,8 @@ bool RecordRuntime::stopEgoRecording(const std::string &episodeDir,
             &ignoredError);
         egoRecordingWorker_.reset();
     }
+    DM_LOG_INFO("[STOP_DIAG] ego incremental worker stopped: elapsed_ms={}",
+                currentSteadyMs() - workerStopStartMs);
 
     if (!fs::exists(options_.egoRecordingScript))
     {
@@ -522,8 +525,12 @@ bool RecordRuntime::stopEgoRecording(const std::string &episodeDir,
         return false;
     }
 
-    return runCommandSync(egoWorkerArgs(
+    const auto stopStartMs = currentSteadyMs();
+    const bool stopped = runCommandSync(egoWorkerArgs(
         options_.egoRecordingScript, "stop", episodeDir, "", egoBoundSerial_));
+    DM_LOG_INFO("[STOP_DIAG] ego stop worker finished: ok={} elapsed_ms={}",
+                stopped, currentSteadyMs() - stopStartMs);
+    return stopped;
 }
 
 bool RecordRuntime::cleanupEgoRemote(const std::string &episodeDir,
@@ -1061,7 +1068,11 @@ bool RecordRuntime::syncRuntimeLogToDisk(const char *reason) const
     // Persist system/journal logs alongside the runtime log at every stop boundary.
     const std::string systemLogCommand = "/usr/local/lib/ugripper/logging/save_system_log.sh " +
         shellQuote(options_.diskRoot + "/logs") + " " + shellQuote(toLower(deviceSn_.empty() ? "unknown_device" : deviceSn_));
-    if (std::system(systemLogCommand.c_str()) != 0) {
+    const auto systemLogStartMs = currentSteadyMs();
+    const bool systemLogOk = std::system(systemLogCommand.c_str()) == 0;
+    DM_LOG_INFO("[STOP_DIAG] system log snapshot finished: ok={} elapsed_ms={}",
+                systemLogOk, currentSteadyMs() - systemLogStartMs);
+    if (!systemLogOk) {
         DM_LOG_WARN("system log snapshot failed");
     }
 
@@ -1257,7 +1268,7 @@ bool RecordRuntime::syncRuntimeLogToDisk(const char *reason) const
         closeLock();
         DM_LOG_INFO("{}", (::DA::utils::LogString() << "runtime log already synced" << reasonSuffix
                              << ": " << destPath).str());
-        return true;
+        return systemLogOk;
     }
 
     const int destFd = open(destPath.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
@@ -1342,13 +1353,16 @@ bool RecordRuntime::syncRuntimeLogToDisk(const char *reason) const
     }
 
     std::error_code flushError;
+    bool directoriesFlushed = true;
     if (!flushDirectoryToDisk(destDir, &flushError))
     {
+        directoriesFlushed = false;
         DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to flush runtime log directory" << reasonSuffix
                              << ": " << destDir << " error=" << flushError.message()).str());
     }
     if (!flushDirectoryToDisk(diskRoot, &flushError))
     {
+        directoriesFlushed = false;
         DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to flush disk root after runtime log sync" << reasonSuffix
                              << ": " << diskRoot << " error=" << flushError.message()).str());
     }
@@ -1359,7 +1373,7 @@ bool RecordRuntime::syncRuntimeLogToDisk(const char *reason) const
                          << ": src=" << sourcePath
                          << " dest=" << destPath
                          << " bytes=" << (currentSize - lastPos)).str());
-    return true;
+    return systemLogOk && directoriesFlushed;
 }
 
 }  // namespace DA::Ugripper

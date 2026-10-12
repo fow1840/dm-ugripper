@@ -703,7 +703,7 @@ bool RecordRuntime::Initialize()
                     },
                 .sync_runtime_log =
                     [this](const std::string& reason) {
-                        syncRuntimeLogToDisk(reason.c_str());
+                        return syncRuntimeLogToDisk(reason.c_str());
                     },
             },
         },

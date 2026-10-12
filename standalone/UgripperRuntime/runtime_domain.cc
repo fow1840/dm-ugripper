@@ -1222,8 +1222,8 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         AddErrorType(&error_types, error_type.empty() ? kErrorTypeRuntimeError : error_type);
     }
     CallLog(dependencies_.logs.log_info, "stopping recording: " + reason);
-    CallPerfLog(dependencies_.logs,
-            "[PERF] stop phase begin: reason=" + reason + " episode_dir=" + state_.current_episode_dir);
+    CallLog(dependencies_.logs.log_info,
+            "[STOP_DIAG] stop phase begin: reason=" + reason + " episode_dir=" + state_.current_episode_dir);
 
     std::string stereo_error;
     bool stereo_stop_ok = true;
@@ -1244,8 +1244,8 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
             const int64_t worker_stop_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
             const bool ok = dependencies_.workers.stop_worker != nullptr &&
                             dependencies_.workers.stop_worker(worker, "recording stop", nullptr);
-            CallPerfLog(dependencies_.logs,
-                    "[PERF] stop " + name + " done: ok=" + std::string(ok ? "true" : "false") +
+            CallLog(dependencies_.logs.log_info,
+                    "[STOP_DIAG] stop " + name + " done: ok=" + std::string(ok ? "true" : "false") +
                         " elapsed_ms=" +
                         std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : worker_stop_start_ms) -
                                        worker_stop_start_ms));
@@ -1263,8 +1263,8 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         std::string("sensor_recorder"));
     const bool camera_stop_ok = camera_stop_future.get();
     const bool sensor_stop_ok = sensor_stop_future.get();
-    CallPerfLog(dependencies_.logs,
-            "[PERF] stop workers done: camera_ok=" + std::string(camera_stop_ok ? "true" : "false") +
+    CallLog(dependencies_.logs.log_info,
+            "[STOP_DIAG] stop workers done: camera_ok=" + std::string(camera_stop_ok ? "true" : "false") +
                 " sensor_ok=" + std::string(sensor_stop_ok ? "true" : "false") +
                 " elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : workers_stop_start_ms) -
@@ -1287,10 +1287,6 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         }
     }
 
-    if (dependencies_.feedback.set_led_state != nullptr)
-    {
-        dependencies_.feedback.set_led_state(RuntimeLedState::Ready, 0.0);
-    }
     if (dependencies_.feedback.send_audio_command != nullptr)
     {
         dependencies_.feedback.send_audio_command("recording_stop");
@@ -1335,7 +1331,7 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     }
 
     const int64_t write_phase_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
-    CallPerfLog(dependencies_.logs, "[PERF] writing phase begin: episode_dir=" + state_.current_episode_dir);
+    CallLog(dependencies_.logs.log_info, "[STOP_DIAG] writing phase begin: episode_dir=" + state_.current_episode_dir);
     if (dependencies_.episode.flush_episode_artifacts != nullptr)
     {
         dependencies_.episode.flush_episode_artifacts(state_.current_episode_dir, "pre_stereo_finalize");
@@ -1363,8 +1359,8 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
                     "ego recording finalize wait failed: " +
                         ego_failure_error);
         }
-        CallPerfLog(dependencies_.logs,
-                "[PERF] ego finalize wait done: ok=" + std::string(ego_stop_ok ? "true" : "false") +
+        CallLog(dependencies_.logs.log_info,
+                "[STOP_DIAG] ego finalize wait done: ok=" + std::string(ego_stop_ok ? "true" : "false") +
                     " elapsed_ms=" +
                     std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : ego_finalize_start_ms) -
                                    ego_finalize_start_ms));
@@ -1378,8 +1374,8 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
             CallLog(dependencies_.logs.log_error, "stereo finalize failed: " + stereo_finalize_error);
             stereo_stop_ok = false;
         }
-        CallPerfLog(dependencies_.logs,
-                "[PERF] stereo finalize wait done: ok=" + std::string(stereo_stop_ok ? "true" : "false") +
+        CallLog(dependencies_.logs.log_info,
+                "[STOP_DIAG] stereo finalize wait done: ok=" + std::string(stereo_stop_ok ? "true" : "false") +
                     " elapsed_ms=" +
                     std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stereo_finalize_start_ms) -
                                    stereo_finalize_start_ms));
@@ -1392,8 +1388,8 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
             CallLog(dependencies_.logs.log_error, "failed to merge episode info: " + merge_error);
             stereo_stop_ok = false;
         }
-        CallPerfLog(dependencies_.logs,
-                "[PERF] stereo merge done: ok=" + std::string(stereo_stop_ok ? "true" : "false") +
+        CallLog(dependencies_.logs.log_info,
+                "[STOP_DIAG] stereo merge done: ok=" + std::string(stereo_stop_ok ? "true" : "false") +
                     " elapsed_ms=" +
                     std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stereo_merge_start_ms) -
                                    stereo_merge_start_ms));
@@ -1418,8 +1414,8 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
             dependencies_.episode.flush_episode_artifacts(state_.current_episode_dir, "ego_cleanup");
         }
     }
-    CallPerfLog(dependencies_.logs,
-            "[PERF] writing phase end: episode_dir=" + state_.current_episode_dir +
+    CallLog(dependencies_.logs.log_info,
+            "[STOP_DIAG] writing phase end: episode_dir=" + state_.current_episode_dir +
                 " elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : write_phase_start_ms) -
                                write_phase_start_ms));
@@ -1498,7 +1494,7 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         }
     }
     const int64_t validate_phase_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
-    CallPerfLog(dependencies_.logs, "[PERF] validation phase begin: episode_dir=" + state_.current_episode_dir);
+    CallLog(dependencies_.logs.log_info, "[STOP_DIAG] validation phase begin: episode_dir=" + state_.current_episode_dir);
     const bool skip_episode_validation = !stereo_stop_ok;
     if (skip_episode_validation)
     {
@@ -1542,8 +1538,8 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         }
     }
     const bool valid = !due_to_error && stereo_stop_ok && ego_required_ok && metadata_ok && episode_valid;
-    CallPerfLog(dependencies_.logs,
-            "[PERF] validation phase end: episode_dir=" + state_.current_episode_dir +
+    CallLog(dependencies_.logs.log_info,
+            "[STOP_DIAG] validation phase end: episode_dir=" + state_.current_episode_dir +
                 " valid=" + std::string(valid ? "true" : "false") + " elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : validate_phase_start_ms) -
                                validate_phase_start_ms));
@@ -1607,16 +1603,32 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     }
 
     const auto finish_stop_cleanup = [this]() {
+        bool sync_ok = true;
         if (dependencies_.logs.sync_runtime_log != nullptr)
         {
-            dependencies_.logs.sync_runtime_log("video stop");
+            sync_ok = dependencies_.logs.sync_runtime_log("video stop");
         }
         state_.current_episode_dir.clear();
         if (dependencies_.file_system.remove_recording_lock != nullptr)
         {
             dependencies_.file_system.remove_recording_lock();
         }
+        return sync_ok;
     };
+
+    // Ready is the physical disk-removal boundary. Keep Writing until both
+    // system and runtime logs are durably saved; a failed sync cannot turn green.
+    const bool stop_cleanup_ok = finish_stop_cleanup();
+    if (!stop_cleanup_ok)
+    {
+        AddErrorType(&error_types, kErrorTypeRuntimeError);
+        if (!final_error_message.empty())
+        {
+            final_error_message += "; ";
+        }
+        final_error_message += "failed to persist runtime/system logs";
+        CallLog(dependencies_.logs.log_error, final_error_message);
+    }
 
     const RuntimeLedState failure_led_state = SelectFailureLedState(error_types, due_to_error);
     const std::string failure_audio_command = SelectStopFailureAudioCommand(failure_led_state);
@@ -1639,10 +1651,9 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         {
             dependencies_.feedback.send_audio_command(failure_audio_command);
         }
-        CallPerfLog(dependencies_.logs,
-                "[PERF] stop phase end: due_to_error=true total_elapsed_ms=" +
+        CallLog(dependencies_.logs.log_info,
+                "[STOP_DIAG] stop phase end: due_to_error=true total_elapsed_ms=" +
                     std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stop_start_ms) - stop_start_ms));
-        finish_stop_cleanup();
         if (error_message != nullptr)
         {
             *error_message = final_error_message;
@@ -1650,7 +1661,7 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         return false;
     }
 
-    const bool final_valid = valid && episode_dir_finalized;
+    const bool final_valid = valid && episode_dir_finalized && stop_cleanup_ok;
     if (!final_valid)
     {
         if (dependencies_.feedback.handle_failure_state != nullptr)
@@ -1669,10 +1680,9 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
         {
             dependencies_.feedback.send_audio_command(failure_audio_command);
         }
-        CallPerfLog(dependencies_.logs,
-            "[PERF] stop phase end: valid=false total_elapsed_ms=" +
+        CallLog(dependencies_.logs.log_info,
+            "[STOP_DIAG] stop phase end: valid=false total_elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stop_start_ms) - stop_start_ms));
-        finish_stop_cleanup();
         if (error_message != nullptr)
         {
             *error_message = final_error_message;
@@ -1692,10 +1702,9 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
     {
         dependencies_.feedback.send_audio_command("ready");
     }
-    CallPerfLog(dependencies_.logs,
-            "[PERF] stop phase end: valid=true total_elapsed_ms=" +
+    CallLog(dependencies_.logs.log_info,
+            "[STOP_DIAG] stop phase end: valid=true total_elapsed_ms=" +
                 std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stop_start_ms) - stop_start_ms));
-    finish_stop_cleanup();
     return true;
 }
 

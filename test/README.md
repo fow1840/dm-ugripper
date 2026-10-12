@@ -197,3 +197,10 @@ python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
 ## HMI 调度回归
 
 `test/src/gripper_hmi/test_hmi_driver_logic.cc` 覆盖25ms查询静默、发送后重试deadline、无灯效接收检查、低优先级5ms预算及到期仲裁。板端须对照原版/仅优先级/完整修复，验证静默期间不忙转、状态回复及setter响应；encoder补发间隔应同时核对实际TX/RX、CRC和稳态未匹配请求，不能只看最大gap或停录退出码。
+
+### Ego 停录 MP4 与日志快照回归
+
+- `test/scripts/test_ego_mp4_repair.py`：普通/fragmented MP4 与 1GiB 稀疏文件仅检查头部、旧 64 位 mdat 修复、伪/歧义 moov、分块边界、截断及越界、读取/box 上限、fsync 失败，以及失败时禁止 finalized/远端删除。
+- `test/scripts/test_system_log_snapshot.py`：有限快照、增量游标、容量上限、失败不推进游标、同步刷盘及并发串行等待。
+- 原生 Python 执行上述测试；交叉编译容器使用主工作区 `.venv/bin/python`，不要调用 ARM Python。
+- Runtime 停录与 LED host 测试验证日志同步完成前不切 Ready，日志失败不亮绿灯。

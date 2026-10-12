@@ -1074,6 +1074,18 @@ def adb_device_ready(adb: Adb) -> tuple[bool, str]:
     return False, error or f"adb get-state returned {result.returncode} state={state or 'unknown'}"
 
 
+@contextmanager
+def ego_stop_stage(status: dict, name: str):
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        elapsed = round((time.monotonic() - started) * 1000, 3)
+        timings = status.setdefault("stop_timings_ms", {})
+        timings[name] = round(timings.get(name, 0) + elapsed, 3)
+        ugripper_log("INFO", f"stop stage={name} elapsed_ms={elapsed}", component="ego")
+
+
 def sync_one_file(
     adb: Adb,
     remote_root: str,
@@ -1081,6 +1093,7 @@ def sync_one_file(
     local_episode_dir: Path,
     file_name: str,
     replace_shrunk: bool = False,
+    timings: dict | None = None,
 ) -> int:
     remote_file = remote_path(remote_root, remote_episode, file_name)
     size = remote_file_size(adb, remote_file)
@@ -1095,11 +1108,18 @@ def sync_one_file(
     if size <= local_size:
         return 0
     delta = size - local_size
+    pull_started = time.monotonic()
     data = adb.exec_out_bytes(remote_file, local_size, delta)
+    if timings is not None:
+        timings["pull_ms"] = (time.monotonic() - pull_started) * 1000
+        timings["bytes"] = len(data)
     with local_file.open("ab") as output:
         output.write(data)
         output.flush()
+        sync_started = time.monotonic()
         os.fsync(output.fileno())
+        if timings is not None:
+            timings["fsync_ms"] = (time.monotonic() - sync_started) * 1000
     return len(data)
 
 
@@ -1109,15 +1129,25 @@ def sync_episode_once(
     remote_episode: str,
     local_episode_dir: Path,
     replace_shrunk: bool = False,
+    timings: dict | None = None,
 ) -> dict:
     copied = {}
     for file_name in FILES:
+        started = time.monotonic()
+        file_timing = {}
         try:
-            delta = sync_one_file(adb, remote_root, remote_episode, local_episode_dir, file_name, replace_shrunk=replace_shrunk)
+            delta = sync_one_file(adb, remote_root, remote_episode, local_episode_dir, file_name, replace_shrunk=replace_shrunk, timings=file_timing if timings is not None else None)
         except Exception as exc:
             copied[file_name] = {"delta": 0, "error": str(exc)}
         else:
             copied[file_name] = {"delta": delta}
+        finally:
+            if timings is not None:
+                file_timing["elapsed_ms"] = (time.monotonic() - started) * 1000
+                aggregate = timings.setdefault(file_name, {})
+                for key, value in file_timing.items():
+                    aggregate[key] = round(aggregate.get(key, 0) + value, 3)
+                ugripper_log("INFO", f"stop file={file_name} " + json.dumps(file_timing, sort_keys=True), component="ego")
     return copied
 
 
@@ -1278,67 +1308,184 @@ def refresh_final_mp4_headers(adb: Adb, remote_root: str, remote_episode: str, l
     return details
 
 
-def find_valid_box_marker(data: bytes, box_name: bytes, start: int) -> int | None:
-    marker = start
-    while True:
-        marker = data.find(box_name, marker)
-        if marker < 4:
-            return None
-        box_start = marker - 4
-        box_size = struct.unpack(">I", data[box_start:marker])[0]
-        if box_size == 1 and box_start + 16 <= len(data):
-            box_size = struct.unpack(">Q", data[box_start + 8 : box_start + 16])[0]
-            header_size = 16
-        else:
-            header_size = 8
-        if box_size >= header_size and box_start + box_size <= len(data):
-            return box_start
-        marker += 4
+# Repair checks have fixed memory/I/O bounds, independent of media file size.
+MP4_REPAIR_BLOCK_BYTES = 64 * 1024
+MP4_REPAIR_MAX_READ_BYTES = 16 * 1024 * 1024
+MP4_REPAIR_MAX_BOXES = 2048
+
+
+class Mp4RepairLimitError(RuntimeError):
+    pass
+
+
+class Mp4RepairReader:
+    def __init__(self, stream):
+        self.stream = stream
+        self.identity = os.fstat(stream.fileno())
+        self.size = self.identity.st_size
+        self.bytes_read = 0
+        self.boxes_read = 0
+
+    def read(self, offset: int, count: int) -> bytes:
+        if count < 0 or count > MP4_REPAIR_BLOCK_BYTES:
+            raise ValueError("invalid MP4 read size")
+        if offset < 0 or offset + count > self.size:
+            raise ValueError("truncated MP4 box")
+        if self.bytes_read + count > MP4_REPAIR_MAX_READ_BYTES:
+            raise Mp4RepairLimitError("MP4 repair read budget exceeded")
+        self.stream.seek(offset)
+        data = self.stream.read(count)
+        self.bytes_read += len(data)
+        if len(data) != count:
+            raise ValueError("MP4 changed or truncated during inspection")
+        return data
+
+    def box(self, offset: int, end: int, allow_bad_mdat: bool = False) -> tuple:
+        self.boxes_read += 1
+        if self.boxes_read > MP4_REPAIR_MAX_BOXES:
+            raise Mp4RepairLimitError("MP4 repair box limit exceeded")
+        if offset + 8 > end:
+            raise ValueError("truncated MP4 box header")
+        size32, kind = struct.unpack(">I4s", self.read(offset, 8))
+        header = 16 if size32 == 1 else 8
+        if offset + header > end:
+            raise ValueError("truncated extended MP4 box header")
+        size = struct.unpack(">Q", self.read(offset + 8, 8))[0] if size32 == 1 else size32
+        if size32 == 0:
+            size = end - offset
+        if not (allow_bad_mdat and kind == b"mdat" and size32 == 1):
+            if size < header or offset + size > end:
+                raise ValueError("invalid MP4 box boundary")
+        return kind, size, header
+
+    def children(self, start: int, end: int):
+        while start < end:
+            kind, size, header = self.box(start, end)
+            yield start, kind, size, header
+            start += size
+
+
+def _validated_tail_moov(reader: Mp4RepairReader, offset: int) -> bool:
+    """Require a movie structure plus a valid box chain ending exactly at EOF."""
+    kind, size, header = reader.box(offset, reader.size)
+    if kind != b"moov":
+        return False
+    has_mvhd = False
+    has_track = False
+    for pos, child, length, child_header in reader.children(offset + header, offset + size):
+        if child == b"mvhd":
+            if length - child_header < 100:
+                return False
+            has_mvhd = True
+        elif child == b"trak":
+            track_children = {k for _, k, _, _ in reader.children(pos + child_header, pos + length)}
+            if not {b"tkhd", b"mdia"}.issubset(track_children):
+                return False
+            has_track = True
+    if not has_mvhd or not has_track:
+        return False
+    for _, following, _, _ in reader.children(offset + size, reader.size):
+        if following not in (b"free", b"skip", b"uuid", b"mfra"):
+            return False
+    return True
+
+
+def _find_bounded_tail_moov(reader: Mp4RepairReader, data_start: int) -> int:
+    # Reserve a block of the total budget for candidate structure validation.
+    start = max(data_start, reader.size - (MP4_REPAIR_MAX_READ_BYTES - MP4_REPAIR_BLOCK_BYTES))
+    overlap = b""
+    found = None
+    while start < reader.size:
+        block = reader.read(start, min(MP4_REPAIR_BLOCK_BYTES, reader.size - start))
+        data = overlap + block  # At most one block plus seven overlap bytes.
+        base = start - len(overlap)
+        marker = data.find(b"moov")
+        while marker >= 0:
+            candidate = base + marker - 4
+            if candidate >= data_start:
+                try:
+                    valid = _validated_tail_moov(reader, candidate)
+                except ValueError:
+                    valid = False
+                if valid:
+                    if found is not None and found != candidate:
+                        raise ValueError("ambiguous MP4 moov candidates")
+                    found = candidate
+            marker = data.find(b"moov", marker + 4)
+        overlap = data[-7:]
+        start += len(block)
+    if found is None:
+        raise ValueError("cannot locate a safe moov within MP4 repair budget")
+    return found
 
 
 def repair_mp4_mdat_largesize(path: Path) -> dict:
     detail = {"file": path.name, "status": "skipped", "reason": ""}
-    if not path.exists() or path.stat().st_size < 64:
-        detail["reason"] = "missing_or_too_small"
-        return detail
-
-    data = path.read_bytes()
-    mdat_type = data.find(b"mdat")
-    if mdat_type < 4:
-        detail["reason"] = "mdat_not_found"
-        return detail
-    mdat_start = mdat_type - 4
-    header_size = struct.unpack(">I", data[mdat_start:mdat_type])[0]
-    if header_size != 1:
-        detail["reason"] = "mdat_not_extended_size"
-        detail["mdat_header_size"] = header_size
-        return detail
-
-    moov_start = find_valid_box_marker(data, b"moov", mdat_type + 4)
-    if moov_start is None or moov_start <= mdat_start + 16:
-        detail["reason"] = "moov_not_found"
-        return detail
-
-    mdat_size = moov_start - mdat_start
-    old_size = struct.unpack(">Q", data[mdat_start + 8 : mdat_start + 16])[0]
-    detail.update(
-        {
-            "status": "ok",
-            "mdat_offset": mdat_start,
-            "moov_offset": moov_start,
-            "old_mdat_largesize": old_size,
-            "new_mdat_largesize": mdat_size,
-        }
-    )
-    if old_size == mdat_size:
-        detail["status"] = "unchanged"
-        return detail
-
-    with path.open("r+b") as output:
-        output.seek(mdat_start + 8)
-        output.write(struct.pack(">Q", mdat_size))
-        output.flush()
-        os.fsync(output.fileno())
+    started = time.monotonic()
+    reader = None
+    try:
+        with path.open("rb") as source:
+            reader = Mp4RepairReader(source)
+            offset = 0
+            movie_before_data = False
+            while offset < reader.size:
+                kind, size, header = reader.box(offset, reader.size, allow_bad_mdat=True)
+                if kind == b"mdat":
+                    break
+                movie_before_data |= kind == b"moov"
+                offset += size
+            else:
+                raise ValueError("MP4 mdat box missing")
+            detail["mdat_offset"] = offset
+            if header != 16:
+                detail["reason"] = "mdat_not_extended_size"
+                return detail
+            old_size = size
+            detail["old_mdat_largesize"] = old_size
+            if movie_before_data:
+                if size < header or offset + size > reader.size:
+                    raise ValueError("invalid mdat size in moov-first MP4")
+                detail.update(status="unchanged", reason="moov_before_mdat")
+                return detail
+            declared_end = offset + old_size
+            valid_declared = False
+            if old_size >= header and declared_end + 8 <= reader.size:
+                try:
+                    valid_declared = _validated_tail_moov(reader, declared_end)
+                except ValueError:
+                    pass
+            if valid_declared:
+                detail.update(status="unchanged", reason="valid_mdat_largesize")
+                return detail
+            moov = _find_bounded_tail_moov(reader, offset + header)
+            new_size = moov - offset
+            detail.update(moov_offset=moov, new_mdat_largesize=new_size)
+        # Check identity/size and the old field again before changing eight bytes.
+        with path.open("r+b") as output:
+            current = os.fstat(output.fileno())
+            if (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns) != (
+                reader.identity.st_dev, reader.identity.st_ino, reader.size, reader.identity.st_mtime_ns
+            ):
+                raise ValueError("MP4 changed before repair")
+            output.seek(offset + 8)
+            if output.read(8) != struct.pack(">Q", old_size):
+                raise ValueError("MP4 mdat header changed before repair")
+            output.seek(offset + 8)
+            if output.write(struct.pack(">Q", new_size)) != 8:
+                raise OSError("short MP4 repair write")
+            output.flush()
+            sync_started = time.monotonic()
+            os.fsync(output.fileno())
+            detail["fsync_ms"] = round((time.monotonic() - sync_started) * 1000, 3)
+            output.seek(offset + 8)
+            if output.read(8) != struct.pack(">Q", new_size):
+                raise OSError("MP4 repair readback mismatch")
+        detail.update(status="ok", reason="mdat_largesize_repaired")
+    except Exception as exc:
+        detail.update(status="error", error=str(exc))
+    finally:
+        detail["bytes_read"] = reader.bytes_read if reader is not None else 0
+        detail["elapsed_ms"] = round((time.monotonic() - started) * 1000, 3)
     return detail
 
 
@@ -1348,6 +1495,7 @@ def repair_mp4_files(local_episode_dir: Path) -> dict:
         path = local_episode_dir / file_name
         try:
             details[file_name] = repair_mp4_mdat_largesize(path)
+            ugripper_log("INFO", "MP4 repair check " + json.dumps(details[file_name], sort_keys=True), component="ego")
         except Exception as exc:
             details[file_name] = {"file": file_name, "status": "error", "error": str(exc)}
     return details
@@ -1489,6 +1637,7 @@ def remove_remote_episode(adb: Adb, remote_root: str, remote_episode: str) -> tu
 
 
 def run_cleanup(args: argparse.Namespace) -> int:
+    cleanup_started = time.monotonic()
     status = read_status(args.status_file)
     status.setdefault("started_at_ms", now_ms())
     status.update({"phase": "cleanup", "updated_at_ms": now_ms()})
@@ -1499,6 +1648,9 @@ def run_cleanup(args: argparse.Namespace) -> int:
     serial = str(status.get("serial") or args.serial or "")
 
     def finish(detail: dict, ok: bool = True) -> int:
+        elapsed = round((time.monotonic() - cleanup_started) * 1000, 3)
+        status.setdefault("stop_timings_ms", {})["remote_cleanup"] = elapsed
+        ugripper_log("INFO", f"stop stage=remote_cleanup elapsed_ms={elapsed}", component="ego")
         status["remote_cleanup"] = detail
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
@@ -1511,6 +1663,10 @@ def run_cleanup(args: argparse.Namespace) -> int:
             )
         return 0 if ok else 1
 
+    if status.get("finalize", {}).get("status") == "error":
+        error = status["finalize"].get("error") or "ego media finalize failed"
+        status.update(status="error", error_type="ego_pull_incomplete", error=error)
+        return finish(cleanup_status("skipped", remote_episode, error), False)
     if status.get("status") != "finalized":
         return finish(cleanup_status("skipped", remote_episode, "ego sync status is not finalized"))
     if not safe_remote_episode_name(remote_episode):
@@ -1778,6 +1934,7 @@ def run_stop(args: argparse.Namespace) -> int:
     adb = Adb(serial) if serial else None
     if adb is not None:
         adb.package = status.get("app", {}).get("package", PACKAGE)
+    broadcast_started = time.monotonic()
     stop_attempts = []
     stop_succeeded = False
     last_failure_status = "not_found"
@@ -1835,6 +1992,8 @@ def run_stop(args: argparse.Namespace) -> int:
             break
         if attempt < STOP_BROADCAST_ATTEMPTS:
             time.sleep(STOP_BROADCAST_RETRY_INTERVAL_SEC)
+
+    status.setdefault("stop_timings_ms", {})["stop_broadcast"] = round((time.monotonic() - broadcast_started) * 1000, 3)
 
     if not stop_succeeded:
         status["status"] = last_failure_status if recording_started else "not_found"
@@ -1910,20 +2069,23 @@ def run_stop(args: argparse.Namespace) -> int:
             time.sleep(args.interval)
             continue
         if current_exists:
-            sync_episode_once(
-                adb,
-                remote_root,
-                current_remote,
-                local_episode_dir,
-                replace_shrunk=(current_remote == final_episode),
-            )
+            with ego_stop_stage(status, "file_sync"):
+                sync_episode_once(
+                    adb,
+                    remote_root,
+                    current_remote,
+                    local_episode_dir,
+                    replace_shrunk=(current_remote == final_episode),
+                    timings=status.setdefault("stop_file_sync", {}),
+                )
         if current_remote == final_episode:
-            recovered, recovery_detail, recovery_error, recovery_error_type = recover_finalized_episode_files(
-                adb,
-                remote_root,
-                final_episode,
-                final_local_dir,
-            )
+            with ego_stop_stage(status, "verify_recovery"):
+                recovered, recovery_detail, recovery_error, recovery_error_type = recover_finalized_episode_files(
+                    adb,
+                    remote_root,
+                    final_episode,
+                    final_local_dir,
+                )
             status["pull_recovery"] = recovery_detail
             if not recovered:
                 status.update(
@@ -1947,15 +2109,25 @@ def run_stop(args: argparse.Namespace) -> int:
                     error_code="UGR-82-01" if recovery_error_type == "ego_disconnected" else "UGR-82-04",
                 )
                 return 1
-            header_refresh_detail = refresh_final_mp4_headers(adb, remote_root, final_episode, final_local_dir)
-            repair_detail = repair_mp4_files(final_local_dir)
+            with ego_stop_stage(status, "header_refresh"):
+                header_refresh_detail = refresh_final_mp4_headers(adb, remote_root, final_episode, final_local_dir)
+            with ego_stop_stage(status, "mp4_repair"):
+                repair_detail = repair_mp4_files(final_local_dir)
+            finalize_detail = summarize_finalize_repair(header_refresh_detail, repair_detail)
+            if finalize_detail["status"] == "error":
+                status.update(status="error", phase="done", error_type="ego_pull_incomplete",
+                              error=finalize_detail["error"], finalize=finalize_detail,
+                              updated_at_ms=now_ms())
+                write_status(args.status_file, status)
+                ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-05")
+                return 1
             status.update(
                 {
                     "status": "finalized",
                     "phase": "done",
                     "remote_episode": final_episode,
                     "local_episode": str(final_local_dir),
-                    "finalize": summarize_finalize_repair(header_refresh_detail, repair_detail),
+                    "finalize": finalize_detail,
                     "updated_at_ms": now_ms(),
                 }
             )

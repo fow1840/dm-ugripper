@@ -82,6 +82,8 @@ struct RecordingHarness
     bool camera_start_ok = true;
     bool sensor_start_ok = true;
     bool write_lock_ok = true;
+    bool sync_log_ok = true;
+    bool ready_before_log_sync = false;
     std::string prepare_error = "prepare episode failed";
     std::string validate_error = "episode validation failed";
     std::string merge_error = "merge episode info failed";
@@ -324,6 +326,10 @@ struct RecordingHarness
                      },
                  .set_led_state =
                      [this](RuntimeLedState state, double) {
+                         if (state == RuntimeLedState::Ready && sync_reason.empty())
+                         {
+                             ready_before_log_sync = true;
+                         }
                          led_states.push_back(state);
                      },
                  .set_hardware_fault_led_state =
@@ -354,6 +360,7 @@ struct RecordingHarness
                      [this](const std::string& reason) {
                          sync_reason = reason;
                          sync_and_lock_events.push_back("sync:" + reason);
+                         return sync_log_ok;
                      },
              },
             },
@@ -591,15 +598,32 @@ TEST(RecordingOrchestratorTest, StopRecordingSuccessSignalsWritingThenReady)
     EXPECT_EQ(harness.led_states,
               (std::vector<RuntimeLedState>{
                   RuntimeLedState::Recording,
-                  RuntimeLedState::Ready,
                   RuntimeLedState::Writing,
                   RuntimeLedState::Ready,
               }));
     EXPECT_EQ(harness.sync_reason, "video stop");
+    EXPECT_FALSE(harness.ready_before_log_sync);
     EXPECT_EQ(harness.sync_and_lock_events,
               (std::vector<std::string>{"remove", "sync:video stop", "remove"}));
     EXPECT_EQ(harness.lock_events,
               (std::vector<std::string>{"remove", "write:", "write:/tmp/episode_0001", "remove"}));
+}
+
+TEST(RecordingOrchestratorTest, LogSyncFailureNeverSignalsReady)
+{
+    RecordingHarness harness;
+    harness.sync_log_ok = false;
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+
+    std::string error;
+    EXPECT_FALSE(orchestrator.StopRecording(false, "stop", "", &error));
+    EXPECT_FALSE(harness.ready_before_log_sync);
+    EXPECT_EQ(harness.led_states,
+              (std::vector<RuntimeLedState>{RuntimeLedState::Recording,
+                                           RuntimeLedState::Writing,
+                                           RuntimeLedState::Error5}));
+    EXPECT_NE(error.find("failed to persist runtime/system logs"), std::string::npos);
 }
 
 TEST(RecordingOrchestratorTest, StartRecordingLockFailureDoesNotLaunchWorkers)
