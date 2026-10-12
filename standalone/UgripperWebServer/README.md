@@ -3,7 +3,7 @@
 独立 HTTPS 页面服务与本地维护 worker，源代码位于此 standalone 目录。
 
 - 页面：`https://<设备以太网地址>:8080/`。默认绑定 `192.168.2.240`，不监听 Wi-Fi 或通配地址。
-- 接上网线即可直接进入页面，无账号或登录步骤。首次安装只生成证书和 `/etc/ugripper-web/config.json`；覆盖安装保留网口配置和证书，清理旧登录密码哈希及 `initial-password` 文件。
+- 接上网线即可直接进入页面，无账号或登录步骤。首次安装只生成证书和 `/etc/ugripper-web/config.json`；覆盖安装保留有效网口配置和证书，清理旧登录密码哈希及 `initial-password` 文件。配置缺失、空白、非法 JSON 或非对象时直接重建默认配置；证书/私钥缺失、为空、损坏或不匹配时成对重建，不备份。配置通过临时文件同步落盘后原子替换。
 - 页面访问仍免登录；上传软件/固件、执行升级、修改设备参数、编码器标零必须逐次输入维护密码，由设备管理员保管。服务端在读取上传或调用 worker 前校验 `X-UGripper-Maintenance-Password`，错误/缺失返回 403；浏览器不保存密码，确认/取消后清空输入，不随任务写入 worker 状态。此共享口令仅用于防止随意修改，不提供个人账号或权限分级。
 - HTTPS 使用设备自签证书，首次访问可能需要浏览器接受证书；生产交付可替换为受客户电脑信任的证书。指纹可用 `openssl x509 -in /etc/ugripper-web/server.crt -noout -fingerprint -sha256` 核对。
 - HTTPS 服务以 ubuntu 运行；独立 root worker 使用 `/usr/local/lib/ugripper-web/` 的 root 专属代码与工具副本及系统 Python（包内提供 pyserial），仅监听本地 Unix socket，不提供 shell/任意命令接口。
