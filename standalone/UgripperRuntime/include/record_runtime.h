@@ -222,6 +222,7 @@ private:
     void handleGripperConnectionEvents();
     void processPendingGripperRefreshes();
     void maintainFirmwareStatus();
+    void maintainDeviceVersions();
     void maintainGripperCalibration();
     void refreshGripperRuntimeStateForSide(const std::string &side,
                                            bool markTactileReferencePending);
@@ -439,6 +440,8 @@ private:
     };
     std::array<GripperFirmwareCache, 2> gripperFirmwareCache_{};
     uint64_t nextFirmwareStatusMs_ = 0;
+    DeviceVersions deviceVersions_;
+
     DA::Ugripper::DeviceStateManager deviceStateManager_;
     // Compatibility views keep the existing cross-file implementation stable;
     // DeviceStateManager owns the referenced state.

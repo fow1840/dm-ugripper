@@ -66,7 +66,7 @@ def video_details(names):
     ]
 
 
-def metadata(stereo_enabled=False, data_version="3.2", marker_values=None):
+def metadata(stereo_enabled=False, data_version="3.3", marker_values=None):
     required_files = list(VALIDATOR.CORE_REQUIRED_FILES)
     names = NOSTEREO_VIDEO_NAMES
     if stereo_enabled:
@@ -82,6 +82,14 @@ def metadata(stereo_enabled=False, data_version="3.2", marker_values=None):
         "das_usb_updater_version": "1.0.3",
         "data_version": data_version,
     }
+    if data_version == "3.3":
+        for key in VALIDATOR.METADATA_33_VERSION_FIELDS:
+            if key == "ego_software_version": result["ego_bound"] = False
+            result[key] = "" if key.startswith("ego_") else "1.0.0"
+        result["cam_chest_firmware_version"] = "disabled"
+        if not stereo_enabled:
+            for side in ("left", "right"):
+                result[f"stereo_{side}_firmware_version"] = "disabled"
     result.update({
         "hardware_list": hardware_list(stereo_enabled),
         "episode_name": "episode_20260727_0001",
@@ -96,6 +104,7 @@ def metadata(stereo_enabled=False, data_version="3.2", marker_values=None):
     if data_version not in {"3.0", "3.1"}:
         result["boot_time_s"] = 1_785_000_000.0
         result["tactile_damage_sn_list"] = []
+    if data_version == "3.3": result["hardware_list"]["ego_sn"] = ""
     result["require_files"] = required_files
     result["video_details"] = video_details(names)
     return result
@@ -256,6 +265,85 @@ class ValidateEpisodeProfileTest(unittest.TestCase):
                 validator = self.validate_metadata(metadata(data_version=data_version))
                 self.assertFalse(any(item.code == "metadata_data_version" for item in validator.findings))
                 self.assertTrue(any(item.code == "metadata_data_version_legacy" for item in validator.findings))
+
+    def test_metadata_3_3_preserves_all_non_version_fields(self):
+        for stereo in (False, True):
+            current = metadata(stereo_enabled=stereo)
+            historical = metadata(stereo_enabled=stereo, data_version="3.2")
+            stripped = {k: v for k, v in current.items() if k not in {*VALIDATOR.METADATA_33_VERSION_FIELDS, "ego_bound"}}
+            stripped["hardware_list"] = {k:v for k,v in stripped["hardware_list"].items() if k != "ego_sn"}
+            stripped["data_version"] = "3.2"
+            self.assertEqual(list(stripped), list(historical))
+            self.assertEqual(stripped, historical)
+            for payload in (current, historical):
+                self.assertFalse(any(f.severity == "FAIL" for f in self.validate_metadata(payload).findings))
+
+    def test_metadata_3_3_rejects_version_type_missing_and_order_drift(self):
+        for mode in ("type", "missing", "order"):
+            payload = metadata()
+            field = "stereo_left_firmware_version"
+            if mode == "type": payload[field] = 123
+            elif mode == "missing": del payload[field]
+            else: payload[field] = payload.pop(field)
+            self.assertTrue(any(f.severity == "FAIL" for f in self.validate_metadata(payload).findings))
+
+    def test_metadata_3_3_requires_disabled_chest_and_nostereo(self):
+        for field in ("cam_chest_firmware_version", "stereo_left_firmware_version", "stereo_right_firmware_version"):
+            payload = metadata()
+            payload[field] = ""
+            self.assertTrue(any(f.code == "metadata_version_disabled" for f in self.validate_metadata(payload).findings))
+        payload = metadata(stereo_enabled=True)
+        payload["stereo_right_firmware_version"] = "disabled"
+        self.assertTrue(any(f.code == "metadata_version_disabled" for f in self.validate_metadata(payload).findings))
+
+    def test_metadata_3_3_template_matches_writer_contract(self):
+        import json
+        import re
+        payload = json.loads((ROOT / ".codex/skills/validate-episode-data/references/metadata-v3.3.json").read_text())
+        header = (ROOT / "standalone/UgripperRuntime/include/record_runtime/episode_types.h").read_text()
+        field_block = header.split("kDeviceVersionFields = {{", 1)[1].split("}};", 1)[0]
+        self.assertEqual(re.findall(r'"([^"\n]+)"', field_block), VALIDATOR.METADATA_33_VERSION_FIELDS)
+        self.assertEqual(list(payload), VALIDATOR.EXPECTED_METADATA_KEY_ORDER)
+        self.assertFalse(any(f.severity == "FAIL" for f in self.validate_metadata(payload).findings))
+
+    def test_metadata_3_3_binding_and_required_version_consistency(self):
+        for field, value in (("ego_bound", "false"), ("ego_software_version", "1.0.5"), ("gripper_left_firmware_version", ""), ("cam_left_firmware_version", "unknown")):
+            payload = metadata()
+            payload[field] = value
+            self.assertTrue(any(f.severity == "FAIL" for f in self.validate_metadata(payload).findings))
+        payload = metadata()
+        payload["hardware_list"]["ego_sn"] = "ego-sn"
+        self.assertTrue(any(f.code == "metadata_ego_binding" for f in self.validate_metadata(payload).findings))
+        payload["ego_bound"] = True
+        self.assertTrue(any(f.code == "metadata_version_missing" for f in self.validate_metadata(payload).findings))
+        payload["ego_software_version"] = "1.0.5"
+        payload["ego_firmware_version"] = "build-1"
+        self.assertFalse(any(f.severity == "FAIL" for f in self.validate_metadata(payload).findings))
+
+    def test_ego_linkage_matches_parent_and_legacy_is_compatible(self):
+        import json
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder) / "episode_20261012_0001"
+            directory.mkdir()
+            validator = self.make_validator(directory)
+            validator.metadata = metadata()
+            validator.metadata["ego_bound"] = True
+            validator.validate_ego_linkage()
+            self.assertTrue(any(f.severity == "FAIL" for f in validator.findings))
+            (directory / "ego").mkdir()
+            ego = {"related_episode_name": validator.metadata["episode_name"], "related_episode_uuid": validator.metadata["data_uuid"]}
+            (directory / "ego/metadata.json").write_text(json.dumps(ego))
+            validator.ego_metadata = ego
+            validator.findings = []
+            validator.validate_ego_linkage()
+            self.assertEqual(validator.findings, [])
+            ego["related_episode_uuid"] = "different"
+            validator.validate_ego_linkage()
+            self.assertTrue(any(f.code == "metadata_ego_linkage" for f in validator.findings))
+            validator.findings = []
+            validator.metadata["data_version"] = "3.2"
+            validator.validate_ego_linkage()
+            self.assertEqual(validator.findings, [])
 
     def test_relative_video_offsets_fail_unix_time_validation(self):
         payload = metadata()

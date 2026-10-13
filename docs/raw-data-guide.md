@@ -51,7 +51,7 @@ episode_YYYYMMDD_NNNN/
 
 | 字段 | 含义与用法 |
 | --- | --- |
-| `data_version` | 数据协议版本；当前为 3.2，历史有 3.0/3.1 |
+| `data_version` | 数据协议版本；当前为 3.3，历史有 3.0/3.1/3.2 |
 | `software_version`、`hardware_version` | 用于定位软件行为与设备差异 |
 | `device_sn`、`hardware_list` | 背包与各传感器身份；用于匹配标定 |
 | `camera_codec` | 视频编码配置，实际编码仍应通过视频流确认 |
@@ -65,11 +65,11 @@ episode_YYYYMMDD_NNNN/
 | `quality_check_err_type` | 主失败原因，更多证据看日志 |
 | `tactile_damage_sn_list` | 触觉损坏检测结果 SN，可能由后台校验更新 |
 
-3.2 新增开机时间和触觉损坏列表。读取器应兼容可选字段；不要用某个字段缺失推断传感器一定不存在。运行时质量成功不能替代业务侧对缺帧、曝光同步、标定精度的验收。
+metadata 3.3 在 data_version 后固定增加 12 个版本字符串；ego_bound（布尔值）紧邻 ego_software_version 之前，hardware_list 末项为 ego_sn（未绑定为空）。主摄固件版本取 USB iSerial；胸摄未启用、+nostereo 双目固件写 "disabled"；未绑定 Ego 两个版本为空。起录前所有启用设备版本必须已知，缺项拒绝创建 episode，待机继续限频重试；起录冻结版本和绑定 SN，停录只消费内存副本。其余 metadata 字段、顺序、类型及 calibration 格式保持不变。Ego 拉回并完成远端大小校验与清理后，在本地 ego/metadata.json 写 related_episode_name 和 related_episode_uuid，分别等于 UMI episode_name（不带 -temp）和 data_uuid。 范本：`.codex/skills/validate-episode-data/references/metadata-v3.3.json`。
 
 ### 2.2 calibration.json
 
-当前标定格式为 3.1，历史可能为 3.0；它与 metadata 的 `data_version=3.2` 是两套独立版本号。包含相机模型、分辨率、内参、畸变、外参及标定状态等；主摄外参可来自夹爪存储的眼眼/手眼标定，Fays 使用模组标定。
+当前标定格式为 3.1，历史可能为 3.0；它与 metadata 的 `data_version=3.3` 是两套独立版本号。包含相机模型、分辨率、内参、畸变、外参及标定状态等；主摄外参可来自夹爪存储的眼眼/手眼标定，Fays 使用模组标定。
 
 使用前核对设备 SN、图像尺寸、相机模型、畸变模型及标定有效状态。默认结构参数或单位矩阵不等于完成有效标定。变换矩阵必须确认源/目标坐标系、单位、左右乘约定；不要根据字段名自行推断。SDK 的 `timeshift_cam*_to_imu0` 也不能未经核对就叠加到已对齐的落盘时间上。
 

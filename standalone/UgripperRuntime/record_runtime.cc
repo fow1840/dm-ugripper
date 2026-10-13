@@ -252,7 +252,11 @@ bool RecordRuntime::Initialize()
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "UGRIPPER_ENABLE_PERF_LOG="
                          << (perfLogEnabled_ ? "true" : "false") << std::endl).str());
 
-    hardwareVersion_ = readEnvValue(options_.envFile, "UGRIPPER_HARDWARE_VERSION");
+    hardwareVersion_ = readEnvValue(options_.envFile, "HARDWARE_VERSION");
+    if (hardwareVersion_.empty())
+        hardwareVersion_ = readEnvValue(options_.envFile, "UGRIPPER_HARDWARE_VERSION");
+    if (!hardwareVersion_.empty() && hardwareVersion_.front() != 'v' && hardwareVersion_.front() != 'V')
+        hardwareVersion_ = "v" + hardwareVersion_;
     if (hardwareVersion_.empty())
     {
         hardwareVersion_ = "v2.5";
@@ -296,6 +300,16 @@ bool RecordRuntime::Initialize()
             .fileExistsAndNotEmpty = &RecordRuntime::fileExistsAndNotEmpty,
         });
 
+    for (const auto *field : kDeviceVersionFields) deviceVersions_[field] = "";
+    for (const auto &[field, package] : std::array<std::pair<const char *, const char *>, 3>{{
+        {"bluetooth_gatt_server_version", "bluetooth-gatt-server"},
+        {"databot_device_joint_version", "databot-device-joint"},
+        {"device_ota_mender_version", "device-ota-mender"},
+    }})
+    {
+        const auto version = queryPackageVersion(package);
+        deviceVersions_[field] = version == "unknown" ? "" : version;
+    }
     episodeManagerInitialized_ = false;
     initializeMainCameraRuntimeStates();
     initializeTactileCameraRuntimeStates();

@@ -3,8 +3,26 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <map>
 
 namespace DA::Ugripper {
+
+// Metadata 3.3: preserve this order after data_version. All values are strings.
+inline constexpr std::array<const char *, 12> kDeviceVersionFields = {{
+    "bluetooth_gatt_server_version",
+    "databot_device_joint_version",
+    "device_ota_mender_version",
+    "gripper_left_firmware_version",
+    "gripper_right_firmware_version",
+    "cam_left_firmware_version",
+    "cam_right_firmware_version",
+    "cam_chest_firmware_version",
+    "stereo_left_firmware_version",
+    "stereo_right_firmware_version",
+    "ego_software_version",
+    "ego_firmware_version",
+}};
+using DeviceVersions = std::map<std::string, std::string>;
 
 struct GripperRuntimeState
 {

@@ -48,6 +48,7 @@ FAYS_IMU_PAYLOAD_BYTES = 48
 FAYS_CAMERA_PAYLOAD_BYTES = 4
 MIN_UNIX_TIMESTAMP_US = 946_684_800_000_000
 DEFAULT_GLOBAL_FIRST_FRAME_FAIL_MS = 1000.0
+METADATA_33_VERSION_FIELDS = ['bluetooth_gatt_server_version', 'databot_device_joint_version', 'device_ota_mender_version', 'gripper_left_firmware_version', 'gripper_right_firmware_version', 'cam_left_firmware_version', 'cam_right_firmware_version', 'cam_chest_firmware_version', 'stereo_left_firmware_version', 'stereo_right_firmware_version', 'ego_software_version', 'ego_firmware_version']
 EXPECTED_METADATA_KEY_ORDER = [
     "device_sn",
     "device_type",
@@ -57,6 +58,9 @@ EXPECTED_METADATA_KEY_ORDER = [
     "software_version",
     "das_usb_updater_version",
     "data_version",
+    *METADATA_33_VERSION_FIELDS[:10],
+    "ego_bound",
+    *METADATA_33_VERSION_FIELDS[10:],
     "hardware_list",
     "episode_name",
     "data_uuid",
@@ -103,6 +107,7 @@ EXPECTED_HARDWARE_LIST_KEY_ORDER = [
     "tactile_left_r_sn",
     "stereo_right_sn",
     "stereo_left_sn",
+    "ego_sn",
 ]
 REQUIRED_HARDWARE_LIST_KEYS = set(EXPECTED_HARDWARE_LIST_KEY_ORDER)
 EXPECTED_METADATA_KEYS = set(EXPECTED_METADATA_KEY_ORDER)
@@ -492,6 +497,7 @@ class EpisodeValidator:
         self.check_required_files()
         self.check_dynamic_required_files()
         self.validate_metadata_fields()
+        self.validate_ego_linkage()
         self.validate_calibration_structure()
         self.scan_videos()
         self.scan_main_camera_pair()
@@ -630,6 +636,18 @@ class EpisodeValidator:
         if ego_sensor_path.is_file() or ego_metadata_path.is_file():
             self.ego_metadata = self.load_json_file("ego/metadata.json")
 
+    def validate_ego_linkage(self) -> None:
+        if self.metadata.get("data_version") != "3.3":
+            return
+        exists = (self.episode_dir / "ego/metadata.json").is_file()
+        if self.metadata.get("ego_bound") is True and not exists:
+            self.add_finding("FAIL", "metadata_ego_linkage", "已绑定 Ego 缺少 ego/metadata.json")
+        if exists:
+            for child, parent in (("related_episode_name", "episode_name"), ("related_episode_uuid", "data_uuid")):
+                value = self.ego_metadata.get(child)
+                if not isinstance(value, str) or not value or value != self.metadata.get(parent):
+                    self.add_finding("FAIL", "metadata_ego_linkage", f"ego/metadata.json.{child} 与 UMI 不一致")
+
     def validate_metadata_fields(self) -> None:
         data_version = safe_str(self.metadata.get("data_version"))
         legacy_schema = data_version in {"3.0", "3.1"}
@@ -637,7 +655,8 @@ class EpisodeValidator:
         schema_key_order = [
             key
             for key in EXPECTED_METADATA_KEY_ORDER
-            if not legacy_schema or key not in version_specific_keys
+            if (not legacy_schema or key not in version_specific_keys)
+            and (data_version not in {"3.0", "3.1", "3.2"} or key not in {*METADATA_33_VERSION_FIELDS, "ego_bound"})
         ]
         metadata_key_order = list(self.metadata.keys())
         expected_metadata_key_order = [
@@ -703,6 +722,9 @@ class EpisodeValidator:
             "tactile_damage_sn_list": list,
             "video_details": list,
         }
+        if data_version == "3.3":
+            expected_types.update({key: str for key in METADATA_33_VERSION_FIELDS})
+            expected_types["ego_bound"] = bool
         for field_name, expected_type in expected_types.items():
             if field_name not in self.metadata:
                 continue
@@ -758,16 +780,18 @@ class EpisodeValidator:
         hardware_list = self.metadata.get("hardware_list")
         if isinstance(hardware_list, dict):
             hardware_key_order = list(hardware_list.keys())
-            if hardware_key_order != EXPECTED_HARDWARE_LIST_KEY_ORDER:
+            expected_hardware_order = [k for k in EXPECTED_HARDWARE_LIST_KEY_ORDER if data_version == "3.3" or k != "ego_sn"]
+            required_hardware_keys = set(expected_hardware_order)
+            if hardware_key_order != expected_hardware_order:
                 self.add_finding(
                     "FAIL",
                     "metadata_schema_key_order",
                     "metadata.json.hardware_list 字段顺序不符合标准范本",
                     actual_order=hardware_key_order,
-                    expected_order=EXPECTED_HARDWARE_LIST_KEY_ORDER,
+                    expected_order=expected_hardware_order,
                 )
-            missing_keys = sorted(REQUIRED_HARDWARE_LIST_KEYS - set(hardware_list.keys()))
-            unexpected_keys = sorted(set(hardware_list.keys()) - REQUIRED_HARDWARE_LIST_KEYS)
+            missing_keys = sorted(required_hardware_keys - set(hardware_list.keys()))
+            unexpected_keys = sorted(set(hardware_list.keys()) - required_hardware_keys)
             if missing_keys:
                 self.add_finding(
                     "FAIL",
@@ -813,20 +837,41 @@ class EpisodeValidator:
                         "metadata_hardware_sn",
                         f"metadata.json.hardware_list.{key} 为空",
                     )
-        if data_version in {"3.0", "3.1"}:
+        if data_version in {"3.0", "3.1", "3.2"}:
             self.add_finding(
                 "INFO",
                 "metadata_data_version_legacy",
                 f"metadata.json 使用兼容的历史 data_version {data_version}",
                 data_version=data_version,
             )
-        elif data_version is not None and data_version != "3.2":
+        elif data_version is not None and data_version != "3.3":
             self.add_finding(
                 "WARN",
                 "metadata_data_version",
-                "metadata.json 的 data_version 不是当前版本 3.2",
+                "metadata.json 的 data_version 不是当前版本 3.3",
                 data_version=data_version,
             )
+        if data_version == "3.3":
+            video_names = {d.get("name") for d in self.metadata.get("video_details", []) if isinstance(d, dict)}
+            expected_disabled = {"cam_chest_firmware_version": "cam_chest.mkv" not in video_names}
+            for side in ("left", "right"):
+                expected_disabled[f"stereo_{side}_firmware_version"] = not self.stereo_enabled
+            for key, disabled in expected_disabled.items():
+                value = self.metadata.get(key)
+                if isinstance(value, str) and (value == "disabled") != disabled:
+                    self.add_finding("FAIL", "metadata_version_disabled", f"{key} 的 disabled 状态与录制配置不符")
+            ego_bound = self.metadata.get("ego_bound")
+            hardware = self.metadata.get("hardware_list", {})
+            ego_sn = hardware.get("ego_sn") if isinstance(hardware, dict) else None
+            if not isinstance(ego_sn, str) or (bool(ego_sn.strip()) != (ego_bound is True)):
+                self.add_finding("FAIL", "metadata_ego_binding", "ego_bound 与 hardware_list.ego_sn 不一致")
+            for key in ["hardware_version", "software_version", "das_usb_updater_version", *METADATA_33_VERSION_FIELDS]:
+                value = self.metadata.get(key)
+                if key.startswith("ego_") and ego_bound is False:
+                    if value != "":
+                        self.add_finding("FAIL", "metadata_ego_binding", f"未绑定时 {key} 应为空字符串")
+                elif not expected_disabled.get(key, False) and (not isinstance(value, str) or not value.strip() or value in {"unknown", "disabled"}):
+                    self.add_finding("FAIL", "metadata_version_missing", f"启用设备版本 {key} 未知")
         self.validate_task_markers()
         device_type = safe_str(self.metadata.get("device_type"))
         if device_type is not None and device_type not in {"ugripper", "ego", "glove"}:

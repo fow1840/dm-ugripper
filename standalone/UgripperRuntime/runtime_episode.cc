@@ -6,6 +6,7 @@
 #include "utils/ugripper_logger.h"
 #include "record_runtime/gripper_refresh_logic.h"
 #include "record_runtime/gripper_extrinsics.h"
+#include "record_runtime/episode_metadata_contract.h"
 #include "utils/env_utils.h"
 #include "utils/file_utils.hpp"
 #include "utils/time_utils.h"
@@ -818,6 +819,8 @@ bool DA::Ugripper::EpisodeManager::WriteFinalMetadata(const std::string &episode
     hardwareList["stereo_left_sn"] =
         stereoEnabled_ ? jsonStringPath(stereoStatus, "cameras.left_stereo.serial_number") : "";
 
+    hardwareList["ego_sn"] = egoSerial_;
+
     json infoRoot = json::object();
     loadJsonFile(episodeTimingPath(episodePath).string(), &infoRoot, &ignoredError);
     std::map<std::string, int64_t> offsetByCamera;
@@ -940,7 +943,19 @@ bool DA::Ugripper::EpisodeManager::WriteFinalMetadata(const std::string &episode
     metadata["hardware_version"] = hardwareVersion_;
     metadata["software_version"] = addVersionPrefix(packageVersion_);
     metadata["das_usb_updater_version"] = updaterVersion_;
-    metadata["data_version"] = "3.2";
+    metadata["data_version"] = "3.3";
+    for (const auto *field : kDeviceVersionFields)
+    {
+        if (std::string_view(field) == "ego_software_version") metadata["ego_bound"] = !egoSerial_.empty();
+        const auto value = deviceVersions_.find(field);
+        metadata[field] = value != deviceVersions_.end() ? value->second : "";
+    }
+    if (!chestCameraEnabled_) metadata["cam_chest_firmware_version"] = "disabled";
+    if (!stereoEnabled_)
+    {
+        metadata["stereo_left_firmware_version"] = "disabled";
+        metadata["stereo_right_firmware_version"] = "disabled";
+    }
     metadata["hardware_list"] = std::move(hardwareList);
     metadata["episode_name"] = stripEpisodeTempSuffix(episodePath.filename().string());
     metadata["data_uuid"] = existingMetadata.value("data_uuid", generateUuid());
@@ -965,7 +980,33 @@ bool DA::Ugripper::EpisodeManager::WriteFinalMetadata(const std::string &episode
     {
         return false;
     }
-    return true;
+    // Finalize/pull and remote size checks/cleanup have already completed.
+    // Add parent linkage only now, so the modified local size cannot trigger
+    // a pull recovery that would overwrite these fields.
+    const fs::path egoMetadataPath = episodePath / "ego" / "metadata.json";
+    std::error_code existsError;
+    const bool egoMetadataExists = fs::exists(egoMetadataPath, existsError);
+    if (!egoMetadataExists && egoSerial_.empty() && !existsError) return true;
+    ordered_json egoMetadata;
+    try
+    {
+        std::ifstream input(egoMetadataPath);
+        input >> egoMetadata;
+    }
+    catch (const std::exception &error)
+    {
+        if (errorMessage != nullptr) *errorMessage = "cannot read ego metadata for linkage: " + std::string(error.what());
+        return false;
+    }
+    if (!ApplyRelatedEpisodeMetadata(&egoMetadata, metadata, errorMessage)) return false;
+    return writeTextFileAtomically(egoMetadataPath, egoMetadata.dump(2) + "\n", errorMessage);
+}
+
+void DA::Ugripper::EpisodeManager::SetDeviceVersions(const DeviceVersions &versions,
+                                                    const std::string &egoSerial)
+{
+    deviceVersions_ = versions;
+    egoSerial_ = egoSerial;
 }
 
 void DA::Ugripper::EpisodeManager::SetTaskMarkers(std::optional<double> taskStartS,

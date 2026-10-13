@@ -7,7 +7,7 @@ function post(url,value,password){const headers={'Content-Type':'application/jso
 function bytes(n){return (n/1024**3).toFixed(1)+' GiB'}
 function metric(label,value,detail){const p=el('article',undefined,'panel metric');p.append(el('p',label,'muted'),el('div',value,'value'),el('p',detail,'muted'));return p}
 function row(label,value,good){const d=el('div',undefined,'device');d.append(el('span',label),el('span',value,'state '+(good===null?'':good?'good':'bad')));return d}
-function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProduction(s.production||{});renderTimeSync(s);last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);renderTactileAlarm(s.tactile_alarm||{},s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording?'录制中':s.busy?'维护 / 传输中':'空闲';
+function render(s){const versions=s.device_versions||{};setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProduction(s.production||{});renderTimeSync(s);last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);renderTactileAlarm(s.tactile_alarm||{},s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording?'录制中':s.busy?'维护 / 传输中':'空闲';
  const d=s.disks.data,m=s.memory;$('#metrics').replaceChildren(metric('CPU 占用',s.cpu_percent===null?'—':s.cpu_percent+'%','设备系统'),metric('内存使用',Math.round(m.used/m.total*100)+'%',bytes(m.used)+' / '+bytes(m.total)),metric('数据盘剩余',d.mounted?bytes(d.free):'未挂载',d.mounted?'总容量 '+bytes(d.total):'请连接数据盘'),metric('系统盘剩余',bytes(s.disks.system.free),'总容量 '+bytes(s.disks.system.total)));
  const battery=s.battery||{};const bootBlocked=battery.connected!==true||!Number.isInteger(battery.percent)||battery.percent<20||battery.percent>100;const bootButton=$('form[data-kind=rk3588_boot] button');bootButton.disabled=busy||uploading||bootBlocked;$('#bootBatteryStatus').textContent=bootBlocked?(battery.connected===true&&Number.isInteger(battery.percent)&&battery.percent>=0&&battery.percent<20?'背包电量低于 20%，禁止升级 3588 固件':'电量数据不可用或已过期，禁止升级 3588 固件'):'背包电量满足升级条件（至少 20%）';const batteryMetric=metric('背包电量',battery.connected?battery.percent+'%':'电量不可用',battery.connected?(battery.charging?'充电中':battery.discharging?'放电中':'已连接'):'请检查蓝牙电量服务');
  batteryMetric.id='batteryMetric';if(battery.connected&&battery.percent<=10)batteryMetric.classList.add('battery-low');$('#metrics').prepend(batteryMetric);
@@ -18,14 +18,17 @@ function render(s){setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProdu
  if(ego.bound){const ts=ego.time_sync,ready=ts?.status==='ok';$('#egoStatus').append(row('时间同步',ready?'已与背包同步':ts?.status==='legacy'?'旧版录制前校时':ts?.status==='disconnected'?'授时连接断开':ts?.status==='error'?'授时异常':'正在与背包同步',ready?true:null));const measured=v=>typeof v==='number'&&Number.isFinite(v)?v.toFixed(3)+' ms':'暂无测量';$('#egoStatus').append(row('与背包偏差',measured(ts?.offset_ms),null),row('往返延迟 RTT',measured(ts?.rtt_ms),null));}
  if(ego.serial)$('#egoStatus').append(row('序列号',ego.serial,null));
  if(ego.bound)for(const [key,label]of [['firmware_version','固件版本'],['software_version','软件版本']])$('#egoStatus').append(row(label,(ego[key]||'未读取')+(ego.connected!==true&&ego[key]?'（缓存）':''),null));
- $('#versions').replaceChildren(...Object.entries(s.versions).map(([k,v])=>row(k,v||'未安装',!!v)));
+ $('#versions').replaceChildren(row('硬件版本',versions.hardware_version||'未读取',null),...Object.entries(s.versions).map(([k,v])=>row(k,v||'未安装',!!v)));
+ const versionValue=value=>value==='disabled'?'未启用':value||'未读取';
  $('#firmwareVersions').replaceChildren();
  for(const [side,label]of [['left','左'],['right','右']]){
   const camera=s.firmware?.main_camera?.[side],gripper=s.firmware?.gripper?.[side];
-  $('#firmwareVersions').append(row(label+'主摄 iSerial',camera?.iserial||'未识别',!!camera?.iserial));
+  $('#firmwareVersions').append(row(label+'主摄固件（iSerial）',versionValue(versions['cam_'+side+'_firmware_version']),null));
+  $('#firmwareVersions').append(row(label+'双目固件',versionValue(versions['stereo_'+side+'_firmware_version']),null));
   const stamp=gripper?.checked_at?' · '+new Date(gripper.checked_at*1000).toLocaleString():'';
   $('#firmwareVersions').append(row(label+'夹爪固件',(gripper?.version|| (gripper?.status==='disconnected'?'未连接':gripper?.status==='unavailable'?'版本不可用':gripper?.status==='pending'?'等待自动读取':'状态待更新'))+stamp,!!gripper?.version));
  }
+ $('#firmwareVersions').append(row('胸部主摄固件',versionValue(versions.cam_chest_firmware_version),null));
  if((!settingsLoaded||s.task?.kind==='configuration'&&s.task?.finished)&&!settingsDirty){for(const select of document.querySelectorAll('#configurationForm select')){const value=s.configuration?.[select.name];select.value=value??'';select.required=true;}settingsLoaded=true;}
  $('#connection').textContent=(s.service_active?'数采服务在线':'数采服务已停止')+' · '+new Date().toLocaleTimeString();
  if(s.task.id&&!uploading){$('#taskPanel').hidden=false;$('#taskText').textContent=s.task.stage+(s.task.message?' · '+s.task.message:'');if(s.task.status==='running')$('#progress').removeAttribute('value');else $('#progress').value=100;$('#results').replaceChildren();for(const [k,v]of Object.entries(s.task.result||s.task.results||{})){$('#results').append(el('p',k+': '+(typeof v==='object'?(v.installed_version||v.status||'完成'):v)))} }

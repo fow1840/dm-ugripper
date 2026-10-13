@@ -51,7 +51,7 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - 主服务：`pack_script/ugripper.service`
 - 主入口：`/opt/ugripper/run_record.sh`
 - 主运行时：`/opt/ugripper/bin/UgripperRuntime/UgripperRuntime`
-- 独立维护 Web 服务：`standalone/UgripperWebServer/` 提供 HTTPS 客户页面，接网线即可免登录访问（无登录账号或会话，升级、参数保存及标零逐次校验密码），维护写请求保留跨站防护与操作确认，默认绑定以太网 `192.168.2.240:8080`，独立 `ugripper-webserver.service`（ubuntu）与 `ugripper-maintenance.service`（本地 root worker）。设备状态、日志下载、数据浏览/下载、白名单软件升级、左右主摄/夹爪固件升级、治具确认后的左右独立编码器标零通过受控 API 提供。主摄 iSerial 与夹爪固件版本按左右展示，由 UGripper 维护 `/dev/shm/ugripper/firmware_status.json`，Web 仅读取快照，概览左右设备标题后显示各自夹爪 SN（由已有身份缓存写入快照，断连或过期显示 —）；夹爪复用 HMI 驱动在空闲时读取，启动/重连自动刷新，失败每 30 秒重试且每次连接最多 3 次，录制期间不查询；配置页支持空闲时查看左右编码器原始计数、角度与弧度；每次位置查询在录制/维护共享锁内打开并关闭串口，只发送 Modbus 读命令，支持 1Mbps/115200 且不改设备配置。四个环境参数（语言、编码、胸部主摄开关、电源频率）提供下拉配置，确认后由 root 专用 helper 限定写入 `/etc/environment` 并重启数采。录制与维护/下载共用 `/run/ugripper/maintenance.lock` 原子锁，持有到各自收尾结束；主摄升级固定调用包内 dfu-util。配置及测试说明见 `standalone/UgripperWebServer/README.md`。
+- 独立维护 Web 服务：`standalone/UgripperWebServer/` 提供 HTTPS 客户页面，接网线即可免登录访问（无登录账号或会话，升级、参数保存及标零逐次校验密码），维护写请求保留跨站防护与操作确认，默认绑定以太网 `192.168.2.240:8080`，独立 `ugripper-webserver.service`（ubuntu）与 `ugripper-maintenance.service`（本地 root worker）。设备状态、日志下载、数据浏览/下载、白名单软件升级、左右主摄/夹爪固件升级、治具确认后的左右独立编码器标零通过受控 API 提供。主摄 iSerial 与夹爪固件版本按左右展示，由 UGripper 维护 `/dev/shm/ugripper/firmware_status.json`，Web 仅读取快照，概览左右设备标题后显示各自夹爪 SN（由已有身份缓存写入快照，断连或过期显示 —）；夹爪复用 HMI 驱动在空闲时读取，启动/重连自动刷新，失败每 30 秒限频重试，录制期间不查询；配置页支持空闲时查看左右编码器原始计数、角度与弧度；每次位置查询在录制/维护共享锁内打开并关闭串口，只发送 Modbus 读命令，支持 1Mbps/115200 且不改设备配置。四个环境参数（语言、编码、胸部主摄开关、电源频率）提供下拉配置，确认后由 root 专用 helper 限定写入 `/etc/environment` 并重启数采。录制与维护/下载共用 `/run/ugripper/maintenance.lock` 原子锁，持有到各自收尾结束；主摄升级固定调用包内 dfu-util。配置及测试说明见 `standalone/UgripperWebServer/README.md`。
 - Web 配置页时间同步测试：可配置每组录制 1–3600 秒、1–100 组、毫秒表延迟 0 秒起且小于录制时长（默认 100 秒/1 组/延迟 2 秒）。复用包内毫秒表脚本，经 root worker 自动控制 GPIO139，每组前后高电平清零 5 秒，START/STOP 与 GPIO 实测边界写入 episode 的 `stopwatch_timing.json`；与生产压测/维护/下载互斥，断开网页继续执行，取消等待收尾，中断不自动续跑。采集完成不代表已通过光学同步标定。
 - Web 修改性维护操作（软件/固件上传升级、设备参数保存、编码器标零）逐次要求维护密码，服务端先校验再接收上传或派发维护；不在浏览器保存密码，不传入任务状态。页面访问、状态/下载/抓图/检测/编码器读取及自动测试仍免登录；触觉基线重置只需弹框确认，无需密码；原有治具与互斥约束保留。
 - 数据目录：`/mnt/data_disk/<device_sn_lower>/data`
@@ -290,22 +290,24 @@ BMS 串口由蓝牙服务的 `update_bms_data` 独占采集，UGripper 不再打
 
 ### 7.2 metadata.json
 停录校验完成后，`record_runtime` 写入最终 `metadata.json`。当前顶层字段固定为：
-`device_sn / device_type / device_mode / camera_codec / hardware_version / software_version / das_usb_updater_version / data_version / hardware_list / episode_name / data_uuid / audio_uuid / quality_check_status / quality_check_err_type / collection_duration_s / task_start_s / task_stop_s / boot_time_s / tactile_damage_sn_list / require_files / video_details`。
+`device_sn / device_type / device_mode / camera_codec / hardware_version / software_version / das_usb_updater_version / data_version / bluetooth_gatt_server_version / databot_device_joint_version / device_ota_mender_version / gripper_left_firmware_version / gripper_right_firmware_version / cam_left_firmware_version / cam_right_firmware_version / cam_chest_firmware_version / stereo_left_firmware_version / stereo_right_firmware_version / ego_bound / ego_software_version / ego_firmware_version / hardware_list / episode_name / data_uuid / audio_uuid / quality_check_status / quality_check_err_type / collection_duration_s / task_start_s / task_stop_s / boot_time_s / tactile_damage_sn_list / require_files / video_details`。
 
-- `device_sn` 使用主控 `DEVICE_SN`，写出前统一转大写；`device_type=ugripper`，`device_mode=dual`，`data_version=3.2`。
+- `device_sn` 使用主控 `DEVICE_SN`，写出前统一转大写；`device_type=ugripper`，`device_mode=dual`，`data_version=3.3`。
 - `boot_time_s` 是本次系统开机时间点的 Unix 秒时间戳，优先复用 CameraRecorder timing 中的 `boot_time_offset`；timing 缺失时按当前 Unix 时钟与单调时钟差值回退计算。
 - `tactile_damage_sn_list` 初始写为 `[]`；停录后的后台触觉慢校验中，任意单次 finding 满足 `damaged=true` 就加入对应非空传感器 SN，不等待连续三次黄灯告警门槛，SN 去重后原子回写该字段；本条 episode 未发现损坏时保持 `[]`。
-- `task_start_s` / `task_stop_s` 是录制中右手上键任务切片点的 Unix 秒时间戳，按触发顺序各只写一次；当前 `3.2` 录制端未标记时固定写 `0.0`。`boot_time_s`、`tactile_damage_sn_list` 依次紧跟在 `task_stop_s` 后，并位于 `require_files` 前。离线深度校验允许历史或外部数据省略两个 task 字段；只有有效 `task_start_s` 而没有有效 `task_stop_s` 时按“无结束前回环数据”处理，不降低校验状态。
+- `task_start_s` / `task_stop_s` 是录制中右手上键任务切片点的 Unix 秒时间戳，按触发顺序各只写一次；当前 `3.3` 录制端未标记时固定写 `0.0`。`boot_time_s`、`tactile_damage_sn_list` 依次紧跟在 `task_stop_s` 后，并位于 `require_files` 前。离线深度校验允许历史或外部数据省略两个 task 字段；只有有效 `task_start_s` 而没有有效 `task_stop_s` 时按“无结束前回环数据”处理，不降低校验状态。
 - `metadata.json` 使用范本顺序写出顶层字段、`hardware_list` 字段和 `video_details[]` 字段；校验脚本会把 key 顺序漂移作为格式错误。
 - `data_uuid` 使用系统随机 UUID；若 `/proc/sys/kernel/random/uuid` 不可用则回退 `libuuid` 的 `uuid_generate/uuid_unparse`。无音频文件时 `audio_uuid` 允许为空字符串。
-- `hardware_version` 默认 `v2.5`，可通过 `UGRIPPER_HARDWARE_VERSION` 覆盖；`software_version` 来自 ugripper 主包版本并带 `v` 前缀；`das_usb_updater_version` 优先读取 `das-usb-updater` 包版本。
-- `hardware_list` 保持固定 schema：左右 gripper、左右主摄、可选胸部主摄、四路 tactile 与左右 stereo 字段始终存在；默认包从 Fays 状态写 stereo SN，`+nostereo` 变体写空字符串。
+- `hardware_version` 优先读取 `/etc/environment` 的 `HARDWARE_VERSION`，保留 `v` 前缀；缺失时兼容 `UGRIPPER_HARDWARE_VERSION`，最后默认 `v2.5`；`software_version` 来自 ugripper 主包版本并带 `v` 前缀；`das_usb_updater_version` 优先读取 `das-usb-updater` 包版本。
+- metadata 3.3 在 data_version 后固定增加 12 个版本字符串；ego_bound（布尔值）紧邻 ego_software_version 之前，hardware_list 末项为 ego_sn（未绑定为空）。主摄固件版本取 USB iSerial；胸摄未启用、+nostereo 双目固件写 "disabled"；未绑定 Ego 两个版本为空。起录前所有启用设备版本必须已知，缺项拒绝创建 episode，待机继续限频重试；起录冻结版本和绑定 SN，停录只消费内存副本。其余 metadata 字段、顺序、类型及 calibration 格式保持不变。Ego 拉回并完成远端大小校验与清理后，在本地 ego/metadata.json 写 related_episode_name 和 related_episode_uuid，分别等于 UMI episode_name（不带 -temp）和 data_uuid。 范本：`.codex/skills/validate-episode-data/references/metadata-v3.3.json`。
+- 版本来源：已安装 dpkg 包、夹爪待机固件缓存、主摄 USB iSerial、Fays calibration.firmware_version、Ego 绑定缓存 app.version_name/firmware.version；复用现有状态接口，不新增版本快照 JSON。
+- `hardware_list` 保持固定 schema：左右 gripper、左右主摄、可选胸部主摄、四路 tactile、左右 stereo 与 Ego SN 字段始终存在，未绑定时 ego_sn 为空；默认包从 Fays 状态写 stereo SN，`+nostereo` 变体写空字符串。
 - `quality_check_status` 取值为 `success` / `fail` / 空字符串；`quality_check_err_type` 保持单字段兼容，只写本次失败的主 `error_type`。常见取值包括 `missing_file`、`collection_duration_too_short`、`frame_loss`、`stereo_frame_loss`、`finalize_error`、`stereo_control_failed`、`calibration_error`、`runtime_error`、`device_disconnected`、人工补标的 `operator_marked_failed`，以及健康监控直接上报的 `disk_mount_lost`、`disk_not_writable`、`disk_full`、`critical_devices_missing`、`stereo_not_ready`、`hmi_*` 等 fault key；无法归类时写 `unknown`。
 - `collection_duration_s` 取有效视频时长最大值；默认包包含 stereo，`+nostereo` 只统计主摄/触觉。stereo 的有效时长固定使用 Fays MCAP 中首末 camera `publishTime` 的跨度，因此 Fays 设备侧 gap 会保留在实际采集时长内，不使用被固定 `25fps` 压紧的 MKV 容器 duration；`video_details` 复用停录 timing 缓存。
 - `video_details[].start_offset_us` 保存各路补偿后的绝对 `record_time_offset_us`，单位为 Unix 微秒，语义为“该视频 `PTS=0` 对应的补偿后主机 Unix 时间”，不再减去本 episode 最早视频 offset。H.265 主相机按 `start_offset_us + packet_pts_sec * 1000000` 还原 Unix 时间：首关键帧 `start_offset_us=Tset+Pfirst-Pset`，packet PTS 来自当前帧换算 Unix 时间减去首帧 Unix 时间，因此任意帧 Unix 时间等于 `Tset+Pframe-Pset`，并保留编码器时间轴上的真实 gap；H.264 主相机继续使用 V4L2 buffer 时间生成同一表达。触觉相机仍由 FFmpeg 录制链生成 PTS 和首帧 offset，目前只保证处于 Unix 时间域并执行单调/gap 校验，不把它表述为硬件曝光时间真值。
 - stereo MKV packet 与 Fays MCAP `c` topic 通过 `frameIndex`/顺序一一对应；stereo 精确逐帧 Unix 时间只使用对应已补偿的 `c.publishTime`，`video_details[].start_offset_us` 仅与首个 camera `publishTime/1000` 对齐。Stereo MKV 保持固定帧率播放时间轴，设备 gap 不要求由 MKV PTS 表达，也不得用 `start_offset_us+stereo PTS` 替代 MCAP `publishTime`。Fays 原始 `logTime` 只用于设备侧 gap/回退分析，不能作为全局 Unix 时间。
 - 默认包的 `require_files` 包含 stereo/Fays 文件；`+nostereo` 变体只包含 metadata、calibration、左右主摄、四路 tactile 与左右 sensor。启用胸部主摄时两种变体都追加 `cam_chest.mkv`。
-- 离线 episode 深度校验以 `software_version` 中的 `+nostereo` 为构建 profile 标记，并交叉核对 `require_files`、`video_details` 与实际文件；普通版本缺失 stereo/Fays 仍判失败，不能通过删减 `require_files` 自动降级。当前标准版本为 `3.1`，历史 `3.0` 作为兼容数据允许分析，其他未知版本给出告警。
+- 离线 episode 深度校验以 `software_version` 中的 `+nostereo` 为构建 profile 标记，并交叉核对 `require_files`、`video_details` 与实际文件；普通版本缺失 stereo/Fays 仍判失败，不能通过删减 `require_files` 自动降级。当前标准版本为 `3.3`，历史 `3.0/3.1/3.2` 作为兼容数据允许分析，其他未知版本给出告警。
 
 #### 7.2.1 相机时间戳与延迟补偿
 
@@ -638,7 +640,7 @@ PY
 - 安装后的 `bin/CameraRecorder/main_camera_xu_tool` 支持 `--rtc-get`、`--rtc-set-us`、`--rtc-sync-now` 与 `--parse-h265-timestamps`，用于独立验证主摄 XU RTC 与 H.265 XU2 SEI；`--rtc-get` 输出固件在最近一次 SET 时锁存的 encoder `Pset`，`--rtc-sync-now` 使用与录制链相同的 `+200us` 写入 `Tset` 并输出 `Pset`，逐帧时间按 `Tset + Pframe - Pset` 换算。
 - 建议从仓库根目录显式执行 `bash test/scripts/<script>.sh`；详细参数与注意事项见 `test/README.md`。
 - 单条 episode 可执行 `bash test/scripts/validate_episode_data.sh <episode_dir>`；父目录下校验最新一条可追加 `--latest`，机器消费结果可追加 `--json`。
-- 离线校验器分别识别 metadata 3.2（兼容 3.0/3.1）和 calibration 3.1（兼容 3.0）；后者检查独立外参标定状态、左右主摄两项有限数值 4×4 刚体矩阵及对应版本的严格字段合同。`uncalibrated` 与合法默认矩阵可通过格式检查，不代表光学精度达标；未知 calibration 版本、缺项或非法矩阵仍失败。
+- 离线校验器分别识别 metadata 3.3（兼容 3.0/3.1/3.2）和 calibration 3.1（兼容 3.0）；后者检查独立外参标定状态、左右主摄两项有限数值 4×4 刚体矩阵及对应版本的严格字段合同。`uncalibrated` 与合法默认矩阵可通过格式检查，不代表光学精度达标；未知 calibration 版本、缺项或非法矩阵仍失败。
 - `py_script/read_ugripper_mcap.txt` 是给数据使用者参考的通用 MCAP 读取示例；文件后缀使用 `.txt`，方便在会拦截或加密 `.py` 的环境中发送，但内容仍是 Python 代码。它可直接输入单个 `.mcap` 或完整 episode 目录；episode 模式会自动读取 `sensor_left/right.mcap`、`fays_data_left/right.mcap` 与可选 `ego/sensor.mcap`，并解码当前 UGripper encoder 与 Fays `i/c` 二进制 payload。配套说明见 `py_script/README_read_ugripper_mcap.txt`。示例：
   `python3 py_script/read_ugripper_mcap.txt /mnt/data_disk/<device_sn_lower>/data/episode_<date>_<index> --json-out /tmp/ugripper_mcap_report.json`。
 - 当前 UGripper MCAP 是通用 MCAP 容器，不是 ROS 2 bag；不要用 `ros2 bag info` 或 Foxglove 的 ROS bag 可视化入口作为数据是否正常的判断依据。若要可视化，需要按脚本里的 payload 定义转换成 Foxglove/ROS 可识别 schema 后再导入。

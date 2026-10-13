@@ -41,6 +41,7 @@ public:
     void SetGripperRuntimeStates(const std::array<GripperRuntimeState, 2> &states);
     void SetMainCameraRuntimeStates(const std::array<MainCameraRuntimeState, 3> &states);
     void SetTactileCameraRuntimeStates(const std::array<TactileCameraRuntimeState, 4> &states);
+    void SetDeviceVersions(const DeviceVersions &versions, const std::string &egoSerial);
     void SetTaskMarkers(std::optional<double> taskStartS,
                         std::optional<double> taskStopS);
     void MarkTactileReferencePendingForSide(const std::string &side,
@@ -91,6 +92,8 @@ private:
     std::string hardwareVersion_;
     std::string packageVersion_;
     std::string updaterVersion_;
+    DeviceVersions deviceVersions_;
+    std::string egoSerial_;
     EpisodeManagerDependencies dependencies_;
     std::string dataRoot_;
     std::string episodeRoot_;

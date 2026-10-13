@@ -161,6 +161,9 @@ void RecordRuntime::maintainFirmwareStatus()
         }
         snapshot["main_camera"][side] = {{"iserial", iserial}};
     }
+    maintainDeviceVersions();
+    snapshot["device_versions"] = deviceVersions_;
+    snapshot["device_versions"]["hardware_version"] = hardwareVersion_;
     snapshot["updated_at_ms"] = currentEpochUs() / 1000;
     snapshot["pid"] = getpid();
     std::string error;
@@ -169,6 +172,65 @@ void RecordRuntime::maintainFirmwareStatus()
         DM_LOG_WARN("firmware status publish failed: {}", error);
     }
     nextFirmwareStatusMs_ = currentSteadyMs() + 1000;
+}
+
+namespace {
+std::string versionString(const json &root, const std::string &path)
+{
+    const auto *value = findJsonPathConst(&root, path);
+    return value != nullptr && value->is_string() ? value->get<std::string>() : "";
+}
+
+}  // namespace
+
+void RecordRuntime::maintainDeviceVersions()
+{
+    json stereo, binding;
+    std::string ignored;
+    loadJsonFile(options_.stereoStatusFile, &stereo, &ignored);
+    loadJsonFile(options_.egoBindingFile, &binding, &ignored);
+    // Read only USB sysfs; never issue a camera XU transaction for metadata.
+    for (const auto &state : mainCameraRuntimeStates_)
+    {
+        const std::string side = state.cameraName == "chest_cam_main" ? "chest" :
+                                 state.cameraName == "left_cam_main" ? "left" : "right";
+        std::string iserial;
+        if (state.enabled && state.present)
+        {
+            std::error_code error;
+            const auto device = fs::canonical(state.devicePath, error);
+            auto node = error ? fs::path{} : fs::canonical(
+                fs::path("/sys/class/video4linux") / device.filename(), error);
+            while (!error && !node.empty() && node != node.root_path())
+            {
+                if (fs::exists(node / "idVendor", error) && fs::exists(node / "serial", error))
+                {
+                    std::ifstream input(node / "serial");
+                    std::getline(input, iserial);
+                    iserial = trim(iserial);
+                    break;
+                }
+                node = node.parent_path();
+            }
+        }
+        deviceVersions_["cam_" + side + "_firmware_version"] = !state.enabled ? "disabled" : iserial;
+    }
+    for (const std::string side : {"left", "right"})
+    {
+        deviceVersions_["gripper_" + side + "_firmware_version"] =
+            panelManager_.isSideReadyForRefresh(side, kGripperRefreshActiveTimeoutMs)
+                ? gripperFirmwareCache_[gripperStateIndexForSide(side)].version : "";
+        const auto *camera = findJsonPathConst(&stereo, "cameras." + side + "_stereo");
+        const bool available = camera != nullptr && camera->is_object() &&
+            camera->value("stereo_symlink_online", false) &&
+            !versionString(*camera, "serial_number").empty();
+        deviceVersions_["stereo_" + side + "_firmware_version"] = !stereoEnabled_ ? "disabled" :
+            available ? versionString(*camera, "calibration.firmware_version") : "";
+    }
+    const bool bound = !egoBoundSerial_.empty() && versionString(binding, "serial") == egoBoundSerial_;
+    deviceVersions_["ego_software_version"] = bound ? versionString(binding, "app.version_name") : "";
+    deviceVersions_["ego_firmware_version"] = bound ? versionString(binding, "firmware.version") : "";
+
 }
 
 void RecordRuntime::processPendingGripperRefreshes()

@@ -95,6 +95,19 @@ def status():
                 cpu_percent=usage, memory=dict(total=mem['MemTotal'], used=mem['MemTotal']-mem['MemAvailable']),
                 disks=dict(data=disk(DATA, True), system=disk('/')), busy=busy,
                 recording=Path('/tmp/umi_recording.lock').exists(),
-                firmware=firmware_status(), battery=battery_status(), configuration=read_settings(), ego=ego_status(), tactile=panel_status(), tactile_alarm=latest_alarm(),
+                firmware=firmware_status(), device_versions=device_versions(), battery=battery_status(), configuration=read_settings(), ego=ego_status(), tactile=panel_status(), tactile_alarm=latest_alarm(),
                 task=read_json(STATE/'task.json'),
                 service_active=command(['systemctl','is-active','ugripper.service']).returncode == 0)
+
+
+def device_versions():
+    """Read versions from the existing runtime firmware cache."""
+    cached = read_json(FIRMWARE_STATUS)
+    if not isinstance(cached, dict):
+        return {}
+    stamp = cached.get('updated_at_ms')
+    if (not isinstance(stamp, (int, float)) or isinstance(stamp, bool)
+            or not 0 <= time.time() * 1000 - stamp <= 15000):
+        return {}
+    versions = cached.get('device_versions', {})
+    return {key: value for key, value in versions.items() if isinstance(value, str)} if isinstance(versions, dict) else {}

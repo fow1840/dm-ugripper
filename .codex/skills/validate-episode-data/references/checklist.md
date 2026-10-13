@@ -26,7 +26,8 @@
 
 - `validation_error.log` 是否存在
 - `audio_pre.wav` / `audio_post.wav` 是否按预期出现
-- `metadata.json` 是否符合当前 `data_version=3.1` 字段约定，并兼容历史 `3.0` 数据
+- `metadata.json` 是否符合当前 `data_version=3.3` 字段约定（范本见 [metadata-v3.3.json](metadata-v3.3.json)），并兼容历史 `3.0/3.1/3.2` 数据
+- 3.3 的 12 个版本字符串是否按固定顺序紧跟 `data_version`；启用设备版本必须已知，未绑定 Ego 版本为空，未启用胸摄及 `+nostereo` 双目固件为 `"disabled"`；`ego_bound` 位于 Ego 软件版本前，`hardware_list.ego_sn` 位于末项，其他字段合同不变
 - 可选 `task_start_s/task_stop_s` 是否为非负数且顺序有效；只有开始标记时按无回环数据处理
 - `metadata.json` 顶层字段、`hardware_list` 字段和 `video_details[]` 字段顺序是否符合标准范本
 - `metadata.json` / `calibration.json` 的顶层 key 集合是否仍符合约定
@@ -81,3 +82,6 @@
   - 更像 episode 元数据落盘不完整，而不是录制流本身坏掉。
 - `左右主摄都有 decode_non_monotonic_dts，但只有单侧 backward_dts`
   - 更像主摄时间戳链路的共性 + 单侧额外容器排序抖动。
+
+- 3.3 检查 ego_bound 布尔值、hardware_list.ego_sn 与 Ego 版本一致性；检查启用设备版本已知，主摄版本为 iSerial。
+- 已绑定必须有 ego/metadata.json，其 related_episode_name/related_episode_uuid 分别匹配 UMI episode_name/data_uuid；原 Ego 字段保留。

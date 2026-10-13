@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- metadata 3.3 固定新增 12 个版本字符串，主摄版本取 USB iSerial；补充 Ego 绑定状态/SN、起录版本门禁和 ego/metadata.json 的 UMI episode name/UUID 关联，保持其余字段格式，Web 与校验范本同步。
+
 - HMI 修复蜂鸣后静默期持锁忙转，命令按优先级与实际发送期限调度，重复保活错峰；保留静默/重试规则，接收检查等待最多 20ms。
 
 - Fays 左右健康解析改为常驻 helper，减少周期解释器启动；快照过期拒绝、异常自动恢复，并区分解析器不可用与相机故障。

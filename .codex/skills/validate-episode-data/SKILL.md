@@ -1,13 +1,13 @@
 ---
 name: validate-episode-data
-description: 为 ugripper 项目执行 episode 数据深度校验。用于用户在录完一条新数据后，指定“校验 episode / 检查这条录制数据 / 验证视频和 sensor 是否同步 / 看有没有 gap 或异常 / 校验最新一条数据”等请求时：先阅读 docs/agent/overview.md 理解当前 episode 结构与时间语义，再对指定 episode 目录执行只读分析；若用户说“校验最新一条数据”，默认对用户给出的数据父目录执行 `--latest` 选择最新 `episode_*`；按 metadata 的普通或 `+nostereo` profile 优先检查全部视频、全部已发现 sensor topic 与 Fays IMU/camera 是否处于同一 Unix 时间域并展示首帧相对误差，再检查关键文件、metadata 3.2/历史 3.0及3.1、calibration 3.1/历史 3.0、逐帧 gap、主摄时间戳异常、sensor 同步与覆盖率，并给出结论、证据和建议。
+description: 为 ugripper 项目执行 episode 数据深度校验。用于用户在录完一条新数据后，指定“校验 episode / 检查这条录制数据 / 验证视频和 sensor 是否同步 / 看有没有 gap 或异常 / 校验最新一条数据”等请求时：先阅读 docs/agent/overview.md 理解当前 episode 结构与时间语义，再对指定 episode 目录执行只读分析；若用户说“校验最新一条数据”，默认对用户给出的数据父目录执行 `--latest` 选择最新 `episode_*`；按 metadata 的普通或 `+nostereo` profile 优先检查全部视频、全部已发现 sensor topic 与 Fays IMU/camera 是否处于同一 Unix 时间域并展示首帧相对误差，再检查关键文件、metadata 3.3/历史 3.0、3.1及3.2、calibration 3.1/历史 3.0、逐帧 gap、主摄时间戳异常、sensor 同步与覆盖率，并给出结论、证据和建议。
 ---
 
 # validate-episode-data
 
 ## 固定执行顺序
 
-1. 先阅读 `docs/agent/overview.md`，确认当前 episode 产物、`metadata.json` 3.2 时间字段语义、`calibration.json` 3.1 外参结构，以及普通或 `+nostereo` profile 的视频 / sensor / Fays 输出结构。
+1. 先阅读 `docs/agent/overview.md`，确认当前 episode 产物、`metadata.json` 3.3 版本和时间字段语义、`calibration.json` 3.1 外参结构，以及普通或 `+nostereo` profile 的视频 / sensor / Fays 输出结构。
 2. 找到用户指定的 episode 目录；如果用户只给了父目录，可在其中定位最近一条 `episode_*`。
    - 若用户直接说“校验最新一条数据”，默认将这句话解释为“对指定数据父目录下最新的 `episode_*` 做校验”。
 3. 无需等待确认，直接执行只读分析脚本：
@@ -30,7 +30,7 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
 默认至少覆盖以下项目：
 
 - 按 `software_version` 的 `+nostereo` 构建标记检查 episode 关键文件是否存在、非空、可读，并用 `require_files` / `video_details` 交叉验证 profile 一致性。
-- `data_version=3.2` 为当前 metadata schema；`3.0/3.1` 作为历史兼容版本允许分析，未知版本告警。
+- `data_version=3.3` 为当前 metadata schema；`3.0/3.1/3.2` 作为历史兼容版本允许分析，未知版本告警。
 - `task_start_s/task_stop_s` 允许同时缺失或为 `0.0`；只有开始标记时按无回环数据处理，有结束无开始或结束不晚于开始时判失败。
 - `metadata.json` 结构与关键时间字段是否完整，是否发生 schema 漂移；`video_details[].start_offset_us` 必须是视频 `PTS=0` 对应的 Unix 微秒 offset，不允许使用以最早视频为 `0` 的 episode 相对值。
 - `calibration.json` 独立按 `format_version` 校验：当前 `3.1`、历史 `3.0`，未知版本失败。检查图像和左右 IMU 标定项；3.1 要求独立主摄外参状态，以及左右主摄各两项有限数值 4×4 刚体矩阵，胸部不增加外参。`uncalibrated` 的合法默认矩阵允许通过格式检查，不等于已完成光学标定。
@@ -91,8 +91,20 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
 
 ## 资源使用
 
+- metadata 3.3 在 data_version 后固定增加 12 个版本字符串；ego_bound（布尔值）紧邻 ego_software_version 之前，hardware_list 末项为 ego_sn（未绑定为空）。主摄固件版本取 USB iSerial；胸摄未启用、+nostereo 双目固件写 "disabled"；未绑定 Ego 两个版本为空。起录前所有启用设备版本必须已知，缺项拒绝创建 episode，待机继续限频重试；起录冻结版本和绑定 SN，停录只消费内存副本。其余 metadata 字段、顺序、类型及 calibration 格式保持不变。Ego 拉回并完成远端大小校验与清理后，在本地 ego/metadata.json 写 related_episode_name 和 related_episode_uuid，分别等于 UMI episode_name（不带 -temp）和 data_uuid。 范本：`.codex/skills/validate-episode-data/references/metadata-v3.3.json`。
 - 阈值口径与检查项说明：读取 `references/checklist.md`
 - 测试工程师默认入口：执行 `bash test/scripts/validate_episode_data.sh <episode_dir>`
 - skill 内部实现：`scripts/validate_episode.py`
 - 主摄专项时间戳排查默认会复用 `test/scripts/scan_main_camera_mkv_issues.py`
 - 只在用户明确要求修复代码时，才切换到修改流程；本 skill 默认保持只读分析
+
+Ego 关联字段示例（仅展示新增字段，原 Ego 身份及其他字段保持不变）：
+
+```json
+{
+  "related_episode_name": "episode_20260727_0001",
+  "related_episode_uuid": "test-uuid"
+}
+```
+
+两值对应 metadata-v3.3.json 范本的 UMI episode_name/data_uuid；已绑定时主 metadata 的 ego_bound=true、hardware_list.ego_sn 为绑定 serial，Ego 软件/固件版本均为实读非空字符串。

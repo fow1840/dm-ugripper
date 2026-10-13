@@ -200,6 +200,12 @@ python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
 
 `test/src/gripper_hmi/test_hmi_driver_logic.cc` 覆盖25ms查询静默、发送后重试deadline、无灯效接收检查、低优先级5ms预算及到期仲裁。板端须对照原版/仅优先级/完整修复，验证静默期间不忙转、状态回复及setter响应；encoder补发间隔应同时核对实际TX/RX、CRC和稳态未匹配请求，不能只看最大gap或停录退出码。
 
+### Metadata 3.3 与 Ego 关联定向检查
+
+- `test_episode_metadata_contract`：起录版本缺项、启用设备豁免、Ego 关联写入及原身份/字段顺序保留。
+- `/usr/bin/python3 test/scripts/test_validate_episode_profiles.py`：3.3 字段合同、绑定/SN/版本一致性、Ego 关联及历史 3.0–3.2 兼容。
+- 板端先确认绑定在线且版本已知，再实际起停录制，拉回 UMI 和 Ego metadata；校验两关联字段和父数据一致，原字段顺序/类型保持不变。版本缺项门禁可暂时清空绑定缓存中的 app.version_name，必须 finally 原子恢复；START 应拒绝且无新 episode/录制锁。
+
 ### Ego 停录 MP4 与日志快照回归
 
 - `test/scripts/test_ego_mp4_repair.py`：普通/fragmented MP4 与 1GiB 稀疏文件仅检查头部、旧 64 位 mdat 修复、伪/歧义 moov、分块边界、截断及越界、读取/box 上限、fsync 失败，以及失败时禁止 finalized/远端删除。

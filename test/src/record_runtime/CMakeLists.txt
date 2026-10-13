@@ -200,6 +200,11 @@ set_tests_properties(test_validate_episode_profiles PROPERTIES
     LABELS "host-only;unit;record_runtime"
 )
 
+add_executable(test_episode_metadata_contract test_episode_metadata_contract.cc)
+target_include_directories(test_episode_metadata_contract PRIVATE ${CMAKE_SOURCE_DIR}/standalone/UgripperRuntime/include)
+target_link_libraries(test_episode_metadata_contract PRIVATE GTest::gtest_main nlohmann_json::nlohmann_json)
+gtest_discover_tests(test_episode_metadata_contract PROPERTIES LABELS "host-only;unit;record_runtime")
+
 add_test(NAME test_ego_mp4_repair
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_ego_mp4_repair.py)
 set_tests_properties(test_ego_mp4_repair PROPERTIES LABELS "host-only;unit;record_runtime")

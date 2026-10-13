@@ -3,6 +3,7 @@
 #include "record_runtime/runtime_split_internal.h"
 #include "record_runtime/runtime_support_internal.h"
 #include "record_runtime/error_code_mapping.h"
+#include "record_runtime/episode_metadata_contract.h"
 #include "utils/ugripper_logger.h"
 #include "utils/time_utils.h"
 
@@ -179,6 +180,19 @@ bool RecordRuntime::startRecording(bool resetRecording)
         sendAudioCommand("error");
         return false;
     }
+    maintainDeviceVersions();
+    DeviceVersions versions = deviceVersions_;
+    versions["hardware_version"] = hardwareVersion_;
+    versions["software_version"] = packageVersion_;
+    versions["das_usb_updater_version"] = updaterVersion_;
+    const auto missing = MissingRequiredDeviceVersions(versions, chestCameraEnabled_, stereoEnabled_, !egoBoundSerial_.empty());
+    if (!missing.empty())
+    {
+        DM_LOG_WARN("recording rejected: versions not ready: {}", joinStrings(missing, ", "));
+        return false;
+    }
+    if (episodeManager_ == nullptr) return false;
+    episodeManager_->SetDeviceVersions(deviceVersions_, egoBoundSerial_);
     cancelBackgroundTactileValidation();
     tactileTriggeredAudioCommand_.clear();
     activeHardwareFault_.reset();
