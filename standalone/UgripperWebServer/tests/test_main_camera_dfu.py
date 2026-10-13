@@ -85,6 +85,62 @@ class FirmwareInspectionTests(unittest.TestCase):
                 [str(reader.resolve()), "--image", str(image), "--device", "/dev/cam_left"],
             )
 
+    def test_missing_camera_preserves_image_success_and_real_device_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            reader = executable(root / "linux_read_version")
+            commands = []
+            def runner(command, **kwargs):
+                commands.append(command)
+                return subprocess.CompletedProcess(command, 1, "待升级固件版本: 2026-09-29-0341\n",
+                    "/dev/cam_left: No such file or directory\n当前 UVC 摄像头版本读取失败: /dev/cam_left\n")
+            with self.assertRaises(dfu.DfuError) as raised:
+                dfu.read_image_version(root / "camera.img", version_reader=reader,
+                                       device_path="/dev/cam_left", runner=runner)
+            error = raised.exception
+            self.assertEqual(len(commands), 1)
+            self.assertEqual(error.code, "device_version_read_failed")
+            self.assertIn("/dev/cam_left", error.message)
+            self.assertIn("No such file or directory", error.message)
+            self.assertEqual(error.details["returncode"], 1)
+            self.assertIn("2026-09-29-0341", error.details["stdout"])
+
+    def test_image_runtime_failure_does_not_retry_old_format(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            reader = executable(root / "linux_read_version")
+            for code in (1, 2):
+                calls = []
+                def runner(command, **kwargs):
+                    calls.append(command)
+                    return subprocess.CompletedProcess(command, code, "", "待升级固件版本读取失败: camera.img")
+                with self.assertRaises(dfu.DfuError) as raised:
+                    dfu.read_image_version(root / "camera.img", version_reader=reader, runner=runner)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(raised.exception.details["returncode"], code)
+
+    def test_old_cli_retries_only_usage_and_retains_both_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            reader = executable(root / "linux_read_version")
+            for legacy_code in (0, 1):
+                calls = []
+                def runner(command, **kwargs):
+                    calls.append(command)
+                    if len(calls) == 1:
+                        return subprocess.CompletedProcess(command, 2, "Usage: linux_read_version FILE\n", "")
+                    return subprocess.CompletedProcess(command, legacy_code,
+                        "待升级固件版本: 2026-09-29-0341\n" if legacy_code == 0 else "",
+                        "bad image" if legacy_code else "")
+                if legacy_code == 0:
+                    self.assertEqual(dfu.read_image_version(root / "camera.img", version_reader=reader,
+                                                          runner=runner), "2026-09-29-0341")
+                else:
+                    with self.assertRaises(dfu.DfuError) as raised:
+                        dfu.read_image_version(root / "camera.img", version_reader=reader, runner=runner)
+                    self.assertEqual([a["returncode"] for a in raised.exception.details["attempts"]], [2, 1])
+                self.assertEqual(calls[1], [str(reader.resolve()), str(root / "camera.img")])
+
     def test_missing_version_reader_is_structured_prerequisite(self) -> None:
         with self.assertRaises(dfu.PrerequisiteError) as raised:
             dfu.find_version_reader("/definitely/missing/linux_read_version")
@@ -170,6 +226,27 @@ class UsbDiscoveryTests(unittest.TestCase):
 
 
 class DfuStateMachineTests(unittest.TestCase):
+    def test_missing_device_after_image_read_does_not_retry_or_flash(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            image = root / "camera.img"
+            image.write_bytes(b"valid image")
+            reader = executable(root / "linux_read_version")
+            calls = []
+            def runner(command, **kwargs):
+                calls.append(command)
+                self.assertNotIn("--device", command)
+                return subprocess.CompletedProcess(command, 0, "待升级固件版本: 2026-09-29-0341", "")
+            def missing_device(side):
+                raise dfu.DfuError("device_version_read_failed", "/dev/cam_left: No such file or directory")
+            updater = dfu.MainCameraDfuUpdater(firmware_dir=root, version_reader=reader,
+                runner=runner, read_device_version=missing_device,
+                locate_uvc_port=lambda side: self.fail("must not enter DFU"))
+            with self.assertRaises(dfu.DfuError) as raised:
+                updater.upgrade("left", image)
+            self.assertEqual(raised.exception.code, "device_version_read_failed")
+            self.assertEqual(calls, [[str(reader.resolve()), "--image", str(image)]])
+
     def test_matching_version_skips_dfu_without_write_prerequisites(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -295,7 +372,7 @@ class DfuStateMachineTests(unittest.TestCase):
             with self.assertRaises(dfu.PrerequisiteError) as raised:
                 updater.upgrade("left", image)
             self.assertEqual(raised.exception.code, "dfu_trigger_missing")
-            self.assertEqual(commands, [[str(reader.resolve()), "--image", str(image), "--device", "/dev/cam_left"]])
+            self.assertEqual(commands, [[str(reader.resolve()), "--image", str(image)]])
 
     def test_version_mismatch_stops_before_regression_check(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

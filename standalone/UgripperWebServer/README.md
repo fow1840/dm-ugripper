@@ -22,6 +22,7 @@
 
 - 软件白名单与 `../DASUsbUpdater` 一致：das-usb-updater、ugripper、bluetooth-gatt-server、databot-device-joint、device-ota-mender。按 deb 内部 Package 字段校验，接受 arm64/all。通过 `dpkg --no-act --install` 预检，再使用 `dpkg --install` 覆盖安装，不在线下载依赖。
 - 主摄：单份 IMG 顺序升级左右主摄；升级前固定各侧 USB 物理端口，版本相同默认跳过，勾选“同版本也重新烧录主摄”可覆盖；升级后回读版本，并核对物理端口、硬件 SN 和控制端点包长未变化；USB iSerial 属于固件标识，允许随镜像变化，目标固件版本另行严格回读匹配。
+- 主摄升级独立读取镜像版本与所选设备版本，镜像检查不依赖摄像头在线；仅明确 CLI 参数/usage 错误才兼容旧命令，设备缺失或镜像读取失败不重试，保留原命令、退出码及输出。Web 缺摄预检和设备版本错误显示具体 /dev/cam_left 或 /dev/cam_right，避免误报镜像失败。
 - 主摄 DFU 强制调用 `/usr/local/lib/ugripper-web/bin/dfu-util`，不回退系统 PATH；夹爪是串口 Ymodem OTA，不使用 DFU。
 - 夹爪：单份 HEX 顺序升级左右夹爪，校验 HEX checksum/地址跨度，固定 `/dev/left_gripper`、`/dev/right_gripper`，禁止自动选串口；两次版本回读一致才成功。
 - metadata 3.3 在 data_version 后固定增加 12 个版本字符串；ego_bound（布尔值）紧邻 ego_software_version 之前，hardware_list 末项为 ego_sn（未绑定为空）。主摄固件版本取 USB iSerial；胸摄未启用、+nostereo 双目固件写 "disabled"；未绑定 Ego 两个版本为空。起录前所有启用设备版本必须已知，缺项拒绝创建 episode，待机继续限频重试；起录冻结版本和绑定 SN，停录只消费内存副本。其余 metadata 字段、顺序、类型及 calibration 格式保持不变。Ego 拉回并完成远端大小校验与清理后，在本地 ego/metadata.json 写 related_episode_name 和 related_episode_uuid，分别等于 UMI episode_name（不带 -temp）和 data_uuid。 范本：`.codex/skills/validate-episode-data/references/metadata-v3.3.json`。

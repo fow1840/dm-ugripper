@@ -528,8 +528,10 @@ copy_if_exists "standalone/UgripperWebServer/tactile_panel.py" "$WEB_PRIVILEGED_
 copy_if_exists "tools/tactile_damage_detector" "$TARGET_INSTALL_ROOT/bin/tactile_damage_detector"
 chmod 755 "$TARGET_INSTALL_ROOT/bin/tactile_damage_detector/detect"
 copy_if_exists "standalone/UgripperWebServer/environment_config.py" "$WEB_PRIVILEGED_ROOT/environment_config.py"
-copy_if_exists "standalone/UgripperWebServer/production" "$WEB_PRIVILEGED_ROOT/production"
-copy_if_exists "standalone/UgripperWebServer/bin" "$WEB_PRIVILEGED_ROOT/bin"
+# Refresh privileged Web directories in place; cp onto an existing directory
+# nests production/production and leaves the imported modules stale.
+rsync -a --delete "standalone/UgripperWebServer/production/" "$WEB_PRIVILEGED_ROOT/production/"
+rsync -a --delete "standalone/UgripperWebServer/bin/" "$WEB_PRIVILEGED_ROOT/bin/"
 copy_if_exists "$TARGET_INSTALL_ROOT/.venv/lib/python3.11/site-packages/serial" "$WEB_PRIVILEGED_ROOT/production/serial"
 if [ ! -f "$WEB_PRIVILEGED_ROOT/production/serial/__init__.py" ]; then
     echo "Missing packaged pyserial for isolated maintenance worker" >&2

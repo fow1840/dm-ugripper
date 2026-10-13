@@ -295,8 +295,16 @@ def read_image_version(
         timeout=15,
         check=False,
     )
-    if result.returncode != 0:
-        # The field tool shown on production hosts accepts a positional image.
+    attempts = [{"command": explicit_command, "returncode": result.returncode,
+                 "stdout": result.stdout[-2000:], "stderr": result.stderr[-2000:]}]
+    output = "\n".join((result.stdout, result.stderr))
+    # Runtime/device/image failures are not evidence of an old CLI. A tool may
+    # print the image version successfully before failing to open the camera.
+    cli_rejected = result.returncode == 2 and not IMAGE_VERSION_LABEL_RE.search(output) and (
+        re.search(r"(?:unknown|unrecognized|unrecognised|invalid|unsupported)\s+(?:option|argument)", output, re.I)
+        or re.search(r"^\s*usage:", output, re.I | re.M)
+    )
+    if cli_rejected:
         fallback_command = [reader, str(image)]
         if device_path:
             fallback_command.extend(("--device", device_path))
@@ -307,12 +315,20 @@ def read_image_version(
             timeout=15,
             check=False,
         )
+        attempts.append({"command": fallback_command, "returncode": result.returncode,
+                         "stdout": result.stdout[-2000:], "stderr": result.stderr[-2000:]})
     if result.returncode != 0:
+        output = "\n".join((result.stdout, result.stderr))
+        device_failed = bool(device_path and IMAGE_VERSION_LABEL_RE.search(output))
+        cause = result.stderr.strip()[-2000:] or result.stdout.strip()[-2000:]
+        message = (f"读取主摄设备版本失败：{device_path}" if device_failed
+                   else "linux_read_version 读取镜像版本失败")
         raise DfuError(
-            "firmware_version_read_failed",
-            "linux_read_version 读取镜像版本失败",
+            "device_version_read_failed" if device_failed else "firmware_version_read_failed",
+            message + (f"；{cause}" if cause else ""),
             state=DfuState.READING_VERSION,
-            details={"returncode": result.returncode, "stderr": result.stderr[-2000:]},
+            details={"returncode": result.returncode, "stdout": result.stdout[-2000:],
+                     "stderr": result.stderr[-2000:], "attempts": attempts},
         )
     return parse_image_version("\n".join((result.stdout, result.stderr)))
 
@@ -715,7 +731,6 @@ class MainCameraDfuUpdater:
                 version=read_image_version(
                     image_path_resolved,
                     version_reader=reader,
-                    device_path=CAMERA_DEVICE_BY_SIDE.get(side),
                     runner=self.runner,
                 ),
             )

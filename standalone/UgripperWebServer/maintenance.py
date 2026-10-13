@@ -55,7 +55,20 @@ def validate_hex(path):
         raise ValueError('HEX 地址范围或结束记录异常')
 
 def camera_version(side):
-    return dfu.parse_current_camera_version(run([BASE/'bin/linux_read_version','--device',f'/dev/cam_{side}']))
+    device = f'/dev/cam_{side}'
+    args = [BASE/'bin/linux_read_version', '--device', device]
+    result = command(args, 60)
+    with (PRIVATE / (JOB['id'] + '.log')).open('a') as log:
+        log.write('$ ' + ' '.join(map(str, args)) + '\n' + result.stdout + result.stderr + '\n')
+    if result.returncode:
+        cause = result.stderr.strip()[-2000:] or result.stdout.strip()[-2000:]
+        raise dfu.DfuError('device_version_read_failed',
+                           f'读取主摄设备版本失败：{device}；退出码 {result.returncode}；{cause}',
+                           state=dfu.DfuState.READING_VERSION,
+                           details={'device': device, 'command': list(map(str, args)),
+                                    'returncode': result.returncode,
+                                    'stdout': result.stdout[-2000:], 'stderr': result.stderr[-2000:]})
+    return dfu.parse_current_camera_version(result.stdout)
 
 def camera_identity(side):
     port = dfu.uvc_side_to_usb_port(side)
@@ -104,8 +117,9 @@ def execute(kind, path, force=False, side=None, settings=None):
         return {'package':info['Package'],'version':info['Version']}
     if kind == 'main_camera':
         report('检查左右主摄和固件')
-        if not all(Path(f'/dev/cam_{s}').exists() for s in ('left','right')):
-            raise ValueError('左右主摄必须全部在线')
+        missing = [f'/dev/cam_{s}' for s in ('left', 'right') if not Path(f'/dev/cam_{s}').exists()]
+        if missing:
+            raise ValueError('主摄设备未在线：' + ', '.join(missing) + '；左右主摄必须全部在线')
         if not os.access(BASE/'bin/dfu-util',os.X_OK): raise ValueError('包内 DFU 不可用')
         image_version = dfu.read_image_version(path,version_reader=BASE/'bin/linux_read_version')
         before = {s:camera_identity(s) for s in ('left','right')}
