@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -295,6 +296,9 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
                                       std::string *errorType)
 {
     egoRecordingAttempted_ = false;
+    egoIncrementalCheckMs_ = egoIncrementalRetryMs_ = 0;
+    egoIncrementalRestartCount_ = 0;
+    egoIncrementalResumePending_ = false;
     if (errorType != nullptr)
     {
         errorType->clear();
@@ -522,7 +526,94 @@ bool RecordRuntime::stopEgoRecording(const std::string &episodeDir,
         return false;
     }
     DM_LOG_INFO("[STOP_DIAG] ego stop worker started: pid={}", egoStopWorker_->GetPid());
+    if (egoRecordingWorker_.has_value() && egoRecordingWorker_->IsRunning())
+        egoRecordingWorker_->SendSignal(SIGTERM);
     return true;
+}
+
+namespace {
+fs::path egoIncrementalProgressPath(pid_t pid)
+{
+    return fs::path("/dev/shm/ugripper") / ("ego_incremental_" + std::to_string(pid) + ".json");
+}
+
+json egoIncrementalProgress(pid_t pid)
+{
+    json progress;
+    std::string error;
+    if (!loadJsonFile(egoIncrementalProgressPath(pid).string(), &progress, &error) ||
+        !progress.is_object() || progress.value("pid", pid_t{-1}) != pid)
+        return json::object();
+    return progress;
+}
+}  // namespace
+
+bool RecordRuntime::stopEgoIncrementalForHandoff()
+{
+    if (!egoRecordingWorker_.has_value() || !egoRecordingWorker_->IsRunning()) return true;
+    const auto pid = egoRecordingWorker_->GetPid();
+    egoRecordingWorker_->SendSignal(SIGTERM);
+    if (egoRecordingWorker_->Wait(1000))
+    {
+        DM_LOG_INFO("[ego] incremental exited after SIGTERM pid={}", pid);
+        std::error_code removeError;
+        fs::remove(egoIncrementalProgressPath(pid), removeError);
+        return true;
+    }
+    const auto progress = egoIncrementalProgress(pid);
+    // Never interrupt append/fsync. A real slow disk must finish before Ready.
+    if (progress.value("phase", std::string()) == "writing")
+    {
+        DM_LOG_WARN("[ego] incremental still flushing; defer SIGKILL pid={}", pid);
+        return false;
+    }
+    DM_LOG_WARN("[ego] incremental did not exit after SIGTERM; SIGKILL pid={}", pid);
+    egoRecordingWorker_->SendSignal(SIGKILL);
+    const bool exited = egoRecordingWorker_->Wait(500);
+    if (exited)
+    {
+        std::error_code removeError;
+        fs::remove(egoIncrementalProgressPath(pid), removeError);
+    }
+    return exited;
+}
+
+void RecordRuntime::maintainEgoIncrementalSync()
+{
+    if (!isRecordingActive() || egoStopWorker_.has_value() || !egoRecordingWorker_.has_value()) return;
+    const auto now = currentSteadyMs();
+    if (now - egoIncrementalCheckMs_ < 100 || now < egoIncrementalRetryMs_) return;
+    egoIncrementalCheckMs_ = now;
+    const auto pid = egoRecordingWorker_->GetPid();
+    if (egoRecordingWorker_->IsRunning())
+    {
+        const auto progress = egoIncrementalProgress(pid);
+        const auto last = progress.value("progress_monotonic_ms", uint64_t{0});
+        if (progress.value("phase", std::string()) != "pull" || last == 0 ||
+            now < last || now - last < 2500) return;
+        DM_LOG_WARN("[ego] incremental pull watchdog stalled pid={} idle_ms={}", pid, now - last);
+        if (!stopEgoIncrementalForHandoff()) return;
+    }
+    else if (!egoIncrementalResumePending_ && egoRecordingWorker_->GetLastExitCode() != 75)
+    {
+        return;
+    }
+    std::error_code removeError;
+    fs::remove(egoIncrementalProgressPath(pid), removeError);
+    const fs::path episode(currentEpisodeDir());
+    if (fs::exists(episode / "ego/ego_sync.stop-request.json")) return;
+    egoIncrementalResumePending_ = true;
+    // Resume only the known remote episode; never repeat App START or recovery.
+    auto args = egoWorkerArgs(options_.egoRecordingScript, "resume", episode.string(), "", egoBoundSerial_);
+    args.insert(args.end(), {"--recovery-count", std::to_string(++egoIncrementalRestartCount_)});
+    egoRecordingWorker_.reset();
+    egoRecordingWorker_.emplace("ego_recording_worker");
+    std::string error;
+    const bool started = egoRecordingWorker_->Start(args, {}, &error);
+    egoIncrementalResumePending_ = !started;
+    egoIncrementalRetryMs_ = currentSteadyMs() + 1000;
+    DM_LOG_WARN("[ego] incremental resume count={} started={} pid={} error={}",
+                egoIncrementalRestartCount_, started, egoRecordingWorker_->GetPid(), error);
 }
 
 bool RecordRuntime::cleanupEgoRemote(const std::string &episodeDir,
@@ -875,6 +966,9 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
         errorType->clear();
     }
     const auto stopStartMs = currentSteadyMs();
+    // Give cooperative cancellation a short grace, then kill only the reader
+    // if it cannot exit. The stop child still takes the writer lock before tail sync.
+    stopEgoIncrementalForHandoff();
     bool stopWorkerOk = false;
     if (egoStopWorker_.has_value())
     {
@@ -891,6 +985,7 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
     }
     if (egoRecordingWorker_.has_value())
     {
+        const auto incrementalPid = egoRecordingWorker_->GetPid();
         // The stop child holds the writer lock through finalization. A healthy
         // incremental owner has already drained and exited before that lock moves.
         if (egoRecordingWorker_->IsRunning() && !egoRecordingWorker_->Wait(1000))
@@ -898,6 +993,8 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
             egoRecordingWorker_->Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
             stopWorkerOk = false;
         }
+        std::error_code removeError;
+        fs::remove(egoIncrementalProgressPath(incrementalPid), removeError);
         egoRecordingWorker_.reset();
     }
     const fs::path egoDir = fs::path(episodeDir) / "ego";

@@ -892,36 +892,20 @@ class EgoRecordingWorkerTest(unittest.TestCase):
             )
             self.assertEqual(local_file.read_bytes(), b"abcdefghij")
 
-    def test_interrupted_append_resumes_again_without_duplicate_bytes(self):
+    def test_incomplete_block_is_discarded_and_resume_uses_committed_offset(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             local_dir = Path(temp_dir)
             local_file = local_dir / "sensor.mcap"
             local_file.write_bytes(b"abcd")
             adb = mock.Mock()
-            adb.exec_out_bytes.side_effect = [b"ef", b"ghij"]
-
+            adb.exec_out_bytes.side_effect = [b"ef", b"efghij"]
             with mock.patch.object(WORKER, "remote_file_size", return_value=10):
-                self.assertEqual(
-                    WORKER.sync_one_file(
-                        adb, "/remote/dataset", "episode_0001", local_dir, "sensor.mcap"
-                    ),
-                    2,
-                )
-                self.assertEqual(
-                    WORKER.sync_one_file(
-                        adb, "/remote/dataset", "episode_0001", local_dir, "sensor.mcap"
-                    ),
-                    4,
-                )
-
-            self.assertEqual(
-                adb.exec_out_bytes.call_args_list,
-                [
-                    mock.call("/remote/dataset/episode_0001/sensor.mcap", 4, 6),
-                    mock.call("/remote/dataset/episode_0001/sensor.mcap", 6, 4),
-                ],
-            )
+                with self.assertRaises(WORKER.TransferStalled):
+                    WORKER.sync_one_file(adb, "/remote", "episode", local_dir, "sensor.mcap")
+                self.assertEqual(local_file.read_bytes(), b"abcd")
+                self.assertEqual(WORKER.sync_one_file(adb, "/remote", "episode", local_dir, "sensor.mcap"), 6)
             self.assertEqual(local_file.read_bytes(), b"abcdefghij")
+            self.assertEqual([c.args[1:] for c in adb.exec_out_bytes.call_args_list], [(4, 6), (4, 6)])
 
     def test_finalized_remote_shrink_restarts_only_affected_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:

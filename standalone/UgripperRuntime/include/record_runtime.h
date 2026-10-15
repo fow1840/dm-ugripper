@@ -316,6 +316,8 @@ private:
     std::optional<DA::Ugripper::HealthFault> detectDataDiskHealthFault(const std::string &path);
     void maintainEgoBindingAction();
     void maintainEgoBindingHealth();
+    void maintainEgoIncrementalSync();
+    bool stopEgoIncrementalForHandoff();
     bool isEgoSyncReady() const;
     bool isEgoSyncPending() const;
     void maintainEgoSyncFeedback();
@@ -526,6 +528,10 @@ private:
     std::optional<DA::Ugripper::SubprocessHandle> egoStopWorker_;
     uint64_t egoStopDeadlineMs_ = 0;
     bool egoRecordingAttempted_ = false;
+    uint64_t egoIncrementalCheckMs_ = 0;
+    uint64_t egoIncrementalRetryMs_ = 0;
+    unsigned egoIncrementalRestartCount_ = 0;
+    bool egoIncrementalResumePending_ = false;
     std::string egoBoundSerial_;
     bool egoBoundConnected_ = true;
     bool egoSyncReady_ = false;
