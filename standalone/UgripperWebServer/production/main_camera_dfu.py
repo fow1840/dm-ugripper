@@ -705,6 +705,7 @@ class MainCameraDfuUpdater:
         *,
         expected_image: FirmwareImage | None = None,
         force: bool = False,
+        confirm_version_failure: Callable[[str, str, str], bool] | None = None,
         dfu_timeout: float = 15.0,
         flash_timeout: float = 180.0,
         uvc_timeout: float = 30.0,
@@ -750,7 +751,20 @@ class MainCameraDfuUpdater:
                     "device_version_reader_missing",
                     "缺少可按 /dev/cam_left 或 /dev/cam_right 读取版本的接口",
                 )
-            previous_version = self.read_device_version(side)
+            def read_version(stage: str) -> str:
+                try:
+                    value = self.read_device_version(side)
+                    if not value or not re.search(r"\d", value):
+                        raise DfuError("device_version_read_failed", "设备返回空或无效版本")
+                    return value
+                except (DfuError, OSError, subprocess.SubprocessError, ValueError) as exc:
+                    if confirm_version_failure is None or not confirm_version_failure(side, stage, str(exc)):
+                        raise
+                    _emit(self.event_sink, "warning", side=side, stage=stage,
+                          message="用户确认跳过设备版本读取失败", error=str(exc))
+                    return ""
+
+            previous_version = read_version("before_flash")
             if versions_equal(image.version, previous_version) and not force:
                 result = DfuResult(
                     side=side,
@@ -819,8 +833,8 @@ class MainCameraDfuUpdater:
             self._wait_for_uvc(side, port, uvc_timeout)
 
             self._transition(DfuState.VERIFYING_VERSION, "核对升级后版本")
-            installed_version = self.read_device_version(side)
-            if not versions_equal(image.version, installed_version):
+            installed_version = read_version("after_flash")
+            if installed_version and not versions_equal(image.version, installed_version):
                 raise DfuError(
                     "firmware_version_mismatch",
                     "主摄升级后版本与镜像版本不一致",
@@ -835,6 +849,7 @@ class MainCameraDfuUpdater:
                     "缺少主摄 SN、iSerial、MaxPacket 回归检查接口",
                 )
             regression = dict(self.regression_check(side))
+            regression["version_verification_skipped"] = not bool(installed_version)
             if not regression.get("ok", False):
                 raise DfuError(
                     "regression_check_failed",

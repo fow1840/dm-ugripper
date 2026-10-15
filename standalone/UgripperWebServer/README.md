@@ -22,6 +22,7 @@
 
 - 软件白名单与 `../DASUsbUpdater` 一致：das-usb-updater、ugripper、bluetooth-gatt-server、databot-device-joint、device-ota-mender。按 deb 内部 Package 字段校验，接受 arm64/all。通过 `dpkg --no-act --install` 预检，再使用 `dpkg --install` 覆盖安装，不在线下载依赖。
 - 主摄：单份 IMG 顺序升级左右主摄；升级前固定各侧 USB 物理端口，版本相同默认跳过，勾选“同版本也重新烧录主摄”可覆盖；升级后回读版本，并核对物理端口、硬件 SN 和控制端点包长未变化；USB iSerial 属于固件标识，允许随镜像变化，目标固件版本另行严格回读匹配。
+- 主摄升级前或刷写后设备版本读取失败时，Web 弹窗等待确认（最多 5 分钟）；确认并输入维护密码后可跳过该次读取继续，取消或超时终止后续操作，已刷写固件不回滚。等待期间保留维护锁且数采保持停止。镜像版本读取失败、已读版本不匹配以及端口/SN/MaxPacket 检查失败仍终止；跳过刷写后版本验证时结果明确标记“设备版本未验证”，日志保留失败原因与选择。同版本覆盖选项不自动授权跳过读取失败。
 - 主摄升级独立读取镜像版本与所选设备版本，镜像检查不依赖摄像头在线；仅明确 CLI 参数/usage 错误才兼容旧命令，设备缺失或镜像读取失败不重试，保留原命令、退出码及输出。Web 缺摄预检和设备版本错误显示具体 /dev/cam_left 或 /dev/cam_right，避免误报镜像失败。
 - 主摄 DFU 强制调用 `/usr/local/lib/ugripper-web/bin/dfu-util`，不回退系统 PATH；夹爪是串口 Ymodem OTA，不使用 DFU。
 - 夹爪：单份 HEX 顺序升级左右夹爪，校验 HEX checksum/地址跨度，固定 `/dev/left_gripper`、`/dev/right_gripper`，禁止自动选串口；两次版本回读一致才成功。

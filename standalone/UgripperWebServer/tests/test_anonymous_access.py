@@ -70,7 +70,7 @@ class AnonymousAccessTests(unittest.TestCase):
         rpc.assert_not_called()
 
     def test_protected_routes_reject_missing_or_wrong_password_before_side_effects(self):
-        for path in ('/api/v1/execute', '/api/v1/upload'):
+        for path in ('/api/v1/execute', '/api/v1/upload', '/api/v1/camera/version-confirm'):
             for password in (None, '', 'wrong', 'DAIMON', 'daimon '):
                 with self.subTest(path=path, password=password):
                     headers = {'X-UGripper-Request': '1'}
@@ -93,6 +93,19 @@ class AnonymousAccessTests(unittest.TestCase):
                 self.assertNotIn('daimon', json.dumps(rpc.call_args.args[0]))
         with patch.object(server.Handler, 'upload', lambda handler: handler.json({'upload': 'demo'}, 201)):
             self.assertEqual(self.request('POST', '/api/v1/upload', 'firmware', headers)[0], 201)
+
+    def test_camera_version_decision_routes(self):
+        payload = json.dumps({'id': 'job', 'token': 'token', 'accepted': True})
+        headers = {'X-UGripper-Request': '1', 'X-UGripper-Maintenance-Password': 'daimon'}
+        with patch.object(server, 'rpc', return_value={'ok': True}) as rpc:
+            self.assertEqual(self.request('POST', '/api/v1/camera/version-confirm', payload, headers)[0], 200)
+            rpc.assert_called_once_with({'action': 'camera_version_confirm', 'id': 'job',
+                                         'token': 'token', 'accepted': True})
+        # The cancel endpoint cannot be used to approve flashing, even with accepted=true.
+        with patch.object(server, 'rpc', return_value={'ok': True}) as rpc:
+            self.assertEqual(self.request('POST', '/api/v1/camera/version-cancel', payload,
+                                          {'X-UGripper-Request': '1'})[0], 200)
+            self.assertFalse(rpc.call_args.args[0]['accepted'])
 
     def test_nonprotected_operations_do_not_require_maintenance_password(self):
         headers = {'X-UGripper-Request': '1'}

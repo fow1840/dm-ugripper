@@ -4,6 +4,19 @@ function el(tag,text,cls){const e=document.createElement(tag);if(text!==undefine
 function message(text=''){$('#message').textContent=text}
 async function api(url,options={}){const r=await fetch(url,options);let value=await r.json();if(!r.ok){throw Error(value.error||'请求失败')}return value}
 function post(url,value,password){const headers={'Content-Type':'application/json','X-UGripper-Request':'1'};if(password)headers['X-UGripper-Maintenance-Password']=password;return api(url,{method:'POST',headers,body:JSON.stringify(value)})}
+let versionConfirmationOpen=false,answeredVersionToken='';
+async function confirmCameraVersion(task){
+ if(versionConfirmationOpen||!task?.confirmation||answeredVersionToken===task.confirmation.token||$('#confirmDialog').open)return;
+ versionConfirmationOpen=true;
+ const pending=task.confirmation;
+ try{
+  const password=await confirmAction(pending.message,false,true);
+  // Cancellation is also delivered so the worker releases maintenance locks promptly.
+  if(password){await post('/api/v1/camera/version-confirm',{id:task.id,token:pending.token,accepted:true},password)}
+  else{await post('/api/v1/camera/version-cancel',{id:task.id,token:pending.token})}
+  answeredVersionToken=pending.token;
+ }catch(e){message(e.message)}finally{versionConfirmationOpen=false;}
+}
 function bytes(n){return (n/1024**3).toFixed(1)+' GiB'}
 function metric(label,value,detail){const p=el('article',undefined,'panel metric');p.append(el('p',label,'muted'),el('div',value,'value'),el('p',detail,'muted'));return p}
 function row(label,value,good){const d=el('div',undefined,'device');d.append(el('span',label),el('span',value,'state '+(good===null?'':good?'good':'bad')));return d}
@@ -31,7 +44,8 @@ function render(s){const versions=s.device_versions||{};setDeviceLanguage(s.conf
  $('#firmwareVersions').append(row('胸部主摄固件',versionValue(versions.cam_chest_firmware_version),null));
  if((!settingsLoaded||s.task?.kind==='configuration'&&s.task?.finished)&&!settingsDirty){for(const select of document.querySelectorAll('#configurationForm select')){const value=s.configuration?.[select.name];select.value=value??'';select.required=true;}settingsLoaded=true;}
  $('#connection').textContent=(s.service_active?'数采服务在线':'数采服务已停止')+' · '+new Date().toLocaleTimeString();
- if(s.task.id&&!uploading){$('#taskPanel').hidden=false;$('#taskText').textContent=s.task.stage+(s.task.message?' · '+s.task.message:'');if(s.task.status==='running')$('#progress').removeAttribute('value');else $('#progress').value=100;$('#results').replaceChildren();for(const [k,v]of Object.entries(s.task.result||s.task.results||{})){$('#results').append(el('p',k+': '+(typeof v==='object'?(v.installed_version||v.status||'完成'):v)))} }
+ if(s.task?.confirmation&&!uploading)void confirmCameraVersion(s.task);
+ if(s.task.id&&!uploading){$('#taskPanel').hidden=false;$('#taskText').textContent=s.task.stage+(s.task.message?' · '+s.task.message:'');if(s.task.status==='running')$('#progress').removeAttribute('value');else $('#progress').value=100;$('#results').replaceChildren();for(const [k,v]of Object.entries(s.task.result||s.task.results||{})){$('#results').append(el('p',k+': '+(typeof v==='object'?(v.regression?.version_verification_skipped?'完成（设备版本未验证）':v.installed_version||v.status||'完成'):v)))} }
 }
 async function refresh(){if($('#workspace').hidden)return;try{render(await api('/api/v1/status'))}catch(e){if(last)last.battery={connected:false};$('form[data-kind=rk3588_boot] button').disabled=true;$('#bootBatteryStatus').textContent='电量数据不可用或已过期，禁止升级 3588 固件';$('#connection').textContent='连接中断';$('#timeSyncFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';$('#productionFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';updateTactileImageWarnings([]);message(e.message)}}
 for(const b of document.querySelectorAll('nav [data-page]'))b.onclick=()=>{current=b.dataset.page;for(const x of document.querySelectorAll('.page'))x.hidden=x.id!==current;for(const x of document.querySelectorAll('nav [data-page]'))x.classList.toggle('selected',x===b);$('#title').textContent=({overview:'设备概览',data:'录制数据',upgrade:'升级维护',settings:'配置'})[current];if(current==='data')loadFiles()};

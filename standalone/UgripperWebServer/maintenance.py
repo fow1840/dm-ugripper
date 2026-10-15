@@ -23,6 +23,49 @@ MUTEX = threading.Lock()
 PYTHON = Path('/usr/bin/python3')
 PRIVATE = Path('/var/lib/ugripper-maintenance')
 JOB = {}
+VERSION_CONFIRM_LOCK = threading.Lock()
+VERSION_CONFIRM_EVENT = threading.Event()
+VERSION_CONFIRM = {}
+
+
+def confirm_camera_version_failure(side, stage, error, timeout=300):
+    token = uuid.uuid4().hex
+    label = '左' if side == 'left' else '右'
+    phase = '升级前' if stage == 'before_flash' else '升级后'
+    text = (f'{label}主摄（/dev/cam_{side}）{phase}无法读取设备版本：{error}\n'
+            + ('是否跳过本次版本读取并强制升级？' if stage == 'before_flash'
+               else '固件已写入，但无法确认安装版本。是否跳过版本回读验证并继续？')
+            + '\n镜像校验、USB 端口和硬件 SN 检查仍会执行。取消将终止后续操作，已写入的固件不会回滚。')
+    with VERSION_CONFIRM_LOCK:
+        VERSION_CONFIRM_EVENT.clear()
+        VERSION_CONFIRM.clear()
+        VERSION_CONFIRM.update(id=JOB['id'], token=token, accepted=False)
+        report('等待确认设备版本读取失败', confirmation={'token': token, 'message': text})
+    answered = VERSION_CONFIRM_EVENT.wait(timeout)
+    with VERSION_CONFIRM_LOCK:
+        accepted = answered and VERSION_CONFIRM.get('accepted') is True
+        VERSION_CONFIRM.clear()
+        report('继续升级' if accepted else '已取消升级', confirmation=None)
+    with (PRIVATE / (JOB['id'] + '.log')).open('a') as log:
+        log.write(json.dumps({'version_read_failure': error, 'side': side, 'stage': stage,
+                              'accepted': accepted, 'timeout': not answered}, ensure_ascii=False) + '\n')
+    if not accepted:
+        raise ValueError('设备版本读取失败：用户取消或确认超时，已终止后续升级')
+    return True
+
+
+def answer_camera_version_failure(req):
+    with VERSION_CONFIRM_LOCK:
+        if (not VERSION_CONFIRM or req.get('id') != VERSION_CONFIRM.get('id')
+                or req.get('token') != VERSION_CONFIRM.get('token')
+                or VERSION_CONFIRM_EVENT.is_set()):
+            raise ValueError('版本确认已过期，请刷新任务状态')
+        if not isinstance(req.get('accepted'), bool):
+            raise ValueError('缺少版本确认选择')
+        VERSION_CONFIRM['accepted'] = req['accepted']
+        VERSION_CONFIRM_EVENT.set()
+    return {'ok': True}
+
 
 def report(stage, **fields):
     JOB.update(stage=stage, updated=time.time(), **fields)
@@ -133,7 +176,8 @@ def execute(kind, path, force=False, side=None, settings=None):
                 dfu_util=BASE/'bin/dfu-util', read_device_version=camera_version, regression_check=regression,
                 event_sink=lambda e: camera_event(side, e))
             try:
-                result[side] = updater.upgrade(side,path,force=force).to_dict()
+                result[side] = updater.upgrade(side,path,force=force,
+                    confirm_version_failure=confirm_camera_version_failure).to_dict()
             except dfu.DfuError as exc:
                 result[side] = {'status': 'failed', **exc.to_dict()}
                 report('单侧失败', results=dict(result))
@@ -275,6 +319,7 @@ class Handler(socketserver.StreamRequestHandler):
             elif req.get('action')=='time_sync_cancel':
                 from time_sync_test import cancel
                 value=cancel(req.get('id'))
+            elif req.get('action')=='camera_version_confirm': value=answer_camera_version_failure(req)
             elif req.get('action')=='submit': value=submit(req)
             elif req.get('action')=='tactile_reset':
                 from tactile_panel import reset_baseline

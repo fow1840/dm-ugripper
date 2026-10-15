@@ -104,7 +104,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get('X-UGripper-Request')!='1':return self.json({'error':'请求校验失败'},403)
             origin=self.headers.get('Origin')
             if origin and origin!='https://'+self.headers.get('Host',''):return self.json({'error':'请求来源错误'},403)
-            if path in ('/api/v1/upload','/api/v1/execute'):
+            if path in ('/api/v1/upload','/api/v1/execute','/api/v1/camera/version-confirm'):
                 password=self.headers.get('X-UGripper-Maintenance-Password','')
                 digest=hashlib.sha256(password.encode('utf-8')).hexdigest()
                 if not secrets.compare_digest(digest,MAINTENANCE_PASSWORD_SHA256):
@@ -128,6 +128,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json(rpc(dict(action='production_start')),202)
             if path=='/api/v1/production/cancel':return self.json(rpc(dict(action='production_cancel',id=body.get('id'))))
             if path=='/api/v1/encoder/read':return self.json(read_encoders())
+            if path=='/api/v1/camera/version-cancel':
+                return self.json(rpc(dict(action='camera_version_confirm',id=body.get('id'),
+                                          token=body.get('token'),accepted=False)))
+            if path=='/api/v1/camera/version-confirm':
+                return self.json(rpc(dict(action='camera_version_confirm',id=body.get('id'),
+                                          token=body.get('token'),accepted=body.get('accepted'))))
             if path=='/api/v1/execute':
                 if body.get('confirm') is not True:raise ValueError('请确认维护操作')
                 try:
