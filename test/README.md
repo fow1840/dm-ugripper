@@ -215,7 +215,8 @@ python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
 
 ### Ego STOP 交接与总预算回归
 
-- `test/scripts/test_ego_recording_worker.py`：真实子进程验证 STOP 广播先于增量排空、当前轮写入完成后收尾接管且不再开始下一轮；覆盖共享截止时间、ADB 剩余预算、预算耗尽不再拉下一个文件、不报告 finalized、排空超时不覆盖增量状态、cleanup 不重置预算且超时保留远端。
+- `test/scripts/test_ego_recording_worker.py`：真实子进程验证 STOP 广播先于增量排空、当前完整块写入后收尾接管且不再开始下一块；覆盖共享截止时间、ADB 剩余预算、预算耗尽不再拉下一个文件、不报告 finalized、排空超时不覆盖增量状态、cleanup 不重置预算且超时保留远端。
+- `test/scripts/test_ego_transfer_recovery.py`：无 PTY 二进制读取、短读/失败拒绝提交、无进度超时、取消与子进程强杀、分块偏移续传、resume 不发 START、退出重试码释放 writer lock。板端注入读取子进程和增量进程卡住，分别验证正常退出/超时强杀、同一 episode 恢复及 STOP 补尾。
 - `test_recording_orchestrator`：STOP 请求先于等待本地 recorder，启动回滚等待异步 Ego 收尾完成。
 - 240 保险 STOP 定向结果见 `tmp/board_results/20261012_ego_stop_latency/`（已安装旧 worker）及 `tmp/board_results/20261012_ego_stop_fixed_latency/`（临时新 worker）；保险广播耗时不能代表录制中完整收尾耗时。
 

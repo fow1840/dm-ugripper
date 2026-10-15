@@ -777,6 +777,7 @@ int RecordRuntime::Run()
         maintainBackgroundTactileValidation();
         maintainEgoBindingAction();
         maintainEgoBindingHealth();
+        maintainEgoIncrementalSync();
         maintainRestoreUsbDevicePresence();
         maintainRestoreUsbRetry();
         maintainRestoreUsbFailureAlarm();

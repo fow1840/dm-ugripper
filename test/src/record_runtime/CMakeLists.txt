@@ -211,3 +211,7 @@ set_tests_properties(test_ego_mp4_repair PROPERTIES LABELS "host-only;unit;recor
 add_test(NAME test_system_log_snapshot
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_system_log_snapshot.py)
 set_tests_properties(test_system_log_snapshot PROPERTIES LABELS "host-only;unit;record_runtime")
+
+add_test(NAME test_ego_transfer_recovery
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_ego_transfer_recovery.py)
+set_tests_properties(test_ego_transfer_recovery PROPERTIES LABELS "host-only;unit;record_runtime")
