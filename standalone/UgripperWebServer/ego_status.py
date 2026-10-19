@@ -30,8 +30,11 @@ def ego_status(runtime=RUNTIME, now_ms=None):
     if not serial:
         result['state'] = 'unbound'
         return result
-    result.update(software_version=(binding.get('app') or {}).get('version_name', ''),
-                  firmware_version=(binding.get('firmware') or {}).get('version', ''),
+    app, firmware = binding.get('app'), binding.get('firmware')
+    app = app if isinstance(app, dict) else {}
+    firmware = firmware if isinstance(firmware, dict) else {}
+    result.update(software_version=app.get('version_name', ''),
+                  firmware_version=firmware.get('version', ''),
                   versions_checked_at_ms=binding.get('versions_checked_at_ms'))
     snapshot = _read(runtime / 'ego_binding_status.json')
     # A deleted/replaced binding must not inherit an earlier probe's result.
@@ -43,6 +46,7 @@ def ego_status(runtime=RUNTIME, now_ms=None):
             or not 0 <= now - stamp <= MAX_AGE_MS
             or snapshot.get('serial') != serial):
         return result
+    result['updated_at_ms'] = stamp
     state = snapshot.get('status')
     if state in ('connected', 'disconnected'):
         result.update(connected=state == 'connected', state=state)

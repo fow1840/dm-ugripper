@@ -54,10 +54,10 @@ class BootFirmwareTests(unittest.TestCase):
 
     def test_battery_threshold_and_charging_does_not_bypass(self):
         with patch.object(boot.time,'time',return_value=100):
-            for percent in (0,19,20,21,100):
+            for percent in (0,19,20,29,30,31,100):
                 self.bms.write_text(f'timestamp: 100\nsoc_percent: {percent}\nisCharging: 1\n')
-                if percent < 20:
-                    with self.assertRaisesRegex(ValueError,'低于 20%'):boot.require_battery()
+                if percent < 30:
+                    with self.assertRaisesRegex(ValueError,'低于 30%'):boot.require_battery()
                 else:self.assertEqual(boot.require_battery(),percent)
 
     def test_unknown_stale_or_malformed_battery_blocks(self):
@@ -74,16 +74,18 @@ class BootFirmwareTests(unittest.TestCase):
 
     def test_low_battery_rejects_submission_before_side_effects(self):
         import maintenance
-        self.bms.write_text(f'timestamp: {int(time.time())}\nsoc_percent: 19\n')
-        with patch.object(maintenance,'MUTEX') as mutex,patch.object(maintenance,'operation_lock') as lock:
-            with self.assertRaisesRegex(ValueError,'低于 20%'):
-                maintenance.submit({'kind':'rk3588_boot','confirm':True,'upload':'a'*32})
-            mutex.acquire.assert_not_called();lock.assert_not_called()
+        self.bms.write_text(f'timestamp: {int(time.time())}\nsoc_percent: 29\n')
+        for kind in ('software','main_camera','gripper','rk3588_boot'):
+            for source in ({'upload':'a'*32}, {'external':True,'package':'firmware.img','force':True}):
+                with self.subTest(kind=kind,source=source), patch.object(maintenance,'MUTEX') as mutex,patch.object(maintenance,'operation_lock') as lock:
+                    with self.assertRaisesRegex(ValueError,'低于 30%'):
+                        maintenance.submit(dict(kind=kind,**source))
+                    mutex.acquire.assert_not_called();lock.assert_not_called()
 
     def test_battery_drop_during_inspection_blocks_before_write(self):
         from unittest.mock import Mock
         run=Mock(return_value='')
-        with patch.object(boot,'require_battery',side_effect=[20,ValueError('low battery')]),patch.object(boot,'check_target'),patch.object(boot,'partition_hash',return_value='old'),patch.object(boot,'persist') as persist:
+        with patch.object(boot,'require_battery',side_effect=[30,ValueError('low battery')]),patch.object(boot,'check_target'),patch.object(boot,'partition_hash',return_value='old'),patch.object(boot,'persist') as persist:
             with self.assertRaisesRegex(ValueError,'low battery'):boot.install(self.path,{'id':'test'},Mock(),run)
             run.assert_not_called();persist.assert_not_called()
 
@@ -112,7 +114,10 @@ class BootFirmwareTests(unittest.TestCase):
             if args[:2]==['systemctl','reboot']:raise SystemExit('simulated shutdown')
             return ''
         with patch.object(boot,'check_target'),patch.object(boot,'partition_hash',side_effect=['old',digest]):
-            with self.assertRaises(SystemExit):boot.install(self.path,{'id':'test'},lambda *a,**k:None,run)
+            result=boot.install(self.path,{'id':'test'},lambda *a,**k:None,run)
+            self.assertEqual(result['status'],'awaiting_reboot')
+            self.assertFalse(result['boot_verified'])
+            self.assertFalse(any(c[0]=='systemctl' for c in calls))
         self.assertEqual(calls[0],['dd','if='+str(self.path),'of=/dev/mmcblk0p3','bs=4M','conv=fsync','status=progress'])
         self.assertEqual(read_json(self.marker)['stage'],'awaiting_reboot')
         atomic_json(self.root/'task.json',{'id':'test','status':'running'})
@@ -133,7 +138,9 @@ class BootFirmwareTests(unittest.TestCase):
         atomic_json(self.root/'task.json',{'id':'test','status':'running'})
         atomic_json(self.marker,{'id':'test','status':'running','stage':'awaiting_reboot','boot_id':'before'})
         with patch.object(boot,'partition_hash') as read:boot.recover(lambda *a:None)
-        read.assert_not_called();self.assertEqual(read_json(self.root/'task.json')['status'],'failed')
+        read.assert_not_called();self.assertEqual(read_json(self.root/'task.json')['status'],'awaiting_reboot')
+        self.assertFalse(read_json(self.root/'task.json')['boot_verified'])
+        self.assertTrue(self.marker.exists())
 
     def test_external_payload_hash_and_bounds(self):
         dt=fdt(('',{'compatible':b'rockchip,rk3588\0'},[]))
@@ -159,13 +166,16 @@ class BootFirmwareTests(unittest.TestCase):
             boot.recover(lambda *a:None)
         self.assertEqual(read_json(self.root/'task.json')['status'],'failed')
 
-    def test_reboot_timeout_marks_failure(self):
+    def test_force_writes_even_matching_image_and_waits_without_reboot(self):
         from unittest.mock import Mock
         digest=boot.inspect_image(self.path)['sha256']
-        with patch.object(boot,'check_target'),patch.object(boot,'partition_hash',side_effect=['old',digest]),patch.object(boot.time,'sleep'):
-            with self.assertRaisesRegex(RuntimeError,'重启未完成'):
-                boot.install(self.path,{'id':'test'},Mock(),Mock(return_value=''))
-        self.assertEqual(read_json(self.marker)['status'],'failed')
+        run=Mock(return_value='')
+        with patch.object(boot,'check_target'),patch.object(boot,'partition_hash',return_value=digest):
+            result=boot.install(self.path,{'id':'test'},Mock(),run,force=True)
+        self.assertEqual(result['status'],'awaiting_reboot')
+        self.assertTrue(result['installed'])
+        self.assertTrue(any(c.args[0][0]=='dd' for c in run.call_args_list))
+        self.assertFalse(any(c.args[0][0]=='systemctl' for c in run.call_args_list))
 
     def test_wrong_partition_name_rejected(self):
         compatible=self.root/'compatible';compatible.write_bytes(b'rockchip,rk3588\0')

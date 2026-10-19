@@ -164,6 +164,49 @@ void RecordRuntime::maintainFirmwareStatus()
     maintainDeviceVersions();
     snapshot["device_versions"] = deviceVersions_;
     snapshot["device_versions"]["hardware_version"] = hardwareVersion_;
+    snapshot["device_versions"]["software_version"] = packageVersion_;
+    snapshot["device_versions"]["das_usb_updater_version"] = updaterVersion_;
+    snapshot["device_versions"]["data_version"] = "3.3";
+    // Extend the existing cache for read-only consumers. No device transactions here.
+    auto &devices = snapshot["devices"] = json::object();
+    const auto addDevice = [&](const std::string &id, const std::string &path,
+                               bool enabled, bool connected, const std::string &serial,
+                               const std::string &error, bool identityRequired) {
+        devices[id] = {{"path", path}, {"enabled", enabled}, {"connected", connected},
+                       {"serial", serial}, {"error", error},
+                       {"identified", identityRequired ? json(!serial.empty()) : json(nullptr)},
+                       {"connection_source", "device_node"}};
+    };
+    for (const auto &state : mainCameraRuntimeStates_)
+        addDevice(fs::path(state.devicePath).filename().string(), state.devicePath,
+                  state.enabled, state.present, state.serialNumber, state.lastError, true);
+    for (const auto &state : tactileCameraRuntimeStates_)
+        addDevice(fs::path(state.devicePath).filename().string(), state.devicePath,
+                  true, state.present, state.serialNumber, state.lastError, true);
+    json stereoStatus;
+    std::string ignored;
+    loadJsonFile(options_.stereoStatusFile, &stereoStatus, &ignored);
+    for (const std::string side : {"left", "right"})
+    {
+        const auto &gripper = snapshot["gripper"][side];
+        addDevice(side + "_gripper", "/dev/" + side + "_gripper", true,
+                  gripper["connected"].get<bool>(), gripper["serial"].get<std::string>(),
+                  gripperRuntimeStates_[gripperStateIndexForSide(side)].lastError, true);
+        devices[side + "_gripper"]["connection_source"] = "hmi_activity";
+        const std::string encoderPath = "/dev/" + side + "_encoder";
+        addDevice(side + "_encoder", encoderPath, true, fs::exists(encoderPath), "", "", false);
+        const auto *sn = findJsonPathConst(&stereoStatus, "cameras." + side + "_stereo.serial_number");
+        const std::string serial = sn != nullptr && sn->is_string() ? sn->get<std::string>() : "";
+        for (const std::string type : {"stereo", "imu"})
+        {
+            const std::string id = side + "_fays_" + type;
+            const std::string path = type == "stereo" ? "/dev/stereo_" + side : "/dev/" + id;
+            const bool connected = stereoEnabled_ && fs::exists(path);
+            addDevice(id, path, stereoEnabled_, connected, connected ? serial : "", "", true);
+            devices[id]["identity_source"] = "stereo_camera";
+        }
+    }
+    snapshot["recording"] = {{"active", isRecordingActive() || maintenanceLockFd_ >= 0}};
     snapshot["updated_at_ms"] = currentEpochUs() / 1000;
     snapshot["pid"] = getpid();
     std::string error;

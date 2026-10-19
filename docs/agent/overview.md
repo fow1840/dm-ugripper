@@ -45,7 +45,7 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - Web 时间同步测试按 `/etc/environment` 的 `DEVICE_SN` 小写选择当前设备数据目录，并显式传入毫秒表脚本；未配置 SN 时使用运行时相同的 `noname_device`。不依赖数据盘仅存在一个设备目录；状态轮询保留每组日志展开和滚动状态。
 ## 2. 安装布局与入口
 
-- Web 提供独立 RK3588 启动固件入口，背包电量低于 20% 或 BMS 数据不可用/超过 20 秒时禁止升级，任务接收和写入前均检查，接受适配本机硬件的 FIT boot.img；校验镜像内容及固定 `/dev/mmcblk0p3` 的 boot 分区身份后写入，回读 SHA-256 一致才重启，root 持久任务在新 boot ID 下再次回读后确认成功。相同镜像跳过刷写及重启，中断不自动重刷；不支持整盘/rootfs 更新。
+- Web/API 所有软件及固件升级要求背包电量至少 30%，BMS 数据不可用/超过 20 秒也拒绝；任务接收、停服及实际安装/逐侧烧录前检查，强制升级和充电均不豁免。Web 提供独立 RK3588 启动固件入口，接受适配本机硬件的 FIT boot.img；校验镜像内容及固定 `/dev/mmcblk0p3` 的 boot 分区身份后写入，回读 SHA-256 一致后等待独立重启指令，root 持久任务在新 boot ID 下再次回读后确认成功。相同镜像跳过刷写及重启，中断不自动重刷；不支持整盘/rootfs 更新。
 
 - 安装目录：`/opt/ugripper`
 - 主服务：`pack_script/ugripper.service`
@@ -861,3 +861,13 @@ Ego STOP 每 50–150ms 查询目录，录制中的增量周期不变。文件�
 发现同名 `-invalid` 时核对 metadata 的设备序列号、episode 名、UUID、起始时间与本次 START；本地已有 UUID 时要求一致，不把旧失败目录当成本次结果。确认后立即记录 `invalid / ego_pull_incomplete` 与 App 的 `quality_check_err_type`，有界补拉失败诊断数据并保留远端，不再等待普通目录直到 60 秒。未发布完整 metadata 或身份不符的候选限频记录诊断后继续观察。该终态纳入既有绑定 Ego 的 ERROR_5 门禁。
 
 本地关闭后的预校验及触觉分析与 Ego 拉取并行；最终完整校验继续执行。触觉结果在最终 metadata 存在后原子发布并前台刷盘，不再在 Ready 后启动 episode metadata 的后台重写。日志早期快照和末尾补增量全部完成、最终前台 `sync -f` 返回后才允许 Ready。内核不可中断写盘仍不得通过超时提前放行绿灯。
+
+触觉停录告警日志按基线分别输出：`scope=reference` 为短期、`scope=persistent` 为长期；`event=triggered/active/cleared` 表示新触发、持续、解除，并附 camera、serial、episode、本次 damaged/clean、core_px 和 structural；完整算法指标保留在诊断结果中，不展开到告警日志。长期锁存告警本次未比较时标记 `detail=not_evaluated`，不冒用短期指标；三次历史、黄灯及语音判定保持不变。
+
+
+## 外部应用设备 API
+
+- HTTPS 沿用 WebUI 地址和维护密码；只读 `/api/v1/versions` 支持任意已安装 deb 包名及 metadata 全部版本字段，`/api/v1/devices` 支持完整硬件清单和指定设备，`/api/v1/recording` 提供起录/录制/收尾状态。版本与设备信息复用现有 firmware/Ego/Fays 缓存及 dpkg 数据库，不占用设备端口、不新增版本快照文件，不改变 metadata 格式。
+- 外部应用把完整包原子放入 `/var/lib/ugripper-web/upgrade-packages/`，调用 `POST /api/v1/upgrades` 即强制升级，无二次确认；仍检查包合法性、设备匹配、录制/维护互斥及至少 30% 的有效背包电量。Web 与外部共用维护 worker，结果按任务 ID 保存在 `upgrade-results/`。
+- 3588 固件写入回读成功后返回 `awaiting_reboot / success=true / boot_verified=false`，不自动重启；外部或 Web 单独发送任务 reboot 指令。重启前清理临时升级目录，实际重启后再次清理并校验 boot 分区；任务记录和恢复标记保留在临时目录之外。服务重启保持等待状态，不自动重刷。
+- 参数、字段、状态与调用示例见 [设备 API 汇总](../device-api.md)。

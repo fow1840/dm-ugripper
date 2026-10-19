@@ -137,6 +137,41 @@ class AnonymousAccessTests(unittest.TestCase):
             self.assertEqual(self.request('POST', '/api/v1/tactile/reset', '{"confirm":true}', headers)[0], 403)
             rpc.assert_not_called()
 
+    def test_public_device_api_routes_and_selectors(self):
+        for path, function, key in [('/api/v1/versions?fields=ugripper,hardware_version', 'api_versions', 'versions'),
+                                    ('/api/v1/devices?ids=cam_left,left_encoder', 'api_devices', 'devices')]:
+            with patch.object(server,function,return_value={key:{}}) as read:
+                code, _, body = self.request('GET',path)
+                self.assertEqual(code,200)
+                self.assertEqual(len(read.call_args.args[0]),2)
+        with patch.object(server,'api_recording',return_value={'state':'recording','active':True}):
+            code, _, body=self.request('GET','/api/v1/recording')
+            self.assertEqual(code,200);self.assertTrue(json.loads(body)['active'])
+        self.assertEqual(self.request('GET','/api/v1/versions?fields=')[0],400)
+
+    def test_external_upgrade_is_immediate_and_does_not_forward_user_confirmation(self):
+        headers={'X-UGripper-Request':'1','X-UGripper-Maintenance-Password':'daimon'}
+        with patch.object(server,'rpc',return_value={'id':'a'*32}) as rpc:
+            code, _, body=self.request('POST','/api/v1/upgrades',
+                                       '{"kind":"main_camera","package":"camera.img","force":false}',headers)
+            self.assertEqual(code,202)
+            self.assertEqual(rpc.call_args.args[0],dict(action='external_upgrade',kind='main_camera',package='camera.img',sha256=None))
+            self.assertEqual(self.request('POST','/api/v1/upgrades/'+'a'*32+'/reboot','{}',headers)[0],202)
+            self.assertEqual(rpc.call_args.args[0],dict(action='upgrade_reboot',id='a'*32))
+        for path in ('/api/v1/upgrades','/api/v1/upgrades/'+'a'*32+'/reboot'):
+            with patch.object(server,'rpc') as rpc:
+                self.assertEqual(self.request('POST',path,'{}',{'X-UGripper-Request':'1'})[0],403)
+                rpc.assert_not_called()
+        self.assertEqual(self.request('POST','/api/v1/upgrades','[]',headers)[0],400)
+
+    def test_upgrade_result_found_and_missing(self):
+        path='/api/v1/upgrades/'+'a'*32
+        with patch.object(server,'task_result',return_value={'id':'a'*32,'status':'awaiting_reboot','success':True,'boot_verified':False}):
+            code, _, body=self.request('GET',path)
+            self.assertEqual(code,200);self.assertEqual(json.loads(body)['status'],'awaiting_reboot')
+        with patch.object(server,'task_result',return_value={}):
+            self.assertEqual(self.request('GET',path)[0],404)
+
     def test_setup_removes_legacy_password_and_preserves_certificate(self):
         script = Path(server.__file__).with_name('setup.py')
         with tempfile.TemporaryDirectory() as folder:

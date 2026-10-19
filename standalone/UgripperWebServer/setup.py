@@ -8,7 +8,7 @@ import ssl
 import subprocess
 
 user=pwd.getpwnam('ubuntu')
-for path,uid,gid,mode in [('/etc/ugripper-web',0,user.pw_gid,0o750),('/var/lib/ugripper-web',0,user.pw_gid,0o755),('/var/lib/ugripper-web/uploads',user.pw_uid,user.pw_gid,0o700),('/var/lib/ugripper-maintenance',0,0,0o700),('/run/ugripper-web',0,user.pw_gid,0o750)]:
+for path,uid,gid,mode in [('/etc/ugripper-web',0,user.pw_gid,0o750),('/var/lib/ugripper-web',0,user.pw_gid,0o755),('/var/lib/ugripper-web/uploads',user.pw_uid,user.pw_gid,0o700),('/var/lib/ugripper-web/upgrade-packages',0,user.pw_gid,0o770),('/var/lib/ugripper-maintenance',0,0,0o700),('/run/ugripper-web',0,user.pw_gid,0o750)]:
     p=Path(path);p.mkdir(parents=True,exist_ok=True);os.chown(p,uid,gid);os.chmod(p,mode)
 config=Path('/etc/ugripper-web/config.json')
 try:

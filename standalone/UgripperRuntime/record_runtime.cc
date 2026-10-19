@@ -1218,6 +1218,23 @@ const std::string &RecordRuntime::lastEpisodeDir() const
 
 void RecordRuntime::setLedState(LedState state, double progress)
 {
+    // Publish transitions in the existing recording lock even while finalize blocks the loop.
+    if (maintenanceLockFd_ >= 0 && (state == LedState::Recording || state == LedState::Writing))
+    {
+        json lock;
+        std::string ignored;
+        if (loadJsonFile(options_.recordingLockFile, &lock, &ignored) && lock.is_object())
+        {
+            const std::string phase = state == LedState::Recording ? "recording" : "finalizing";
+            if (lock.value("state", std::string()) != phase)
+            {
+                lock["state"] = phase;
+                lock["updated_at_ms"] = currentEpochMs();
+                writeTextFileAtomically(options_.recordingLockFile, lock.dump(2) + "\n", &ignored);
+            }
+        }
+    }
+
     if (state == LedState::Ready && logPersistenceFailed_.load()) state = LedState::Error5;
     if (egoFeedback_) {
         const auto phase = state == LedState::Recording ? EgoSpeechPolicy::Phase::Recording

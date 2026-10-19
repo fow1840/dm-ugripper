@@ -11,7 +11,9 @@ import struct
 import time
 
 from common import MAX_UPLOAD, STATE, atomic_json, read_json
+from upgrade_state import save_task
 
+MIN_UPGRADE_PERCENT = 30
 BMS_SOURCE = Path('/opt/bluetooth_server/bms_latest.txt')
 DEVICE = Path('/dev/mmcblk0p3')
 UEVENT = Path('/sys/class/block/mmcblk0p3/uevent')
@@ -22,7 +24,7 @@ PENDING = Path('/var/lib/ugripper-maintenance/boot-pending.json')
 
 def require_battery():
     """Read the live BMS producer, which continues after recording is stopped."""
-    unavailable = '电量数据不可用或已过期，禁止升级 3588 固件'
+    unavailable = '电量数据不可用或已过期，禁止升级'
     try:
         with BMS_SOURCE.open() as stream:
             text = stream.read(4097)
@@ -40,8 +42,8 @@ def require_battery():
             raise ValueError(unavailable)
     except (OSError, UnicodeError, ValueError, KeyError) as exc:
         raise ValueError(unavailable) from exc
-    if percent < 20:
-        raise ValueError('背包电量低于 20%，禁止升级 3588 固件')
+    if percent < MIN_UPGRADE_PERCENT:
+        raise ValueError(f'背包电量低于 {MIN_UPGRADE_PERCENT}%，禁止升级')
     return percent
 
 
@@ -161,12 +163,12 @@ def persist(value):
     finally: os.close(fd)
 
 
-def install(path, job, report, run):
+def install(path, job, report, run, force=False):
     require_battery()
     report('检查 3588 启动镜像')
     info = inspect_image(path)
     check_target(info['size'], run)
-    if partition_hash(info['size']) == info['sha256']:
+    if partition_hash(info['size']) == info['sha256'] and not force:
         return dict(status='启动分区已匹配，跳过写入与重启', **info)
     require_battery()
     pending = dict(id=job['id'], kind='rk3588_boot', status='running', stage='写入启动分区',
@@ -179,35 +181,40 @@ def install(path, job, report, run):
         if partition_hash(info['size']) != info['sha256']:
             raise RuntimeError('启动分区写入后 SHA-256 不匹配，未重启')
         pending['stage'] = 'awaiting_reboot'; persist(pending)
-        report('等待设备重启，恢复连接后自动校验', reboot_pending=True)
         run(['sync'])
-        run(['systemctl', 'reboot', '--no-block'], 20)
-        # Hold all maintenance locks until system shutdown; do not restart recording.
-        time.sleep(90)
-        raise RuntimeError('重启未完成，请检查设备；未自动再次写入')
+        return dict(status='awaiting_reboot', installed=True, boot_verified=False,
+                    reboot_pending=True, **info)
     except Exception as exc:
         pending.update(status='failed', message=str(exc)); persist(pending)
         raise
 
 
 def recover(run):
-    """Never reflash on startup. Verify a completed write only after a new boot."""
+    """Never reflash on startup. Preserve awaiting-reboot across service restarts."""
     pending = read_json(PENDING)
-    if not pending: return
+    if not isinstance(pending, dict) or not pending:
+        return
     old = read_json(STATE/'task.json')
-    if old.get('id') != pending.get('id'):
-        PENDING.unlink(missing_ok=True); return
+    if not isinstance(old, dict) or old.get('id') != pending.get('id'):
+        return  # Keep unresolved recovery evidence; submit will refuse another upgrade.
     try:
-        if (pending.get('status') != 'running' or pending.get('stage') != 'awaiting_reboot'
-                or BOOT_ID.read_text().strip() == pending.get('boot_id')):
+        if pending.get('status') != 'running' or pending.get('stage') != 'awaiting_reboot':
             raise RuntimeError('启动固件任务中断，未自动重新刷写；请检查设备')
+        if BOOT_ID.read_text().strip() == pending.get('boot_id'):
+            old.update(status='awaiting_reboot', stage='固件写入校验成功，等待重启指令',
+                       success=True, reboot_pending=True, boot_verified=False)
+            save_task(old, STATE)
+            return
         check_target(pending['size'], run)
         if partition_hash(pending['size']) != pending['sha256']:
             raise RuntimeError('重启后启动分区 SHA-256 校验失败')
-        old.update(status='success', stage='3588 启动固件重启后校验通过', message='',
-                   result={'sha256': pending['sha256'], 'status': '重启后校验通过'})
+        old.update(status='success', success=True, boot_verified=True,
+                   stage='3588 启动固件重启后校验通过', message='',
+                   result={'sha256': pending['sha256'], 'status': '重启后校验通过',
+                           'installed': True, 'boot_verified': True})
     except Exception as exc:
-        old.update(status='failed', stage='3588 启动固件校验失败', message=str(exc))
+        old.update(status='failed', success=False, boot_verified=False,
+                   error_code='boot_verification_failed', stage='3588 启动固件校验失败', message=str(exc))
     old.update(finished=time.time(), reboot_pending=False)
-    atomic_json(STATE/'task.json', old)
+    save_task(old, STATE)
     PENDING.unlink(missing_ok=True)

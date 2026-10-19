@@ -12,7 +12,7 @@ class CameraUpgradeErrorsTest(unittest.TestCase):
     def test_missing_left_precheck_does_not_read_image_or_flash(self):
         def exists(path):
             return str(path) != '/dev/cam_left'
-        with patch.object(maintenance, 'report'), patch.object(Path, 'exists', exists), \
+        with patch.object(maintenance.boot_firmware, 'require_battery', return_value=50), patch.object(maintenance, 'report'), patch.object(Path, 'exists', exists), \
              patch.object(maintenance.dfu, 'read_image_version') as read_image, \
              patch.object(maintenance, 'camera_identity') as identity:
             with self.assertRaisesRegex(ValueError, '/dev/cam_left'):

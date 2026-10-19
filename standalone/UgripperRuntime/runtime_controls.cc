@@ -86,9 +86,17 @@ bool RecordRuntime::writeRecordingLock(const std::string &episodeDir)
             return false;
         }
     }
+    if (fs::exists("/run/ugripper/reboot-requested"))
+    {
+        removeRecordingLock();
+        DM_LOG_WARN("recording rejected: system reboot is scheduled");
+        return false;
+    }
     json lock = {
         {"pid", static_cast<int>(getpid())},
         {"episode_dir", episodeDir},
+        {"state", "starting"},
+        {"updated_at_ms", currentEpochMs()},
         {"started_at_ms", currentEpochMs()},
     };
     std::string errorMessage;

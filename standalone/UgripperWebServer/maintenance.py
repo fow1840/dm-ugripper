@@ -16,10 +16,14 @@ import time
 import uuid
 from common import BASE, ROOT, STATE, RUN, MAX_UPLOAD, ALLOW, Busy, atomic_json, read_json, command, operation_lock
 from common import log_exception
+from upgrade_state import PACKAGES, REBOOT_GUARD, save_task, task_result, clear_packages, recover_package_store
 from production import main_camera_dfu as dfu
 from environment_config import validate_settings, write_settings
+import boot_firmware
 
 MUTEX = threading.Lock()
+REPORT_LOCK = threading.RLock()
+SOFTWARE_RESTART_PENDING = False
 PYTHON = Path('/usr/bin/python3')
 PRIVATE = Path('/var/lib/ugripper-maintenance')
 JOB = {}
@@ -29,6 +33,11 @@ VERSION_CONFIRM = {}
 
 
 def confirm_camera_version_failure(side, stage, error, timeout=300):
+    if JOB.get('external') is True:
+        skipped = list(JOB.get('version_checks_skipped', []))
+        skipped.append(dict(side=side, stage=stage, error=str(error)))
+        report('强制继续升级，设备版本未验证', version_checks_skipped=skipped)
+        return True
     token = uuid.uuid4().hex
     label = '左' if side == 'left' else '右'
     phase = '升级前' if stage == 'before_flash' else '升级后'
@@ -68,8 +77,9 @@ def answer_camera_version_failure(req):
 
 
 def report(stage, **fields):
-    JOB.update(stage=stage, updated=time.time(), **fields)
-    atomic_json(STATE/'task.json', JOB)
+    with REPORT_LOCK:
+        JOB.update(stage=stage, updated=time.time(), **fields)
+        save_task(JOB, STATE)
 
 def run(args, timeout=60):
     p = command(args, timeout)
@@ -137,9 +147,11 @@ def camera_event(side, event):
 
 
 def execute(kind, path, force=False, side=None, settings=None):
+    if kind in ('software', 'main_camera', 'gripper', 'rk3588_boot'):
+        boot_firmware.require_battery()
     if kind == 'rk3588_boot':
         from boot_firmware import install
-        return install(path, JOB, report, run)
+        return install(path, JOB, report, run, force=force)
     if kind == 'configuration':
         report('保存设备配置')
         return write_settings(settings)
@@ -152,6 +164,7 @@ def execute(kind, path, force=False, side=None, settings=None):
         run(['dpkg-deb','--info',path])
         # Offline resolver validates dependency closure before executing any package scripts.
         run(['dpkg','--no-act','--install',path],120)
+        boot_firmware.require_battery()
         report('安装软件', package=info['Package'], target_version=info['Version'])
         (RUN/'self-installing').touch()
         run(['dpkg','--install',path],600)
@@ -168,6 +181,7 @@ def execute(kind, path, force=False, side=None, settings=None):
         before = {s:camera_identity(s) for s in ('left','right')}
         result = {}
         for side in ('left','right'):
+            boot_firmware.require_battery()
             def regression(s):
                 after = camera_identity(s)
                 return camera_regression(before[s], after)
@@ -198,6 +212,7 @@ def execute(kind, path, force=False, side=None, settings=None):
                 raise RuntimeError(f'{s} 夹爪没有有效版本响应')
         result = {}
         for side in ('left','right'):
+            boot_firmware.require_battery()
             report(f'升级{side}夹爪')
             output = run([PYTHON,BASE/'production/ota_update.py','--port',f'/dev/{side}_gripper','--file',path],180)
             version = re.findall(r'升级后版本\s*:\s*(\S+)',output)
@@ -217,20 +232,31 @@ def execute(kind, path, force=False, side=None, settings=None):
     raise ValueError('未知维护操作')
 
 def worker(kind, path, stack, force=False, side=None, settings=None):
+    global SOFTWARE_RESTART_PENDING
     active=[]
+    outcome = dict(status='failed', success=False, error_code='upgrade_failed')
     try:
-        # Guard survives postinst attempts to start the recording service: its flock blocks starts.
+        if kind in ('software', 'main_camera', 'gripper', 'rk3588_boot'):
+            boot_firmware.require_battery()
+        # Guard survives postinst attempts to start the recording service.
         for service in ('ugripper-network-monitor.service','ugripper.service'):
             if command(['systemctl','is-active',service]).stdout.strip() in ('active','activating','reloading'):
                 active.append(service)
                 run(['systemctl','stop',service],45)
         report('正在执行', status='running')
         result=execute(kind,path,force=force,side=side,settings=settings)
-        report('操作完成',status='success',result=result)
+        waiting = kind == 'rk3588_boot' and result.get('reboot_pending') is True
+        outcome = dict(status='awaiting_reboot' if waiting else 'success', success=True,
+                       reboot_pending=waiting, boot_verified=False if waiting else None,
+                       result=result, error_code=None, message='')
+        report('执行完成，正在恢复服务', result=result, reboot_pending=waiting)
     except Exception as exc:
-        report('操作失败',status='failed',message=str(exc))
+        outcome.update(message=str(exc))
+        report('执行失败，正在恢复服务', message=str(exc))
         with (PRIVATE/(JOB['id']+'.log')).open('a') as f: f.write(repr(exc)+'\n')
     finally:
+        # Pause submissions through cleanup and the maintenance process restart.
+        if kind == 'software': SOFTWARE_RESTART_PENDING = True
         cleaned = False
         try:
             if path: path.unlink(missing_ok=True)
@@ -240,40 +266,64 @@ def worker(kind, path, stack, force=False, side=None, settings=None):
                 try:
                     if command(['systemctl','start',service],45).returncode: restore.append(service)
                 except Exception: restore.append(service)
-            if restore: report('服务恢复失败',status='failed',message=', '.join(restore))
-            report(JOB['stage'], finished=time.time(), upload_cleaned=cleaned)
+            if restore:
+                outcome.update(status='failed',success=False,error_code='service_restore_failed',message=', '.join(restore))
+            stage = ('固件写入校验成功，等待重启指令' if outcome['status']=='awaiting_reboot'
+                     else '操作完成' if outcome['status']=='success' else '操作失败')
+            report(stage, **outcome, finished=time.time(), upload_cleaned=cleaned)
         except Exception as exc:
-            try: report('清理或恢复失败',status='failed',message=str(exc),upload_cleaned=cleaned,finished=time.time())
+            try: report('清理或恢复失败',status='failed',success=False,error_code='cleanup_failed',message=str(exc),upload_cleaned=cleaned,finished=time.time())
             except Exception: pass
         finally:
             (RUN/'self-installing').unlink(missing_ok=True)
             stack.close()
             MUTEX.release()
-        # Self-upgrade must not kill this worker before dpkg and cleanup complete.
-        if kind=='software': command(['systemctl','restart','--no-block','ugripper-maintenance.service'])
+        if kind=='software':
+            try:
+                restart = command(['systemctl','restart','--no-block','ugripper-maintenance.service'])
+                if restart.returncode:
+                    raise RuntimeError('维护服务重启失败')
+            except Exception as exc:
+                SOFTWARE_RESTART_PENDING = False
+                report('维护服务重启失败', status='failed', success=False,
+                       error_code='maintenance_restart_failed', message=str(exc))
 
 
 def submit(req):
+    if SOFTWARE_RESTART_PENDING: raise Busy('维护服务正在应用软件更新，请稍后重试')
+    from boot_firmware import PENDING
+    pending = read_json(PENDING)
+    if isinstance(pending, dict) and pending.get('status') == 'running' and pending.get('stage') == 'awaiting_reboot':
+        raise Busy('系统固件任务等待重启或恢复校验，请先完成重启')
     kind=req.get('kind')
     if kind not in ('software','main_camera','gripper','rk3588_boot','zeroing','configuration'): raise ValueError('未知任务')
     if kind=='zeroing' and req.get('fixture')!='FIXTURE_READY': raise ValueError('必须确认已安装指定标零治具')
     if kind=='zeroing' and req.get('side') not in ('left','right'): raise ValueError('必须指定左侧或右侧编码器')
     if kind=='configuration': validate_settings(req.get('settings'))
-    if kind=='rk3588_boot':
-        from boot_firmware import require_battery
-        require_battery()
+    if kind in ('software', 'main_camera', 'gripper', 'rk3588_boot'):
+        boot_firmware.require_battery()
     if not MUTEX.acquire(False): raise Busy('已有维护任务执行中')
     stack=contextlib.ExitStack();path=None
     try:
+        if SOFTWARE_RESTART_PENDING: raise Busy('维护服务正在应用软件更新，请稍后重试')
+        pending = read_json(PENDING)
+        if isinstance(pending, dict) and pending.get('status') == 'running' and pending.get('stage') == 'awaiting_reboot':
+            raise Busy('系统固件任务等待重启或恢复校验，请先完成重启')
         stack.enter_context(operation_lock())
         usb=stack.enter_context(open('/run/usb_auto_update.lock','a'))
         try: fcntl.flock(usb,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError: raise Busy('U 盘升级正在执行')
         jobid=uuid.uuid4().hex
         if kind in ('software','main_camera','gripper','rk3588_boot'):
-            token=req.get('upload','')
-            if not re.fullmatch(r'[0-9a-f]{32}',token): raise ValueError('无效上传编号')
-            source=STATE/'uploads'/token
+            if req.get('external') is True:
+                name = req.get('package')
+                if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.+-]{0,199}', name):
+                    raise ValueError('invalid_package_name')
+                source = PACKAGES/name
+            else:
+                token=req.get('upload','')
+                if not isinstance(token, str) or not re.fullmatch(r'[0-9a-f]{32}',token): raise ValueError('无效上传编号')
+                source=STATE/'uploads'/token
             fd=os.open(source,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
             with os.fdopen(fd,'rb') as src:
                 info=os.fstat(src.fileno())
@@ -287,20 +337,85 @@ def submit(req):
                         if not chunk: raise ValueError('上传文件发生变化')
                         dst.write(chunk); remaining-=len(chunk)
                     if src.read(1): raise ValueError('上传文件发生变化')
-                if path.stat().st_size!=info.st_size: raise ValueError('上传文件发生变化')
-            source.unlink(missing_ok=True)
+                after = os.fstat(src.fileno())
+                if (path.stat().st_size != info.st_size or
+                        (after.st_size, after.st_mtime_ns, after.st_ctime_ns) !=
+                        (info.st_size, info.st_mtime_ns, info.st_ctime_ns)):
+                    raise ValueError('上传文件发生变化')
+            expected = req.get('sha256')
+            if expected is not None and (not isinstance(expected, str) or
+                    not re.fullmatch(r'[0-9a-f]{64}', expected) or dfu.sha256_file(path) != expected):
+                raise ValueError('package_sha256_mismatch')
             if kind=='gripper': validate_hex(path)
             if kind=='rk3588_boot':
                 from boot_firmware import inspect_image
                 inspect_image(path)
-        JOB.clear();JOB.update(id=jobid,kind=kind,status='running',started=time.time())
+            source.unlink(missing_ok=True)
+        JOB.clear();JOB.update(id=jobid,kind=kind,status='running',success=None,
+                              reboot_pending=False,external=req.get('external') is True,started=time.time())
         if path: JOB['sha256']=dfu.sha256_file(path)
         report('已接收')
         threading.Thread(target=worker,args=(kind,path,stack,req.get("force") is True,req.get("side"),req.get("settings")),daemon=False).start()
-        return {'id':jobid}
+        return {'id':jobid, 'status':'running', 'status_url':'/api/v1/upgrades/'+jobid}
     except Exception:
         if path: path.unlink(missing_ok=True)
         stack.close();MUTEX.release();raise
+
+
+def external_submit(req):
+    if req.get('kind') not in ('software', 'main_camera', 'gripper', 'rk3588_boot'):
+        raise ValueError('unsupported_upgrade_kind')
+    return submit(dict(kind=req.get('kind'), package=req.get('package'),
+                       sha256=req.get('sha256'), external=True, force=True))
+
+
+def reboot(req):
+    """A separate explicit command; return before the delayed reboot disconnects clients."""
+    from boot_firmware import PENDING, BOOT_ID
+    jobid = req.get('id', '')
+    if not isinstance(jobid, str) or not re.fullmatch(r'[0-9a-f]{32}', jobid):
+        raise ValueError('invalid_task_id')
+    if not MUTEX.acquire(False):
+        raise Busy('已有维护任务执行中')
+    stack = contextlib.ExitStack()
+    try:
+        stack.enter_context(operation_lock())
+        usb = stack.enter_context(open('/run/usb_auto_update.lock', 'a'))
+        try: fcntl.flock(usb, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError: raise Busy('U 盘升级正在执行')
+        pending = read_json(PENDING)
+        old = task_result(jobid)
+        if (not isinstance(pending, dict) or pending.get('id') != jobid
+                or pending.get('status') != 'running' or pending.get('stage') != 'awaiting_reboot'
+                or pending.get('boot_id') != BOOT_ID.read_text().strip()
+                or old.get('reboot_pending') is not True):
+            raise ValueError('task_not_awaiting_reboot')
+        JOB.clear(); JOB.update(old)
+        clear_packages()
+        REBOOT_GUARD.touch(mode=0o644)
+        report('重启指令已接受', status='rebooting', reboot_pending=True, reboot_requested_at=time.time())
+        try:
+            run(['sync'])
+            run(['systemd-run', '--unit=ugripper-upgrade-reboot-'+uuid.uuid4().hex[:12],
+                 '--on-active=3s', '--timer-property=AccuracySec=1s', '/usr/bin/systemctl', 'reboot'], 20)
+        except Exception:
+            REBOOT_GUARD.unlink(missing_ok=True)
+            report('重启调度失败，可重试重启指令', status='awaiting_reboot', error_code='reboot_schedule_failed')
+            raise
+        threading.Thread(target=reboot_watchdog, args=(stack,), daemon=True).start()
+        return dict(id=jobid, status='rebooting', accepted=True, reboot_pending=True)
+    except Exception:
+        stack.close(); MUTEX.release(); raise
+
+
+def reboot_watchdog(stack):
+    try:
+        time.sleep(60)
+        REBOOT_GUARD.unlink(missing_ok=True)
+        report('设备尚未重启，可重试重启指令', status='awaiting_reboot', error_code='reboot_timeout')
+    finally:
+        stack.close()
+        MUTEX.release()
 
 class Handler(socketserver.StreamRequestHandler):
     def handle(self):
@@ -321,6 +436,8 @@ class Handler(socketserver.StreamRequestHandler):
                 value=cancel(req.get('id'))
             elif req.get('action')=='camera_version_confirm': value=answer_camera_version_failure(req)
             elif req.get('action')=='submit': value=submit(req)
+            elif req.get('action')=='external_upgrade': value=external_submit(req)
+            elif req.get('action')=='upgrade_reboot': value=reboot(req)
             elif req.get('action')=='tactile_reset':
                 from tactile_panel import reset_baseline
                 from camera_snapshot import SNAPSHOTS
@@ -350,6 +467,7 @@ if __name__=='__main__':
     from ugripper_logger import install_exception_logging
     install_exception_logging('maintenance')
     PRIVATE.mkdir(mode=0o700,exist_ok=True)
+    recover_package_store()
     from production_test import recover
     recover()
     from time_sync_test import recover as recover_time_sync
@@ -366,8 +484,8 @@ if __name__=='__main__':
     JOB.clear()
     old=read_json(STATE/'task.json')
     if old.get('status')=='running':
-        old.update(status='failed',stage='维护服务中断',message='请检查设备后重新执行，未自动重试烧录')
-        atomic_json(STATE/'task.json',old)
+        old.update(status='failed',success=False,error_code='maintenance_interrupted',stage='维护服务中断',message='请检查设备后重新执行，未自动重试烧录')
+        save_task(old, STATE)
     for p in PRIVATE.iterdir():
         if p.suffix in ('.img','.hex','.deb'): p.unlink()
     address=RUN/'maintenance.sock';address.unlink(missing_ok=True)

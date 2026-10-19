@@ -20,6 +20,8 @@ from urllib.parse import urlsplit, parse_qs, quote
 from common import BASE, STATE, DATA, MAX_UPLOAD, Busy, read_json, rpc, operation_lock
 from common import ugripper_log, log_exception
 from telemetry import status
+from device_api import versions as api_versions, devices as api_devices, recording as api_recording, select
+from upgrade_state import task_result
 from encoder_probe import read_encoders, stream_encoders
 
 CONFIG={}
@@ -105,7 +107,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get('X-UGripper-Request')!='1':return self.json({'error':'请求校验失败'},403)
             origin=self.headers.get('Origin')
             if origin and origin!='https://'+self.headers.get('Host',''):return self.json({'error':'请求来源错误'},403)
-            if path in ('/api/v1/upload','/api/v1/execute','/api/v1/camera/version-confirm'):
+            if path in ('/api/v1/upload','/api/v1/execute','/api/v1/camera/version-confirm','/api/v1/upgrades') or re.fullmatch(r'/api/v1/upgrades/[0-9a-f]{32}/reboot',path):
                 password=self.headers.get('X-UGripper-Maintenance-Password','')
                 digest=hashlib.sha256(password.encode('utf-8')).hexdigest()
                 if not secrets.compare_digest(digest,MAINTENANCE_PASSWORD_SHA256):
@@ -114,6 +116,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self.json({'error':'维护密码错误，请重新输入'},403)
             if path=='/api/v1/upload':return self.upload()
             size=self.body(4096);body=json.loads(self.rfile.read(size))
+            if not isinstance(body, dict): raise ValueError('JSON body must be an object')
+            if path == '/api/v1/upgrades':
+                return self.json(rpc(dict(action='external_upgrade',kind=body.get('kind'),
+                                          package=body.get('package'),sha256=body.get('sha256'))),202)
+            match = re.fullmatch(r'/api/v1/upgrades/([0-9a-f]{32})/reboot',path)
+            if match:
+                return self.json(rpc(dict(action='upgrade_reboot',id=match.group(1))),202)
             if path=='/api/v1/tactile/reset':
                 if body.get('confirm') is not True:raise ValueError('请确认盖板正常且无接触')
                 return self.json(rpc(dict(body,action='tactile_reset')))
@@ -147,6 +156,17 @@ class Handler(BaseHTTPRequestHandler):
         else:
             if path=='/api/v1/snapshot':return self.snapshot_file()
             if path=='/api/v1/status':return self.json(status())
+            query=parse_qs(urlsplit(self.path).query,keep_blank_values=True)
+            if path=='/api/v1/versions':
+                return self.json(api_versions(select(query,'fields')))
+            if path=='/api/v1/devices':
+                return self.json(api_devices(select(query,'ids')))
+            if path=='/api/v1/recording':
+                return self.json(api_recording())
+            match = re.fullmatch(r'/api/v1/upgrades/([0-9a-f]{32})',path)
+            if match:
+                task=task_result(match.group(1))
+                return self.json(task if task else {'error':'task_not_found'},200 if task else 404)
             if path=='/api/v1/data':return self.list_data()
             if path=='/api/v1/download':return self.download()
             if path=='/api/v1/logs':return self.logs()

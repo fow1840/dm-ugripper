@@ -329,6 +329,31 @@ void DA::Ugripper::EpisodeManager::ValidateTactileEpisode(
             historyDirty = true;
         }
 
+        // Log each baseline independently: the combined warning loses its origin.
+        const auto logBaselineWarning = [&](const char *scope, bool before, bool active,
+                                            bool evaluated, const TactileFrameMetrics &value) {
+            if (!before && !active) return;
+            const std::string detail = !evaluated ? "not_evaluated" :
+                std::string(value.damaged ? "damaged" : "clean") +
+                " core_px=" + std::to_string(value.solidCorePixels) +
+                " structural=" + (value.largeStructuralDamage ? "true" : "false");
+            const char *event = active ? (before ? "active" : "triggered") : "cleared";
+            if (active)
+            {
+                DM_LOG_WARN("tactile warning: camera={} serial={} scope={} event={} episode={} detail={}",
+                    target.cameraName, serial, scope, event, episodeDir, detail);
+            }
+            else
+            {
+                DM_LOG_INFO("tactile warning: camera={} serial={} scope={} event={} episode={} detail={}",
+                    target.cameraName, serial, scope, event, episodeDir, detail);
+            }
+        };
+        logBaselineWarning("reference", warningActiveBefore, warningActive, true, metrics);
+        logBaselineWarning("persistent", persistentWarningActiveBefore, persistentWarningActiveAfter,
+            hasPersistentBaseline && !persistentNeedsUpdate && !initializedPersistentFromEpisode,
+            persistentMetrics);
+
         // Preserve the decision mask and the same preprocessed cover frame.
         // Hex keeps the entire latest group in one atomic diagnostic snapshot.
         const auto retainMask = [&](const char *scope, const TactileFrameMetrics &value,

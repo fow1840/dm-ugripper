@@ -1,10 +1,18 @@
 'use strict';
 // Preserve source text per node so temporary language switches never alter settings.
 const translations={
-'背包电量低于 20%，禁止升级 3588 固件':'Backpack battery below 20%; RK3588 update blocked','电量数据不可用或已过期，禁止升级 3588 固件':'Battery data unavailable or stale; RK3588 update blocked','背包电量满足升级条件（至少 20%）':'Backpack battery meets the update requirement (at least 20%)','背包电量不足或不可用，禁止升级 3588 固件':'Backpack battery low or unavailable; RK3588 update blocked',
+'确认重启设备':'Confirm device reboot',
+'固件写入校验成功，等待重启指令':'Firmware written and verified; awaiting reboot command',
+'固件已写入并校验。确认重启设备？临时升级包将被清理，网页会暂时断开。':'Firmware has been written and verified. Reboot now? Temporary upgrade packages will be deleted and the page will disconnect.',
+'重启指令已接受':'Reboot command accepted',
+'重启调度失败，可重试重启指令':'Reboot scheduling failed; retry the reboot command',
+'设备尚未重启，可重试重启指令':'Device has not rebooted; retry the reboot command',
+'awaiting_reboot':'Awaiting reboot',
+
+'背包电量低于 30%，禁止升级':'Backpack battery below 30%; update blocked','电量数据不可用或已过期，禁止升级':'Battery data unavailable or stale; update blocked','背包电量满足升级条件（至少 30%）':'Backpack battery meets the update requirement (at least 30%)',
 '3588 启动固件升级':'RK3588 boot firmware update','上传并升级 3588 固件':'Upload and update RK3588 firmware',
-'仅支持适配本背包硬件的 RK3588 FIT boot.img，不支持整盘镜像、rootfs 或主摄固件。写入后将自动重启，网页会暂时断开；请保持供电，勿拔插设备。相同镜像跳过写入和重启。':'Use an RK3588 FIT boot.img compatible with this backpack hardware. Full-disk, rootfs and camera images are not supported. The device reboots after writing and the page temporarily disconnects. Keep power and devices connected. Matching images skip writing and reboot.',
-'，写入后自动重启设备，网页将暂时断开':'; the device reboots after writing and the page temporarily disconnects',
+'仅支持适配本背包硬件的 RK3588 FIT boot.img，不支持整盘镜像、rootfs 或主摄固件。写入校验成功后等待单独确认重启；请保持供电，勿拔插设备。相同镜像跳过写入和重启。':'Use an RK3588 FIT boot.img compatible with this backpack hardware. Full-disk, rootfs and camera images are not supported. After writing and verification, a separate reboot confirmation is required. Keep power and devices connected. Matching images skip writing and reboot.',
+'，写入校验成功后等待单独确认重启':'; writing and verification complete before a separate reboot confirmation',
 '检查 3588 启动镜像':'Checking RK3588 boot image','写入 3588 启动分区，请勿断电':'Writing RK3588 boot partition; keep power connected','回读校验 3588 启动分区':'Verifying RK3588 boot partition','等待设备重启，恢复连接后自动校验':'Waiting for reboot; verification resumes after reconnection','3588 启动固件重启后校验通过':'RK3588 boot firmware verified after reboot','3588 启动固件校验失败':'RK3588 boot firmware verification failed','启动分区已匹配，跳过写入与重启':'Boot partition already matches; skipped writing and reboot','重启后校验通过':'Verified after reboot',
 
 '维护密码':'Maintenance password','请向设备管理员获取维护密码；每次操作均需输入。':'Ask the device administrator for the maintenance password. Enter it for each operation.','请输入维护密码':'Enter the maintenance password','维护密码错误，请重新输入':'Incorrect maintenance password; enter it again','请先确认已安装指定标零治具':'Confirm that the specified zero-calibration fixture is installed first',
