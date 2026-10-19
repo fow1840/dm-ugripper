@@ -1,6 +1,6 @@
 ---
 name: validate-episode-data
-description: 为 ugripper 项目执行 episode 数据深度校验。用于用户在录完一条新数据后，指定“校验 episode / 检查这条录制数据 / 验证视频和 sensor 是否同步 / 看有没有 gap 或异常 / 校验最新一条数据”等请求时：先阅读 docs/agent/overview.md 理解当前 episode 结构与时间语义，再对指定 episode 目录执行只读分析；若用户说“校验最新一条数据”，默认对用户给出的数据父目录执行 `--latest` 选择最新 `episode_*`；按 metadata 的普通或 `+nostereo` profile 优先检查全部视频、全部已发现 sensor topic 与 Fays IMU/camera 是否处于同一 Unix 时间域并展示首帧相对误差，再检查关键文件、metadata 3.3/历史 3.0、3.1及3.2、calibration 3.1/历史 3.0、逐帧 gap、主摄时间戳异常、sensor 同步与覆盖率，并给出结论、证据和建议。
+description: 为 ugripper 项目执行 episode 数据深度校验。用于用户在录完一条新数据后，指定“校验 episode / 检查这条录制数据 / 验证视频和 sensor 是否同步 / 看有没有 gap 或异常 / 校验最新一条数据”等请求时：先阅读 docs/agent/overview.md 理解当前 episode 结构与时间语义，再对指定 episode 目录执行只读分析；若用户说“校验最新一条数据”，默认对用户给出的数据父目录执行 `--latest` 选择最新 `episode_*`；按 metadata 的普通或 `+nostereo` profile 优先检查全部视频、全部已发现 sensor topic 与 Fays IMU/camera 是否处于同一 Unix 时间域并用表格展示所有模态的起止相对偏移（ms）与 gap 简要统计，再检查关键文件、metadata 3.3/历史 3.0、3.1及3.2、calibration 3.1/历史 3.0、逐帧 gap、主摄时间戳异常、sensor 同步与覆盖率，并给出结论、证据和建议。
 ---
 
 # validate-episode-data
@@ -16,7 +16,7 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
    - 入口会依次选择 `uv`、项目 `.venv` 和系统 Python；缺少 MCAP 依赖导致全局首帧校验无法完成时必须判失败。
 4. 若用户只关注某一类问题，可按需加参数缩小范围：
    - `--latest`：当传入的是父目录时，自动选择最新的 `episode_*`。
-   - `--skip-video-packets`：跳过视频逐包扫描，只保留容器级检查。
+   - `--skip-video-packets`：仅在用户明确缩小范围或同意快速检查时使用；跳过后视频 gap 必须标记“未检查”，不能据此给出全模态 gap 通过。
    - `--json`：输出结构化结果，便于后续保存或机器消费。
    - `--top N`：调整输出的最大 gap 样本数。
 5. 输出时必须区分：
@@ -36,8 +36,8 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
 - `calibration.json` 独立按 `format_version` 校验：当前 `3.1`、历史 `3.0`，未知版本失败。检查图像和左右 IMU 标定项；3.1 要求独立主摄外参状态，以及左右主摄各两项有限数值 4×4 刚体矩阵，胸部不增加外参。`uncalibrated` 的合法默认矩阵允许通过格式检查，不等于已完成光学标定。
 - `metadata.json` / `info.json` / `calibration.json` 是否出现未登记字段、缺失字段或字段类型变化，防止 JSON 格式被偷偷改动。
 - 若存在 `validation_error.log`，是否说明当前 episode 在停录时已有失败记录。
-- 八路视频容器是否可读，是否存在明显时间戳异常。
-- 八路视频的起止系统时间是否对齐，是否有异常长尾 / 短尾。
+- 所有启用视频（含胸摄）以及实际存在的 Ego 视频、音频容器是否可读，是否存在明显时间戳异常。
+- 所有模态的起止系统时间是否对齐，是否有异常长尾 / 短尾；必须展示下文两张完整表格。
 - 各视频流是否存在明显逐帧 / 逐包 gap、重复时间戳、回退时间戳。
 - 主摄专项时间戳扫描是否提示 `backward_dts / decode_non_monotonic_dts / decode_error / ref_missing`。
 - 容器 `duration` 与包级 `span` 是否自洽。
@@ -46,11 +46,28 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
 - `stereo_session` 中的首帧 / 结束时间与顶层 offset 语义是否自洽。
 - 左右 `sensor_*.mcap` 是否可读，topic 是否齐全。
 - Fays camera `publishTime` 首末跨度、真实 gap/回退、frameIndex、MCAP camera count 与 stereo MKV packet count 是否一致；stereo 对齐使用 `publishTime`，设备侧 gap 使用 `logTime`，不得用压紧后的 MKV PTS 替代真实采集时间。
-- encoder topic 是否存在 gap、长时间中断、样本数异常。
+- 全部模态逐流检查 gap 并简要统计，包含全部视频、音频、本机 / Ego sensor topic、左右 Fays IMU/camera；Fays 分别统计 device/logTime 与 Unix/publishTime。保留 encoder gap、长时间中断和样本数异常检查。
 - 左右 sensor 同类型 topic 是否明显不同步。
 - sensor 覆盖时长是否明显短于视频。
 - encoder / imu 尾部是否明显早停。
 - 是否存在明显的分组错峰起录模式，例如 `stereo -> tactile -> main`。
+
+## 必须输出的两张表
+
+无论 PASS / WARN / FAIL，都展示全部已启用或已发现的数据流；不得只列异常流。原有文件、schema、标定、时间域、首帧阈值、主摄专项、配对同步、覆盖率和尾部等校验全部保留。
+
+1. **所有模态起止相对偏移表**：每行一个视频、音频或 sensor / Fays topic，列出流名、样本 / 帧数、起始相对偏移 ms、结束相对偏移 ms、时间映射方式及必要说明。
+   - 起始基准 = 所有可映射流中最早有效首样本的 Unix 时间；偏移为正表示该流延迟启动。
+   - 结束基准 = 所有可映射流中最晚有效末样本的 Unix 时间；偏移为负表示该流提前结束。必须给出两个基准，不能把末帧相对起始基准的时长称为结束偏移。
+   - 视频用 `start_offset_us + 实际 packet PTS` 计算首末帧，不能只用容器 duration 代替；Ego 视频使用自己的 metadata。Ego 单调时钟 topic 的首末时间使用同一个固定 offset，不逐流重新拟合。
+   - 缺文件、无样本、映射缺失或无法检查的流仍列出，未知项写 `N/A` 并说明原因；音频没有可靠 Unix 锚点时只检查其包时间轴，不根据文件 mtime 或邻近视频猜测起止时间。
+2. **所有模态 gap 简表**：流名、时间口径、样本 / 帧数、典型间隔 ms、最大间隔 ms、报警阈值 ms、超阈值次数、重复次数、回退次数；异常时补充时间点或少量最大 gap 样本。
+   - 按文件原始记录顺序检查相邻时间差，先排序会掩盖回退。超阈值次数为 0 时仍展示最大间隔和阈值，不能写成“没有 gap”。
+   - 双目 MKV PTS 可能压紧真实采集时间洞；同时列出 Fays camera 的设备时间与 Unix 映射时间统计，不能以视频包连续证明双目没有丢帧。Fays IMU 也分别列这两种口径。
+   - 编码器角度不补造不等于时间戳未处理。确认对应版本是否存在批次时间戳平滑 / 单调钳制，注明“主机接收 / 平滑后时间”；这类 gap 只能说明落盘时间轴间隔，不能直接断定硬件断采或无漏样。有原始时间 / 序号时再交叉判断。
+   - 跳过扫描、解析失败或数据不足时标明 `未检查 / N/A`，不得填零或宣称已通过。全模态覆盖有缺口时在结论中明确列出。
+
+文本入口默认打印这两张 Markdown 表格；JSON 的 `summary.modality_timing` 保留两个基准、逐流起止偏移与 gap 统计。原有 `global_first_frame_sync`、findings 和详细统计仍保留。
 
 ## 建议重点补充的异常类型
 
@@ -77,7 +94,7 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
    - 文件或 topic
    - 时间点
    - gap / 偏差 / 时长差
-   - 首帧对齐默认给出全部启用视频、全部已发现 sensor topic、左右 Fays IMU/camera 和可选 Ego sensor topic 的 Unix 时间、换算方法与相对误差，而不是只列视频
+   - 必须输出上述全模态起止偏移表和 gap 简表，并保留首帧 Unix 时间、换算方法与相对误差；单独说明启动覆盖差、中途时间洞与结束覆盖差
 4. 若能判断模式，明确写出高概率归因：
    - 单路掉流
    - 多路同时卡顿

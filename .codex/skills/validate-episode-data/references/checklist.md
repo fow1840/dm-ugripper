@@ -85,3 +85,12 @@
 
 - 3.3 检查 ego_bound 布尔值、hardware_list.ego_sn 与 Ego 版本一致性；检查启用设备版本已知，主摄版本为 iSerial。
 - 已绑定必须有 ego/metadata.json，其 related_episode_name/related_episode_uuid 分别匹配 UMI episode_name/data_uuid；原 Ego 字段保留。
+
+## 4. 全模态表格与 gap 口径
+
+- 每次校验都输出所有模态起止偏移表、gap 简表，具体列与基准见 [SKILL.md](../SKILL.md#必须输出的两张表)。范围含启用主摄 / 胸摄 / 触觉 / 双目视频、Ego 视频 / 音频、所有本机与 Ego sensor topic，以及左右 Fays IMU/camera。
+- 起始偏移 = 首样本 Unix 时间减去全局最早首样本；结束偏移 = 末样本 Unix 时间减去全局最晚末样本（负值代表提前结束）；统一单位 ms。未知映射写 N/A，禁止用 mtime 猜测。
+- 所有视频默认做逐包 gap 统计，其他模态按文件原始消息顺序统计；列出典型 / 最大间隔、实际阈值、超阈值次数、重复与回退。0 次超阈值不等于始终连续或没有小 gap。
+- Fays IMU 的 device/logTime 与 Unix/publishTime 分别统计；camera 设备 gap 阈值沿用 60 ms（25 Hz 名义间隔的 1.5 倍）。保留已有 camera frameIndex / 缺帧统计与 stereo packet 对照。
+- 编码器若经过批次重排 / +1 ns 单调钳制，标明 gap 为处理后主机时间轴；没有原始接收时间和设备计数时，不确认真实断采或漏回复。
+- `--skip-video-packets` 属于用户选择的部分校验；视频 gap 标记未检查。无论是否有异常，原有所有检查项及阈值继续保留。

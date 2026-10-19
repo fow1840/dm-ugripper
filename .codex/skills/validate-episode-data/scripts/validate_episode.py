@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import heapq
 import json
 import math
 import os
@@ -413,6 +414,31 @@ class FaysMcapStats:
     frame_index_error_count: int = 0
 
 
+def summarize_timing_gaps(timestamps_ns: list[int], floor_ms: float, factor: float,
+                          top: int = 5, basis: str = "publish_time") -> dict[str, Any]:
+    """Inspect adjacent records in file order; sorting would hide rollbacks."""
+    deltas = [(b - a) / 1_000_000 for a, b in zip(timestamps_ns, timestamps_ns[1:])]
+    positive = sorted(value for value in deltas if value > 0)
+    typical = median(positive) if positive else None
+    threshold = max(floor_ms, (typical or 0) * factor)
+    largest = heapq.nlargest(top,
+        ((b - a, a, b) for a, b in zip(timestamps_ns, timestamps_ns[1:]) if b > a))
+    return {
+        "basis": basis, "count": len(timestamps_ns), "scanned": True,
+        "min_gap_ms": min(deltas) if deltas else None,
+        "median_gap_ms": typical,
+        "p99_gap_ms": percentile(positive, 0.99) if positive else None,
+        "max_gap_ms": max(positive) if positive else None,
+        "gap_threshold_ms": threshold,
+        "large_gap_count": sum(value > threshold for value in deltas) if deltas else None,
+        "duplicate_count": sum(value == 0 for value in deltas) if deltas else None,
+        "backward_count": sum(value < 0 for value in deltas) if deltas else None,
+        "one_ns_count": sum(b - a == 1 for a, b in zip(timestamps_ns, timestamps_ns[1:])),
+        "largest_gaps": [{"gap_ms": delta / 1_000_000, "previous_timestamp_ns": a,
+                          "timestamp_ns": b} for delta, a, b in largest],
+    }
+
+
 @dataclass
 class Report:
     episode_dir: str
@@ -477,6 +503,8 @@ class EpisodeValidator:
         self.fays_mcap_stats: dict[str, FaysMcapStats] = {}
         self.artifacts: dict[str, Any] = {}
         self.global_first_frame_sync: dict[str, Any] = {}
+        self.stream_timing: dict[str, dict[str, Any]] = {}
+        self.modality_timing: dict[str, Any] = {}
         self.stereo_enabled = True
         self.active_video_files: list[tuple[str, str, str]] = list(BASE_VIDEO_FILES)
 
@@ -500,6 +528,7 @@ class EpisodeValidator:
         self.validate_ego_linkage()
         self.validate_calibration_structure()
         self.scan_videos()
+        self.scan_additional_media()
         self.scan_main_camera_pair()
         self.scan_sensors()
         self.scan_fays_mcaps()
@@ -512,6 +541,7 @@ class EpisodeValidator:
         self.check_sensor_coverage()
         self.check_video_sensor_alignment()
         self.classify_patterns()
+        self.build_modality_timing()
 
         status = "PASS"
         if any(f.severity == "FAIL" for f in self.findings):
@@ -531,6 +561,7 @@ class EpisodeValidator:
             "fays_mcap_count": len(self.fays_mcap_stats),
             "artifact_count": len(self.artifacts),
             "global_first_frame_sync": self.global_first_frame_sync,
+            "modality_timing": self.modality_timing,
         }
         return Report(
             episode_dir=str(self.episode_dir),
@@ -1488,6 +1519,111 @@ class EpisodeValidator:
                     backward_pts_count=stats.backward_pts_count,
                 )
 
+    def record_stream_timing(self, name: str, kind: str, timestamps: list[int],
+                             publish_times: list[int], floor_ms: float,
+                             factor: float, note: str = "") -> None:
+        gaps = [summarize_timing_gaps(timestamps, floor_ms, factor, self.args.top,
+                                      "device/log_time" if kind.startswith("fays") else "log_time")]
+        if publish_times != timestamps:
+            gaps.append(summarize_timing_gaps(publish_times, floor_ms, factor,
+                                             self.args.top, "publish_time"))
+        self.stream_timing[name] = {
+            "name": name, "kind": kind, "count": len(timestamps),
+            "first_publish_time_ns": publish_times[0] if publish_times else None,
+            "last_publish_time_ns": publish_times[-1] if publish_times else None,
+            "start_unix_us": None, "end_unix_us": None,
+            "alignment_method": "unresolved", "note": note, "gaps": gaps,
+        }
+        for gap in gaps:
+            if kind in {"sensor", "ego_sensor"} and gap["large_gap_count"]:
+                self.add_finding("FAIL" if gap["max_gap_ms"] >= self.args.sensor_gap_fail_ms else "WARN",
+                                 "stream_gap", f"{name} 原始记录顺序存在异常 gap", **gap)
+            if gap["backward_count"]:
+                self.add_finding("FAIL", "stream_timestamp_rollback", f"{name} 时间戳回退",
+                                 basis=gap["basis"], count=gap["backward_count"])
+
+    def scan_additional_media(self) -> None:
+        # Native video checks remain unchanged. Also inspect optional/Ego media,
+        # including every audio/video stream in those containers.
+        suffixes = {".mkv", ".mp4", ".mov", ".avi", ".m4a", ".wav", ".flac", ".ogg", ".opus", ".mp3"}
+        known = {file_name for _, file_name, _ in self.active_video_files}
+        candidates = {p.relative_to(self.episode_dir).as_posix() for p in self.episode_dir.rglob("*")
+                      if p.is_file() and p.suffix.lower() in suffixes} - known
+        offsets = dict(self.video_start_offsets_us)
+        details = self.ego_metadata.get("video_details", [])
+        if isinstance(details, list):
+            for detail in details:
+                if not isinstance(detail, dict) or not isinstance(detail.get("name"), str):
+                    continue
+                rel = "ego/" + detail["name"]
+                candidates.add(rel)
+                offsets[rel] = safe_int(detail.get("start_offset_us"))
+        for rel in sorted(candidates):
+            path = self.episode_dir / rel
+            # Do not let an untrusted metadata filename read outside the episode.
+            if not path.resolve().is_relative_to(self.episode_dir):
+                self.add_finding("FAIL", "media_path_invalid", "媒体路径超出 episode", path=rel)
+                continue
+            command = ["ffprobe", "-v", "error", "-show_streams"]
+            if not self.args.skip_video_packets:
+                command += ["-show_packets"]
+            command += ["-show_entries", "stream=index,codec_type:packet=stream_index,pts_time,dts_time",
+                        "-of", "json", str(path)]
+            result = run_command(command)
+            if result.returncode:
+                self.stream_timing["media:" + rel] = {
+                    "name": "media:" + rel, "kind": "media", "count": 0,
+                    "start_unix_us": None, "end_unix_us": None,
+                    "alignment_method": "unresolved", "note": "unreadable", "gaps": []}
+                self.add_finding("FAIL", "media_unreadable", f"媒体不可读: {rel}", error=result.stderr.strip())
+                continue
+            payload = json.loads(result.stdout or "{}")
+            streams = payload.get("streams", [])
+            for info in streams:
+                kind = info.get("codec_type")
+                if kind not in {"video", "audio"}:
+                    continue
+                name = f"{kind}:{rel}"
+                if sum(s.get("codec_type") == kind for s in streams) > 1:
+                    name += f":stream{info['index']}"
+                timestamps = []
+                for packet in payload.get("packets", []):
+                    if packet.get("stream_index") != info["index"]:
+                        continue
+                    pts = safe_float(packet.get("pts_time"))
+                    if pts is None:
+                        pts = safe_float(packet.get("dts_time"))
+                    if pts is not None:
+                        timestamps.append(round(pts * 1_000_000_000))
+                gap = summarize_timing_gaps(timestamps, self.args.video_gap_min_ms,
+                                            self.args.video_gap_factor, self.args.top, "packet_pts")
+                gap["scanned"] = not self.args.skip_video_packets
+                if not gap["scanned"]:
+                    for key in ("count", "min_gap_ms", "median_gap_ms", "p99_gap_ms", "max_gap_ms",
+                                "large_gap_count", "duplicate_count", "backward_count", "one_ns_count"):
+                        gap[key] = None
+                offset = safe_int(offsets.get(rel))
+                mapped = offset is not None and offset >= MIN_UNIX_TIMESTAMP_US
+                row = {"name": name, "kind": kind, "count": len(timestamps) if gap["scanned"] else None,
+                       "start_unix_us": offset + timestamps[0] // 1000 if mapped and timestamps else None,
+                       "end_unix_us": offset + timestamps[-1] // 1000 if mapped and timestamps else None,
+                       "alignment_method": "metadata_start_offset_plus_packet_pts" if mapped else "unresolved",
+                       "note": "packet timeline; not a hardware sample clock", "gaps": [gap]}
+                self.stream_timing[name] = row
+                if not mapped:
+                    self.add_finding("WARN", "media_time_alignment_unresolved", f"{name} 缺少 Unix 时间映射；起止偏移为 N/A")
+                if not gap["scanned"]:
+                    continue
+                if len(timestamps) <= 1:
+                    self.add_finding("FAIL", "media_too_few_packets", f"{name} 包数量过少", count=len(timestamps))
+                if gap["duplicate_count"]:
+                    self.add_finding("WARN", "media_duplicate_pts", f"{name} 包时间戳重复", count=gap["duplicate_count"])
+                if gap["backward_count"]:
+                    self.add_finding("FAIL", "media_backward_pts", f"{name} 包时间戳回退", count=gap["backward_count"])
+                if gap["large_gap_count"]:
+                    self.add_finding("FAIL" if gap["max_gap_ms"] >= self.args.video_gap_fail_ms else "WARN",
+                                     "media_gap", f"{name} 存在异常 gap", **gap)
+
     def scan_main_camera_pair(self) -> None:
         script_path = PROJECT_ROOT / "test" / "scripts" / "scan_main_camera_mkv_issues.py"
         if not script_path.exists():
@@ -1589,6 +1725,12 @@ class EpisodeValidator:
         if (self.episode_dir / EGO_SENSOR_FILE).is_file():
             sensor_sources.append((EGO_SENSOR_FILE, [], "ego:"))
 
+        known_mcaps = {file_name for _, file_name, _ in FAYS_MCAP_FILES} | {file_name for file_name, _, _ in sensor_sources}
+        for path in sorted(self.episode_dir.rglob("*.mcap")):
+            rel = path.relative_to(self.episode_dir).as_posix()
+            if rel not in known_mcaps:
+                sensor_sources.append((rel, [], rel + ":"))
+
         for file_name, expected_topics, topic_prefix in sensor_sources:
             path = self.episode_dir / file_name
             if not path.exists() or path.stat().st_size <= 0:
@@ -1610,6 +1752,13 @@ class EpisodeValidator:
 
         for topic, timestamps in sorted(topic_log_times.items()):
             publish_timestamps = topic_publish_times.get(topic, [])
+            floor = self.args.imu_gap_min_ms if "imu" in topic.lower() else self.args.encoder_gap_min_ms
+            self.record_stream_timing(
+                "sensor:" + topic, "ego_sensor" if topic.startswith("ego:") else "sensor",
+                timestamps, publish_timestamps, floor, self.args.sensor_gap_factor,
+                "encoder: host receive timestamps may be batch-smoothed; gaps do not prove hardware loss"
+                if topic.startswith("encoder") else "",
+            )
             timestamps.sort()
             publish_timestamps.sort()
             stats = SensorTopicStats(topic=topic, source_file=topic_sources.get(topic, ""))
@@ -1744,6 +1893,8 @@ class EpisodeValidator:
                 continue
 
             stats = FaysMcapStats(side=side, source_file=str(path))
+            timing_device: dict[str, list[int]] = defaultdict(list)
+            timing_publish: dict[str, list[int]] = defaultdict(list)
             previous_camera_log_ns: int | None = None
             previous_camera_publish_ns: int | None = None
             previous_frame_index: int | None = None
@@ -1755,6 +1906,9 @@ class EpisodeValidator:
                     is_camera = topic == "c" or data_size == FAYS_CAMERA_PAYLOAD_BYTES
                     if not is_imu and not is_camera:
                         continue
+                    key = "imu" if is_imu else "camera"
+                    timing_device[key].append(log_time_ns)
+                    timing_publish[key].append(publish_time_ns)
                     if is_imu:
                         stats.imu_count += 1
                         if (
@@ -1823,6 +1977,17 @@ class EpisodeValidator:
                     / 1_000_000_000.0,
                 )
             self.fays_mcap_stats[file_name] = stats
+            for key in ("imu", "camera"):
+                name = f"fays:{side}:{key}"
+                self.record_stream_timing(name, "fays_" + key, timing_device[key], timing_publish[key],
+                                          self.args.imu_gap_min_ms if key == "imu" else 60.0,
+                                          self.args.sensor_gap_factor if key == "imu" else 0.0,
+                                          "device/log_time gives acquisition gaps; publish_time gives mapped Unix gaps")
+                if key == "imu":
+                    for gap in self.stream_timing[name]["gaps"]:
+                        if gap["large_gap_count"]:
+                            self.add_finding("FAIL" if gap["max_gap_ms"] >= self.args.sensor_gap_fail_ms else "WARN",
+                                             "fays_imu_gap", f"{name} 存在异常 gap", **gap)
 
             if stats.imu_count <= 0 or stats.camera_count <= 0:
                 self.add_finding(
@@ -2162,6 +2327,10 @@ class EpisodeValidator:
                 "metadata_start_offset_plus_packet_pts",
             )
 
+        for name, row in sorted(self.stream_timing.items()):
+            if row["kind"] == "video":
+                add_stream(name, "video", row["start_unix_us"], row["alignment_method"])
+
         expected_sensor_topics = {
             topic
             for _, _, expected_topics in SENSOR_FILES
@@ -2269,6 +2438,64 @@ class EpisodeValidator:
                 per_stream_ms={item["name"]: item["relative_error_ms"] for item in streams},
             )
 
+    def build_modality_timing(self) -> None:
+        rows = {name: dict(row) for name, row in self.stream_timing.items()}
+        for video_name, file_name, _ in self.active_video_files:
+            stats = self.video_stats.get(video_name)
+            scanned = not self.args.skip_video_packets and stats is not None and not stats.error
+            gap = {"basis": "packet_pts", "scanned": scanned,
+                   "count": stats.packet_count if scanned else None,
+                   "median_gap_ms": stats.median_delta_ms if scanned and stats.packet_count > 1 else None,
+                   "max_gap_ms": stats.max_gap_ms if scanned and stats.packet_count > 1 else None,
+                   "gap_threshold_ms": max(self.args.video_gap_min_ms, stats.median_delta_ms * self.args.video_gap_factor) if scanned else None,
+                   "large_gap_count": stats.large_gap_count if scanned and stats.packet_count > 1 else None,
+                   "duplicate_count": stats.duplicate_pts_count if scanned and stats.packet_count > 1 else None,
+                   "backward_count": stats.backward_pts_count if scanned and stats.packet_count > 1 else None}
+            rows["video:" + file_name] = {
+                "name": "video:" + file_name, "kind": "video", "count": gap["count"],
+                "start_unix_us": stats.first_system_time_us if stats else None,
+                "end_unix_us": stats.last_system_time_us if stats else None,
+                "alignment_method": "metadata_start_offset_plus_" + ("container_duration_estimate" if self.args.skip_video_packets else "packet_pts"),
+                "note": (stats.error or "") if stats and stats.error else ("stereo packet PTS may compress gaps; see Fays device/log_time" if "stereo" in file_name else ""),
+                "gaps": [gap],
+            }
+        for _, _, topics in SENSOR_FILES:
+            for topic in topics:
+                rows.setdefault("sensor:" + topic, {"name": "sensor:" + topic, "kind": "sensor", "count": 0,
+                    "start_unix_us": None, "end_unix_us": None, "alignment_method": "missing", "note": "missing", "gaps": []})
+        if self.stereo_enabled:
+            for side, _, _ in FAYS_MCAP_FILES:
+                for topic in ("imu", "camera"):
+                    name = f"fays:{side}:{topic}"
+                    rows.setdefault(name, {"name": name, "kind": "fays_" + topic, "count": 0,
+                        "start_unix_us": None, "end_unix_us": None, "alignment_method": "missing", "note": "missing", "gaps": []})
+        for name, row in rows.items():
+            if row["kind"] in {"sensor", "ego_sensor"}:
+                stats = self.sensor_stats.get(name.removeprefix("sensor:"))
+                if stats and stats.time_offset_us is not None:
+                    for field, raw_field in (("start_unix_us", "first_publish_time_ns"), ("end_unix_us", "last_publish_time_ns")):
+                        if row.get(raw_field) is not None:
+                            row[field] = row[raw_field] // 1000 + stats.time_offset_us
+                    row["alignment_method"] = stats.time_alignment_method
+            elif row["kind"].startswith("fays"):
+                for field, raw_field in (("start_unix_us", "first_publish_time_ns"), ("end_unix_us", "last_publish_time_ns")):
+                    if row.get(raw_field) is not None and row[raw_field] // 1000 >= MIN_UNIX_TIMESTAMP_US:
+                        row[field] = row[raw_field] // 1000
+                row["alignment_method"] = "mcap_publish_time_unix"
+            for key in ("start_unix_us", "end_unix_us"):
+                if row.get(key) is not None and row[key] < MIN_UNIX_TIMESTAMP_US:
+                    row[key] = None
+        starts = [row["start_unix_us"] for row in rows.values() if row.get("start_unix_us") is not None]
+        ends = [row["end_unix_us"] for row in rows.values() if row.get("end_unix_us") is not None]
+        start_ref = min(starts) if starts else None
+        end_ref = max(ends) if ends else None
+        for row in rows.values():
+            row["start_offset_ms"] = round((row["start_unix_us"] - start_ref) / 1000, 3) if row.get("start_unix_us") is not None and start_ref is not None else None
+            row["end_offset_ms"] = round((row["end_unix_us"] - end_ref) / 1000, 3) if row.get("end_unix_us") is not None and end_ref is not None else None
+        self.modality_timing = {"start_reference_unix_us": start_ref, "end_reference_unix_us": end_ref,
+                                "end_offset_semantics": "last sample minus latest last sample; negative means earlier end",
+                                "streams": [rows[name] for name in sorted(rows)]}
+
     def classify_patterns(self) -> None:
         starts = {
             name: stats.first_system_time_us
@@ -2366,6 +2593,29 @@ def print_text_report(report: Report) -> None:
     print(f"Episode: {report.episode_dir}")
     print(f"Status:  {report.status}")
     print()
+
+    timing = report.summary.get("modality_timing", {})
+    def cell(value: Any) -> str:
+        if value is None:
+            return "N/A"
+        return f"{value:.3f}" if isinstance(value, float) else str(value).replace("|", "/")
+    if timing:
+        print("All-Modality Start/End Offsets (ms):")
+        print(f"start reference={timing['start_reference_unix_us']} Unix us; end reference={timing['end_reference_unix_us']} Unix us")
+        print("Positive start = delayed start; negative end = earlier end; N/A = missing/unmapped/unscanned.")
+        print("| Stream | Count | Start offset ms | End offset ms | Mapping / note |")
+        print("|---|---:|---:|---:|---|")
+        for row in timing["streams"]:
+            print("| " + " | ".join(cell(x) for x in (row['name'], row['count'], row['start_offset_ms'], row['end_offset_ms'], str(row['alignment_method']) + "; " + row['note'])) + " |")
+        print()
+        print("All-Modality Gap Summary (adjacent records in file order):")
+        print("| Stream | Basis | Count | Typical ms | Max ms | Threshold ms | Gap count | Dup | Back |")
+        print("|---|---|---:|---:|---:|---:|---:|---:|---:|")
+        for row in timing["streams"]:
+            for gap in row["gaps"] or [{}]:
+                print("| " + " | ".join(cell(x) for x in (row['name'], gap.get('basis'), gap.get('count'), gap.get('median_gap_ms'), gap.get('max_gap_ms'), gap.get('gap_threshold_ms'), gap.get('large_gap_count'), gap.get('duplicate_count'), gap.get('backward_count'))) + " |")
+        print("Zero gap count only means below the displayed threshold. Packet/host timestamps do not prove hardware continuity.")
+        print()
 
     global_sync = report.summary.get("global_first_frame_sync", {})
     if global_sync:
