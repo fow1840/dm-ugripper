@@ -44,5 +44,7 @@ stereo_swap_lr: 0
 
 # Imu device number
 imu_dev_port: /dev/left_fays_imu
+# IMU V4L2 buffers (SDK >= 3.8.4); stereo image buffers stay unchanged.
+imu_v4l2_buffer_count: 64
 # The gravity acceleration value of the device location
 gravity: 9.7946

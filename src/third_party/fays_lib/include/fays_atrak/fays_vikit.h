@@ -252,7 +252,7 @@ FAYS_VIK_API      int     FAYS_VIK_GetStatus                        (void* handl
  *
  * @param[in] handle
  * @return VIKIT_RET_SUCCESS on success; otherwise, a non-zero error code.
- */
+ */ 
 FAYS_VIK_API      int     FAYS_VIK_ReConnect                       (void* handle);
 
 /*

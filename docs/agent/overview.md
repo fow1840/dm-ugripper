@@ -221,7 +221,7 @@ BMS 串口由蓝牙服务的 `update_bms_data` 独占采集，UGripper 不再打
 - 普通 `camera_recorder` 直接启动主摄与触觉；默认包另行启动双目 warmup daemon，`+nostereo` 变体不启动。
 - 夹爪热插拔恢复完成后，`record_runtime` 当前会在该侧关键设备全部 ready、并完成 gripper runtime refresh 之后，只按 tactile 相机 USB `serial` 标记该侧实时参考帧待更新；服务初始化阶段不会直接打开触觉相机抓参考帧。待更新实时参考帧统一由后续首个可用 episode 的触觉视频截帧生成，若该 episode 缺失、损坏或截帧失败则顺延到下一条 episode。持久化 baseline 不因夹爪重连刷新，避免覆盖关机期间发生的盖板损坏。
 以下 stereo warmup、session writer 与热插拔内容适用于默认包；`+nostereo` 变体不会执行：
-- 当前随包 vendored Fays VIKit SDK 为 `3.8.3`，来源为上游 tag `v3.8.3` 提交 `8e2d91a08b065bde247a2283ecaa4bb7fd3aa419`；保留 `3.8.2` 对 IMU 帧时间戳小概率回退的修复，并优化数据流初始化稳定性。aarch64/x86_64 的 `libfays_vikit.so` 与版本头保持同一上游版本，FT602 运行库仍为 `1.0.17`。具体来源记录见 `src/third_party/fays_lib/UPSTREAM.md`。
+- 当前随包 vendored Fays VIKit SDK 为 `3.8.4`，来源为上游 tag `v3.8.4` 提交 `1bb5d83d111f25bf29dac5e081312829c1a941eb`；同步 aarch64/x86_64 运行库与公开头文件，FT602 仍为 `1.0.17`。左右 SDK YAML 均设置 `imu_v4l2_buffer_count: 64`，扩大 IMU V4L2 接收缓冲以缓解高负载或调度延迟下的缓冲溢出，双目图像 buffer 和应用队列保持不变；实际分配及丢帧改善需板端验证。具体来源见 `src/third_party/fays_lib/UPSTREAM.md`。
 - warmup daemon 常驻消费左右双目 `MJPEG 60fps` 预热流，并在录制时建立 session writer；主摄在普通录制阶段直接采集并写入最终文件。
 - warmup daemon 当前按单实例口径运行；若服务内 daemon 尚未退出又手工再起第二个 `camera_recorder --stereo-daemon` 去抢同一批双目设备，可能诱发设备忙、节点缺失或整条 USB 链路重枚举。当前实现已增加 `/tmp/umi_camera_warmup_daemon.lock` 单实例锁，第二个 warmup daemon 会直接拒绝启动。
 - 停录阶段也会并发向各路相机子进程发 stop，并在全部 stop 返回后统一 poll 状态，降低多路顺序收尾导致内部 timing 文件缺失或容器未 finalize 的风险。
