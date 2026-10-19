@@ -3,6 +3,7 @@
 
 #include "gripper_hmi_calibration_data.h"
 #include "gripper_hmi_led_effects.h"
+#include "gripper_hmi_frame_writer.h"
 #include "gripper_hmi_protocol.h"
 
 #include <libserialport.h>
@@ -135,6 +136,7 @@ private:
     uint32_t baudrate_;
     struct sp_port *serialPort_;
     std::vector<uint8_t> rxBuffer_;
+    gripper_hmi::FrameWriter frameWriter_;
 
     mutable std::mutex ioMutex_;
     std::condition_variable ioCv_;

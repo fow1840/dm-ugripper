@@ -314,6 +314,11 @@ private:
     bool isEgoRequired() const;
     void handleEgoBindingToggle();
     void startEgoFeedback();
+    void maintainSystemLogWorker();
+    void stopSystemLogWorker();
+    bool snapshotSystemLog(const std::string &reason) const;
+    void maintainEgoWarmWorker();
+    void stopEgoWarmWorker();
     std::optional<DA::Ugripper::HealthFault> detectDataDiskHealthFault(const std::string &path);
     void maintainEgoBindingAction();
     void maintainEgoBindingHealth();
@@ -413,6 +418,9 @@ private:
     std::array<TactileWarningSideState, 2> tactileWarningSides_{};
     bool tactileWarningActive_ = false;
     std::string tactileTriggeredAudioCommand_;
+    // Filled only by the STOP prevalidation task, consumed after its join.
+    std::string stopTactileEpisodeDir_;
+    std::vector<DA::Ugripper::TactileValidationFinding> stopTactileFindings_;
     struct BackgroundTactileValidationResult
     {
         std::string episodeDir;
@@ -423,6 +431,7 @@ private:
     std::future<BackgroundTactileValidationResult> backgroundTactileFuture_;
     std::atomic<bool> stopBackgroundTactileValidation_{false};
     std::optional<DA::Ugripper::HealthFault> activeHardwareFault_;
+    mutable std::atomic<bool> logPersistenceFailed_{false};
     bool episodeManagerInitialized_ = false;
     bool dataStorageWaitLogged_ = false;
     LedState lastLoggedLedState_ = LedState::Init;
@@ -529,6 +538,15 @@ private:
     std::unique_ptr<DA::Ugripper::ShutdownRequestPort> shutdownRequestPort_;
     std::optional<DA::Ugripper::SubprocessHandle> egoRecordingWorker_;
     std::optional<DA::Ugripper::SubprocessHandle> egoStopWorker_;
+    int egoStopControlFd_ = -1;
+    mutable std::mutex systemLogWorkerMutex_;
+    mutable std::optional<DA::Ugripper::SubprocessHandle> systemLogWorker_;
+    mutable int systemLogControlFd_ = -1;
+    uint64_t systemLogRetryMs_ = 0;
+    mutable std::atomic<bool> systemLogEarlyFailed_{false};
+    int egoWarmControlFd_ = -1;
+    std::string egoWarmSerial_;
+    uint64_t egoWarmRetryMs_ = 0;
     uint64_t egoStopDeadlineMs_ = 0;
     bool egoRecordingAttempted_ = false;
     uint64_t egoIncrementalCheckMs_ = 0;

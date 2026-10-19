@@ -382,6 +382,7 @@ bool GripperHmiDriver::connect()
     sp_flush(serialPort_, SP_BUF_BOTH);
 
     rxBuffer_.clear();
+    frameWriter_.Reset();
     pendingStateRequest_ = true;
     pendingLedUpdate_ = false;
     pendingBeepUpdate_ = true;
@@ -486,10 +487,21 @@ bool GripperHmiDriver::writeFrameLocked(const uint8_t *data, size_t size)
         return false;
     }
 
-    const auto written = sp_blocking_write(serialPort_, data, size, 50);
-    if (written < 0 || static_cast<size_t>(written) != size)
+    const auto result = frameWriter_.Send(size, baudrate_,
+        [&]() {
+            const auto written = sp_blocking_write(serialPort_, data, size, 50);
+            return written >= 0 && static_cast<size_t>(written) == size;
+        },
+        [&]() { return sp_output_waiting(serialPort_); },
+        []() { return gripper_hmi::FrameWriter::Clock::now(); },
+        [](auto deadline) { std::this_thread::sleep_until(deadline); });
+    if (result != gripper_hmi::FrameWriteResult::Ok)
     {
-        handleIoFailureLocked("write");
+        const char *operation = result == gripper_hmi::FrameWriteResult::QueueTimeout
+                                    ? "write_queue_timeout"
+                                    : result == gripper_hmi::FrameWriteResult::QueueQueryFailed
+                                          ? "write_queue_query" : "write";
+        handleIoFailureLocked(operation);
         return false;
     }
 
@@ -2484,7 +2496,8 @@ void GripperHmiDriver::ioLoop()
 
         // Pending RGB is a single latest-value slot: obsolete colors never form
         // a queue. Explicit beep changes and due health probes precede RGB edges;
-        // only redundant writes are subject to the small inter-command budget.
+        // the transport enforces a queue drain and 25ms quiet for every frame.
+        // The scheduler's smaller budget only arbitrates redundant traffic.
         auto writeBeep = [&]() {
             const auto frame = GripperHmiProtocol::buildSetBeepCommand(activeBeepState_);
             if (!writeFrameLocked(frame.data(), frame.size())) return false;

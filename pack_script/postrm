@@ -4,6 +4,8 @@ set -e
 APP_DIR="{{INSTALL_DIR}}"
 EXFAT_MODULES_LOAD_FILE="/etc/modules-load.d/ugripper-exfat.conf"
 
+# Logging policy restoration runs transactionally in prerm, before helper removal.
+
 systemctl daemon-reload
 
 # 如果是彻底清除 (purge)，则删除程序目录

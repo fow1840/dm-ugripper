@@ -1269,10 +1269,26 @@ const std::vector<VideoProbeTaskResult> &DA::Ugripper::EpisodeManager::finalizat
 {
     const fs::path path(episodeDir);
     const std::string key = (path.parent_path() / stripEpisodeTempSuffix(path.filename().string())).string();
-    if (probeEpisodeKey_ != key) {
+    const auto identities = [&]() {
+        std::vector<std::string> result;
+        for (const auto &artifact : activeEpisodeVideoArtifacts(chestCameraEnabled_, stereoEnabled_)) {
+            struct stat st{};
+            const auto name = path / artifact.fileName;
+            if (::stat(name.c_str(), &st) != 0) { result.push_back("missing"); continue; }
+            result.push_back(std::to_string(st.st_dev)+":"+std::to_string(st.st_ino)+":"+
+                std::to_string(st.st_size)+":"+std::to_string(st.st_mtim.tv_sec)+":"+
+                std::to_string(st.st_mtim.tv_nsec)+":"+std::to_string(st.st_ctim.tv_sec)+":"+
+                std::to_string(st.st_ctim.tv_nsec));
+        }
+        return result;
+    };
+    const auto before = identities();
+    if (probeEpisodeKey_ != key || probeFileIdentities_ != before) {
         finalizationProbes_ = probeVideoFilesParallel(
             episodeDir, activeEpisodeVideoArtifacts(chestCameraEnabled_, stereoEnabled_));
-        probeEpisodeKey_ = key;
+        // A changed file cannot reuse a probe produced from an earlier version.
+        probeEpisodeKey_ = identities() == before ? key : std::string();
+        probeFileIdentities_ = before;
     }
     return finalizationProbes_;
 }
@@ -1280,7 +1296,8 @@ const std::vector<VideoProbeTaskResult> &DA::Ugripper::EpisodeManager::finalizat
 bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir,
                                                     std::string *errorMessage,
                                                     std::vector<std::string> *errorTypes,
-                                                    std::vector<TactileValidationFinding> *tactileFindings) const
+                                                    std::vector<TactileValidationFinding> *tactileFindings,
+                                                    bool validateMetadata) const
 {
     if (stereoEnabled_) {
         for (const char* camera : {"stereo_left.mkv", "stereo_right.mkv"}) {
@@ -1300,12 +1317,8 @@ bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir
     std::string timingLoadError;
     loadJsonFile(episodeTimingPath(episodeDir).string(), &timingRoot, &timingLoadError);
     const auto artifacts = activeEpisodeVideoArtifacts(chestCameraEnabled_, stereoEnabled_);
-    const std::vector<std::string> requiredFiles = {
-        "sensor_left.mcap",
-        "sensor_right.mcap",
-        "calibration.json",
-        "metadata.json",
-    };
+    std::vector<std::string> requiredFiles = {"sensor_left.mcap", "sensor_right.mcap", "calibration.json"};
+    if (validateMetadata) requiredFiles.push_back("metadata.json");
 
     for (const auto &artifact : artifacts)
     {
@@ -1390,7 +1403,7 @@ bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir
             "video unreadable or missing timing metadata: " + task.probe.fileName + " (" + task.errorMessage + ")");
     }
     std::string metadataError;
-    if (!validateMetadataVideoDetails(fs::path(episodeDir) / "metadata.json",
+    if (validateMetadata && !validateMetadataVideoDetails(fs::path(episodeDir) / "metadata.json",
                                       artifacts,
                                       &metadataError))
     {
@@ -1635,6 +1648,16 @@ bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir
               << " elapsed_ms=" << (steadyNowMs() - validateStartMs)
               << " reference_span_sec=" << formatSeconds(referenceSpanSec)).str());
     return true;
+}
+
+void DA::Ugripper::EpisodeManager::PrevalidateLocalArtifacts(const std::string &episodeDir) const
+{
+    std::string error;
+    std::vector<std::string> types;
+    const bool ok = ValidateEpisode(episodeDir, &error, &types, nullptr, false);
+    DM_LOG_INFO("[STOP_DIAG] local artifact prevalidation: ok={} detail={}", ok, error);
+    // Final validation always runs again after metadata publication. Only the
+    // expensive video probes are reused, guarded by complete file identities.
 }
 
 const std::string &DA::Ugripper::EpisodeManager::GetDataRoot() const

@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 
 #include <map>
+#include <future>
+#include <chrono>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -92,6 +94,10 @@ struct RecordingHarness
     std::string wait_finalize_error = "stereo finalize timeout";
     std::string ego_error = "required ego operation failed";
 
+    std::function<void()> prevalidate_hook;
+    std::function<bool()> snapshot_hook;
+    std::function<void()> ego_wait_hook;
+
     RecordingOrchestrator Make()
     {
         return RecordingOrchestrator(
@@ -133,6 +139,7 @@ struct RecordingHarness
                          }
                          return validate_ok;
                      },
+                 .prevalidate_local = [this](const std::string&) { if (prevalidate_hook) prevalidate_hook(); },
                  .attach_pending_pre_audio =
                      [this](const std::string&) {
                          return attach_ok;
@@ -293,6 +300,7 @@ struct RecordingHarness
                  .wait_for_finalize =
                      [this](const std::string&, int, std::string* error, std::string* error_type) {
                          ++ego_finalize_calls;
+                         if (ego_wait_hook) ego_wait_hook();
                          if (!ego_finalize_ok && error != nullptr)
                          {
                              *error = ego_error;
@@ -348,6 +356,7 @@ struct RecordingHarness
                      },
                  .log_warn =
                      [this](const std::string& message) {
+                         const std::lock_guard<std::mutex> lock(worker_mutex);
                          logs.push_back("W:" + message);
                      },
                  .log_error =
@@ -359,6 +368,7 @@ struct RecordingHarness
                          typed_errors.push_back(type);
                          logs.push_back("E:" + message);
                      },
+                 .snapshot_system_log = [this](const std::string&) { return !snapshot_hook || snapshot_hook(); },
                  .sync_runtime_log =
                      [this](const std::string& reason) {
                          sync_reason = reason;
@@ -963,4 +973,74 @@ TEST(RecordingOrchestratorTest, MetadataWriteFailureCannotReportSuccess)
     EXPECT_EQ(harness.validate_calls, 1);
     EXPECT_EQ(harness.metadata_error_types.back(), "finalize_error");
     EXPECT_NE(harness.last_validation_log.find("failed to write final metadata.json"), std::string::npos);
+}
+
+TEST(RecordingOrchestratorTest, LocalValidationAndSnapshotOverlapEgoButReadyWaitsForAll)
+{
+    using namespace std::chrono_literals;
+    RecordingHarness harness;
+    std::promise<void> validation_started, snapshot_started, ego_entered, release_snapshot;
+    auto validation_ready = validation_started.get_future();
+    auto snapshot_ready = snapshot_started.get_future();
+    auto ego_ready = ego_entered.get_future();
+    auto release = release_snapshot.get_future().share();
+    harness.prevalidate_hook = [&] {
+        EXPECT_EQ(harness.stereo_finalize_calls, 1);
+        validation_started.set_value();
+    };
+    harness.snapshot_hook = [&] { snapshot_started.set_value(); release.wait(); return true; };
+    harness.ego_wait_hook = [&] {
+        EXPECT_EQ(validation_ready.wait_for(2s), std::future_status::ready);
+        EXPECT_EQ(snapshot_ready.wait_for(2s), std::future_status::ready);
+        ego_entered.set_value();
+    };
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+    auto stopped = std::async(std::launch::async, [&] { return orchestrator.StopRecording(false, "stop"); });
+    EXPECT_EQ(ego_ready.wait_for(2s), std::future_status::ready);
+    EXPECT_EQ(stopped.wait_for(30ms), std::future_status::timeout);
+    release_snapshot.set_value();
+    EXPECT_TRUE(stopped.get());
+    EXPECT_EQ(harness.validate_calls, 1);
+    EXPECT_FALSE(harness.ready_before_log_sync);
+    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Ready);
+}
+
+TEST(RecordingOrchestratorTest, FailedEarlySnapshotCannotTurnGreenAfterSuccessfulFinalSync)
+{
+    RecordingHarness harness;
+    harness.snapshot_hook = [] { return false; };
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+    EXPECT_FALSE(orchestrator.StopRecording(false, "stop"));
+    EXPECT_EQ(harness.sync_reason, "video stop");
+    EXPECT_NE(harness.led_states.back(), RuntimeLedState::Ready);
+}
+
+TEST(RecordingOrchestratorTest, PrevalidationExceptionStillRunsCompleteFinalValidation)
+{
+    RecordingHarness harness;
+    harness.prevalidate_hook = [] { throw std::runtime_error("probe unavailable"); };
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+    EXPECT_TRUE(orchestrator.StopRecording(false, "stop"));
+    EXPECT_EQ(harness.validate_calls, 1);
+    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Ready);
+}
+
+TEST(RecordingOrchestratorTest, InvalidEgoTerminalKeepsAppReasonAndCannotTurnGreenOrDeleteRemote)
+{
+    RecordingHarness harness;
+    harness.ego_required = true;
+    auto orchestrator = harness.Make();
+    ASSERT_TRUE(orchestrator.StartRecording(false));
+    harness.ego_finalize_ok = false;
+    harness.ego_finalize_error_type = "ego_pull_incomplete";
+    harness.ego_error = "ego episode invalid: main_camera_short_stream";
+    EXPECT_FALSE(orchestrator.StopRecording(false, "invalid terminal"));
+    EXPECT_EQ(harness.ego_cleanup_calls, 0);
+    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
+    EXPECT_NE(harness.last_validation_log.find("main_camera_short_stream"), std::string::npos);
+    EXPECT_EQ(harness.metadata_error_types.back(), "ego_pull_incomplete");
+    EXPECT_EQ(harness.sync_reason, "video stop");
 }

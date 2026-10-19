@@ -20,7 +20,8 @@ using namespace DA::Ugripper::detail;
 
 void DA::Ugripper::EpisodeManager::ValidateTactileEpisode(
     const std::string &episodeDir,
-    std::vector<TactileValidationFinding> *tactileFindings) const
+    std::vector<TactileValidationFinding> *tactileFindings,
+    bool publishMetadata) const
 {
     const int64_t tactileValidationStartMs = steadyNowMs();
     const std::string bootId = currentBootId();
@@ -391,7 +392,7 @@ void DA::Ugripper::EpisodeManager::ValidateTactileEpisode(
             DM_LOG_WARN("{}", (::DA::utils::LogString() << "failed to persist tactile history: " << writeError << std::endl).str());
         }
     }
-    if (tactileFindings != nullptr)
+    if (publishMetadata && tactileFindings != nullptr)
     {
         std::string metadataError;
         if (!updateTactileDamageMetadata(episodeDir, *tactileFindings, &metadataError))
@@ -458,4 +459,12 @@ bool DA::Ugripper::EpisodeManager::updateTactileDamageMetadata(
     }
     metadata["tactile_damage_sn_list"] = std::move(damagedSerialNumbers);
     return writeTextFileAtomically(metadataPath, metadata.dump(2) + "\n", errorMessage);
+}
+
+// Publication belongs to the STOP durability boundary, after metadata exists.
+bool DA::Ugripper::EpisodeManager::PublishTactileValidation(
+    const std::string &episodeDir, const std::vector<TactileValidationFinding> &findings,
+    std::string *errorMessage) const
+{
+    return updateTactileDamageMetadata(episodeDir, findings, errorMessage);
 }

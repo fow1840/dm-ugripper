@@ -489,6 +489,11 @@ copy_if_exists "scripts/logging/ugripper_logger.py" \
 copy_if_exists "scripts/logging/save_system_log.sh" \
     "$BUILD_ROOT/usr/local/lib/ugripper/logging/save_system_log.sh"
 
+for log_helper in system_log_snapshot.py rotate_journal.sh rotate_syslog.py install_ram_logging.sh ram_logging_config.py; do
+    copy_if_exists "scripts/logging/$log_helper" "$BUILD_ROOT/usr/local/lib/ugripper/logging/$log_helper"
+done
+chmod 0755 "$BUILD_ROOT/usr/local/lib/ugripper/logging/"*
+
 copy_if_exists "standalone/CameraRecorder/config" "$TARGET_INSTALL_ROOT/bin/CameraRecorder/config"
 copy_if_exists "$PACKAGED_BUILD_DIR/standalone/FaysStereoRecorder/config" \
     "$TARGET_INSTALL_ROOT/bin/FaysStereoRecorder/config"

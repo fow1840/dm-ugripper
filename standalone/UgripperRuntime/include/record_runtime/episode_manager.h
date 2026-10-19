@@ -53,9 +53,15 @@ public:
     bool ValidateEpisode(const std::string &episodeDir,
                          std::string *errorMessage,
                          std::vector<std::string> *errorTypes = nullptr,
-                         std::vector<TactileValidationFinding> *tactileFindings = nullptr) const;
+                         std::vector<TactileValidationFinding> *tactileFindings = nullptr,
+                         bool validateMetadata = true) const;
+    void PrevalidateLocalArtifacts(const std::string &episodeDir) const;
     void ValidateTactileEpisode(const std::string &episodeDir,
-                                std::vector<TactileValidationFinding> *tactileFindings) const;
+                                std::vector<TactileValidationFinding> *tactileFindings,
+                                bool publishMetadata = true) const;
+    bool PublishTactileValidation(const std::string &episodeDir,
+                                const std::vector<TactileValidationFinding> &findings,
+                                std::string *errorMessage) const;
     bool WriteFinalMetadata(const std::string &episodeDir,
                             bool qualityOk,
                             const std::string &qualityErrorMessage,
@@ -67,6 +73,7 @@ public:
 private:
     const std::vector<detail::VideoProbeTaskResult> &finalizationVideoProbes(const std::string &episodeDir) const;
     mutable std::string probeEpisodeKey_;
+    mutable std::vector<std::string> probeFileIdentities_;
     mutable std::vector<detail::VideoProbeTaskResult> finalizationProbes_;
     bool writeFilteredCalibration(const std::string &episodeDir, std::string *errorMessage) const;
     bool prepareEpisodeOutputs(const std::string &episodeDir, std::string *errorMessage) const;

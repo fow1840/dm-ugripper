@@ -22,9 +22,11 @@
 #include <iomanip>
 #include <iostream>
 #include <optional>
+#include <poll.h>
 #include <sstream>
 #include <string>
 #include <sys/file.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -39,6 +41,22 @@ using ordered_json = nlohmann::ordered_json;
 using namespace DA::Ugripper::detail;
 
 namespace DA::Ugripper {
+
+namespace {
+bool receiveControlJson(int fd, int timeoutMs, json *reply)
+{
+    pollfd descriptor{fd, POLLIN, 0};
+    int ready;
+    do { ready = ::poll(&descriptor, 1, timeoutMs); } while (ready < 0 && errno == EINTR);
+    if (ready <= 0) return false;
+    std::array<char, 65536> buffer;
+    ssize_t count;
+    do { count = ::recv(fd, buffer.data(), buffer.size(), 0); } while (count < 0 && errno == EINTR);
+    if (count <= 0 || count == static_cast<ssize_t>(buffer.size())) return false;
+    *reply = json::parse(buffer.data(), buffer.data()+count, nullptr, false);
+    return reply->is_object();
+}
+}
 
 bool RecordRuntime::startAudioPlayer()
 {
@@ -62,6 +80,7 @@ void RecordRuntime::stopAudioPlayer()
 
 void RecordRuntime::setAudioRecoveryCommand(std::string command)
 {
+    if (command == "ready" && logPersistenceFailed_.load()) command = "error";
     audioRecoveryCommand_ = std::move(command);
     if (audioCoordinator_ != nullptr)
     {
@@ -290,6 +309,53 @@ void RecordRuntime::startEgoFeedback()
     });
 }
 
+void RecordRuntime::stopEgoWarmWorker()
+{
+    // A live session has no control fd: its incremental owner is managed by the
+    // existing STOP/watchdog paths, never by idle prewarming.
+    if (egoWarmControlFd_ < 0) return;
+    ::close(egoWarmControlFd_);
+    egoWarmControlFd_ = -1;
+    egoWarmSerial_.clear();
+    if (egoRecordingWorker_.has_value())
+    {
+        egoRecordingWorker_->Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
+        egoRecordingWorker_.reset();
+    }
+}
+
+void RecordRuntime::maintainEgoWarmWorker()
+{
+    if (isRecordingActive() || egoStopWorker_.has_value()) return;
+    if (egoWarmControlFd_ >= 0 &&
+        (egoWarmSerial_ != egoBoundSerial_ || !egoRecordingWorker_.has_value() ||
+         !egoRecordingWorker_->IsRunning()))
+        stopEgoWarmWorker();
+    if (!isEgoRequired() || egoRecordingWorker_.has_value() ||
+        currentSteadyMs() < egoWarmRetryMs_ || !fs::exists(options_.egoRecordingScript)) return;
+    egoWarmRetryMs_ = currentSteadyMs() + 5000;
+    int control[2];
+    if (::socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, control) != 0) return;
+    auto args = resolvePythonCommand();
+    args.insert(args.end(), {options_.egoRecordingScript, "warm", "--control-fd",
+                             std::to_string(control[1]), "--serial", egoBoundSerial_,
+                             "--binding-file", options_.egoBindingFile});
+    egoRecordingWorker_.emplace("ego_recording_worker");
+    std::string error;
+    const bool started = egoRecordingWorker_->Start(args, {control[1]}, &error);
+    ::close(control[1]);
+    if (!started)
+    {
+        ::close(control[0]);
+        egoRecordingWorker_.reset();
+        DM_LOG_WARN("[ego] warm worker start failed: {}", error);
+        return;
+    }
+    egoWarmControlFd_ = control[0];
+    egoWarmSerial_ = egoBoundSerial_;
+    DM_LOG_INFO("[ego] warm worker started: pid={}", egoRecordingWorker_->GetPid());
+}
+
 bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
                                       int64_t,
                                       std::string *errorMessage,
@@ -324,29 +390,46 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
         return !isEgoRequired();
     }
 
-    if (egoRecordingWorker_.has_value())
+    bool dispatched = false;
+    if (egoWarmControlFd_ >= 0)
     {
-        std::string ignoredError;
-        egoRecordingWorker_->Stop(
-            DA::Ugripper::ProcessStopMode::SigTermThenKill,
-            1000,
-            &ignoredError);
-        egoRecordingWorker_.reset();
+        if (egoWarmSerial_ == egoBoundSerial_ && egoRecordingWorker_.has_value() &&
+            egoRecordingWorker_->IsRunning())
+        {
+            const auto command = json{{"serial", egoBoundSerial_}, {"episode_dir", episodeDir},
+                                      {"codec", options_.cameraCodec}}.dump();
+            if (command.size() <= 65536)
+                dispatched = ::send(egoWarmControlFd_, command.data(), command.size(),
+                                    MSG_NOSIGNAL | MSG_DONTWAIT) == static_cast<ssize_t>(command.size());
+            if (dispatched)
+            {
+                ::close(egoWarmControlFd_);
+                egoWarmControlFd_ = -1;
+                egoWarmSerial_.clear();
+                DM_LOG_INFO("[ego] START dispatched to warm worker pid={}", egoRecordingWorker_->GetPid());
+            }
+        }
+        if (!dispatched) stopEgoWarmWorker();
     }
-
-    egoRecordingWorker_.emplace("ego_recording_worker");
     egoRecordingAttempted_ = true;
-    if (!egoRecordingWorker_->Start(egoWorkerArgs(options_.egoRecordingScript,
-                                                 "start",
-                                                 episodeDir,
-                                                 options_.cameraCodec,
-                                                 egoBoundSerial_),
-                                   {},
-                                   errorMessage))
+    if (!dispatched)
     {
-        egoRecordingWorker_.reset();
-        egoRecordingAttempted_ = false;
-        return false;
+        if (egoRecordingWorker_.has_value())
+        {
+            egoRecordingWorker_->Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
+            egoRecordingWorker_.reset();
+        }
+        egoRecordingWorker_.emplace("ego_recording_worker");
+        auto args = egoWorkerArgs(options_.egoRecordingScript, "start", episodeDir,
+                                  options_.cameraCodec, egoBoundSerial_);
+        if (!egoBoundSerial_.empty())
+            args.insert(args.end(), {"--binding-file", options_.egoBindingFile});
+        if (!egoRecordingWorker_->Start(args, {}, errorMessage))
+        {
+            egoRecordingWorker_.reset();
+            egoRecordingAttempted_ = false;
+            return false;
+        }
     }
     const fs::path statusPath = fs::path(episodeDir) / "ego" / kEgoSyncStatusFileName;
     const uint64_t startMs = currentSteadyMs();
@@ -444,6 +527,11 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
                 return false;
             }
         }
+        if (egoRecordingWorker_.has_value() && !egoRecordingWorker_->IsRunning())
+        {
+            if (errorMessage != nullptr) *errorMessage = "ego startup worker exited before acknowledgement";
+            return false;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(kEgoStartAckPollMs));
     }
 
@@ -516,15 +604,27 @@ bool RecordRuntime::stopEgoRecording(const std::string &episodeDir,
     // STOP broadcasts immediately in this child, then waits for the incremental
     // owner's current round. Camera/sensor shutdown proceeds concurrently.
     egoStopDeadlineMs_ = currentSteadyMs() + 60000;
+    if (egoStopControlFd_ >= 0) ::close(egoStopControlFd_);
+    egoStopControlFd_ = -1;
+    int control[2];
+    if (::socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, control) != 0) {
+        if (errorMessage) *errorMessage = "cannot create Ego STOP control socket";
+        return false;
+    }
     egoStopWorker_.emplace("ego_stop_worker");
     auto args = egoWorkerArgs(options_.egoRecordingScript, "stop", episodeDir, "", egoBoundSerial_);
     args.insert(args.end(), {"--finalize-timeout", "60", "--deadline-monotonic",
-                            std::to_string(egoStopDeadlineMs_ / 1000.0)});
-    if (!egoStopWorker_->Start(args, {}, errorMessage))
+                            std::to_string(egoStopDeadlineMs_ / 1000.0),
+                            "--control-fd", std::to_string(control[1])});
+    const bool started = egoStopWorker_->Start(args, {control[1]}, errorMessage);
+    ::close(control[1]);
+    if (!started)
     {
+        ::close(control[0]);
         egoStopWorker_.reset();
         return false;
     }
+    egoStopControlFd_ = control[0];
     DM_LOG_INFO("[STOP_DIAG] ego stop worker started: pid={}", egoStopWorker_->GetPid());
     if (egoRecordingWorker_.has_value() && egoRecordingWorker_->IsRunning())
         egoRecordingWorker_->SendSignal(SIGTERM);
@@ -625,6 +725,10 @@ bool RecordRuntime::cleanupEgoRemote(const std::string &episodeDir,
     }
     if (!fs::exists(options_.egoRecordingScript))
     {
+        if (egoStopControlFd_ >= 0) ::close(egoStopControlFd_);
+        egoStopControlFd_ = -1;
+        if (egoStopWorker_) egoStopWorker_->Wait(1000);
+        egoStopWorker_.reset();
         if (errorMessage != nullptr)
         {
             *errorMessage = "ego recording script not found: " + options_.egoRecordingScript;
@@ -634,23 +738,29 @@ bool RecordRuntime::cleanupEgoRemote(const std::string &episodeDir,
     const auto now = currentSteadyMs();
     if (now >= egoStopDeadlineMs_)
     {
+        if (egoStopControlFd_ >= 0) ::close(egoStopControlFd_);
+        egoStopControlFd_ = -1;
+        if (egoStopWorker_) egoStopWorker_->Wait(1000);
+        egoStopWorker_.reset();
         if (errorMessage != nullptr) *errorMessage = "ego remote cleanup skipped: stop deadline exceeded";
         return false;
     }
-    DA::Ugripper::SubprocessHandle cleanupWorker("ego_cleanup_worker");
-    auto args = egoWorkerArgs(options_.egoRecordingScript, "cleanup", episodeDir, "", egoBoundSerial_);
-    args.insert(args.end(), {"--deadline-monotonic", std::to_string(egoStopDeadlineMs_ / 1000.0)});
-    if (!cleanupWorker.Start(args, {}, errorMessage)) return false;
-    const auto started = currentSteadyMs();
-    const int remainingMs = started < egoStopDeadlineMs_
-        ? static_cast<int>(egoStopDeadlineMs_ - started) : 0;
-    if (!cleanupWorker.Wait(remainingMs))
-    {
-        cleanupWorker.Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
-        if (errorMessage != nullptr) *errorMessage = "ego remote cleanup deadline exceeded";
+    if (!egoStopWorker_ || egoStopControlFd_ < 0) {
+        if (errorMessage) *errorMessage = "Ego STOP session missing before cleanup";
         return false;
     }
-    return cleanupWorker.GetLastExitCode() == 0;
+    const std::string command = R"({"command":"cleanup"})";
+    const bool sent = ::send(egoStopControlFd_, command.data(), command.size(), MSG_NOSIGNAL) ==
+                      static_cast<ssize_t>(command.size());
+    ::close(egoStopControlFd_);
+    egoStopControlFd_ = -1;
+    const int remainingMs = static_cast<int>(egoStopDeadlineMs_ - now);
+    const bool exited = egoStopWorker_->Wait(remainingMs);
+    const bool ok = sent && exited && egoStopWorker_->GetLastExitCode() == 0;
+    if (!exited) egoStopWorker_->Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
+    egoStopWorker_.reset();
+    if (!ok && errorMessage) *errorMessage = "Ego STOP session cleanup failed";
+    return ok;
 }
 
 bool RecordRuntime::loadEgoBinding()
@@ -975,13 +1085,19 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
         const auto now = currentSteadyMs();
         const int remainingMs = now < egoStopDeadlineMs_
             ? static_cast<int>(egoStopDeadlineMs_ - now) : 0;
-        const bool exited = !egoStopWorker_->IsRunning() || egoStopWorker_->Wait(remainingMs);
-        stopWorkerOk = exited && egoStopWorker_->GetLastExitCode() == 0;
-        if (!exited)
-            egoStopWorker_->Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
-        egoStopWorker_.reset();
+        json reply;
+        stopWorkerOk = egoStopControlFd_ >= 0 &&
+            receiveControlJson(egoStopControlFd_, remainingMs, &reply) &&
+            reply.value("finalized", false) && reply.value("ok", false);
+        if (!stopWorkerOk || !egoRecordingAttempted_) {
+            if (egoStopControlFd_ >= 0) ::close(egoStopControlFd_);
+            egoStopControlFd_ = -1;
+            if (!egoStopWorker_->Wait(1000))
+                egoStopWorker_->Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
+            egoStopWorker_.reset();
+        }
         if (!stopWorkerOk && errorMessage != nullptr)
-            *errorMessage = exited ? "ego stop worker exited with failure" : "ego stop worker deadline exceeded";
+            *errorMessage = "Ego stop session failed or deadline exceeded";
     }
     if (egoRecordingWorker_.has_value())
     {
@@ -996,6 +1112,13 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
         std::error_code removeError;
         fs::remove(egoIncrementalProgressPath(incrementalPid), removeError);
         egoRecordingWorker_.reset();
+    }
+    if (!stopWorkerOk && egoStopWorker_) {
+        if (egoStopControlFd_ >= 0) ::close(egoStopControlFd_);
+        egoStopControlFd_ = -1;
+        if (!egoStopWorker_->Wait(1000))
+            egoStopWorker_->Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
+        egoStopWorker_.reset();
     }
     const fs::path egoDir = fs::path(episodeDir) / "ego";
     for (const auto *name : {"ego_sync.stop-request.json", "ego_sync.sync-lock"})
@@ -1048,7 +1171,7 @@ bool RecordRuntime::waitForEgoFinalize(const std::string &episodeDir,
             }
             if (state == "device_disconnected" || state == "stop_failed" ||
                 state == "pull_incomplete" || state == "stop_no_remote_root" ||
-                state == "finalize_timeout" || state == "error")
+                state == "finalize_timeout" || state == "invalid" || state == "error")
             {
                 if (errorMessage != nullptr)
                 {
@@ -1194,23 +1317,77 @@ bool RecordRuntime::mergeEpisodeInfo(const std::string &episodeDir, std::string 
     return true;
 }
 
+
+void RecordRuntime::maintainSystemLogWorker()
+{
+    std::lock_guard<std::mutex> lock(systemLogWorkerMutex_);
+    if (systemLogWorker_ && systemLogWorker_->IsRunning()) return;
+    const auto now = currentSteadyMs();
+    if (now < systemLogRetryMs_) return;
+    systemLogRetryMs_ = now + 30000;
+    if (systemLogControlFd_ >= 0) ::close(systemLogControlFd_);
+    systemLogControlFd_ = -1;
+    systemLogWorker_.reset();
+    int control[2];
+    if (::socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, control) != 0) return;
+    systemLogWorker_.emplace("system_log_worker");
+    std::string error;
+    const bool started = systemLogWorker_->Start(
+        {"/usr/bin/python3", "/usr/local/lib/ugripper/logging/system_log_snapshot.py",
+         "--serve-fd", std::to_string(control[1])}, {control[1]}, &error);
+    ::close(control[1]);
+    json reply;
+    if (!started || !receiveControlJson(control[0], 5000, &reply) || !reply.value("ready", false)) {
+        ::close(control[0]); systemLogWorker_.reset();
+        DM_LOG_WARN("system log worker warmup failed: {}", error);
+        return;
+    }
+    systemLogControlFd_ = control[0];
+    DM_LOG_INFO("system log worker ready pid={}", systemLogWorker_->GetPid());
+}
+
+void RecordRuntime::stopSystemLogWorker()
+{
+    std::lock_guard<std::mutex> lock(systemLogWorkerMutex_);
+    if (systemLogControlFd_ >= 0) ::close(systemLogControlFd_);
+    systemLogControlFd_ = -1;
+    systemLogWorker_.reset();
+}
+
+bool RecordRuntime::snapshotSystemLog(const std::string &reason) const
+{
+    std::lock_guard<std::mutex> lock(systemLogWorkerMutex_);
+    const auto started = currentSteadyMs();
+    bool ok = false;
+    if (systemLogControlFd_ >= 0 && systemLogWorker_ && systemLogWorker_->IsRunning()) {
+        const auto command = json{{"disk", options_.diskRoot}}.dump();
+        json reply;
+        // A disk flush has no timeout: an unfinished writer must never permit Ready.
+        ok = ::send(systemLogControlFd_, command.data(), command.size(), MSG_NOSIGNAL) ==
+                 static_cast<ssize_t>(command.size()) &&
+             receiveControlJson(systemLogControlFd_, -1, &reply) && reply.value("ok", false);
+    } else {
+        // Recovery fallback preserves the event-only contract and failure gate.
+        ok = std::system(("/usr/local/lib/ugripper/logging/save_system_log.sh " +
+                          shellQuote(options_.diskRoot)).c_str()) == 0;
+    }
+    DM_LOG_INFO("[STOP_DIAG] system log snapshot finished: ok={} elapsed_ms={} reason={}",
+                ok, currentSteadyMs()-started, reason);
+    return ok;
+}
+
 bool RecordRuntime::syncRuntimeLogToDisk(const char *reason) const
 {
+    // Latch failures across idle health/feedback updates until a later export succeeds.
+    logPersistenceFailed_.store(true);
     std::cout.flush();
     std::cerr.flush();
     std::fflush(stdout);
     std::fflush(stderr);
 
-    // Persist system/journal logs alongside the runtime log at every stop boundary.
-    const std::string systemLogCommand = "/usr/local/lib/ugripper/logging/save_system_log.sh " +
-        shellQuote(options_.diskRoot + "/logs") + " " + shellQuote(toLower(deviceSn_.empty() ? "unknown_device" : deviceSn_));
-    const auto systemLogStartMs = currentSteadyMs();
-    const bool systemLogOk = std::system(systemLogCommand.c_str()) == 0;
-    DM_LOG_INFO("[STOP_DIAG] system log snapshot finished: ok={} elapsed_ms={}",
-                systemLogOk, currentSteadyMs() - systemLogStartMs);
-    if (!systemLogOk) {
-        DM_LOG_WARN("system log snapshot failed");
-    }
+    const bool earlyFailed = systemLogEarlyFailed_.exchange(false);
+    const bool snapshotOk = snapshotSystemLog(reason != nullptr ? reason : "stop");
+    const bool systemLogOk = snapshotOk && !earlyFailed;
 
     const std::string deviceSnLower = toLower(deviceSn_.empty() ? "unknown_device" : deviceSn_);
     const std::string filePrefix = "umi_sys_" + deviceSnLower + "_";
@@ -1404,6 +1581,7 @@ bool RecordRuntime::syncRuntimeLogToDisk(const char *reason) const
         closeLock();
         DM_LOG_INFO("{}", (::DA::utils::LogString() << "runtime log already synced" << reasonSuffix
                              << ": " << destPath).str());
+        logPersistenceFailed_.store(!systemLogOk);
         return systemLogOk;
     }
 
@@ -1509,7 +1687,11 @@ bool RecordRuntime::syncRuntimeLogToDisk(const char *reason) const
                          << ": src=" << sourcePath
                          << " dest=" << destPath
                          << " bytes=" << (currentSize - lastPos)).str());
-    return systemLogOk && directoriesFlushed;
+    const bool finalSyncOk = std::system(("/usr/bin/sync -f " + shellQuote(options_.diskRoot)).c_str()) == 0;
+    DM_LOG_INFO("[STOP_DIAG] log durability barrier finished: ok={}", finalSyncOk);
+    const bool ok = systemLogOk && directoriesFlushed && finalSyncOk;
+    logPersistenceFailed_.store(!ok);
+    return ok;
 }
 
 }  // namespace DA::Ugripper

@@ -51,6 +51,14 @@ target_link_libraries(test_hmi_transport_resync
         gripper_hmi_protocol
 )
 
+add_host_only_gtest(test_hmi_frame_writer
+    test_hmi_frame_writer.cc
+)
+target_include_directories(test_hmi_frame_writer
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/standalone/GripperHmiTool/include
+)
+
 add_host_only_gtest(test_hmi_driver_logic
     test_hmi_driver_logic.cc
 )

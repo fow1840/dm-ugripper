@@ -83,6 +83,11 @@ stop_service_fast "$NETWORK_MONITOR_SERVICE" 4
 stop_service_fast "$NTP_SYNC_SERVICE" 4
 force_cleanup_recording_processes
 
+# Restore while package helpers still exist; dpkg removes them before postrm.
+if [ "$1" = "remove" ] && [ -f /usr/local/lib/ugripper/logging/ram_logging_config.py ]; then
+    /usr/bin/python3 /usr/local/lib/ugripper/logging/ram_logging_config.py uninstall
+fi
+
 # --------------------------------------------------
 # 2) 禁用服务
 # --------------------------------------------------

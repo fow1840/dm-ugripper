@@ -199,7 +199,9 @@ RecordRuntime::RecordRuntime(RecordRuntimeOptions options)
 RecordRuntime::~RecordRuntime()
 {
     Stop();
+    stopEgoWarmWorker();
     stopRecording(false, "shutdown");
+    stopSystemLogWorker();
     closeRecordControlPipe();
     requestStopBackgroundTactileValidation();
     waitForMainCameraRefreshes();
@@ -474,8 +476,32 @@ bool RecordRuntime::Initialize()
                         {
                             return false;
                         }
-                        return episodeManager_->ValidateEpisode(episode_dir, error_message, error_types, nullptr);
+                        if (!episodeManager_->ValidateEpisode(episode_dir, error_message, error_types, nullptr))
+                            return false;
+                        if (stopTactileEpisodeDir_ != episode_dir) {
+                            stopTactileFindings_.clear();
+                            episodeManager_->ValidateTactileEpisode(episode_dir, &stopTactileFindings_, false);
+                        }
+                        if (!episodeManager_->PublishTactileValidation(episode_dir, stopTactileFindings_, error_message)) {
+                            if (error_types) error_types->push_back("finalize_error");
+                            return false;
+                        }
+                        flushEpisodeArtifactsToDisk(
+                            fs::path(episode_dir), chestCameraEnabled_, stereoEnabled_, "metadata_final");
+                        applyTactileValidationFindings(stopTactileFindings_);
+                        stopTactileEpisodeDir_.clear();
+                        stopTactileFindings_.clear();
+                        return true;
                     },
+                .prevalidate_local = [this](const std::string &episode_dir) {
+                    stopTactileEpisodeDir_.clear();
+                    stopTactileFindings_.clear();
+                    if (episodeManager_ != nullptr) {
+                        episodeManager_->PrevalidateLocalArtifacts(episode_dir);
+                        episodeManager_->ValidateTactileEpisode(episode_dir, &stopTactileFindings_, false);
+                        stopTactileEpisodeDir_ = episode_dir;
+                    }
+                },
                 .attach_pending_pre_audio =
                     [this](const std::string& episode_dir) {
                         return attachPendingPreAudio(episode_dir);
@@ -715,6 +741,11 @@ bool RecordRuntime::Initialize()
                     [](const std::string& type, const std::string& message) {
                         DM_LOG_ERROR_CODE(DA::Ugripper::UgrCodeForErrorType(type), "{}", message);
                     },
+                .snapshot_system_log = [this](const std::string &reason) {
+                        const bool ok = snapshotSystemLog(reason);
+                        if (!ok) systemLogEarlyFailed_.store(true);
+                        return ok;
+                    },
                 .sync_runtime_log =
                     [this](const std::string& reason) {
                         return syncRuntimeLogToDisk(reason.c_str());
@@ -777,6 +808,8 @@ int RecordRuntime::Run()
         maintainBackgroundTactileValidation();
         maintainEgoBindingAction();
         maintainEgoBindingHealth();
+        maintainSystemLogWorker();
+        maintainEgoWarmWorker();
         maintainEgoIncrementalSync();
         maintainRestoreUsbDevicePresence();
         maintainRestoreUsbRetry();
@@ -856,7 +889,9 @@ int RecordRuntime::Run()
         }
     }
 
+    stopEgoWarmWorker();
     stopRecording(false, "shutdown");
+    stopSystemLogWorker();
     stopStereoDaemon();
     stopEgoSyncFeedback();
     setLedState(LedState::Exit);
@@ -1183,6 +1218,7 @@ const std::string &RecordRuntime::lastEpisodeDir() const
 
 void RecordRuntime::setLedState(LedState state, double progress)
 {
+    if (state == LedState::Ready && logPersistenceFailed_.load()) state = LedState::Error5;
     if (egoFeedback_) {
         const auto phase = state == LedState::Recording ? EgoSpeechPolicy::Phase::Recording
             : state == LedState::Writing ? EgoSpeechPolicy::Phase::Writing : EgoSpeechPolicy::Phase::Idle;

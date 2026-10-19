@@ -800,7 +800,9 @@ class EgoRecordingWorkerTest(unittest.TestCase):
                 with mock.patch.object(WORKER, "Adb", return_value=adb), mock.patch.object(
                     WORKER, "adb_device_ready", return_value=(True, "")
                 ), mock.patch.object(
-                    WORKER, "remote_dir_exists", side_effect=[False, True]
+                    WORKER, "remote_dir_exists", side_effect=[False, True, False]
+                ), mock.patch.object(
+                    WORKER, "remote_file_sizes", return_value={}
                 ), mock.patch.object(
                     WORKER, "sync_episode_once", return_value={}
                 ), mock.patch.object(
@@ -1009,7 +1011,8 @@ class EgoStopDeadlineTests(unittest.TestCase):
             adb.run.return_value = subprocess.CompletedProcess([], 0, "ok", "")
             with mock.patch.object(WORKER, "Adb", return_value=adb), \
                  mock.patch.object(WORKER, "adb_device_ready", return_value=(True, "")), \
-                 mock.patch.object(WORKER, "remote_dir_exists", side_effect=[False, True]), \
+                 mock.patch.object(WORKER, "remote_dir_exists", side_effect=[False, True, False]), \
+                 mock.patch.object(WORKER, "remote_file_sizes", return_value={}), \
                  mock.patch.object(WORKER, "sync_episode_once", side_effect=slow_sync), \
                  mock.patch.object(WORKER, "recover_finalized_episode_files") as recovery, \
                  mock.patch.object(WORKER.time, "monotonic", side_effect=lambda: clock[0]), \
@@ -1135,7 +1138,7 @@ class EgoStopDeadlineTests(unittest.TestCase):
                      mock.patch.object(WORKER, "sync_ego_time", return_value={"status": "ok"}), \
                      mock.patch.object(WORKER, "recover_previous_recording"), \
                      mock.patch.object(WORKER, "snapshot_temp_episodes", return_value={}), \
-                     mock.patch.object(WORKER, "set_ego_video_codec", return_value={}), \
+                     mock.patch.object(WORKER, "set_ego_video_codec", return_value={"returncode": 0}), \
                      mock.patch.object(WORKER, "find_new_temp_episodes", return_value=[("/remote", "episode_0001-temp")]), \
                      mock.patch.object(WORKER, "sync_episode_once", side_effect=copy), \
                      mock.patch.object(WORKER, "continuous_time_sync_status", return_value={"updated_monotonic_s": 1}), \
@@ -1180,6 +1183,181 @@ class EgoStopDeadlineTests(unittest.TestCase):
                     child.join(2)
             self.assertEqual(child.exitcode, 0)
             self.assertEqual(rounds.value, 1)
+
+
+class EgoStopSessionTests(unittest.TestCase):
+    def test_batch_sizes_real_shell_handles_missing_and_quoted_root(self):
+        with tempfile.TemporaryDirectory(prefix="ego ' batch-") as directory:
+            folder = Path(directory)/"episode_0001"; folder.mkdir()
+            for name in WORKER.FILES[:-1]: (folder/name).write_bytes(b"abcd")
+            adb = mock.Mock()
+            adb.run.side_effect = lambda *args, **kw: subprocess.run(
+                ["sh", "-c", args[1]], capture_output=True, text=True)
+            sizes = WORKER.remote_file_sizes(adb, directory, "episode_0001")
+            self.assertEqual(sizes[WORKER.FILES[0]], 4)
+            self.assertIsNone(sizes[WORKER.FILES[-1]])
+            self.assertEqual(adb.run.call_count, 1)
+
+    def test_batch_sizes_rejects_duplicate_response(self):
+        adb = mock.Mock()
+        adb.run.return_value = subprocess.CompletedProcess([], 0, "rgb.mp4:1\nrgb.mp4:2\n", "")
+        with self.assertRaisesRegex(RuntimeError, "invalid batched"):
+            WORKER.remote_file_sizes(adb, "/remote", "episode_0001")
+
+    def test_already_synced_still_checks_fresh_sizes_before_skipping_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder=Path(directory)
+            for name in WORKER.FILES: (folder/name).write_bytes(b"abcd")
+            sizes={name:4 for name in WORKER.FILES}
+            with mock.patch.object(WORKER, "remote_file_sizes", return_value=sizes) as batch, \
+                 mock.patch.object(WORKER, "sync_episode_once") as sync:
+                ok, detail, error, kind=WORKER.recover_finalized_episode_files(
+                    mock.Mock(), "/remote", "episode_0001", folder, already_synced=True)
+            self.assertTrue(ok); batch.assert_called_once(); sync.assert_not_called()
+            self.assertTrue(detail["attempts"][0]["sizes_ok"])
+
+    def test_same_process_waits_for_host_cleanup_and_preserves_remote_on_eof(self):
+        import socket
+        for cleanup_requested in (False, True):
+            with self.subTest(cleanup_requested=cleanup_requested), tempfile.TemporaryDirectory() as directory:
+                status_file=Path(directory)/"ego_sync.json"
+                WORKER.write_status(status_file, {"status":"finalized"})
+                parent, child=socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+                args=argparse.Namespace(control_fd=child.detach(), status_file=status_file,
+                    deadline_monotonic=time.monotonic()+5)
+                results=[]
+                with mock.patch.object(WORKER, "run_stop", return_value=0), \
+                     mock.patch.object(WORKER, "run_cleanup", return_value=0) as cleanup:
+                    thread=threading.Thread(target=lambda: results.append(WORKER.run_stop_session(args)))
+                    thread.start(); parent.settimeout(2)
+                    self.assertTrue(json.loads(parent.recv(65536))["ok"])
+                    cleanup.assert_not_called()
+                    if cleanup_requested: parent.send(json.dumps({"command":"cleanup"}).encode())
+                    parent.close(); thread.join(2)
+                    self.assertFalse(thread.is_alive()); self.assertEqual(results, [0])
+                    self.assertEqual(cleanup.call_count, int(cleanup_requested))
+
+
+    def test_failed_or_expired_session_never_runs_cleanup(self):
+        import socket
+        for stop_result in (0, 1):
+            with self.subTest(stop_result=stop_result), tempfile.TemporaryDirectory() as directory:
+                status_file=Path(directory)/"ego_sync.json"
+                WORKER.write_status(status_file, {"status":"finalized"})
+                before=status_file.stat().st_mtime_ns
+                parent, child=socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+                args=argparse.Namespace(control_fd=child.detach(), status_file=status_file,
+                    deadline_monotonic=time.monotonic()+.03)
+                results=[]
+                with mock.patch.object(WORKER, "run_stop", return_value=stop_result), \
+                     mock.patch.object(WORKER, "run_cleanup") as cleanup:
+                    thread=threading.Thread(target=lambda: results.append(WORKER.run_stop_session(args)))
+                    thread.start(); parent.settimeout(2)
+                    self.assertEqual(json.loads(parent.recv(65536))["ok"], stop_result==0)
+                    thread.join(2); parent.close()
+                    self.assertFalse(thread.is_alive()); self.assertEqual(results,[1])
+                    cleanup.assert_not_called()
+                    self.assertEqual(status_file.stat().st_mtime_ns,before)
+
+
+class EgoInvalidTerminalTests(unittest.TestCase):
+    def setUp(self):
+        size = mock.patch.object(WORKER, "remote_file_size", return_value=1024)
+        size.start(); self.addCleanup(size.stop)
+
+    def metadata(self):
+        return {"devices_sn": "test", "episode_name": "episode_0001",
+                "data_uuid": "current-uuid", "recording_start_utc_us": WORKER.now_ms()*1000,
+                "quality_check_status": "fail", "quality_check_err_type": "main_camera_short_stream"}
+
+    def test_identity_rejects_stale_wrong_device_uuid_and_malformed_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            local = Path(directory)
+            status = {"serial": "test", "started_at_ms": WORKER.now_ms()}
+            valid = self.metadata()
+            cases = [{**valid, "devices_sn": "other"}, {**valid, "episode_name": "episode_0002"},
+                     {**valid, "recording_start_utc_us": valid["recording_start_utc_us"]-2_000_000},
+                     {**valid, "data_uuid": ""}, [], {**valid, "recording_start_utc_us": True}]
+            adb = mock.Mock(serial="test")
+            with mock.patch.object(WORKER, "remote_dir_exists", return_value=True), \
+                 mock.patch.object(WORKER, "ugripper_log"):
+                for value in cases:
+                    adb.exec_out_bytes.return_value = json.dumps(value).encode()
+                    self.assertIsNone(WORKER.probe_invalid_episode(adb, status, "/remote", "episode_0001", local))
+                adb.exec_out_bytes.return_value = b"{partial"
+                self.assertIsNone(WORKER.probe_invalid_episode(adb, status, "/remote", "episode_0001", local))
+                WORKER.write_json_atomic(local/"metadata.json", {"data_uuid": "another-uuid"})
+                adb.exec_out_bytes.return_value = json.dumps(valid).encode()
+                self.assertIsNone(WORKER.probe_invalid_episode(adb, status, "/remote", "episode_0001", local))
+                self.assertFalse((local/"invalid_metadata.json").exists())
+
+    def test_current_invalid_finishes_without_sleep_and_retains_remote_even_if_pull_fails(self):
+        # A recycled normal name may coexist; the matching invalid identity wins.
+        for old_normal in (False, True):
+            with self.subTest(old_normal=old_normal), tempfile.TemporaryDirectory() as directory:
+                episode = Path(directory)
+                status_file = episode/"ego/ego_sync.json"
+                status = {"serial":"test", "started_at_ms":WORKER.now_ms()}
+                args = argparse.Namespace(episode_dir=episode, status_file=status_file, interval=1)
+                adb = mock.Mock(serial="test")
+                adb.exec_out_bytes.return_value = json.dumps(self.metadata()).encode()
+                with mock.patch.object(WORKER, "remote_dir_exists", side_effect=[False, old_normal, True]), \
+                     mock.patch.object(WORKER, "remote_file_sizes", return_value={}), \
+                     mock.patch.object(WORKER, "sync_episode_once", side_effect=RuntimeError("pull interrupted")), \
+                     mock.patch.object(WORKER, "remove_remote_episode") as remove, \
+                     mock.patch.object(WORKER.time, "sleep") as sleep, \
+                     mock.patch.object(WORKER, "ugripper_log"):
+                    self.assertEqual(WORKER.finish_stop(args, adb, status, True, True, "", "", "/remote",
+                                                       "episode_0001-temp", time.monotonic()+60), 1)
+                result = WORKER.read_status(status_file)
+                self.assertEqual(result["status"], "invalid")
+                self.assertIn("main_camera_short_stream", result["error"])
+                self.assertEqual(result["remote_cleanup"]["status"], "preserved")
+                self.assertEqual(result["invalid_pull_error"], "pull interrupted")
+                self.assertTrue((episode/"ego/invalid_metadata.json").exists())
+                sleep.assert_not_called(); remove.assert_not_called()
+
+    def test_stale_invalid_does_not_override_current_normal_terminal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            episode=Path(directory); status_file=episode/"ego/ego_sync.json"
+            status={"serial":"test", "started_at_ms":WORKER.now_ms()}
+            args=argparse.Namespace(episode_dir=episode,status_file=status_file,interval=1)
+            metadata=self.metadata(); metadata["recording_start_utc_us"]-=3600_000_000
+            adb=mock.Mock(serial="test"); adb.exec_out_bytes.side_effect=[json.dumps(metadata).encode(), json.dumps(self.metadata()).encode()]
+            with mock.patch.object(WORKER,"remote_dir_exists",side_effect=[False,True,True]), \
+                 mock.patch.object(WORKER,"remote_file_sizes",return_value={}), \
+                 mock.patch.object(WORKER,"sync_episode_once",return_value={}), \
+                 mock.patch.object(WORKER,"recover_finalized_episode_files",return_value=(True,{},"","")), \
+                 mock.patch.object(WORKER,"refresh_final_mp4_headers",return_value={}), \
+                 mock.patch.object(WORKER,"repair_mp4_files",return_value={}), \
+                 mock.patch.object(WORKER,"ugripper_log"):
+                self.assertEqual(WORKER.finish_stop(args,adb,status,True,True,"","","/remote",
+                                                   "episode_0001-temp",time.monotonic()+60),0)
+            self.assertEqual(WORKER.read_status(status_file)["status"],"finalized")
+
+    def test_partial_invalid_metadata_cannot_fall_through_to_stale_normal_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            episode=Path(directory); status_file=episode/"ego/ego_sync.json"
+            status={"serial":"test", "started_at_ms":WORKER.now_ms()}
+            args=argparse.Namespace(episode_dir=episode,status_file=status_file,interval=1)
+            stale=self.metadata(); stale["recording_start_utc_us"]-=3600_000_000
+            adb=mock.Mock(serial="test")
+            adb.exec_out_bytes.side_effect=[b"{partial",json.dumps(stale).encode(),json.dumps(self.metadata()).encode()]
+            with mock.patch.object(WORKER,"remote_dir_exists",side_effect=[False,True,True,False,False,True]), \
+                 mock.patch.object(WORKER,"remote_file_sizes",return_value={}), \
+                 mock.patch.object(WORKER,"sync_episode_once",return_value={}) as sync, \
+                 mock.patch.object(WORKER,"app_package",return_value="other"), \
+                 mock.patch.object(WORKER.time,"sleep"), \
+                 mock.patch.object(WORKER,"ugripper_log"):
+                self.assertEqual(WORKER.finish_stop(args,adb,status,True,True,"","","/remote",
+                                                   "episode_0001-temp",time.monotonic()+60),1)
+            self.assertEqual(WORKER.read_status(status_file)["status"],"invalid")
+            self.assertEqual(sync.call_args.args[2],"episode_0001-invalid")
+            self.assertEqual(sync.call_count,1)
+
+    def test_invalid_name_is_never_a_cleanup_target(self):
+        self.assertFalse(WORKER.safe_remote_episode_name("episode_0001-invalid"))
+        self.assertFalse(WORKER.safe_remote_episode_name("episode_0001-temp"))
 
 
 if __name__ == "__main__":
