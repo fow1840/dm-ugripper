@@ -215,3 +215,12 @@ set_tests_properties(test_system_log_snapshot PROPERTIES LABELS "host-only;unit;
 add_test(NAME test_ego_transfer_recovery
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_ego_transfer_recovery.py)
 set_tests_properties(test_ego_transfer_recovery PROPERTIES LABELS "host-only;unit;record_runtime")
+
+add_host_only_runtime_gtest(test_ego_warm_process test_ego_warm_process.cc)
+add_test(NAME test_ego_start_latency_python
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_ego_start_latency.py)
+set_tests_properties(test_ego_start_latency_python PROPERTIES LABELS "host-only;unit;record_runtime;ego")
+
+add_test(NAME test_ram_logging_config
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_ram_logging_config.py)
+set_tests_properties(test_ram_logging_config PROPERTIES LABELS "host-only;unit;record_runtime")

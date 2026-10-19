@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Login-free Ethernet HTTPS interface with per-operation maintenance protection."""
 import contextlib
+import fcntl
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -258,6 +259,21 @@ class Handler(BaseHTTPRequestHandler):
                         if p.is_symlink() or p.stat().st_size>20*1024*1024:continue
                         try:tar.add(p,arcname='ugripper/'+str(p.relative_to(folder)),recursive=False)
                         except PermissionError:pass
+                # Export only the committed immutable set; this read creates no
+                # USB files and shares the event export lock during streaming.
+                from system_log_snapshot import committed_files
+                with open('/tmp/ugripper-system-log.lock','a') as snapshot_lock:
+                    fcntl.flock(snapshot_lock,fcntl.LOCK_EX)
+                    root=DATA/'system_journal'
+                    if os.path.ismount(DATA) and (root/'manifest.json').is_file():
+                        manifest=json.loads((root/'manifest.json').read_text())
+                        member=tarfile.TarInfo('system_journal/manifest.json')
+                        payload=(json.dumps(manifest)+'\n').encode();member.size=len(payload)
+                        tar.addfile(member,io.BytesIO(payload))
+                        for relative in committed_files(manifest):
+                            fd=open_data('system_journal/'+relative)
+                            try:add_archive(tar,fd,'system_journal/'+relative)
+                            finally:os.close(fd)
             size=archive.tell();archive.seek(0)
             self.headers_out(200,'application/gzip',size,{'Content-Disposition':'attachment; filename="ugripper-logs.tar.gz"'})
             import shutil;shutil.copyfileobj(archive,self.wfile,1024*1024)

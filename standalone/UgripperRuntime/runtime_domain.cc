@@ -1349,32 +1349,6 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
 
     std::string stereo_finalize_error;
     std::string merge_error;
-    if (dependencies_.ego.wait_for_finalize != nullptr)
-    {
-        const int64_t ego_finalize_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
-        std::string ego_finalize_error;
-        std::string ego_finalize_error_type;
-        if (!dependencies_.ego.wait_for_finalize(
-                state_.current_episode_dir,
-                options_.stereo_finalize_timeout_ms,
-                &ego_finalize_error,
-                &ego_finalize_error_type))
-        {
-            ego_stop_ok = false;
-            ego_failure_error = ego_finalize_error.empty()
-                                    ? std::string("ego recording finalize wait failed")
-                                    : ego_finalize_error;
-            ego_failure_error_type = ego_finalize_error_type;
-            CallLog(dependencies_.logs.log_warn,
-                    "ego recording finalize wait failed: " +
-                        ego_failure_error);
-        }
-        CallLog(dependencies_.logs.log_info,
-                "[STOP_DIAG] ego finalize wait done: ok=" + std::string(ego_stop_ok ? "true" : "false") +
-                    " elapsed_ms=" +
-                    std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : ego_finalize_start_ms) -
-                                   ego_finalize_start_ms));
-    }
     if (options_.stereo_enabled && stereo_stop_ok && dependencies_.stereo.wait_for_finalize != nullptr)
     {
         const int64_t stereo_finalize_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
@@ -1404,6 +1378,53 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
                     std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : stereo_merge_start_ms) -
                                    stereo_merge_start_ms));
     }
+    std::future<void> local_validation_future;
+    if (stereo_stop_ok && camera_stop_ok && sensor_stop_ok && dependencies_.episode.prevalidate_local) {
+        const auto path = state_.current_episode_dir;
+        local_validation_future = std::async(std::launch::async, [this, path]() {
+            const auto started = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
+            try { dependencies_.episode.prevalidate_local(path); }
+            catch (const std::exception &ex) {
+                CallLog(dependencies_.logs.log_warn, std::string("local prevalidation deferred: ")+ex.what());
+            }
+            CallLog(dependencies_.logs.log_info, "[STOP_DIAG] local prevalidation done: elapsed_ms="+
+                std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : started)-started));
+        });
+    }
+    std::future<bool> system_snapshot_future;
+    if (dependencies_.logs.snapshot_system_log) {
+        system_snapshot_future = std::async(std::launch::async, [this]() {
+            try { return dependencies_.logs.snapshot_system_log("video stop early"); }
+            catch (...) { return false; }
+        });
+    }
+    if (dependencies_.ego.wait_for_finalize != nullptr)
+    {
+        const int64_t ego_finalize_start_ms = steady_ms_fn_ != nullptr ? steady_ms_fn_() : 0;
+        std::string ego_finalize_error;
+        std::string ego_finalize_error_type;
+        if (!dependencies_.ego.wait_for_finalize(
+                state_.current_episode_dir,
+                options_.stereo_finalize_timeout_ms,
+                &ego_finalize_error,
+                &ego_finalize_error_type))
+        {
+            ego_stop_ok = false;
+            ego_failure_error = ego_finalize_error.empty()
+                                    ? std::string("ego recording finalize wait failed")
+                                    : ego_finalize_error;
+            ego_failure_error_type = ego_finalize_error_type;
+            CallLog(dependencies_.logs.log_warn,
+                    "ego recording finalize wait failed: " +
+                        ego_failure_error);
+        }
+        CallLog(dependencies_.logs.log_info,
+                "[STOP_DIAG] ego finalize wait done: ok=" + std::string(ego_stop_ok ? "true" : "false") +
+                    " elapsed_ms=" +
+                    std::to_string((steady_ms_fn_ != nullptr ? steady_ms_fn_() : ego_finalize_start_ms) -
+                                   ego_finalize_start_ms));
+    }
+    if (local_validation_future.valid()) local_validation_future.get();
     if (dependencies_.episode.flush_episode_artifacts != nullptr)
     {
         dependencies_.episode.flush_episode_artifacts(state_.current_episode_dir, "final");
@@ -1628,7 +1649,9 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
 
     // Ready is the physical disk-removal boundary. Keep Writing until both
     // system and runtime logs are durably saved; a failed sync cannot turn green.
-    const bool stop_cleanup_ok = finish_stop_cleanup();
+    const bool early_snapshot_ok = !system_snapshot_future.valid() || system_snapshot_future.get();
+    const bool final_snapshot_ok = finish_stop_cleanup();
+    const bool stop_cleanup_ok = early_snapshot_ok && final_snapshot_ok;
     if (!stop_cleanup_ok)
     {
         AddErrorType(&error_types, kErrorTypeRuntimeError);

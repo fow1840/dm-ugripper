@@ -58,7 +58,12 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - 持久化标定目录：`/etc/ugripper/config/calibration`
 - 日志目录：`/var/log/ugripper`
 - 运行日志镜像目录：`/mnt/data_disk/logs`
-- 每次停录收尾同步保存 systemd journal 快照：以请求时刻为读取上界，正常只追加游标后的增量到 `/mnt/data_disk/logs/system_<device_sn>_<YYYYMMDD>.log`，不扫描/去重/重写旧文件。并发请求持锁串行等待，绝不遗留后台数据盘写入；journal 读取默认 10 秒超时，超时不提交部分输出或推进游标，该超时不截断必要的磁盘刷写。保留 `sync -f`，数据刷盘成功后才原子替换游标并刷写目录；停录期间保持 Writing，系统日志、Runtime 日志和目录刷写完成并释放录制锁后才恢复 Ready/播放 ready，日志保存或目录刷写失败进入错误态，不亮绿灯。单个当天系统日志及单次导出临时文件默认上限 100MiB，超限原子替换为最近约 75MiB 的完整行，留出追加空间，避免到达上限后每次停录都重写。可通过 `UGRIPPER_SYSTEM_LOG_MAX_BYTES` 调整上限、`UGRIPPER_SYSTEM_LOG_READ_TIMEOUT_S` 调整读取超时；可选 `--sync <epoch> <YYYYMMDD>` 供维护验证固定快照边界。游标丢失时读取本次开机日志恢复，不再全文件去重，因此恢复或中断追加后重试可能重复日志；增量追加加互斥锁，但不承诺读者看到完整旧/新文件的原子切换。
+- 系统日志常驻仅写 RAM：journald `Storage=volatile`，`/run/log/journal` 预算 64MiB、单文件 8MiB；rsyslog 使用专用配置，仅写 `/tmp/logbuf`，5MiB rename 轮转并预留下一段空间，合计上限 50MiB。RAM 缓冲可能淘汰尚未导出的旧日志；原先的 rsyslog 分类输出和远程转发规则不再加载。停止并屏蔽 log-persist/log-migrate 服务和 timer，移除案例 journal USB 软链、persistent 配置及 USB logrotate 规则；没有周期迁移或常驻 USB 系统日志输出。
+- Runtime 空闲时预热事件型日志 worker，收到请求才导出 syslog；正常停录在本地文件关闭及双目 timing 合并后并行导出早期快照，完成 Ego 收尾与完整校验后补导末尾增量并执行前台刷盘；音频、卸载前及正常退出仍同步导出。worker 不可用时回退 `save_system_log.sh <diskRoot>`，不增加周期 USB 写入，只导出 syslog 文本；journald 继续在 RAM 运行，不轮转或复制原生 journal。输出 `/mnt/data_disk/system_journal/rsyslog/syslog.<卷ID>.<片段ID>.log`，每次仅保存新增完整行，末尾半行留到下次；固定 RAM 文件描述符和长度，不追随新增内容、不清空源文件。单逻辑卷最多 100MiB/128 片段，最多 8 卷、总量 500MiB、最长 30 天；停录不全量重写或压缩。卷由清单按顺序引用不可变文本片段，排障/下载按清单顺序读取。RAM 尚未导出的日志可能被内存上限淘汰，意外掉电前尚未导出的日志不保证保留。
+- `system_journal/manifest.json` 是唯一快照事务提交点，记录已提交文本片段、源 boot/device/inode/完整行偏移及前缀指纹、容量淘汰计数和盘身份。统一前台锁串行导出；只在 RAM 文件发现/固定长度时短持轮转锁，复制及刷盘不阻塞源轮转。先 `sync -f` 再原子替换清单并同步目录，最后清理未引用文件并再次刷盘；失败不放行 Ready，重试按已提交清单恢复。前一轮实验的原生 journal 仅在新清单成功提交后清理。拒绝未挂载盘、盘身份中途变化及软链输出目录。仅导出 rsyslog 实际收到的消息，不保留 journal 结构化 unit/boot/单调时钟字段；转发排队或上游限流可能造成快照尾部延迟或日志丢失，RAM 淘汰计数不等于未导出数据的精确丢失量。
+- 日志同步失败会锁存错误状态，健康恢复/提示音刷新不能提前放行 Ready；音频、人工标记及卸载也检查同步结果。Runtime 日志继续存 `/mnt/data_disk/logs/umi_sys_*.log`，与系统日志共同完成前台 `sync -f` 后才释放录制锁并恢复 Ready/绿灯；失败进入错误态。Web 日志下载读取清单固定的文本片段集，不为下载向 U 盘生成副本；旧文本 journal cursor 导出链路已移除。必要的磁盘刷写没有后台或超时放行，内核 D 状态不能保证固定时间退出。
+- 系统日志配置由 `postinst -> install_ram_logging.sh -> ram_logging_config.py install USER` 应用：先检查用户、依赖、tmpfs 和候选 rsyslog/sudoers，再为每个文件执行同目录暂存、fsync、rename、目录 fsync；软链替换和删除同步目录。多文件及服务切换由 `/var/lib/ugripper/logging-config/` 下 root 专用原配置备份与持久 undo 记录保护，包含文件内容/权限/属主/软链、用户组增量及原活动服务。有效 journald/rsyslog 配置、服务状态和运行用户提权权限检查通过后才提交；失败或可捕获信号自动回滚，回滚失败保留 undo 供重试。启动恢复 oneshot 在 rsyslog/UGripper 前处理遗留 undo；持久恢复代码不依赖 dpkg 解包期间的 helper。配置被外部修改时拒绝覆盖。`prerm remove` 在包文件删除前事务恢复初装前配置；反复升级不覆盖原始备份。标准用户组工具负责系统组数据库锁和写回；该机制是可恢复的多文件事务，不能将多次 rename 宣称为单次全局原子操作。
+
 - 终端硬件检查：`/usr/local/bin/hws`。HWS 与 Web 概览均显示 Ego 绑定状态、连接状态和绑定序列号，共用只读快照解析；绑定以 `/dev/shm/ugripper/ego_binding.json` 为准，连接要求状态快照序列号匹配且 15 秒内更新，否则显示未知。未绑定时连接显示未检测，不额外运行 ADB，也不把 USB 存储枚举当作 Ego 在线。
 - U 盘升级入口：`auto_update/usb_auto_update.sh`
 
@@ -67,6 +72,10 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 触觉 `hybrid-decode-encode` 使用 FFmpeg `-timestamps abs` 将 V4L2 时间映射为 Unix，`-fps_mode passthrough -enc_time_base -1` 保留输入时间基，不再按名义 120fps 自动补/丢帧。名义帧率仅请求设备采集模式。`debug_ts` 的 `demuxer+ffmpeg` 精确整数 `off` 建立 Unix 起点，禁止使用低精度科学计数的 `off_time`；只把 mux stats 计为输出帧，逐帧调试行被消费而不写运行日志。缺少有效 Unix 起点不回退为编码输出接收时间。当前逐路固定补偿见 7.2.1；旧 −35ms 包含编码输出观测延迟，不能沿用。容器毫秒量化与实际 USB/V4L2 时间抖动保留，不进行平滑。
 
 双目起录等待 MCAP 打开后再允许编码/IMU 提交。停录先禁止新的会话提交，通过共享/独占锁等待在途编码与 IMU 提交结束，刷新生产者本地批次并关闭视频输入；MCAP 写线程排空当前会话的本地批次与队列后关闭文件并确认，下一轮才可开始。进程退出也须等待生产者全部结束后让 MCAP 写线程退出，避免只因队列暂空而提前关闭。SDK 采集线程不持有编码收尾锁。
+
+停录时本地 recorder 和双目关闭、timing 合并后，在等待 Ego 的同时预校验本地 video/sensor/stereo；最终仍执行完整校验。仅 ffprobe 结果可复用，按设备号、inode、大小、mtime 和 ctime 纳秒身份检查缓存，文件改变必须重新探测。Ego STOP 目录轮询间隔限制为 50–150ms，录制中的增量轮询周期不变；最终拉取、复核及 header refresh 使用批量文件大小查询。拉取后的新鲜远端大小和所有本地文件一致时省略第二轮补拉；缺失或不符仍走原恢复重试。远端删除前再次检查大小，保留 MP4 header 刷新、修复和同步写回。
+
+Ego STOP 子进程在 finalized 后通过控制 socket 确认，释放写锁并等待主机完成数据刷盘；主机再通知同一子进程清理远端并等待退出，避免第二次解释器启动。主机关闭控制通道、未知命令或原 STOP 预算耗尽均保留远端，不主动删除；日志快照和前台最终同步全部完成后才 Ready。早期快照失败仍执行最终补导，但本次停录保持日志错误门禁，下一次成功同步才可恢复。
 
 Ego 停录 MP4 检查按 box 头读取并 seek 跳过媒体数据，普通 mdat 立即结束该兼容检查；64 位 mdat 长度异常时仅在文件尾做有界搜索，每块 64KiB、总读取最多 16MiB、最多解析 2048 个 box。只在 moov 结构及至 EOF 的后续 box 链可验证且候选唯一时修复 8 字节长度，随后同步 fsync 并回读；不能安全判断或刷盘失败则收尾失败、保留远端副本，不降级为成功。Ego 状态保存各停录阶段及逐文件补拉/fsync 耗时；MP4 检查记录读取量和耗时，Runtime 停录阶段与 flush 边界日志无需开启全局 PERF，超过 1 秒的单文件刷盘记录告警。同步刷盘等待仍可能超过循环检查期限，不能承诺固定停录时长。
 
@@ -108,7 +117,7 @@ Ego 停录 MP4 检查按 box 头读取并 seek 跳过媒体数据，普通 mdat 
    - `CAMERA_CODEC`：非法值会回退到 `h264`。
    - `UGRIPPER_LANG`：决定提示音语言。
 10. 运行时连接左右夹爪 HMI、启动 LED 渲染线程、尝试拉起音频守护进程。
-- HMI 状态查询、LED RGB 与蜂鸣指令会在单个 gripper 串口内由驱动 owner 线程统一调度；`record_runtime` 只切换灯效模式，不再跨线程推送录制态的 500ms 亮灭边沿。所有周期灯效直接使用同一个绝对单调时钟计算相位，左右夹爪不会因状态恢复时刻或单侧重连而独立重新计时。当前驱动参考旧版 `driver_origin/led_manager` 的职责分离思路做了收敛：按键输入仍以 HMI 主动上报 `KeyReport` 为主，串口主动查询已降为约 `1s` 一次的低频探活/状态刷新；LED 仅在颜色变化、状态切换或低频补发时下发，避免高频状态查询与 RGB 指令互相抢占；蜂鸣开启和关闭状态切换都会以 `20ms` 间隔连续下发 `5` 次，开启后仍维持原有保活，关闭状态在初始重发后每秒补发 OFF，HMI 连接建立和驱动退出时也会主动重发关闭状态。Ego 绑定、解绑和绑定失败反馈结束后还会按侧请求最新蜂鸣状态，回读 `duty=0` 即确认关闭（允许固件保留旧 frequency），否则最多重试 `5` 次，避免最后一个关闭帧丢失后长期蜂鸣。若有专项诊断或直控需求，仍可走 direct RGB 通道覆盖当前效果。
+- HMI 状态查询、LED RGB 与蜂鸣指令会在单个 gripper 串口内由驱动 owner 线程统一调度；`record_runtime` 只切换灯效模式，不再跨线程推送录制态的 500ms 亮灭边沿。所有周期灯效直接使用同一个绝对单调时钟计算相位，左右夹爪不会因状态恢复时刻或单侧重连而独立重新计时。当前驱动参考旧版 `driver_origin/led_manager` 的职责分离思路做了收敛：按键输入仍以 HMI 主动上报 `KeyReport` 为主，串口主动查询已降为约 `1s` 一次的低频探活/状态刷新；LED 仅在颜色变化、状态切换或低频补发时下发，避免高频状态查询与 RGB 指令互相抢占；蜂鸣开启和关闭状态切换都会按 `20ms` 重试计划连续下发 `5` 次（实际发送还受所有帧的25ms静默门禁约束），开启后仍维持原有保活，关闭状态在初始重发后每秒补发 OFF，HMI 连接建立和驱动退出时也会主动重发关闭状态。Ego 绑定、解绑和绑定失败反馈结束后还会按侧请求最新蜂鸣状态，回读 `duty=0` 即确认关闭（允许固件保留旧 frequency），否则最多重试 `5` 次，避免最后一个关闭帧丢失后长期蜂鸣。若有专项诊断或直控需求，仍可走 direct RGB 通道覆盖当前效果。
 - `standalone/GripperHmiTool` 当前新增了 UMI SN / 标定参数协议封装：SN 固定为 32-byte 字段（当前现场 SN 文本示例为 16-char，尾部补 `0x00`），标定参数固定为 `1024 byte` 严格对齐结构；当前 payload 已覆盖 RGB 主相机、双目 `cam0/cam1`、`cam->imu` 外参、IMU 离散噪声/随机游走与残差统计，其中 header 会保留内部有效数据长度，但当前 `V1.1` 固件写入时仍必须补满 `64 x 16B` 数据包，具体协议见 `docs/umi_calibration_protocol.md`。
 - UMI 标定写入当前增加了异常恢复口径：若写入阶段收到 `0xFE`（当前 chunk 零数据校验错误），驱动会优先重发当前 chunk；若连续出现 `0xFE`，或后续读 SN / 读标定返回 `0xF3/0xFE`，则会发送一次 `AbortWriteInData` 清理固件残留写入状态后再重试。
 11. 初始化成功后进入空闲状态机；默认包要求数据盘和 Fays recorder ready 才进入 `READY`。`+nostereo` 变体只要求数据盘与非双目关键设备 ready，不等待 Fays。
@@ -121,7 +130,7 @@ Ego 停录 MP4 检查按 box 头读取并 seek 跳过媒体数据，普通 mdat 
 ## 5. 状态机与按键行为
 ### 5.1 空闲态与阈值
 - `READY`：绿色呼吸灯，提示系统可开始录制。
-- HMI owner 按实际发送完成时刻计算静默与重发期限：显式蜂鸣/静音优先、到期状态查询次之，RGB 只保留最新目标；重复保活每轮至多发送一个，与上次命令完成至少间隔 5ms，按到期时间仲裁。保留 25ms 蜂鸣/查询静默、5 次可靠性发送与原有周期；条件变量按可执行期限等待并释放锁，不因 pending 查询尚在静默期而忙转。接收检查计划等待最多 20ms，新命令/停止通知可提前唤醒；该上限不是内核阻塞和 OS 调度延迟的保证。HMI 与 encoder 不共享等待应答的全局锁。
+- HMI owner 按实际发送完成时刻计算静默与重发期限：显式蜂鸣/静音优先、到期状态查询次之，RGB 只保留最新目标；重复保活每轮至多发送一个，按到期时间仲裁。底层所有发送（含显式蜂鸣、RGB、状态查询和独占维护命令）共用每串口帧间隔门禁：上一帧写入后有界检查主机发送队列排空（最多50ms，失败按串口I/O故障处理），再预留该帧8N1线速发送时间和25ms静默，下一帧才允许写入；分别调用write不再被当作帧间隔保证。该静默是主机侧规避，不代表固件执行ACK或已验证1.0.8物理UART接收；真实线间隔仍需抓线确认。保留 25ms 蜂鸣/查询静默、5 次可靠性发送与原有周期；条件变量按可执行期限等待并释放锁，不因 pending 查询尚在静默期而忙转。接收检查计划等待最多 20ms，新命令/停止通知可提前唤醒；该上限不是内核阻塞和 OS 调度延迟的保证。HMI 与 encoder 不共享等待应答的全局锁。
 - 当前 `READY` 呼吸灯周期约 `4.5s`，LED 渲染线程约每 `20ms` 按单调时钟刷新一次；驱动只在亮度实际变化时发送 RGB，并以约 `250ms` 的低频做灯效补发、约 `1s` 的低频做串口探活，降低肉眼可见抖动和录制态丢闪。
 - 主循环轮询周期约 `20ms`。
 - HMI 按键原始状态在进入动作状态机前，对按下和松开分别执行 `40ms` 稳定时间滤波；只有状态连续稳定满阈值才更新有效按键状态。短按事件之间仍保留 `80ms` 动作间隔限制，两层机制分别处理电平抖动与重复动作限频。
@@ -144,6 +153,10 @@ Ego 停录 MP4 检查按 box 头读取并 seek 跳过媒体数据，普通 mdat 
 左右上键采用精确按键掩码路由：两键形成组合后会抢占并重置各自的单键状态，额外按下左下或右下时不匹配该组合；组合执行后必须全部释放才允许下一次动作。这样第二键可在普通长按的 `1000ms` 容错窗口内加入，而不会同时触发 pre audio、人工失败标记或短按录制动作。组合绑定开始时播放 `1000/2000/4000Hz` 升调，等待同步期间双手黄灯闪烁并循环三短音，同步达标后停止蜂鸣并恢复就绪灯效；解绑成功为双手三次紫色短闪，并依次播放 `4000/2000/1000Hz` 降调；绑定失败保持双手三次红色长闪与三次长蜂鸣。同步等待结束由驱动后台重复发送关闭蜂鸣命令，不阻塞就绪切换；解绑和绑定失败反馈仍逐侧回读确认关闭，再恢复当前灯效。
 
 Ego 绑定文件位于 `/dev/shm/ugripper/ego_binding.json`：同一次开机周期内重启 `ugripper.service` 或重装软件仍保留绑定，整机重启或断电开机后 `/dev/shm` 清空，因此自动恢复为未绑定状态。`ego_binding_status.json` 使用 `bound / connected / disconnected / unbound` 表示绑定完成、在线、离线和已解绑；服务启动时若没有有效 binding，会主动发布 `unbound`，清理旧版本遗留的 `connected / disconnected` 快照。解绑不依赖 ADB 在线，即使 Ego 已拔出并进入 `disconnected / ERROR_5`，仍可通过左右上键组合解除绑定并清除该故障。解绑会在共享锁保护下删除 binding 并原子发布不带旧 serial 的 `unbound`，在途的旧 probe 在发布结果前会重新核对当前 binding，不能把状态覆盖回旧 serial 的 `connected`。解绑后不再探测 Ego，因此随后物理拔出不会改变 `unbound`。安装新版本时会清理旧 `/var/lib/ugripper/ego/binding.json`，避免历史持久化绑定被重新加载。
+
+Ego 起录使用 Runtime 直接持有的预热 Python worker：已绑定且空闲时提前完成模块加载和身份/路径准备，通过继承的私有 `SOCK_SEQPACKET` 控制端接收一次 START；同一 PID 随即成为本条 episode 的增量 owner，不创建孙进程或独立全局 IPC 服务。空闲不创建 episode、不持有录制/维护锁，也不访问 U 盘；控制端 EOF、解绑或 Runtime 正常退出会清理预热进程，Runtime 崩溃时由父退出信号终止它。控制 fd 使用 CLOEXEC，只将 worker 端显式传入目标子进程。派发前 worker 已死亡或派发失败时回退常规子进程起录；成功派发后不自动重发 START，等待现有状态确认及失败收尾。一次会话结束后在下一次空闲期补充预热进程；录制中的 2 秒无进度退出、2.5 秒 watchdog、SIGTERM/按阶段 SIGKILL、resume、STOP 补尾和同步刷盘完成后 Ready 的 ownership 不变。
+
+身份及路径缓存只保存在 `/dev/shm/ugripper/ego_binding.start-cache.json`。每次 START 重新核对绑定 serial/`bound_at_ms`、ADB `transport_id`、设备 boot ID、`pm path` 和 APK inode/size/mtime/ctime，并固定本条 ADB 命令使用该 transport；App 升级/重装、USB 重连、设备重启、重新绑定、目录不存在及探测/起录失败都会使相应缓存失效，完整属性/包版本/目录发现移到首次预热或失效恢复。正常起录不执行 `dumpsys package` 和目录 `find`；5 个硬件属性以单次 `getprop` 读取，会话内沿用同一 root 集合并只查找新增临时目录。App PID/进程 starttime 变化仅清除 codec 缓存；同一 App 进程、transport 和相同目标编码已成功设置时省去 `SET_VIDEO_CODEC`，编码切换或身份变化重新设置。此缓存依据 UGripper 目标值和 App 进程指纹，不在每次 START 查询 App 内实际设置；同一 App 进程内人工改 codec 且没有设置变更事件时不会主动失效。Android 不支持 APK/proc 指纹读取时清除缓存并回退完整检测，不放宽身份、真实录制状态、旧会话恢复或授时新鲜度检查。`ego_sync.json` 保存 `start_cache_hit`、各起录准备阶段 `start_timings_ms` 和 codec 缓存命中信息；这些是软件阶段耗时，不等于实体按键或声音播放时序。
 
 Ego 绑定时通过指定 serial 的 `dumpsys package com.ssnwt.helloxr` 读取 `versionName`；数字版本达到 `1.0.4` 才允许电流配置，版本缺失、无法解析或低于门槛时跳过新增功能并保留绑定。版本支持普通三段版本及可选 `v/V` 前缀，带其他后缀的版本保守视为未知。绑定文件追加 `app` 与 `input_current`，记录版本、能力、电流配置及广播回读结果。电流直接读取 UGripper 主机 `/etc/environment` 的 `HARDWARE_VERSION`，仅 `2.5.x > 2.5.0` 设置 `1600000 µA`（1.6A）；缺失、非法、`<=2.5.0` 和其他系列统一 `1100000 µA`（1.1A），不使用 metadata 的 `UGRIPPER_HARDWARE_VERSION` 默认值。绑定时发送显式 `InputCurrentLimitReceiver / SET_INPUT_CURRENT_LIMIT` 广播，并核对 JSON 的状态、callback、requested/readback、matched 和 persisted；失败只告警，不取消绑定，也不改变录制硬条件。
 
@@ -187,7 +200,7 @@ BMS 串口由蓝牙服务的 `update_bms_data` 独占采集，UGripper 不再打
    - `video_probes`：停录校验阶段并行 `ffprobe` 后写入的内部缓存，仅供同次 `metadata.json` 生成复用，不进入最终 episode。
    - 若现场日志出现 timing 打开失败，优先按日志里的真实 `/dev/shm/ugripper_recording_timing_*.json` 路径排查；旧字符串 `.recording_timing.json` 只保留为兼容性提示，不代表当前会在 episode 目录生成该文件。
 6. 若已准备 pre audio，则移动到本次 episode 的 `audio_pre.wav`。
-7. Ego 未绑定时，起录前 `record_runtime` 保持原可选联动：先用随包 ADB 做短窗口在线设备预检，明确无在线设备时直接跳过 sidecar；预检发现设备或结果不确定时拉起 worker，短等待内未拿到远端 episode 只记录告警，不阻塞 UGripper。Ego 已绑定时只允许使用持久化 serial，绑定设备不在线或未成功拿到本次远端 episode 会阻止起录并进入 `ERROR_5`。worker 默认优先使用随包安装的 `bin/UgripperRuntime/adb/adb`：设备识别要求 `ro.product.manufacturer=SXR` 且 `ro.product.model/ro.product.device/ro.product.name/ro.build.product` 均为 `SXR_1`。绑定后由独立授时服务先做一次 ADB 粗授时，再持续 USB 精同步；起录本身不设置 Ego 时间。Runtime 在绑定/同步未就绪时拒绝录制，不创建 episode，worker 仍复核本次绑定及同步快照的新鲜度；若准入后同步失效则写入 `time_sync_failed` / `ego_time_sync_failed`，输出 `UGR-82-02` 并终止本条起录。同步标准和绑定声光见“Ego 绑定后持续 USB 校时”。校时通过后才按 `CAMERA_CODEC` 广播 `SET_VIDEO_CODEC`（`h264 -> avc`，`h265 -> hevc`），再向已运行的 `com.ssnwt.helloxr` app 广播 `START_RECORDING`。worker 从 app external-files 根目录发现新建的 `episode_*-temp`：显式配置的 `UGRIPPER_EGO_REMOTE_ROOT` 优先级最高；未配置时把绑定 serial 的新版 `/files/dataset/<ego_serial>/data`、旧版 `/files/<ego_serial>/data/dataset`、legacy `/files/dataset` 与 fallback 扫描结果统一汇总去重，再从全部候选 root 查找本次新增 episode，避免空的旧目录遮蔽实际写入路径。远端文件增量同步到本条 episode 的 `ego/`，当前仍不主动启动 Ego app。
+7. Ego 未绑定时，起录前 `record_runtime` 保持原可选联动：先用随包 ADB 做短窗口在线设备预检，明确无在线设备时直接跳过 sidecar；预检发现设备或结果不确定时拉起 worker，短等待内未拿到远端 episode 只记录告警，不阻塞 UGripper。Ego 已绑定时只允许使用持久化 serial，绑定设备不在线或未成功拿到本次远端 episode 会阻止起录并进入 `ERROR_5`。worker 默认优先使用随包安装的 `bin/UgripperRuntime/adb/adb`：设备识别要求 `ro.product.manufacturer=SXR` 且 `ro.product.model/ro.product.device/ro.product.name/ro.build.product` 均为 `SXR_1`。绑定后由独立授时服务先做一次 ADB 粗授时，再持续 USB 精同步；起录本身不设置 Ego 时间。Runtime 在绑定/同步未就绪时拒绝录制，不创建 episode，worker 仍复核本次绑定及同步快照的新鲜度；若准入后同步失效则写入 `time_sync_failed` / `ego_time_sync_failed`，输出 `UGR-82-02` 并终止本条起录。同步标准和绑定声光见“Ego 绑定后持续 USB 校时”。校时通过后才按 `CAMERA_CODEC` 确认或广播 `SET_VIDEO_CODEC`（`h264 -> avc`，`h265 -> hevc`），再向已运行的 `com.ssnwt.helloxr` app 广播 `START_RECORDING`。worker 从 app external-files 根目录发现新建的 `episode_*-temp`：显式配置的 `UGRIPPER_EGO_REMOTE_ROOT` 优先级最高；未配置时把绑定 serial 的新版 `/files/dataset/<ego_serial>/data`、旧版 `/files/<ego_serial>/data/dataset`、legacy `/files/dataset` 与 fallback 扫描结果统一汇总去重，再从全部候选 root 查找本次新增 episode，避免空的旧目录遮蔽实际写入路径。远端文件增量同步到本条 episode 的 `ego/`，当前仍不主动启动 Ego app。
    - 240 实测依据：`-10..60ms` 八档补偿各 6 次的梯度拟合为 `offset=0.9858*补偿-18.885ms`（`R²=0.9694`），对应有效生效延迟约 `19.2ms`。部署固定 `+20ms` 实现后连续 50 轮均首次授时达标，随后独立复测也 `50/50` 满足 `<15ms`；同步平均 `112.0ms`、P95 `127ms`，内部绝对误差均值 `3.57ms`、P95 `7.05ms`、最大 `8ms`，独立复测最大 `9.5ms`。
 8. 并行启动：
    - `camera_recorder --codec <codec> --output-dir <episode> --only left_cam_main,right_cam_main[,chest_cam_main],left_tcam_l,left_tcam_r,right_tcam_l,right_tcam_r`
@@ -298,7 +311,7 @@ BMS 串口由蓝牙服务的 `update_bms_data` 独占采集，UGripper 不再打
 
 - `device_sn` 使用主控 `DEVICE_SN`，写出前统一转大写；`device_type=ugripper`，`device_mode=dual`，`data_version=3.3`。
 - `boot_time_s` 是本次系统开机时间点的 Unix 秒时间戳，优先复用 CameraRecorder timing 中的 `boot_time_offset`；timing 缺失时按当前 Unix 时钟与单调时钟差值回退计算。
-- `tactile_damage_sn_list` 初始写为 `[]`；停录后的后台触觉慢校验中，任意单次 finding 满足 `damaged=true` 就加入对应非空传感器 SN，不等待连续三次黄灯告警门槛，SN 去重后原子回写该字段；本条 episode 未发现损坏时保持 `[]`。
+- `tactile_damage_sn_list` 初始写为 `[]`；停录时与 Ego 收尾并行的触觉分析中，任意单次 finding 满足 `damaged=true` 就加入对应非空传感器 SN，不等待连续三次黄灯告警门槛，SN 去重后在 Ready 前原子回写并刷盘该字段；本条 episode 未发现损坏时保持 `[]`。
 - `task_start_s` / `task_stop_s` 是录制中右手上键任务切片点的 Unix 秒时间戳，按触发顺序各只写一次；当前 `3.3` 录制端未标记时固定写 `0.0`。`boot_time_s`、`tactile_damage_sn_list` 依次紧跟在 `task_stop_s` 后，并位于 `require_files` 前。离线深度校验允许历史或外部数据省略两个 task 字段；只有有效 `task_start_s` 而没有有效 `task_stop_s` 时按“无结束前回环数据”处理，不降低校验状态。
 - `metadata.json` 使用范本顺序写出顶层字段、`hardware_list` 字段和 `video_details[]` 字段；校验脚本会把 key 顺序漂移作为格式错误。
 - `data_uuid` 使用系统随机 UUID；若 `/proc/sys/kernel/random/uuid` 不可用则回退 `libuuid` 的 `uuid_generate/uuid_unparse`。无音频文件时 `audio_uuid` 允许为空字符串。
@@ -840,3 +853,11 @@ ffprobe 使用 JSON 输出，stdout/stderr 分离并在进程运行时持续排�
 正式停录触觉检测导出同次 C++ 判定的 mask（普通残差为过滤后的实心核心，结构损坏为不匹配块）；不改变损坏阈值或三次历史规则。处于告警状态且本次仍损坏的短期/长期比较按 episode 汇成一组，原子写入 tactile_state/latest_alarm.json，后续告警组覆盖旧组；无新告警保留历史。Web 概览仅在当前黄灯告警且 SN 匹配时显示 SN、位置、基线类型、episode/时间及盖板底图叠加红色半透明 mask 的 PNG；正常或断连时隐藏，底层以只读接口提供图像，固定尺寸/白名单校验并绑定组 ID，避免覆盖期间混看不同组。仅保留一个诊断 JSON，不增加 metadata 字段；最多 8 张 160×120 mask，不累积历史文件。
 
 - Ego 起录前查询真实录制状态；残留录制先 STOP 并确认 idle 与旧 episode 完成 rename，保留旧数据后重新起录。恢复等待 20 秒，Runtime 恢复启动总窗口 60 秒，失败阻止本次起录；不新增 metadata 字段。
+
+### STOP 终态与绿灯前写入边界
+
+Ego STOP 每 50–150ms 查询目录，录制中的增量周期不变。文件大小一次 ADB 批量读取；尾部补拉后重新批量核对，全部一致时不重复补拉，不符仍走有限恢复。MP4 头刷新、修复检查和删除前复核保留。STOP Python 完成拉取后保持存活，收到主机数据刷盘确认才在同一进程清理远端；清理完成/退出后才越过收尾屏障，主机退出或预算耗尽则保留远端。
+
+发现同名 `-invalid` 时核对 metadata 的设备序列号、episode 名、UUID、起始时间与本次 START；本地已有 UUID 时要求一致，不把旧失败目录当成本次结果。确认后立即记录 `invalid / ego_pull_incomplete` 与 App 的 `quality_check_err_type`，有界补拉失败诊断数据并保留远端，不再等待普通目录直到 60 秒。未发布完整 metadata 或身份不符的候选限频记录诊断后继续观察。该终态纳入既有绑定 Ego 的 ERROR_5 门禁。
+
+本地关闭后的预校验及触觉分析与 Ego 拉取并行；最终完整校验继续执行。触觉结果在最终 metadata 存在后原子发布并前台刷盘，不再在 Ready 后启动 episode metadata 的后台重写。日志早期快照和末尾补增量全部完成、最终前台 `sync -f` 返回后才允许 Ready。内核不可中断写盘仍不得通过超时提前放行绿灯。

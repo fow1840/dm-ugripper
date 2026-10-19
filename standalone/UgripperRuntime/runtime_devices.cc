@@ -940,7 +940,7 @@ void RecordRuntime::applyIdleState()
         setLedState(LedState::WaitStorage);
         return;
     }
-    if (egoBindingFaultActive_)
+    if (egoBindingFaultActive_ || logPersistenceFailed_.load())
     {
         setLedState(LedState::Error5);
         return;

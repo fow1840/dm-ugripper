@@ -165,7 +165,9 @@ class StopFinalizeTests(unittest.TestCase):
                 with ExitStack() as stack:
                     stack.enter_context(mock.patch.object(WORKER, 'Adb', return_value=adb))
                     stack.enter_context(mock.patch.object(WORKER, 'adb_device_ready', return_value=(True, '')))
-                    stack.enter_context(mock.patch.object(WORKER, 'remote_dir_exists', side_effect=[False, True]))
+                    stack.enter_context(mock.patch.object(WORKER, 'remote_dir_exists',
+                        side_effect=lambda adb, root, name: name == 'episode_0001'))
+                    stack.enter_context(mock.patch.object(WORKER, 'remote_file_sizes', return_value={}))
                     stack.enter_context(mock.patch.object(WORKER, 'sync_episode_once', return_value={}))
                     stack.enter_context(mock.patch.object(WORKER, 'recover_finalized_episode_files', return_value=(True, {}, '', '')))
                     for name in ('repair_mp4_files', 'refresh_final_mp4_headers'):

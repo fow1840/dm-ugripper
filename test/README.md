@@ -1,5 +1,8 @@
 # Test Layout
 
+停录并行收尾验证：`test_ego_recording_worker.py` 覆盖批量 stat 的真实 shell 路径转义、缺失/重复响应、补拉后的新鲜大小复核及同一 STOP 进程等待主机清理授权/EOF 保留远端；`test_system_log_snapshot.py` 覆盖事件 worker 重用、失败重试和刷盘完成前不得确认；`test_recording_orchestrator.cc` 以同步屏障验证日志/本地预校验与 Ego 等待重叠、完整校验仍执行、所有任务和最终同步结束前不得 Ready，以及早期快照失败的门禁。板端比较须使用相同 U 盘和录制时长，若出现 UAS/块设备错误或 D 状态则保存内核现场，不能作为正常停录耗时对比。
+
+
 `ugripper` 当前测试入口分成 3 层：
 
 - `test/src/*`
@@ -33,7 +36,7 @@
 
 ## 当前脚本
 - `test/scripts/test_system_log_snapshot.py`
-  - 无硬件回归：快照截止时间、游标增量/空快照、100MiB 上限策略（缩小容量验证）、刷盘失败/读取超时不提交游标、失效游标恢复，并发快照串行等待、慢刷盘完成后才返回，以及绿灯必须晚于日志同步/同步失败不亮绿灯。使用开发机原生 Python 执行（本交叉编译环境为 `.venv/bin/python test/scripts/test_system_log_snapshot.py`）。
+  - 无硬件回归：syslog 完整行增量/单卷与总容量/年龄、有限复制边界、轮转与截断竞争、刷盘失败不提交、重试去孤儿、跨 boot、挂载/软链拒绝、原实验 journal 仅成功提交后清理、RAM 轮转及前台同步。执行 `.venv/bin/python test/scripts/test_system_log_snapshot.py`；Ready/失败边界另由 RecordingOrchestrator 测试覆盖。
 - `test/scripts/camera_test.sh`
   - 直接拉起多路 `ffmpeg`，验证非主相机录制稳定性，并收集 `vmstat`、`top`、`ps` 等运行态信息。
 - `test/scripts/camera_crash_capture.sh`
@@ -209,13 +212,15 @@ python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
 ### Ego 停录 MP4 与日志快照回归
 
 - `test/scripts/test_ego_mp4_repair.py`：普通/fragmented MP4 与 1GiB 稀疏文件仅检查头部、旧 64 位 mdat 修复、伪/歧义 moov、分块边界、截断及越界、读取/box 上限、fsync 失败，以及失败时禁止 finalized/远端删除。
-- `test/scripts/test_system_log_snapshot.py`：有限快照、增量游标、容量上限、失败不推进游标、同步刷盘及并发串行等待。
+- `test/scripts/test_system_log_snapshot.py`：仅原生 journal 增量事务、容量/留存、失败恢复和同步刷盘。
 - 原生 Python 执行上述测试；交叉编译容器使用主工作区 `.venv/bin/python`，不要调用 ARM Python。
 - Runtime 停录与 LED host 测试验证日志同步完成前不切 Ready，日志失败不亮绿灯。
 
 ### Ego STOP 交接与总预算回归
 
 - `test/scripts/test_ego_recording_worker.py`：真实子进程验证 STOP 广播先于增量排空、当前完整块写入后收尾接管且不再开始下一块；覆盖共享截止时间、ADB 剩余预算、预算耗尽不再拉下一个文件、不报告 finalized、排空超时不覆盖增量状态、cleanup 不重置预算且超时保留远端。
+- `test/scripts/test_ego_start_latency.py`：缓存 generation/serial、ADB transport、设备重启、App 升级/重装、进程重启/PID 复用、路径失效及 codec 切换；指纹权限不足回退完整检测；真实子进程验证预热单次派发、错误身份拒绝、EOF/父进程崩溃清理和 STOP 请求先到时禁止 START。
+- `test_ego_warm_process`：继承控制 fd 只进入指定进程、预热转录制保留同一 PID/STOP ownership、无关子进程不能延长控制通道寿命、进程死亡后派发拒绝与独立替换。板端仍需安装对应构建后验证真实 ADB 指纹权限、起录耗时、App 重启/升级/USB 重连和分段录制；host-only 结果不能代表实体按键或声学响应改善。
 - `test/scripts/test_ego_transfer_recovery.py`：无 PTY 二进制读取、短读/失败拒绝提交、无进度超时、取消与子进程强杀、分块偏移续传、resume 不发 START、退出重试码释放 writer lock。板端注入读取子进程和增量进程卡住，分别验证正常退出/超时强杀、同一 episode 恢复及 STOP 补尾。
 - `test_recording_orchestrator`：STOP 请求先于等待本地 recorder，启动回滚等待异步 Ego 收尾完成。
 - 240 保险 STOP 定向结果见 `tmp/board_results/20261012_ego_stop_latency/`（已安装旧 worker）及 `tmp/board_results/20261012_ego_stop_fixed_latency/`（临时新 worker）；保险广播耗时不能代表录制中完整收尾耗时。
@@ -223,3 +228,7 @@ python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
 ### V2.1.14 板端修复回归
 
 测试工程师清单见 [V2.1.14 修复回归测试清单](../docs/v2.1.14-test-checklist.md)，包括停录蓝灯/长录、NTP 正负授时、红灯、Ego 交接超时、安装及版本重试，并说明 Ego App 固件版本查询重试本次额外约 11.4 秒的耗时来源。
+
+- `test/scripts/test_ram_logging_config.py`：隔离配置树验证候选预校验、逐文件原子替换、首次备份保留、安装/卸载失败回滚、服务/组恢复、外部修改保护及中断恢复；不修改本机系统配置。
+
+STOP 定向回归还覆盖 Ego `-invalid` 终态：本次身份核对、同名旧目录拒绝、已有 UUID 冲突、metadata 未完整发布、失败副本保留以及非法 cleanup 目标拒绝。板端比较须使用同一存储驱动/设备，分别记录短录与长录 STOP 阶段；Ready 后观察 metadata、系统日志文件树应保持不变，不能把仅 Runtime QC 通过视为完整深度数据校验。

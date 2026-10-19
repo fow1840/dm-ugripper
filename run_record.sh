@@ -74,12 +74,12 @@ fi
 is_storage_ready() {
     local mount_source mount_opts
 
-    if ! findmnt -rn --target "$DISK_ROOT" >/dev/null 2>&1; then
+    if ! findmnt -rn --mountpoint "$DISK_ROOT" >/dev/null 2>&1; then
         return 1
     fi
 
-    mount_source="$(findmnt -rn -o SOURCE --target "$DISK_ROOT" 2>/dev/null || true)"
-    mount_opts="$(findmnt -rn -o OPTIONS --target "$DISK_ROOT" 2>/dev/null || true)"
+    mount_source="$(findmnt -rn -o SOURCE --mountpoint "$DISK_ROOT" 2>/dev/null || true)"
+    mount_opts="$(findmnt -rn -o OPTIONS --mountpoint "$DISK_ROOT" 2>/dev/null || true)"
 
     [ -n "$mount_source" ] || return 1
     [ -e "$mount_source" ] || return 1
@@ -133,11 +133,12 @@ sync_logs_once() {
         return 0
     fi
 
-    if ! tail -c +$((last_pos + 1)) "$src" >> "$dest" 2>/dev/null; then
+    if ! dd if="$src" iflag=skip_bytes,count_bytes skip="$last_pos" count="$((curr_size - last_pos))" status=none >> "$dest"; then
         flock -u "$lock_fd" || true
         exec {lock_fd}>&-
         return 1
     fi
+    sync -f "$dest" || { flock -u "$lock_fd"; exec {lock_fd}>&-; return 1; }
     printf '%s' "$curr_size" > "$state_file"
 
     flock -u "$lock_fd" || true
@@ -145,11 +146,12 @@ sync_logs_once() {
 }
 
 cleanup() {
-    sync_logs_once "$LOG_FILE_LOCAL" "$LOG_FILE_DISK" "$LOG_SYNC_POS_FILE" "$LOG_SYNC_LOCK_FILE" || true
-    sleep 0.05
-    sync_logs_once "$LOG_FILE_LOCAL" "$LOG_FILE_DISK" "$LOG_SYNC_POS_FILE" "$LOG_SYNC_LOCK_FILE" || true
-    sleep 0.05
-    sync_logs_once "$LOG_FILE_LOCAL" "$LOG_FILE_DISK" "$LOG_SYNC_POS_FILE" "$LOG_SYNC_LOCK_FILE" || true
+    # Normal exit is another foreground event, never schedule later USB writes.
+    if is_storage_ready; then
+        /usr/local/lib/ugripper/logging/save_system_log.sh "$DISK_ROOT" || log_error "UGR-70-01" "exit system-log snapshot failed"
+        sync_logs_once "$LOG_FILE_LOCAL" "$LOG_FILE_DISK" "$LOG_SYNC_POS_FILE" "$LOG_SYNC_LOCK_FILE" || log_error "UGR-70-01" "exit runtime-log snapshot failed"
+        sync -f "$DISK_ROOT" || log_error "UGR-70-01" "exit disk sync failed"
+    fi
 }
 
 mkdir -p "$LOG_DIR_LOCAL"

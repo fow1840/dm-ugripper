@@ -47,7 +47,7 @@ void RecordRuntime::sendAudioCommand(const std::string &command) const
     {
         return;
     }
-    audioCoordinator_->SendCommand(command);
+    audioCoordinator_->SendCommand(command == "ready" && logPersistenceFailed_.load() ? "error" : command);
 }
 
 bool RecordRuntime::attachPendingPreAudio(const std::string &episodeDir)
@@ -195,6 +195,8 @@ bool RecordRuntime::startRecording(bool resetRecording)
     episodeManager_->SetDeviceVersions(deviceVersions_, egoBoundSerial_);
     cancelBackgroundTactileValidation();
     tactileTriggeredAudioCommand_.clear();
+    stopTactileEpisodeDir_.clear();
+    stopTactileFindings_.clear();
     activeHardwareFault_.reset();
     resetRestoreUsbErrorWindow();
     taskMarkerTracker_.Reset();
@@ -211,14 +213,9 @@ bool RecordRuntime::stopRecording(bool dueToError, const std::string &reason, co
         return false;
     }
     const bool ok = recordingOrchestrator_->StopRecording(dueToError, reason, errorType, nullptr);
-    const std::string completedEpisodeDir = lastEpisodeDir();
     if (!dueToError && activeHardwareFault_.has_value() && IsCameraRecorderMainCameraFault(*activeHardwareFault_))
     {
         maybeTriggerRestoreUsbForHardwareFault(*activeHardwareFault_);
-    }
-    if (ok && !dueToError && !completedEpisodeDir.empty())
-    {
-        scheduleBackgroundTactileValidation(completedEpisodeDir);
     }
     if (dueToError && activeHardwareFault_.has_value())
     {
@@ -524,7 +521,13 @@ bool RecordRuntime::handleLeftDualUmountAction()
     setLedState(LedState::Writing);
     setAudioRecoveryCommand("writing");
     sendAudioCommand("writing");
-    syncRuntimeLogToDisk("left dual-button umount");
+    if (!syncRuntimeLogToDisk("left dual-button umount"))
+    {
+        setLedState(LedState::Error5);
+        setAudioRecoveryCommand("error");
+        sendAudioCommand("error");
+        return false;
+    }
 
     std::string errorMessage;
     if (shutdownRequestPort_ == nullptr ||
@@ -683,12 +686,14 @@ bool RecordRuntime::handleLeftSingleLongMarkFailedAction()
 
     const std::string episodeDir = lastEpisodeDir();
     std::string errorMessage;
+    setLedState(LedState::Writing);
     if (!markEpisodeOperatorFailed(episodeDir, &errorMessage))
     {
         DM_LOG_ERROR_CODE("UGR-10-02", "{}", (::DA::utils::LogString()
             << "failed to mark episode as operator failed"
             << " episode_dir=" << episodeDir
             << " error=" << errorMessage << std::endl).str());
+        setLedState(LedState::Error5);
         sendAudioCommand("error");
         return false;
     }
@@ -696,8 +701,15 @@ bool RecordRuntime::handleLeftSingleLongMarkFailedAction()
     DM_LOG_INFO("{}", (::DA::utils::LogString()
         << "episode marked as operator failed"
         << " episode_dir=" << episodeDir << std::endl).str());
+    setLedState(LedState::Writing);
+    if (!syncRuntimeLogToDisk("operator mark failed"))
+    {
+        setLedState(LedState::Error5);
+        setAudioRecoveryCommand("error");
+        sendAudioCommand("error");
+        return false;
+    }
     playOperatorMarkFailedFeedback();
-    syncRuntimeLogToDisk("operator mark failed");
     return true;
 }
 
@@ -734,8 +746,13 @@ bool RecordRuntime::recordAudioClip(const std::string &audioType, bool monitorUp
 
     const auto finishAudioRecording = [&](bool ok) {
         sendAudioCommand("audio_recording_stop");
-        syncRuntimeLogToDisk(audioType == "pre" ? "pre-audio stop" : "post-audio stop");
-        return ok;
+        setLedState(LedState::Writing);
+        setAudioRecoveryCommand("writing");
+        const bool synced = syncRuntimeLogToDisk(audioType == "pre" ? "pre-audio stop" : "post-audio stop");
+        setAudioRecoveryCommand(synced ? "ready" : "error");
+        if (synced) applyIdleState();
+        else { setLedState(LedState::Error5); sendAudioCommand("error"); }
+        return ok && synced;
     };
 
     while (!stopRequested_.load())
@@ -756,6 +773,7 @@ bool RecordRuntime::recordAudioClip(const std::string &audioType, bool monitorUp
         audioRecorder.Stop(DA::Ugripper::ProcessStopMode::SigTermThenKill, 1000, nullptr);
     }
 
+    setLedState(LedState::Writing);
     if (!fileExistsAndNotEmpty(captureFile.string()) || fs::file_size(captureFile) <= 44)
     {
         DM_LOG_WARN("{}", (::DA::utils::LogString() << "audio capture is empty" << std::endl).str());

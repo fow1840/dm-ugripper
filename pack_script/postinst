@@ -376,6 +376,8 @@ systemctl daemon-reload
 
 stop_service_fast "$SERVICE_NAME" 10
 
+/usr/local/lib/ugripper/logging/install_ram_logging.sh "$SERVICE_RUN_USER"
+
 udevadm control --reload-rules
 # 仅重触发视频/声音设备，应用相机与 USB 音频相关 udev 规则；避免触发 block add 导致升级期间重复执行 usb-auto-update
 # Fays SDK 读取 serial/calibration 时还会打开 /dev/bus/usb 下的 FTDI

@@ -12,6 +12,8 @@ import subprocess
 import sys
 import signal
 import selectors
+import socket
+import ctypes
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -76,10 +78,15 @@ SXR_PROPS = {
 _OPERATION_DEADLINE = None
 _INCREMENTAL_STOP_REQUESTED = False
 _INCREMENTAL_STATUS_FILE = None
+_RESOLVED_ADB_BIN = None
 
 
 class StopDeadlineExceeded(TimeoutError):
     pass
+
+
+class StartIdentityUnavailable(RuntimeError):
+    """Optional cache fingerprint is not supported; use full uncached detection."""
 
 
 class IncrementalCancelled(Exception):
@@ -186,7 +193,10 @@ class Adb:
 
     def command(self, *args: str) -> list[str]:
         command = [self.bin]
-        if self.serial:
+        transport = getattr(self, "transport_id", None)
+        if transport:
+            command.extend(["-t", transport])
+        elif self.serial:
             command.extend(["-s", self.serial])
         command.extend(args)
         return command
@@ -267,9 +277,13 @@ class Adb:
 
 
 def resolve_adb_bin() -> str:
+    global _RESOLVED_ADB_BIN
     configured = os.environ.get("UGRIPPER_EGO_ADB", "").strip()
     if configured:
         return configured
+
+    if _RESOLVED_ADB_BIN is not None:
+        return _RESOLVED_ADB_BIN
 
     bundled = Path(__file__).resolve().parent.parent / "adb" / "adb"
     if bundled.exists() and os.access(bundled, os.X_OK):
@@ -281,13 +295,15 @@ def resolve_adb_bin() -> str:
                 timeout=operation_timeout(3),
                 check=True,
             )
-            return str(bundled)
+            _RESOLVED_ADB_BIN = str(bundled)
+            return _RESOLVED_ADB_BIN
         except StopDeadlineExceeded:
             raise
         except Exception:
             pass
 
-    return shutil.which("adb") or "adb"
+    _RESOLVED_ADB_BIN = shutil.which("adb") or "adb"
+    return _RESOLVED_ADB_BIN
 
 
 def write_status(path: Path, payload: dict) -> None:
@@ -466,11 +482,10 @@ def select_app(adb: Adb) -> str:
 
 
 def get_props(adb: Adb) -> dict:
-    props = {}
-    for key in SXR_PROPS:
-        result = adb.run("shell", "getprop", key, timeout=5)
-        props[key] = result.stdout.strip().replace("\r", "") if result.returncode == 0 else ""
-    return props
+    # A single shell invocation avoids five independent ADB round trips.
+    result = adb.run("shell", "getprop", timeout=5)
+    values = dict(re.findall(r"^\[([^]]+)\]: \[([^]]*)\]$", result.stdout.replace("\r", ""), re.MULTILINE))
+    return {key: values.get(key, "") if result.returncode == 0 else "" for key in SXR_PROPS}
 
 
 def is_ego_device(adb: Adb) -> tuple[bool, dict]:
@@ -704,6 +719,7 @@ def run_bind(args: argparse.Namespace) -> int:
             "device": selected_detail,
         }
         with binding_state_lock(args.binding_file):
+            invalidate_start_cache(args.binding_file)
             write_json_atomic(args.binding_file, binding)
             status.update({"status": "bound", "serial": selected.serial, "updated_at_ms": now_ms()})
             write_status(args.binding_status_file, status)
@@ -722,6 +738,7 @@ def run_unbind(args: argparse.Namespace) -> int:
             binding = read_status(args.binding_file)
             try:
                 args.binding_file.unlink()
+                invalidate_start_cache(args.binding_file)
             except FileNotFoundError:
                 pass
             try:
@@ -866,10 +883,12 @@ def run_probe(args: argparse.Namespace) -> int:
                     current.update(app=app, firmware=firmware, versions_checked_at_ms=now_ms())
                     write_json_atomic(args.binding_file, current)
         if not connected:
+            invalidate_start_cache(args.binding_file)
             status["error"] = "bound ego is not present in adb devices"
         published = publish_probe_status(args, serial, status)
         return 0 if published and connected else 1
     except Exception as exc:
+        invalidate_start_cache(args.binding_file)
         status["error"] = str(exc)
         status["updated_at_ms"] = now_ms()
         try:
@@ -884,6 +903,9 @@ def configured_remote_root() -> str:
 
 
 def list_dataset_roots(adb: Adb) -> list[str]:
+    cached = getattr(adb, "dataset_roots", None)
+    if isinstance(cached, list) and cached:
+        return cached.copy()
     configured = configured_remote_root()
     if configured:
         return [configured]
@@ -913,7 +935,8 @@ def list_dataset_roots(adb: Adb) -> list[str]:
     )
     result = adb.run("shell", command, timeout=8)
     roots = [line.strip().replace("\r", "") for line in result.stdout.splitlines() if line.strip()]
-    return sorted(set(roots))
+    adb.dataset_roots = sorted(set(roots))
+    return adb.dataset_roots.copy()
 
 
 def list_temp_episodes(adb: Adb, remote_root: str) -> list[str]:
@@ -931,7 +954,7 @@ def snapshot_temp_episodes(adb: Adb) -> dict[str, set[str]]:
 
 def find_new_temp_episodes(adb: Adb, previous: dict[str, set[str]]) -> list[tuple[str, str]]:
     candidates = []
-    for root in list_dataset_roots(adb):
+    for root in previous:
         existing = previous.get(root, set())
         for episode in list_temp_episodes(adb, root):
             if episode not in existing:
@@ -1228,6 +1251,26 @@ def remote_file_size(adb: Adb, remote_file: str) -> int | None:
     return int(text) if text.isdigit() else None
 
 
+def remote_file_sizes(adb: Adb, remote_root: str, remote_episode: str) -> dict:
+    """One ADB roundtrip; a missing/invalid result fails the final size check."""
+    check_operation_budget()
+    directory = shell_quote(remote_path(remote_root, remote_episode))
+    names = " ".join(shell_quote(name) for name in FILES)
+    command = f"cd {directory} && stat -c '%n:%s' {names} 2>/dev/null"
+    result = adb.run("shell", command, timeout=8)
+    # stat may return nonzero for a missing metadata file while the temporary
+    # episode is still recording. Retain valid results for all existing files.
+    sizes = {name: None for name in FILES}
+    seen = set()
+    for line in result.stdout.replace("\r", "").splitlines():
+        name, separator, value = line.partition(":")
+        if not separator or name not in sizes or name in seen:
+            raise RuntimeError("invalid batched Ego file-size response")
+        seen.add(name)
+        sizes[name] = int(value) if value.isdigit() else None
+    return sizes
+
+
 def adb_device_ready(adb: Adb) -> tuple[bool, str]:
     try:
         result = adb.run("get-state", timeout=5)
@@ -1260,9 +1303,10 @@ def sync_one_file(
     file_name: str,
     replace_shrunk: bool = False,
     timings: dict | None = None,
+    remote_sizes: dict | None = None,
 ) -> int:
     remote_file = remote_path(remote_root, remote_episode, file_name)
-    size = remote_file_size(adb, remote_file)
+    size = remote_sizes.get(file_name) if remote_sizes is not None else remote_file_size(adb, remote_file)
     if size is None:
         return 0
     local_episode_dir.mkdir(parents=True, exist_ok=True)
@@ -1311,6 +1355,7 @@ def sync_episode_once(
     local_episode_dir: Path,
     replace_shrunk: bool = False,
     timings: dict | None = None,
+    remote_sizes: dict | None = None,
 ) -> dict:
     copied = {}
     for file_name in FILES:
@@ -1319,7 +1364,7 @@ def sync_episode_once(
         started = time.monotonic()
         file_timing = {}
         try:
-            delta = sync_one_file(adb, remote_root, remote_episode, local_episode_dir, file_name, replace_shrunk=replace_shrunk, timings=file_timing if timings is not None else None)
+            delta = sync_one_file(adb, remote_root, remote_episode, local_episode_dir, file_name, replace_shrunk=replace_shrunk, timings=file_timing if timings is not None else None, **({"remote_sizes": remote_sizes} if remote_sizes is not None else {}))
         except (StopDeadlineExceeded, IncrementalCancelled):
             raise
         except Exception as exc:
@@ -1431,11 +1476,11 @@ def merge_ranges(ranges: list[tuple[int, int]], gap: int) -> list[tuple[int, int
 
 
 def refresh_final_mp4_header(
-    adb: Adb, remote_root: str, remote_episode: str, local_episode_dir: Path, file_name: str
+    adb: Adb, remote_root: str, remote_episode: str, local_episode_dir: Path, file_name: str, remote_sizes: dict | None = None
 ) -> dict:
     detail = {"file": file_name, "status": "skipped", "reason": ""}
     remote_file = remote_path(remote_root, remote_episode, file_name)
-    remote_size = remote_file_size(adb, remote_file)
+    remote_size = remote_sizes.get(file_name) if remote_sizes is not None else remote_file_size(adb, remote_file)
     if remote_size is None:
         detail["reason"] = "remote_missing"
         return detail
@@ -1490,10 +1535,11 @@ def refresh_final_mp4_header(
 
 def refresh_final_mp4_headers(adb: Adb, remote_root: str, remote_episode: str, local_episode_dir: Path) -> dict:
     details = {}
+    sizes = remote_file_sizes(adb, remote_root, remote_episode)
     for file_name in MP4_FILES:
         check_operation_budget()
         try:
-            details[file_name] = refresh_final_mp4_header(adb, remote_root, remote_episode, local_episode_dir, file_name)
+            details[file_name] = refresh_final_mp4_header(adb, remote_root, remote_episode, local_episode_dir, file_name, remote_sizes=sizes)
         except Exception as exc:
             details[file_name] = {"file": file_name, "status": "error", "error": str(exc)}
     return details
@@ -1725,11 +1771,12 @@ def cleanup_status(status: str, remote_episode: str = "", error: str = "", **ext
 
 
 def safe_remote_episode_name(name: str) -> bool:
-    return bool(name) and name.startswith("episode_") and "/" not in name and ".." not in name and not name.endswith("-temp")
+    return bool(name) and name.startswith("episode_") and "/" not in name and ".." not in name and not name.endswith(("-temp", "-invalid"))
 
 
 def verify_remote_and_local_file_sizes(
-    adb: Adb, remote_root: str, remote_episode: str, local_episode_dir: Path
+    adb: Adb, remote_root: str, remote_episode: str, local_episode_dir: Path,
+    remote_sizes: dict | None = None
 ) -> tuple[bool, dict]:
     details = {}
     ok = True
@@ -1737,7 +1784,8 @@ def verify_remote_and_local_file_sizes(
         check_operation_budget()
         local_file = local_episode_dir / file_name
         local_size = local_file.stat().st_size if local_file.exists() else None
-        remote_size = remote_file_size(adb, remote_path(remote_root, remote_episode, file_name))
+        remote_size = (remote_sizes.get(file_name) if remote_sizes is not None else
+                       remote_file_size(adb, remote_path(remote_root, remote_episode, file_name)))
         file_ok = local_size is not None and remote_size is not None and int(local_size) == int(remote_size)
         if not file_ok:
             ok = False
@@ -1756,8 +1804,18 @@ def recover_finalized_episode_files(
     local_episode_dir: Path,
     attempts: int = FINAL_SYNC_ATTEMPTS,
     retry_interval_sec: float = FINAL_SYNC_RETRY_INTERVAL_SEC,
+    already_synced: bool = False,
 ) -> tuple[bool, dict, str, str]:
     history = []
+    if already_synced:
+        # Always take a fresh remote snapshot after the final pull. If all files
+        # match there is no reason to run a second seven-file sync pass.
+        sizes = remote_file_sizes(adb, remote_root, remote_episode)
+        ok, files = verify_remote_and_local_file_sizes(
+            adb, remote_root, remote_episode, local_episode_dir, remote_sizes=sizes)
+        if ok:
+            return True, {"status": "complete", "attempts": [{"attempt": 0,
+                "sizes_ok": True, "files": files, "copied": {}}]}, "", ""
     last_error = "remote/local ego file sizes do not match"
     last_error_type = "ego_pull_incomplete"
     for attempt in range(1, max(1, attempts) + 1):
@@ -1888,7 +1946,8 @@ def _run_cleanup(args: argparse.Namespace) -> int:
             return finish(cleanup_status("error", remote_episode, "no SXR/SXR_1 ego device found during cleanup"), False)
         if not remote_dir_exists(adb, remote_root, remote_episode):
             return finish(cleanup_status("already_missing", remote_episode, deleted_at_ms=now_ms()))
-        sizes_ok, size_details = verify_remote_and_local_file_sizes(adb, remote_root, remote_episode, local_episode_dir)
+        sizes_ok, size_details = verify_remote_and_local_file_sizes(adb, remote_root, remote_episode, local_episode_dir,
+            remote_sizes=remote_file_sizes(adb, remote_root, remote_episode))
         if not sizes_ok:
             recovered, recovery_detail, recovery_error, _ = recover_finalized_episode_files(
                 adb,
@@ -1978,6 +2037,7 @@ def recover_previous_recording(adb: Adb, status: dict, status_file: Path) -> Non
                 and remote_dir_exists(adb, root, episode[:-5])
                 for root, episodes in previous.items() for episode in episodes)
             if finalized:
+                status["previous_recording_recovered"] = True
                 status.update(status="starting", phase="start", updated_at_ms=now_ms())
                 write_status(status_file, status)
                 return
@@ -2057,6 +2117,208 @@ def sync_recording_loop(args: argparse.Namespace, adb: Adb, status: dict) -> int
     return 0
 
 
+def start_cache_path(binding_file: Path) -> Path:
+    return binding_file.with_suffix(".start-cache.json")
+
+
+def invalidate_start_cache(binding_file: Path) -> None:
+    try:
+        start_cache_path(binding_file).unlink(missing_ok=True)
+    except OSError as exc:
+        # Generation/transport/APK validation remains mandatory even if cleanup
+        # is unavailable. A cache removal failure must not undo an unbind.
+        ugripper_log("WARN", "cannot remove Ego start cache: " + str(exc), component="ego")
+
+
+def binding_generation(args: argparse.Namespace) -> list:
+    binding = read_status(args.binding_file)
+    serial = str(binding.get("serial") or "")
+    generation = binding.get("bound_at_ms")
+    if not args.serial or serial != args.serial or type(generation) is not int or generation <= 0:
+        raise RuntimeError("Ego binding changed or has no valid generation")
+    return [serial, generation]
+
+
+def fresh_start_identity(adb: Adb, roots: list[str]) -> dict:
+    # transport_id changes on reconnect (including reconnect without reboot).
+    devices = adb.run("devices", "-l", timeout=5)
+    entries = [line.split() for line in devices.stdout.splitlines()[1:]]
+    matches = [parts for parts in entries if len(parts) >= 2 and parts[0] == adb.serial and parts[1] == "device"]
+    transport = next((part.split(":", 1)[1] for part in (matches[0][2:] if len(matches) == 1 else [])
+                      if part.startswith("transport_id:")), "")
+    if devices.returncode or len(matches) != 1:
+        raise RuntimeError("bound Ego ADB transport is unavailable")
+    if not transport:
+        raise StartIdentityUnavailable("ADB does not expose transport identity")
+    # Pin subsequent shell/broadcast calls to this exact connection, so a USB
+    # reconnect cannot silently retarget an in-flight START to a new transport.
+    adb.transport_id = transport
+    # APK path + inode/size/mtime/ctime detects replacement, upgrade and same-version
+    # reinstall without dumpsys on the hot path. Process starttime invalidates codec
+    # on App restart, even if the kernel eventually reuses a PID.
+    command = (
+        "printf '__BOOT__\\n'; cat /proc/sys/kernel/random/boot_id; "
+        "printf '__APK__\\n'; "
+        f"paths=$(pm path {shell_quote(app_package(adb))}) || exit 41; "
+        "[ -n \"$paths\" ] || exit 42; "
+        "printf '%s\\n' \"$paths\"; "
+        "for apk in $paths; do stat -c '%i:%s:%Y:%Z' \"${apk#package:}\" || exit 43; done; "
+        "printf '__PROCESS__\\n'; "
+        f"for pid in $(pidof {shell_quote(app_package(adb))}); do cat /proc/$pid/stat || exit 44; done; "
+        "printf '__ROOTS__\\n'; "
+        + "".join(f"[ -d {shell_quote(root)} ] && printf '%s\\n' {shell_quote(root)}; " for root in roots)
+        + "printf '__END__\\n'"
+    )
+    reply = adb.run("shell", command, timeout=5)
+    lines = reply.stdout.replace("\r", "").splitlines()
+    def section(first, last):
+        try:
+            return lines[lines.index(first) + 1:lines.index(last)]
+        except ValueError:
+            raise StartIdentityUnavailable("incomplete Ego identity probe")
+    boot = section("__BOOT__", "__APK__")
+    apk = section("__APK__", "__PROCESS__")
+    process = section("__PROCESS__", "__ROOTS__")
+    present = section("__ROOTS__", "__END__")
+    if reply.returncode or len(boot) != 1 or not re.fullmatch(r"[0-9a-fA-F-]{36}", boot[0]):
+        raise StartIdentityUnavailable("cannot identify Ego boot")
+    paths = [line for line in apk if line.startswith("package:")]
+    stats = [line for line in apk if re.fullmatch(r"[0-9]+:[0-9]+:[0-9]+:[0-9]+", line)]
+    if not paths or len(stats) != len(paths) or len(apk) != len(paths) + len(stats):
+        raise StartIdentityUnavailable("cannot identify installed Ego APK")
+    processes = []
+    for line in process:
+        # /proc/PID/stat: comm can contain spaces and parentheses.
+        pid, sep, rest = line.partition(" (")
+        fields = rest.rsplit(") ", 1)[-1].split() if sep else []
+        if not pid.isdigit() or len(fields) < 20 or not fields[19].isdigit():
+            raise StartIdentityUnavailable("cannot identify Ego App process")
+        processes.append([pid, fields[19]])
+    return {"transport": transport, "boot": boot[0], "apk": apk,
+            "process": sorted(processes), "roots_present": sorted(present)}
+
+
+def prepare_start_device(args: argparse.Namespace) -> Adb:
+    path = start_cache_path(args.binding_file)
+    try:
+        generation = binding_generation(args)
+    except Exception:
+        invalidate_start_cache(args.binding_file)
+        raise
+    cached = read_status(path)
+    adb = Adb(args.serial)
+    adb.package = PACKAGE
+    roots = cached.get("roots", []) if cached.get("binding") == generation else []
+    if not isinstance(roots, list) or not all(isinstance(root, str) and root.startswith("/") for root in roots):
+        roots = []
+    try:
+        fresh = fresh_start_identity(adb, roots)
+        stable_keys = ("transport", "boot", "apk")
+        old_identity = cached.get("identity", {})
+        reusable = (cached.get("binding") == generation and roots
+                    and cached.get("remote_root_override", "") == configured_remote_root()
+                    and all(fresh.get(key) == old_identity.get(key) for key in stable_keys)
+                    and fresh["roots_present"] == sorted(roots)
+                    and isinstance(cached.get("app"), dict))
+        if reusable:
+            adb.app_info = cached["app"]
+            adb.dataset_roots = roots
+        else:
+            path.unlink(missing_ok=True)
+            selected, _ = detect_ego(args.serial)
+            if selected is None or selected.serial != args.serial:
+                raise RuntimeError("bound Ego failed identity detection")
+            adb = selected
+            roots = list_dataset_roots(adb)
+            if not roots:
+                raise RuntimeError("Ego dataset roots are unavailable")
+            # Bracket full detection to reject an upgrade/reconnect racing it.
+            verified = fresh_start_identity(adb, roots)
+            if any(verified.get(key) != fresh.get(key) for key in stable_keys) or verified["roots_present"] != sorted(roots):
+                raise RuntimeError("Ego identity changed during detection")
+            fresh = verified
+            cached = {"binding": generation, "app": adb.app_info, "roots": roots,
+                      "remote_root_override": configured_remote_root()}
+        if binding_generation(args) != generation:
+            raise RuntimeError("Ego binding changed during preparation")
+        # Codec configuration survives only this exact App process and transport.
+        if fresh != cached.get("identity") or not fresh["process"]:
+            cached.pop("codec", None)
+        cached["identity"] = fresh
+        write_json_atomic(path, cached)
+        adb.start_cache_hit = bool(reusable)
+        adb.start_cache = cached
+        adb.start_cache_file = path
+        adb.start_binding_generation = generation
+        return adb
+    except StartIdentityUnavailable as exc:
+        # Android builds may restrict /proc or APK stat access. Discard all
+        # optimization state and retain the original, fully probed start path.
+        invalidate_start_cache(args.binding_file)
+        adb, _ = detect_ego(args.serial)
+        if adb is None or adb.serial != args.serial or binding_generation(args) != generation:
+            raise RuntimeError("bound Ego failed uncached identity detection") from exc
+        adb.start_cache = None
+        adb.start_cache_hit = False
+        adb.start_binding_generation = generation
+        ugripper_log("WARN", "Ego start cache unavailable; using full detection: " + str(exc), component="ego")
+        return adb
+    except Exception:
+        invalidate_start_cache(args.binding_file)
+        raise
+
+
+def cached_video_codec(adb: Adb, codec: str) -> dict:
+    cached = getattr(adb, "start_cache", None)
+    desired = ego_codec_for_camera_codec(codec)
+    if isinstance(cached, dict) and cached.get("codec") == desired and cached.get("identity", {}).get("process"):
+        return {"camera_codec": codec, "ego_codec": desired, "returncode": 0, "cached": True}
+    detail = set_ego_video_codec(adb, codec)
+    if detail.get("returncode") != 0:
+        raise RuntimeError("Ego video codec configuration failed")
+    if isinstance(cached, dict):
+        cached["codec"] = desired
+        write_json_atomic(adb.start_cache_file, cached)
+    return detail
+
+
+def run_warm_worker(args: argparse.Namespace) -> int:
+    # This is a Runtime-owned, single-session process: no fork/reparenting and
+    # no episode lock or data-disk access until a command arrives. EOF cancels it.
+    parent = os.getppid()
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(1, signal.SIGTERM, 0, 0, 0) != 0 or os.getppid() != parent:
+        return 1
+    with socket.socket(fileno=args.control_fd) as control:
+        control.setblocking(True)
+        try:
+            if args.serial:
+                prepare_start_device(args)
+        except Exception as exc:
+            ugripper_log("WARN", "Ego warm preparation deferred: " + str(exc), component="ego")
+        data = control.recv(65537)
+        if not data:
+            return 0
+        if len(data) > 65536:
+            raise ValueError("oversized Ego warm command")
+        request = json.loads(data)
+        if not isinstance(request, dict) or set(request) != {"serial", "episode_dir", "codec"}:
+            raise ValueError("invalid Ego warm command")
+        if request["serial"] != args.serial or request["codec"] not in ("h264", "h265"):
+            raise ValueError("Ego warm command identity mismatch")
+        episode = Path(request["episode_dir"])
+        if not episode.is_absolute() or episode.name in ("", ".", ".."):
+            raise ValueError("invalid Ego warm episode path")
+        args.episode_dir = episode
+        args.status_file = episode / "ego" / "ego_sync.json"
+        args.codec = request["codec"]
+    # Read and dispatch exactly once: delayed/repeated commands cannot start a
+    # subsequent session. Existing STOP tombstone is checked by the owner.
+    args.episode_dir.mkdir(parents=True, exist_ok=True)
+    signal.signal(signal.SIGTERM, request_incremental_stop)
+    return run_incremental_owner(args)
+
+
 def _run_start(args: argparse.Namespace) -> int:
     status = {
         "status": "starting",
@@ -2066,7 +2328,12 @@ def _run_start(args: argparse.Namespace) -> int:
         "error": "",
     }
     try:
-        adb, _ = detect_ego(args.serial)
+        preparation_started = time.monotonic()
+        adb = (prepare_start_device(args) if getattr(args, "binding_file", None) is not None
+               else detect_ego(args.serial)[0])
+        status["start_timings_ms"] = {"prepare": round((time.monotonic() - preparation_started) * 1000, 3)}
+        if isinstance(getattr(adb, "start_cache_hit", None), bool):
+            status["start_cache_hit"] = adb.start_cache_hit
         if adb is None:
             status["status"] = "not_found"
             status["error"] = "no SXR/SXR_1 ego device found"
@@ -2083,7 +2350,9 @@ def _run_start(args: argparse.Namespace) -> int:
         }
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
+        sync_started = time.monotonic()
         status["time_sync"] = sync_ego_time(adb)
+        status["start_timings_ms"]["time_sync"] = round((time.monotonic() - sync_started) * 1000, 3)
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
         if status["time_sync"].get("status") != "ok":
@@ -2104,13 +2373,22 @@ def _run_start(args: argparse.Namespace) -> int:
             write_status(args.status_file, status)
             return 1
 
+        recovery_started = time.monotonic()
         recover_previous_recording(adb, status, args.status_file)
+        status["start_timings_ms"]["recording_state_recovery"] = round((time.monotonic() - recovery_started) * 1000, 3)
+        if status.get("previous_recording_recovered") and getattr(args, "binding_file", None) is not None:
+            adb = prepare_start_device(args)
+            status["app"] = adb.app_info
         # Recovery may outlive the freshness window: recheck before START.
         if sync_ego_time(adb).get("status") != "ok":
             raise RuntimeError("Ego time sync became unavailable during recording recovery")
+        snapshot_started = time.monotonic()
         existing_temp_episodes = snapshot_temp_episodes(adb)
+        status["start_timings_ms"]["episode_snapshot"] = round((time.monotonic() - snapshot_started) * 1000, 3)
         status["remote_roots"] = sorted(existing_temp_episodes)
-        status["video_codec"] = set_ego_video_codec(adb, args.codec)
+        codec_started = time.monotonic()
+        status["video_codec"] = cached_video_codec(adb, args.codec)
+        status["start_timings_ms"]["video_codec"] = round((time.monotonic() - codec_started) * 1000, 3)
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
 
@@ -2119,7 +2397,12 @@ def _run_start(args: argparse.Namespace) -> int:
             write_status(args.status_file, status)
             return 0
 
+        if getattr(args, "binding_file", None) is not None and binding_generation(args) != adb.start_binding_generation:
+            raise RuntimeError("Ego binding changed before START")
+        broadcast_started = time.monotonic()
         result = adb.run("shell", "am", "broadcast", "-a", f"{PACKAGE}.START_RECORDING", "-p", app_package(adb), timeout=10)
+        status["start_timings_ms"]["start_broadcast"] = round((time.monotonic() - broadcast_started) * 1000, 3)
+        ugripper_log("INFO", "start timings_ms=" + json.dumps(status["start_timings_ms"]), component="ego")
         status["start_broadcast_returncode"] = result.returncode
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
@@ -2178,12 +2461,17 @@ def _run_start(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         return 0
     except Exception as exc:
+        if getattr(args, "binding_file", None) is not None:
+            invalidate_start_cache(args.binding_file)
         status["status"] = "error"
         status["error"] = str(exc)
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
         ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-04")
         return 0
+    finally:
+        if getattr(args, "binding_file", None) is not None and status.get("status") != "recording":
+            invalidate_start_cache(args.binding_file)
 
 
 def run_stop(args: argparse.Namespace) -> int:
@@ -2305,6 +2593,74 @@ def _run_stop(args: argparse.Namespace, deadline: float) -> int:
                            last_failure_status, last_error, remote_root, remote_episode, deadline)
 
 
+def read_terminal_metadata(adb, status, remote_root, remote_episode, final_episode, local_dir):
+    metadata_path = remote_path(remote_root, remote_episode, "metadata.json")
+    size = remote_file_size(adb, metadata_path)
+    if type(size) is not int or not 0 < size <= 65536:
+        raise ValueError("invalid/missing metadata size (limit 64 KiB)")
+    metadata = json.loads(adb.exec_out_bytes(metadata_path, 0, size))
+    if not isinstance(metadata, dict):
+        raise ValueError("metadata is not an object")
+    # START requires <5 ms clock offset. A 50 ms tolerance covers quantization
+    # without accepting a failed episode from a rapid previous recording.
+    started_us = metadata.get("recording_start_utc_us")
+    host_start = status.get("started_at_ms")
+    serial = status.get("serial") or getattr(adb, "serial", "")
+    if (metadata.get("episode_name") != final_episode or
+            metadata.get("devices_sn") != serial or
+            not isinstance(metadata.get("data_uuid"), str) or not metadata["data_uuid"] or
+            type(started_us) is not int or type(host_start) is not int or
+            not host_start * 1000 - 50_000 <= started_us <= now_ms() * 1000 + 50_000):
+        raise ValueError("episode identity does not match this START")
+    local_metadata = read_status(local_dir / "metadata.json")
+    if local_metadata.get("data_uuid") and local_metadata["data_uuid"] != metadata["data_uuid"]:
+        raise ValueError("UUID differs from the already copied recording")
+    return metadata
+
+
+def probe_invalid_episode(adb, status, remote_root, final_episode, local_dir):
+    """Only accept an invalid terminal belonging to this START, never an old suffix."""
+    invalid_episode = final_episode + "-invalid"
+    if not remote_dir_exists(adb, remote_root, invalid_episode):
+        return None
+    try:
+        metadata = read_terminal_metadata(adb, status, remote_root, invalid_episode, final_episode, local_dir)
+        detail = {"remote_episode": invalid_episode, "identity": {
+            key: metadata[key] for key in ("devices_sn", "episode_name", "data_uuid", "recording_start_utc_us")},
+            "quality_check_status": metadata.get("quality_check_status", "unknown"),
+            "quality_check_err_type": metadata.get("quality_check_err_type") or "unknown"}
+        write_json_atomic(local_dir / "invalid_metadata.json", metadata)
+        return detail
+    except (ValueError, TypeError, OSError, RuntimeError) as exc:
+        # Directory rename and metadata publication can be observed separately.
+        diagnostic = {"remote_episode": invalid_episode, "reason": str(exc)}
+        if status.get("invalid_candidate") != diagnostic:
+            status["invalid_candidate"] = diagnostic
+            ugripper_log("WARN", "invalid terminal not accepted: " + json.dumps(diagnostic), component="ego")
+        return None
+
+
+def finish_invalid_episode(args, adb, status, remote_root, detail):
+    """Retain the headset copy; a failed best-effort pull never masks its QC reason."""
+    invalid_episode = detail["remote_episode"]
+    status.update(status="invalid", phase="done", remote_episode=invalid_episode,
+                  finalize={"status": "invalid"}, invalid_terminal=detail, error_type="ego_pull_incomplete",
+                  error="ego episode invalid: " + detail["quality_check_err_type"],
+                  remote_cleanup={"status": "preserved", "reason": "invalid episode"}, updated_at_ms=now_ms())
+    write_status(args.status_file, status)
+    try:
+        # Bound extra diagnostic copying; existing local and remote data survive failure.
+        with operation_budget(min(_OPERATION_DEADLINE or time.monotonic() + 3, time.monotonic() + 3)):
+            sync_episode_once(adb, remote_root, invalid_episode, args.episode_dir / "ego",
+                              replace_shrunk=True, remote_sizes=remote_file_sizes(adb, remote_root, invalid_episode))
+    except Exception as exc:
+        status["invalid_pull_error"] = str(exc)
+    status["updated_at_ms"] = now_ms()
+    write_status(args.status_file, status)
+    ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-05")
+    return 1
+
+
 def finish_stop(args, adb, status, stop_succeeded, recording_started,
                 last_failure_status, last_error, remote_root, remote_episode, deadline):
 
@@ -2356,6 +2712,17 @@ def finish_stop(args, adb, status, stop_succeeded, recording_started,
             write_status(args.status_file, status)
             ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-01")
             return 1
+        if not temp_exists:
+            invalid = probe_invalid_episode(adb, status, remote_root, final_episode, local_episode_dir)
+            if invalid is not None:
+                return finish_invalid_episode(args, adb, status, remote_root, invalid)
+            if final_exists and status.get("invalid_candidate"):
+                # An unready invalid metadata and a recycled normal name can
+                # coexist. Do not pull that normal directory without identity.
+                try:
+                    read_terminal_metadata(adb, status, remote_root, final_episode, final_episode, local_episode_dir)
+                except (ValueError, TypeError, OSError, RuntimeError):
+                    final_exists = False
         if temp_exists:
             current_remote = remote_episode
             current_exists = True
@@ -2379,7 +2746,7 @@ def finish_stop(args, adb, status, stop_succeeded, recording_started,
                         output.write(json.dumps(compact_time_sync(sample)) + "\n")
             status["updated_at_ms"] = now_ms()
             write_status(args.status_file, status)
-            time.sleep(operation_timeout(args.interval))
+            time.sleep(operation_timeout(min(max(args.interval, 0.05), 0.15)))
             continue
         if current_exists:
             with ego_stop_stage(status, "file_sync"):
@@ -2390,6 +2757,7 @@ def finish_stop(args, adb, status, stop_succeeded, recording_started,
                     local_episode_dir,
                     replace_shrunk=(current_remote == final_episode),
                     timings=status.setdefault("stop_file_sync", {}),
+                    remote_sizes=remote_file_sizes(adb, remote_root, current_remote),
                 )
         if current_remote == final_episode:
             check_operation_budget()
@@ -2399,6 +2767,7 @@ def finish_stop(args, adb, status, stop_succeeded, recording_started,
                     remote_root,
                     final_episode,
                     final_local_dir,
+                    already_synced=True,
                 )
             status["pull_recovery"] = recovery_detail
             if not recovered:
@@ -2454,7 +2823,7 @@ def finish_stop(args, adb, status, stop_succeeded, recording_started,
             return 0
         status["updated_at_ms"] = now_ms()
         write_status(args.status_file, status)
-        time.sleep(operation_timeout(args.interval))
+        time.sleep(operation_timeout(min(max(args.interval, 0.05), 0.15)))
 
     status["status"] = "finalize_timeout"
     status["error_type"] = "ego_pull_incomplete"
@@ -2465,9 +2834,29 @@ def finish_stop(args, adb, status, stop_succeeded, recording_started,
     return 0
 
 
+def run_stop_session(args: argparse.Namespace) -> int:
+    """Keep this interpreter for cleanup, only after the host durability barrier."""
+    with socket.socket(fileno=args.control_fd) as control:
+        result = run_stop(args)
+        finalized = result == 0 and read_status(args.status_file).get("status") == "finalized"
+        try:
+            control.sendall(json.dumps({"finalized": True, "ok": finalized}).encode())
+            if not finalized:
+                return result
+            deadline = getattr(args, "deadline_monotonic", None)
+            control.settimeout(max(0.001, (deadline or time.monotonic()+60) - time.monotonic()))
+            request = control.recv(65536)
+            if not request or json.loads(request).get("command") != "cleanup":
+                return 0  # host gone/aborted: preserve the remote copy
+            return run_cleanup(args)
+        except (OSError, ValueError):
+            return 1
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("start", "resume", "stop", "cleanup", "bind", "unbind", "probe", "speech"))
+    parser.add_argument("command", choices=("warm", "start", "resume", "stop", "cleanup", "bind", "unbind", "probe", "speech"))
+    parser.add_argument("--control-fd", type=int)
     parser.add_argument("--episode-dir", type=Path)
     parser.add_argument("--status-file", type=Path)
     parser.add_argument("--binding-file", type=Path)
@@ -2485,6 +2874,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.command == "warm":
+        if args.control_fd is None or args.binding_file is None:
+            raise SystemExit("--control-fd and --binding-file are required")
+        return run_warm_worker(args)
     if args.command == "speech":
         if args.binding_file is None:
             raise SystemExit("--binding-file is required")
@@ -2504,7 +2897,7 @@ def main() -> int:
         signal.signal(signal.SIGTERM, request_incremental_stop)
         return run_incremental_owner(args, resume=args.command == "resume")
     if args.command == "stop":
-        return run_stop(args)
+        return run_stop_session(args) if args.control_fd is not None else run_stop(args)
     return run_cleanup(args)
 
 

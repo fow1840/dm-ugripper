@@ -67,6 +67,7 @@ public:
         EpisodeDirFn create_next_episode_dir;
         PrepareEpisodeFn prepare_episode;
         ValidateEpisodeFn validate_episode;
+        std::function<void(const std::string&)> prevalidate_local;
         AttachPendingPreAudioFn attach_pending_pre_audio;
         MergeEpisodeInfoFn merge_episode_info;
         FlushEpisodeArtifactsFn flush_episode_artifacts;
@@ -124,6 +125,7 @@ public:
         LogFn log_warn;
         LogFn log_error;
         std::function<void(const std::string&, const std::string&)> log_typed_error;
+        SyncRuntimeLogFn snapshot_system_log;
         SyncRuntimeLogFn sync_runtime_log;
     };
 
