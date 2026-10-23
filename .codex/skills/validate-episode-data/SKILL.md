@@ -108,7 +108,7 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
 
 ## 资源使用
 
-- metadata 3.3 在 data_version 后固定增加 12 个版本字符串；ego_bound（布尔值）紧邻 ego_software_version 之前，hardware_list 末项为 ego_sn（未绑定为空）。主摄固件版本取 USB iSerial；胸摄未启用、+nostereo 双目固件写 "disabled"；未绑定 Ego 两个版本为空。起录前所有启用设备版本必须已知，缺项拒绝创建 episode，待机继续限频重试；起录冻结版本和绑定 SN，停录只消费内存副本。其余 metadata 字段、顺序、类型及 calibration 格式保持不变。Ego 拉回并完成远端大小校验与清理后，在本地 ego/metadata.json 写 related_episode_name 和 related_episode_uuid，分别等于 UMI episode_name（不带 -temp）和 data_uuid。 范本：`.codex/skills/validate-episode-data/references/metadata-v3.3.json`。
+- metadata 3.3 在 data_version 后包含 13 个版本字符串（新增 rk3588_firmware_version 位于 ego_firmware_version 后、hardware_list 前，来自 /home/user/version.info，复用现有版本缓存；历史 3.3 缺少该新增字段仍兼容）；ego_bound（布尔值）紧邻 ego_software_version 之前，hardware_list 末项为 ego_sn（未绑定为空）。主摄固件版本取 USB iSerial；胸摄未启用、+nostereo 双目固件写 "disabled"；未绑定 Ego 两个版本为空。起录前所有启用设备版本必须已知，缺项拒绝创建 episode，待机继续限频重试；起录冻结版本和绑定 SN，停录只消费内存副本。其余 metadata 字段、顺序、类型及 calibration 格式保持不变。Ego 拉回并完成远端大小校验与清理后，在本地 ego/metadata.json 写 related_episode_name 和 related_episode_uuid，分别等于 UMI episode_name（不带 -temp）和 data_uuid。 范本：`.codex/skills/validate-episode-data/references/metadata-v3.3.json`。
 - 阈值口径与检查项说明：读取 `references/checklist.md`
 - 测试工程师默认入口：执行 `bash test/scripts/validate_episode_data.sh <episode_dir>`
 - skill 内部实现：`scripts/validate_episode.py`

@@ -21,7 +21,7 @@ ALIASES = {
 }
 FIRMWARE_FIELDS = [f'{kind}_{side}_firmware_version' for kind, sides in
     [('gripper', ('left', 'right')), ('cam', ('left', 'right', 'chest')),
-     ('stereo', ('left', 'right'))] for side in sides] + ['ego_software_version', 'ego_firmware_version']
+     ('stereo', ('left', 'right'))] for side in sides] + ['ego_software_version', 'ego_firmware_version', 'rk3588_firmware_version']
 DEVICE_IDS = [name for side in ('left', 'right') for name in
     (f'{side}_gripper', f'{side}_encoder', f'cam_{side}', f'tcam_{side}_l',
      f'tcam_{side}_r', f'{side}_fays_stereo', f'{side}_fays_imu')] + ['cam_chest', 'ego']

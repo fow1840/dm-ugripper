@@ -48,6 +48,16 @@ class DeviceApiTests(unittest.TestCase):
         self.assertEqual(api.versions(['ugripper:arm64'])['versions']['ugripper:arm64']['version'], '2.1.15')
         self.assertEqual(api.versions(['removed'])['versions']['removed']['status'], 'not_installed')
 
+    def test_rk3588_version_uses_existing_runtime_cache(self):
+        self.cache(device_versions={'rk3588_firmware_version':'V1.0.3.2_20261022143700_release'})
+        item=api.versions(['rk3588_firmware_version'])['versions']['rk3588_firmware_version']
+        self.assertEqual(item['version'],'V1.0.3.2_20261022143700_release')
+        self.assertEqual(item['status'],'ready')
+        self.assertEqual(item['source'],str(self.firmware))
+        self.assertIn('rk3588_firmware_version',api.versions()['versions'])
+        self.cache(device_versions={})
+        self.assertEqual(api.versions(['rk3588_firmware_version'])['versions']['rk3588_firmware_version']['status'],'unrecognized')
+
     def test_package_database_refresh_and_missing_database(self):
         self.assertEqual(api.versions(['custom-app'])['versions']['custom-app']['version'], '4.2')
         replacement = self.dpkg.with_suffix('.new')

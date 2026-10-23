@@ -8,7 +8,7 @@
 namespace DA::Ugripper {
 
 // Metadata 3.3: preserve this order after data_version. All values are strings.
-inline constexpr std::array<const char *, 12> kDeviceVersionFields = {{
+inline constexpr std::array<const char *, 13> kDeviceVersionFields = {{
     "bluetooth_gatt_server_version",
     "databot_device_joint_version",
     "device_ota_mender_version",
@@ -21,6 +21,7 @@ inline constexpr std::array<const char *, 12> kDeviceVersionFields = {{
     "stereo_right_firmware_version",
     "ego_software_version",
     "ego_firmware_version",
+    "rk3588_firmware_version",
 }};
 using DeviceVersions = std::map<std::string, std::string>;
 

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -228,6 +229,18 @@ std::string versionString(const json &root, const std::string &path)
 
 void RecordRuntime::maintainDeviceVersions()
 {
+    // Cache the installed board release alongside existing device versions.
+    std::ifstream boardVersionFile("/home/user/version.info");
+    std::string boardVersion;
+    char boardVersionBytes[4097];
+    boardVersionFile.read(boardVersionBytes, sizeof(boardVersionBytes));
+    if (boardVersionFile.gcount() < static_cast<std::streamsize>(sizeof(boardVersionBytes)))
+        boardVersion.assign(boardVersionBytes, static_cast<size_t>(boardVersionFile.gcount()));
+    boardVersion = trim(boardVersion);
+    if (boardVersion.size() > 256 || (!boardVersion.empty() && !std::isalnum(static_cast<unsigned char>(boardVersion[0]))) || boardVersion.find_first_not_of(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.+-") != std::string::npos)
+        boardVersion.clear();
+    deviceVersions_["rk3588_firmware_version"] = boardVersion;
     json stereo, binding;
     std::string ignored;
     loadJsonFile(options_.stereoStatusFile, &stereo, &ignored);

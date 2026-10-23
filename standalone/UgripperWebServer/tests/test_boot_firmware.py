@@ -1,11 +1,13 @@
 import hashlib
+import io
+import tarfile
 import struct
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import boot_firmware as boot
@@ -42,14 +44,32 @@ def image():
         ('configurations',{'default':b'conf\0'},[('conf',{'kernel':b'kernel\0','fdt':b'fdt\0'},[])])]))
 
 
+def release(path, changes=None):
+    files = {'update.sh': b'#!/bin/sh\nexit 0\n',
+             'payload/version.info': b'V1.0.3.2_20261022143700_release\n',
+             'payload/boot-v2.5.img': image(), 'payload/boot-v3.img': image(),
+             'payload/fstab': b'fstab'}
+    files.update({name: name.encode() for name in boot.INSTALLED_FILES})
+    files.update(changes or {})
+    files['SHA256SUMS'] = ''.join(hashlib.sha256(value).hexdigest()+'  '+name+'\n'
+                                 for name,value in files.items()).encode()
+    with tarfile.open(path,'w:gz') as archive:
+        for name,content in files.items():
+            member=tarfile.TarInfo('release/'+name); member.size=len(content)
+            archive.addfile(member,io.BytesIO(content))
+
+
 class BootFirmwareTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
-        self.root=Path(self.tmp.name);self.path=self.root/'boot.img';self.path.write_bytes(image())
+        self.root=Path(self.tmp.name);self.path=self.root/'firmware.tar.gz';release(self.path)
         self.bootid=self.root/'boot_id';self.bootid.write_text('before')
         self.marker=self.root/'pending.json'
+        self.compatible=self.root/'compatible';self.compatible.write_bytes(b'vendor,V100\0rockchip,rk3588\0')
         self.bms=self.root/'bms.txt';self.bms.write_text(f'timestamp: {int(time.time())}\nsoc_percent: 50\n')
-        for name,value in [('PENDING',self.marker),('BOOT_ID',self.bootid),('STATE',self.root),('BMS_SOURCE',self.bms)]:
+        self.version=self.root/'version.info'
+        for name,value in [('PENDING',self.marker),('BOOT_ID',self.bootid),('STATE',self.root),
+                           ('COMPATIBLE',self.compatible),('BMS_SOURCE',self.bms),('VERSION_INFO',self.version)]:
             patcher=patch.object(boot,name,value);patcher.start();self.addCleanup(patcher.stop)
 
     def test_battery_threshold_and_charging_does_not_bypass(self):
@@ -76,111 +96,112 @@ class BootFirmwareTests(unittest.TestCase):
         import maintenance
         self.bms.write_text(f'timestamp: {int(time.time())}\nsoc_percent: 29\n')
         for kind in ('software','main_camera','gripper','rk3588_boot'):
-            for source in ({'upload':'a'*32}, {'external':True,'package':'firmware.img','force':True}):
-                with self.subTest(kind=kind,source=source), patch.object(maintenance,'MUTEX') as mutex,patch.object(maintenance,'operation_lock') as lock:
-                    with self.assertRaisesRegex(ValueError,'低于 30%'):
-                        maintenance.submit(dict(kind=kind,**source))
+            for source in ({'upload':'a'*32}, {'external':True,'package':'firmware.tar.gz','force':True}):
+                with self.subTest(kind=kind),patch.object(maintenance,'MUTEX') as mutex,patch.object(maintenance,'operation_lock') as lock:
+                    with self.assertRaisesRegex(ValueError,'低于 30%'):maintenance.submit(dict(kind=kind,**source))
                     mutex.acquire.assert_not_called();lock.assert_not_called()
 
-    def test_battery_drop_during_inspection_blocks_before_write(self):
-        from unittest.mock import Mock
+    def test_battery_drop_during_inspection_blocks_before_script(self):
         run=Mock(return_value='')
-        with patch.object(boot,'require_battery',side_effect=[30,ValueError('low battery')]),patch.object(boot,'check_target'),patch.object(boot,'partition_hash',return_value='old'),patch.object(boot,'persist') as persist:
+        with patch.object(boot,'require_battery',side_effect=[30,ValueError('low battery')]),patch.object(boot,'check_target'),patch.object(boot,'persist') as persist:
             with self.assertRaisesRegex(ValueError,'low battery'):boot.install(self.path,{'id':'test'},Mock(),run)
             run.assert_not_called();persist.assert_not_called()
+        self.assertFalse(list(self.root.glob('firmware-*')))
 
-    def test_valid_fit_and_corrupt_payload(self):
-        result=boot.inspect_image(self.path)
-        self.assertEqual(result['sha256'],hashlib.sha256(self.path.read_bytes()).hexdigest())
-        self.path.write_bytes(self.path.read_bytes().replace(b'kernel bytes',b'broken bytes'))
-        with self.assertRaisesRegex(ValueError,'SHA-256'):boot.inspect_image(self.path)
+    def test_package_checksum_and_hardware_selection(self):
+        info=boot.inspect_package(self.path)
+        self.assertEqual(info['firmware_version'],'V1.0.3.2_20261022143700_release')
+        self.assertEqual(info['hardware_model'],'V100')
+        self.compatible.write_bytes(b'vendor,V130\0rockchip,rk3588\0')
+        self.assertEqual(boot.inspect_package(self.path)['hardware_model'],'V130')
+        self.compatible.write_bytes(b'rockchip,rk3588\0')
+        with self.assertRaisesRegex(ValueError,'硬件型号'):boot.inspect_package(self.path)
 
-    def test_reject_wrong_arch_and_truncated_and_camera_image(self):
-        for data in [b'camera image', image()[:100], image().replace(b'arm64\0',b'arm32\0')]:
-            self.path.write_bytes(data)
-            with self.assertRaises(ValueError):boot.inspect_image(self.path)
+    def test_raw_image_corrupt_manifest_and_missing_version_rejected(self):
+        self.path.write_bytes(image())
+        with self.assertRaisesRegex(ValueError,'完整升级包'):boot.inspect_package(self.path)
+        for changes in ({'payload/version.info':b''},{'extra.sh':b'unverified'}):
+            release(self.path,changes)
+            if 'extra.sh' in changes:
+                # Checked extra payloads are allowed; an unlisted mutation is not.
+                with boot.unpack_package(self.path) as root:
+                    (root/'update.sh').write_text('tampered')
+                    with self.assertRaisesRegex(ValueError,'SHA-256'):boot.inspect_package_root(root)
+            else:
+                with self.assertRaisesRegex(ValueError,'version.info'):boot.inspect_package(self.path)
 
-    def test_same_image_does_not_write_or_reboot(self):
-        digest=boot.inspect_image(self.path)['sha256']
-        with patch.object(boot,'check_target'),patch.object(boot,'partition_hash',return_value=digest),patch.object(boot,'persist') as persist:
-            from unittest.mock import Mock
-            run=Mock();result=boot.install(self.path,{'id':'test'},Mock(),run)
-            run.assert_not_called();persist.assert_not_called();self.assertIn('跳过',result['status'])
+    def test_archive_traversal_links_and_duplicate_names_rejected(self):
+        for name,kind in [('../escape','file'),('/absolute','file'),('release/link','link'),('release/update.sh','duplicate')]:
+            with tarfile.open(self.path,'w') as archive:
+                member=tarfile.TarInfo(name)
+                if kind=='link': member.type=tarfile.SYMTYPE;member.linkname='/etc'
+                archive.addfile(member)
+                if kind=='duplicate':archive.addfile(member)
+            with self.subTest(name=name),self.assertRaises(ValueError):boot.inspect_package(self.path)
+        self.assertFalse((self.root.parent/'escape').exists())
 
-    def test_write_verify_reboot_and_recover(self):
-        digest=boot.inspect_image(self.path)['sha256'];calls=[]
-        def run(args,*rest):
-            calls.append(args)
-            if args[:2]==['systemctl','reboot']:raise SystemExit('simulated shutdown')
-            return ''
-        with patch.object(boot,'check_target'),patch.object(boot,'partition_hash',side_effect=['old',digest]):
-            result=boot.install(self.path,{'id':'test'},lambda *a,**k:None,run)
-            self.assertEqual(result['status'],'awaiting_reboot')
-            self.assertFalse(result['boot_verified'])
-            self.assertFalse(any(c[0]=='systemctl' for c in calls))
-        self.assertEqual(calls[0],['dd','if='+str(self.path),'of=/dev/mmcblk0p3','bs=4M','conv=fsync','status=progress'])
-        self.assertEqual(read_json(self.marker)['stage'],'awaiting_reboot')
-        atomic_json(self.root/'task.json',{'id':'test','status':'running'})
-        self.bootid.write_text('after')
-        with patch.object(boot,'check_target'),patch.object(boot,'partition_hash',return_value=digest):boot.recover(run)
-        self.assertEqual(read_json(self.root/'task.json')['status'],'success')
-        self.assertFalse(self.marker.exists())
-
-    def test_bad_readback_never_reboots(self):
-        from unittest.mock import Mock
+    def test_script_execution_verify_and_pending_reboot_even_same_version(self):
         run=Mock(return_value='')
-        with patch.object(boot,'check_target'),patch.object(boot,'partition_hash',return_value='mismatch'):
-            with self.assertRaisesRegex(RuntimeError,'SHA-256'):boot.install(self.path,{'id':'test'},Mock(),run)
-        self.assertFalse(any(c.args[0][0]=='systemctl' for c in run.call_args_list))
-        self.assertEqual(read_json(self.marker)['status'],'failed')
+        with patch.object(boot,'check_target'),patch.object(boot,'verify_installed') as verify:
+            result=boot.install(self.path,{'id':'test'},Mock(),run)
+        self.assertEqual(result['status'],'awaiting_reboot');self.assertFalse(result['boot_verified'])
+        command=run.call_args_list[0].args[0]
+        self.assertEqual(command[:2],['/bin/sh','-e']);self.assertEqual(command[2].name,'update.sh')
+        self.assertEqual(run.call_args_list[0].args[1],900)
+        self.assertEqual(read_json(self.marker)['firmware_version'],result['firmware_version'])
+        verify.assert_called_once();self.assertFalse(command[2].exists())
+        self.assertFalse(any(c.args[0][0] in ('systemctl','dd') for c in run.call_args_list))
 
-    def test_service_restart_without_reboot_never_reports_success(self):
+    def test_script_failure_and_bad_readback_never_report_success(self):
+        for script_error in (True,False):
+            run=Mock(side_effect=RuntimeError('script failed') if script_error else None,return_value='')
+            with patch.object(boot,'check_target'),patch.object(boot,'verify_installed',side_effect=RuntimeError('bad readback')):
+                with self.assertRaises(RuntimeError):boot.install(self.path,{'id':'test'},Mock(),run)
+            self.assertEqual(read_json(self.marker)['status'],'failed')
+            self.assertFalse(list(self.root.glob('firmware-*')))
+
+    def test_verifies_version_files_and_boot_partition(self):
+        files={name:self.root/str(i) for i,name in enumerate(boot.INSTALLED_FILES)}
+        for file in files.values():file.write_bytes(b'installed')
+        self.version.write_text('V1.0.3.2\n')
+        info=dict(size=100,sha256='digest',firmware_version='V1.0.3.2',files={n:boot.file_hash(p) for n,p in files.items()})
+        with patch.object(boot,'INSTALLED_FILES',files),patch.object(boot,'partition_hash',return_value='digest'):
+            boot.verify_installed(info)
+            self.version.write_text('wrong')
+            with self.assertRaisesRegex(RuntimeError,'version.info'):boot.verify_installed(info)
+            self.version.write_text('V1.0.3.2')
+            next(iter(files.values())).write_bytes(b'corrupt')
+            with self.assertRaisesRegex(RuntimeError,'文件 SHA-256'):boot.verify_installed(info)
+
+    def test_read_version_rejects_missing_malformed_and_oversized_content(self):
+        self.assertEqual(boot.read_version(),'')
+        for value in ('', 'a\nb', 'v'*257, 'bad version', '-invalid', 'V1.00' + ' '*4092):
+            self.version.write_text(value);self.assertEqual(boot.read_version(),'')
+        self.version.write_text('V1.0.3.2_20261022143700_release\n')
+        self.assertEqual(boot.read_version(),'V1.0.3.2_20261022143700_release')
+
+    def test_service_restart_preserves_waiting_and_new_boot_verifies(self):
+        info=boot.inspect_package(self.path)
         atomic_json(self.root/'task.json',{'id':'test','status':'running'})
-        atomic_json(self.marker,{'id':'test','status':'running','stage':'awaiting_reboot','boot_id':'before'})
-        with patch.object(boot,'partition_hash') as read:boot.recover(lambda *a:None)
-        read.assert_not_called();self.assertEqual(read_json(self.root/'task.json')['status'],'awaiting_reboot')
-        self.assertFalse(read_json(self.root/'task.json')['boot_verified'])
-        self.assertTrue(self.marker.exists())
-
-    def test_external_payload_hash_and_bounds(self):
-        dt=fdt(('',{'compatible':b'rockchip,rk3588\0'},[]))
-        kernel=b'kernel';offset=4096
-        def part(name,kind,data,start):
-            return (name,{'arch':b'arm64\0','type':kind,
-                         'data-size':struct.pack('>I',len(data)),
-                         'data-position':struct.pack('>I',start)},[
-                ('hash',{'algo':b'sha256\0','value':hashlib.sha256(data).digest()},[])])
-        header=fdt(('',{},[
-            ('images',{},[part('kernel',b'kernel\0',kernel,offset),part('fdt',b'flat_dt\0',dt,offset+len(kernel))]),
-            ('configurations',{'default':b'conf\0'},[('conf',{'kernel':b'kernel\0','fdt':b'fdt\0'},[])])]))
-        content=header.ljust(offset,b'\0')+kernel+dt
-        self.path.write_bytes(content);boot.inspect_image(self.path)
-        self.path.write_bytes(content[:-1])
-        with self.assertRaisesRegex(ValueError,'范围'):boot.inspect_image(self.path)
+        atomic_json(self.marker,dict(id='test',status='running',stage='awaiting_reboot',boot_id='before',**info))
+        with patch.object(boot,'verify_installed') as verify:boot.recover(Mock())
+        verify.assert_not_called();self.assertEqual(read_json(self.root/'task.json')['status'],'awaiting_reboot')
+        self.bootid.write_text('after')
+        with patch.object(boot,'check_target'),patch.object(boot,'verify_installed') as verify:boot.recover(Mock())
+        verify.assert_called_once();self.assertTrue(read_json(self.root/'task.json')['boot_verified'])
+        self.assertFalse(self.marker.exists())
 
     def test_reboot_verification_mismatch_is_failure(self):
         atomic_json(self.root/'task.json',{'id':'test','status':'running'})
-        atomic_json(self.marker,{'id':'test','status':'running','stage':'awaiting_reboot',
-                                'boot_id':'old','size':100,'sha256':'expected'})
-        with patch.object(boot,'check_target'),patch.object(boot,'partition_hash',return_value='bad'):
-            boot.recover(lambda *a:None)
+        atomic_json(self.marker,{'id':'test','status':'running','stage':'awaiting_reboot','boot_id':'old','size':100})
+        with patch.object(boot,'check_target'),patch.object(boot,'verify_installed',side_effect=RuntimeError('bad')):boot.recover(Mock())
         self.assertEqual(read_json(self.root/'task.json')['status'],'failed')
 
-    def test_force_writes_even_matching_image_and_waits_without_reboot(self):
-        from unittest.mock import Mock
-        digest=boot.inspect_image(self.path)['sha256']
-        run=Mock(return_value='')
-        with patch.object(boot,'check_target'),patch.object(boot,'partition_hash',return_value=digest):
-            result=boot.install(self.path,{'id':'test'},Mock(),run,force=True)
-        self.assertEqual(result['status'],'awaiting_reboot')
-        self.assertTrue(result['installed'])
-        self.assertTrue(any(c.args[0][0]=='dd' for c in run.call_args_list))
-        self.assertFalse(any(c.args[0][0]=='systemctl' for c in run.call_args_list))
+    def test_valid_fit_and_corrupt_payload(self):
+        path=self.root/'boot.img';path.write_bytes(image())
+        self.assertEqual(boot.inspect_image(path)['sha256'],hashlib.sha256(path.read_bytes()).hexdigest())
+        path.write_bytes(image().replace(b'kernel bytes',b'broken bytes'))
+        with self.assertRaisesRegex(ValueError,'SHA-256'):boot.inspect_image(path)
 
-    def test_wrong_partition_name_rejected(self):
-        compatible=self.root/'compatible';compatible.write_bytes(b'rockchip,rk3588\0')
-        uevent=self.root/'uevent';uevent.write_text('PARTNAME=rootfs\nPARTN=3\n')
-        with patch.object(boot,'COMPATIBLE',compatible),patch.object(boot,'UEVENT',uevent),patch.object(boot,'DEVICE',self.path),patch.object(boot.stat,'S_ISBLK',return_value=True):
-            with self.assertRaisesRegex(ValueError,'boot 分区'):boot.check_target(10,lambda *a:'1000')
 
 if __name__=='__main__':unittest.main()

@@ -30,6 +30,7 @@
 | `cam_left_firmware_version` / `cam_right_firmware_version` / `cam_chest_firmware_version` | 主摄 USB **iSerial** |
 | `stereo_left_firmware_version` / `stereo_right_firmware_version` | 左右双目固件 |
 | `ego_software_version` / `ego_firmware_version` | 绑定 Ego 的 App/系统固件 |
+| `rk3588_firmware_version` | `/home/user/version.info`，由 Runtime 缓存的背包设备固件版本 |
 
 ```json
 {"versions":{"ugripper":{"version":"2.1.15","status":"ready","source":"dpkg","updated_at_ms":1792300000000},"hardware_version":{"version":"v2.5.0","status":"ready","source":"/dev/shm/ugripper/firmware_status.json","updated_at_ms":1792300001000}}}
@@ -37,7 +38,7 @@
 
 `status`：`ready` 已知、`disabled` 未启用（version 为 `disabled`）、`unrecognized` 缓存有效但版本未识别、`stale` 缓存过期、`unavailable` 缓存/数据库不可用、`not_installed` 未安装的软件包。未知值为 `null`，过期值不冒充当前版本。版本值从设备读取，示例值不作为默认值。
 
-软件读取 dpkg 已有状态数据库，并按文件变化刷新进程内缓存；固件/硬件读取 Runtime 现有 `firmware_status.json`，有效期 15 秒。不会主动查询串口、相机或 ADB，不另建版本快照，也不改变 metadata.json。
+软件读取 dpkg 已有状态数据库，并按文件变化刷新进程内缓存；固件/硬件读取 Runtime 现有 `firmware_status.json`，有效期 15 秒。不会主动查询串口、相机或 ADB，不另建版本快照。`rk3588_firmware_version` 同时写入 metadata 3.3（位于 `ego_firmware_version` 后、`hardware_list` 前），其余字段格式及数据版本不变。指定查询：`GET /api/v1/versions?fields=rk3588_firmware_version`，缺失/非法版本按未识别返回，不使用包名或默认值。
 
 ## 硬件状态
 
@@ -82,7 +83,9 @@
 | `software` | `.deb` | 复用 Web 安装白名单：上述五个软件包；支持同版本覆盖、降级安装 |
 | `main_camera` | `.img` | 左右主摄依次强制烧录，同版本也烧录 |
 | `gripper` | `.hex` | 左右夹爪依次升级并回读版本 |
-| `rk3588_boot` | RK3588 FIT `boot.img` | 固定 boot 分区写入和 SHA256 回读；同镜像也强制写入 |
+| `rk3588_boot` | 包含 `update.sh`、`SHA256SUMS`、`payload/` 的 `.tar.gz` / `.tgz` / `.tar` 发布包 | 校验清单及硬件后执行包内脚本，同版本也执行；核对版本、文件和 boot 分区后等待重启 |
+
+`rk3588_boot` 保留原 kind 名称，但不再接受裸 `boot.img`。外部程序将完整归档放入临时目录后提交，例如 `{"kind":"rk3588_boot","package":"RB1021_CFTC_RK3588_V1.0.3.2_20261022143700_alpha.tar.gz"}`。PC 解压后的目录可直接通过 WebUI 上传；原生 API 使用归档文件。包内版本取 `payload/version.info`，安装后位于 `/home/user/version.info`；任务 `result.firmware_version` 返回目标版本。脚本更新范围包含 boot、驱动、启动脚本及系统配置，具体以发布包为准；样例还会调整文件系统、覆盖日志配置及清空 `/home/ubuntu/Downloads/`。包内脚本不得自行重启，脚本、版本、文件和分区校验均成功才进入 `awaiting_reboot`，独立重启前清理临时包，新启动后再次核对。详见 [Web 升级说明](../standalone/UgripperWebServer/README.md)。
 
 POST 不接受任意 shell 命令。无需 `confirm`，`force` 固定为 true。主摄设备版本读取失败自动继续，保留 `version_checks_skipped` 及回读未验证证据；镜像合法性、设备匹配、USB/SN 回归检查仍执行。所有软件/固件升级要求背包电量可用且至少 **30%**（30% 允许），低于 30%、快照缺失或过期均拒绝，充电和强制升级不豁免；任务接收前、停服前及实际安装/逐侧烧录前均检查。软件查询范围不限于升级白名单。
 

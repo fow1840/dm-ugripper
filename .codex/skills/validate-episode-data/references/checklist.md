@@ -27,7 +27,7 @@
 - `validation_error.log` 是否存在
 - `audio_pre.wav` / `audio_post.wav` 是否按预期出现
 - `metadata.json` 是否符合当前 `data_version=3.3` 字段约定（范本见 [metadata-v3.3.json](metadata-v3.3.json)），并兼容历史 `3.0/3.1/3.2` 数据
-- 3.3 的 12 个版本字符串是否按固定顺序紧跟 `data_version`；启用设备版本必须已知，未绑定 Ego 版本为空，未启用胸摄及 `+nostereo` 双目固件为 `"disabled"`；`ego_bound` 位于 Ego 软件版本前，`hardware_list.ego_sn` 位于末项，其他字段合同不变
+- 3.3 的 13 个版本字符串是否按固定顺序紧跟 `data_version`（`rk3588_firmware_version` 来自 `/home/user/version.info`，位于 `ego_firmware_version` 后、`hardware_list` 前；历史 3.3 可缺少此新增字段）；启用设备版本必须已知，未绑定 Ego 版本为空，未启用胸摄及 `+nostereo` 双目固件为 `"disabled"`；`ego_bound` 位于 Ego 软件版本前，`hardware_list.ego_sn` 位于末项，其他字段合同不变
 - 可选 `task_start_s/task_stop_s` 是否为非负数且顺序有效；只有开始标记时按无回环数据处理
 - `metadata.json` 顶层字段、`hardware_list` 字段和 `video_details[]` 字段顺序是否符合标准范本
 - `metadata.json` / `calibration.json` 的顶层 key 集合是否仍符合约定

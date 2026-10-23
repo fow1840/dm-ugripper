@@ -329,7 +329,7 @@ def submit(req):
                 info=os.fstat(src.fileno())
                 if not stat.S_ISREG(info.st_mode) or not 0<info.st_size<MAX_UPLOAD: raise ValueError('文件过大或格式错误')
                 if shutil.disk_usage(PRIVATE).free < info.st_size*3+64*1024*1024: raise ValueError('系统盘可用空间不足')
-                path=PRIVATE/(jobid+{'software':'.deb','main_camera':'.img','gripper':'.hex','rk3588_boot':'.img'}[kind])
+                path=PRIVATE/(jobid+{'software':'.deb','main_camera':'.img','gripper':'.hex','rk3588_boot':'.tar'}[kind])
                 with path.open('xb') as dst:
                     remaining=info.st_size
                     while remaining:
@@ -348,8 +348,8 @@ def submit(req):
                 raise ValueError('package_sha256_mismatch')
             if kind=='gripper': validate_hex(path)
             if kind=='rk3588_boot':
-                from boot_firmware import inspect_image
-                inspect_image(path)
+                from boot_firmware import inspect_package
+                inspect_package(path)
             source.unlink(missing_ok=True)
         JOB.clear();JOB.update(id=jobid,kind=kind,status='running',success=None,
                               reboot_pending=False,external=req.get('external') is True,started=time.time())

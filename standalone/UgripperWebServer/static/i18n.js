@@ -1,6 +1,13 @@
 'use strict';
 // Preserve source text per node so temporary language switches never alter settings.
 const translations={
+ '3588 设备固件升级':'RK3588 device firmware update','3588 设备固件版本':'RK3588 device firmware version',
+ '上传升级包':'Upload release package','上传已解压目录':'Upload extracted directory',
+ '上传包含 update.sh、SHA256SUMS 和 payload 的完整升级包，或在 PC 解压后选择整个发布目录。不支持裸 boot.img。执行包内脚本并校验版本、文件及启动分区后，等待单独确认重启；请保持供电。':'Upload the complete release package containing update.sh, SHA256SUMS and payload, or select the entire directory after extracting it on your PC. Raw boot.img is unsupported. The script runs and the version, files and boot partition are verified before a separate reboot command. Keep power connected.',
+ '请选择包含 update.sh、SHA256SUMS 和 payload 的发布目录':'Select the release directory containing update.sh, SHA256SUMS and payload',
+ '升级目录包含非法或重复文件名':'Invalid or duplicate filenames in the release directory',
+ '请选择小于 200 MiB 的完整升级目录':'Select a complete release directory smaller than 200 MiB',
+ '3588 设备固件升级，脚本执行及校验成功后等待单独确认重启':'RK3588 device firmware update; a separate reboot command is required after execution and verification',
 '确认重启设备':'Confirm device reboot',
 '固件写入校验成功，等待重启指令':'Firmware written and verified; awaiting reboot command',
 '固件已写入并校验。确认重启设备？临时升级包将被清理，网页会暂时断开。':'Firmware has been written and verified. Reboot now? Temporary upgrade packages will be deleted and the page will disconnect.',

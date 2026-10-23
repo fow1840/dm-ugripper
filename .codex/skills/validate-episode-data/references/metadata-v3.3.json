@@ -20,6 +20,7 @@
   "ego_bound": false,
   "ego_software_version": "",
   "ego_firmware_version": "",
+  "rk3588_firmware_version": "V1.0.3.2_20261022143700_release",
   "hardware_list": {
     "gripper_right_sn": "DAG-R",
     "gripper_left_sn": "DAG-L",

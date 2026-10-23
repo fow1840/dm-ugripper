@@ -49,7 +49,7 @@ FAYS_IMU_PAYLOAD_BYTES = 48
 FAYS_CAMERA_PAYLOAD_BYTES = 4
 MIN_UNIX_TIMESTAMP_US = 946_684_800_000_000
 DEFAULT_GLOBAL_FIRST_FRAME_FAIL_MS = 1000.0
-METADATA_33_VERSION_FIELDS = ['bluetooth_gatt_server_version', 'databot_device_joint_version', 'device_ota_mender_version', 'gripper_left_firmware_version', 'gripper_right_firmware_version', 'cam_left_firmware_version', 'cam_right_firmware_version', 'cam_chest_firmware_version', 'stereo_left_firmware_version', 'stereo_right_firmware_version', 'ego_software_version', 'ego_firmware_version']
+METADATA_33_VERSION_FIELDS = ['bluetooth_gatt_server_version', 'databot_device_joint_version', 'device_ota_mender_version', 'gripper_left_firmware_version', 'gripper_right_firmware_version', 'cam_left_firmware_version', 'cam_right_firmware_version', 'cam_chest_firmware_version', 'stereo_left_firmware_version', 'stereo_right_firmware_version', 'ego_software_version', 'ego_firmware_version', 'rk3588_firmware_version']
 EXPECTED_METADATA_KEY_ORDER = [
     "device_sn",
     "device_type",
@@ -76,7 +76,7 @@ EXPECTED_METADATA_KEY_ORDER = [
     "require_files",
     "video_details",
 ]
-OPTIONAL_METADATA_KEYS = {"task_start_s", "task_stop_s"}
+OPTIONAL_METADATA_KEYS = {"task_start_s", "task_stop_s", "rk3588_firmware_version"}
 REQUIRED_METADATA_FIELDS = [
     "device_sn",
     "device_type",
@@ -897,6 +897,8 @@ class EpisodeValidator:
             if not isinstance(ego_sn, str) or (bool(ego_sn.strip()) != (ego_bound is True)):
                 self.add_finding("FAIL", "metadata_ego_binding", "ego_bound 与 hardware_list.ego_sn 不一致")
             for key in ["hardware_version", "software_version", "das_usb_updater_version", *METADATA_33_VERSION_FIELDS]:
+                if key == "rk3588_firmware_version" and key not in self.metadata:
+                    continue
                 value = self.metadata.get(key)
                 if key.startswith("ego_") and ego_bound is False:
                     if value != "":

@@ -45,7 +45,7 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - Web 时间同步测试按 `/etc/environment` 的 `DEVICE_SN` 小写选择当前设备数据目录，并显式传入毫秒表脚本；未配置 SN 时使用运行时相同的 `noname_device`。不依赖数据盘仅存在一个设备目录；状态轮询保留每组日志展开和滚动状态。
 ## 2. 安装布局与入口
 
-- Web/API 所有软件及固件升级要求背包电量至少 30%，BMS 数据不可用/超过 20 秒也拒绝；任务接收、停服及实际安装/逐侧烧录前检查，强制升级和充电均不豁免。Web 提供独立 RK3588 启动固件入口，接受适配本机硬件的 FIT boot.img；校验镜像内容及固定 `/dev/mmcblk0p3` 的 boot 分区身份后写入，回读 SHA-256 一致后等待独立重启指令，root 持久任务在新 boot ID 下再次回读后确认成功。相同镜像跳过刷写及重启，中断不自动重刷；不支持整盘/rootfs 更新。
+- Web/API 所有软件及固件升级要求背包电量至少 30%，BMS 数据不可用/超过 20 秒也拒绝；任务接收、停服及实际安装/逐侧烧录前检查，强制升级和充电均不豁免。Web 的 RK3588 设备固件入口接受包含 update.sh、SHA256SUMS、payload 的完整发布包，支持 PC 解压后选择整个发布目录上传；不再接受裸 boot.img。root worker 验证文件清单、硬件型号及 boot 分区后，以 sh -e 执行包内脚本；按 V100/V130 选择对应 FIT，脚本可同时更新驱动、启动脚本、日志配置及文件系统。目标版本、文件和 boot 分区回读一致后等待独立重启指令，同版本也执行完整包；重启前清理临时包，新 boot ID 下再次核对版本、文件和分区。Runtime 将 /home/user/version.info 缓存为 rk3588_firmware_version，Web/API 共用，起录冻结后写入 metadata 3.3；中断不自动重刷。
 
 - 安装目录：`/opt/ugripper`
 - 主服务：`pack_script/ugripper.service`
@@ -308,7 +308,7 @@ BMS 串口由蓝牙服务的 `update_bms_data` 独占采集，UGripper 不再打
 
 ### 7.2 metadata.json
 停录校验完成后，`record_runtime` 写入最终 `metadata.json`。当前顶层字段固定为：
-`device_sn / device_type / device_mode / camera_codec / hardware_version / software_version / das_usb_updater_version / data_version / bluetooth_gatt_server_version / databot_device_joint_version / device_ota_mender_version / gripper_left_firmware_version / gripper_right_firmware_version / cam_left_firmware_version / cam_right_firmware_version / cam_chest_firmware_version / stereo_left_firmware_version / stereo_right_firmware_version / ego_bound / ego_software_version / ego_firmware_version / hardware_list / episode_name / data_uuid / audio_uuid / quality_check_status / quality_check_err_type / collection_duration_s / task_start_s / task_stop_s / boot_time_s / tactile_damage_sn_list / require_files / video_details`。
+`device_sn / device_type / device_mode / camera_codec / hardware_version / software_version / das_usb_updater_version / data_version / bluetooth_gatt_server_version / databot_device_joint_version / device_ota_mender_version / gripper_left_firmware_version / gripper_right_firmware_version / cam_left_firmware_version / cam_right_firmware_version / cam_chest_firmware_version / stereo_left_firmware_version / stereo_right_firmware_version / ego_bound / ego_software_version / ego_firmware_version / rk3588_firmware_version / hardware_list / episode_name / data_uuid / audio_uuid / quality_check_status / quality_check_err_type / collection_duration_s / task_start_s / task_stop_s / boot_time_s / tactile_damage_sn_list / require_files / video_details`。
 
 - `device_sn` 使用主控 `DEVICE_SN`，写出前统一转大写；`device_type=ugripper`，`device_mode=dual`，`data_version=3.3`。
 - `boot_time_s` 是本次系统开机时间点的 Unix 秒时间戳，优先复用 CameraRecorder timing 中的 `boot_time_offset`；timing 缺失时按当前 Unix 时钟与单调时钟差值回退计算。
@@ -317,7 +317,7 @@ BMS 串口由蓝牙服务的 `update_bms_data` 独占采集，UGripper 不再打
 - `metadata.json` 使用范本顺序写出顶层字段、`hardware_list` 字段和 `video_details[]` 字段；校验脚本会把 key 顺序漂移作为格式错误。
 - `data_uuid` 使用系统随机 UUID；若 `/proc/sys/kernel/random/uuid` 不可用则回退 `libuuid` 的 `uuid_generate/uuid_unparse`。无音频文件时 `audio_uuid` 允许为空字符串。
 - `hardware_version` 优先读取 `/etc/environment` 的 `HARDWARE_VERSION`，保留 `v` 前缀；缺失时兼容 `UGRIPPER_HARDWARE_VERSION`，最后默认 `v2.5`；`software_version` 来自 ugripper 主包版本并带 `v` 前缀；`das_usb_updater_version` 优先读取 `das-usb-updater` 包版本。
-- metadata 3.3 在 data_version 后固定增加 12 个版本字符串；ego_bound（布尔值）紧邻 ego_software_version 之前，hardware_list 末项为 ego_sn（未绑定为空）。主摄固件版本取 USB iSerial；胸摄未启用、+nostereo 双目固件写 "disabled"；未绑定 Ego 两个版本为空。起录前所有启用设备版本必须已知，缺项拒绝创建 episode，待机继续限频重试；起录冻结版本和绑定 SN，停录只消费内存副本。其余 metadata 字段、顺序、类型及 calibration 格式保持不变。Ego 拉回并完成远端大小校验与清理后，在本地 ego/metadata.json 写 related_episode_name 和 related_episode_uuid，分别等于 UMI episode_name（不带 -temp）和 data_uuid。 范本：`.codex/skills/validate-episode-data/references/metadata-v3.3.json`。
+- metadata 3.3 在 data_version 后包含 13 个版本字符串（新增 rk3588_firmware_version 位于 ego_firmware_version 后、hardware_list 前，来自 /home/user/version.info，复用现有版本缓存；历史 3.3 缺少该新增字段仍兼容）；ego_bound（布尔值）紧邻 ego_software_version 之前，hardware_list 末项为 ego_sn（未绑定为空）。主摄固件版本取 USB iSerial；胸摄未启用、+nostereo 双目固件写 "disabled"；未绑定 Ego 两个版本为空。起录前所有启用设备版本必须已知，缺项拒绝创建 episode，待机继续限频重试；起录冻结版本和绑定 SN，停录只消费内存副本。其余 metadata 字段、顺序、类型及 calibration 格式保持不变。Ego 拉回并完成远端大小校验与清理后，在本地 ego/metadata.json 写 related_episode_name 和 related_episode_uuid，分别等于 UMI episode_name（不带 -temp）和 data_uuid。 范本：`.codex/skills/validate-episode-data/references/metadata-v3.3.json`。
 - 版本来源：已安装 dpkg 包、夹爪待机固件缓存、主摄 USB iSerial、Fays calibration.firmware_version、Ego 绑定缓存 app.version_name/firmware.version；复用现有状态接口，不新增版本快照 JSON。
 - `hardware_list` 保持固定 schema：左右 gripper、左右主摄、可选胸部主摄、四路 tactile、左右 stereo 与 Ego SN 字段始终存在，未绑定时 ego_sn 为空；默认包从 Fays 状态写 stereo SN，`+nostereo` 变体写空字符串。
 - `quality_check_status` 取值为 `success` / `fail` / 空字符串；`quality_check_err_type` 保持单字段兼容，只写本次失败的主 `error_type`。常见取值包括 `missing_file`、`collection_duration_too_short`、`frame_loss`、`stereo_frame_loss`、`finalize_error`、`stereo_control_failed`、`calibration_error`、`runtime_error`、`device_disconnected`、人工补标的 `operator_marked_failed`，以及健康监控直接上报的 `disk_mount_lost`、`disk_not_writable`、`disk_full`、`critical_devices_missing`、`stereo_not_ready`、`hmi_*` 等 fault key；无法归类时写 `unknown`。

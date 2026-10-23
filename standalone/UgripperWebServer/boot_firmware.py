@@ -1,12 +1,13 @@
-"""RK3588 FIT boot image update, fixed partition, verified across reboot.
-
-Based on production_tools/.production_internal/deploy.py boot update workflow.
-Never accepts a partition or shell command from the HTTP client.
-"""
+"""RK3588 release packages: verify, run bundled update.sh, verify across reboot."""
+import contextlib
 import hashlib
 import os
 from pathlib import Path
 import stat
+import re
+import shutil
+import tarfile
+import tempfile
 import struct
 import time
 
@@ -20,6 +21,126 @@ UEVENT = Path('/sys/class/block/mmcblk0p3/uevent')
 COMPATIBLE = Path('/proc/device-tree/compatible')
 BOOT_ID = Path('/proc/sys/kernel/random/boot_id')
 PENDING = Path('/var/lib/ugripper-maintenance/boot-pending.json')
+VERSION_INFO = Path('/home/user/version.info')
+INSTALLED_FILES = {
+    'payload/8852be.ko': Path('/home/user/lib/8852be.ko'),
+    'payload/user_start.sh': Path('/home/user/user_start.sh'),
+    'payload/50-default.conf': Path('/etc/rsyslog.d/50-default.conf'),
+    'payload/rsyslog': Path('/etc/logrotate.d/rsyslog'),
+}
+
+
+def read_version(path=None):
+    try:
+        with (VERSION_INFO if path is None else path).open() as stream:
+            value = stream.read(4097)
+        if len(value) > 4096:
+            return ''
+        value = value.strip()
+        if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.+-]{0,255}', value):
+            return value
+    except (OSError, UnicodeError):
+        pass
+    return ''
+
+
+def file_hash(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024*1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+@contextlib.contextmanager
+def unpack_package(path):
+    # Never extract links, special nodes, absolute paths, '..', or duplicate names.
+    with tempfile.TemporaryDirectory(prefix='firmware-', dir=path.parent) as temporary:
+        destination = Path(temporary)
+        try:
+            with tarfile.open(path, 'r:*') as archive:
+                names, files, total = set(), [], 0
+                for index, member in enumerate(archive):
+                    name = member.name.rstrip('/')
+                    if (index >= 256 or not name or len(name) > 200 or
+                            any(not re.fullmatch(r'[A-Za-z0-9_.+-]+', part) or part in ('.', '..')
+                                for part in name.split('/')) or name in names or
+                            not (member.isdir() or member.isfile()) or member.sparse):
+                        raise ValueError('升级包包含非法路径、链接或重复文件')
+                    names.add(name)
+                    if member.isdir():
+                        continue
+                    total += member.size
+                    if member.size < 0 or total >= MAX_UPLOAD:
+                        raise ValueError('升级包解压内容必须小于 200 MiB')
+                    target = destination/name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with archive.extractfile(member) as source, target.open('xb') as output:
+                        shutil.copyfileobj(source, output)
+                    files.append(target)
+        except (tarfile.TarError, EOFError, OSError) as exc:
+            raise ValueError('请上传包含 update.sh、SHA256SUMS 和 payload 的完整升级包') from exc
+        scripts = [f for f in files if f.name == 'update.sh']
+        if len(scripts) != 1:
+            raise ValueError('升级包必须且只能包含一个 update.sh')
+        root = scripts[0].parent
+        if any(not f.is_relative_to(root) for f in files):
+            raise ValueError('升级包文件必须位于同一个发布目录')
+        yield root
+
+
+def inspect_package_root(root):
+    checksums = {}
+    try:
+        manifest = (root/'SHA256SUMS').read_text()
+        if len(manifest) > 65536:
+            raise ValueError('SHA256SUMS 过大')
+        for line in manifest.splitlines():
+            match = re.fullmatch(r'([0-9a-f]{64}) [ *]([A-Za-z0-9_.+/-]+)', line)
+            if not match:
+                raise ValueError('SHA256SUMS 格式非法')
+            digest, name = match.groups()
+            if (name in checksums or any(part in ('', '.', '..') for part in name.split('/'))
+                    or name.startswith('/')):
+                raise ValueError('SHA256SUMS 路径非法或重复')
+            if file_hash(root/name) != digest:
+                raise ValueError('升级包 SHA-256 校验失败: '+name)
+            checksums[name] = digest
+    except (OSError, UnicodeError) as exc:
+        raise ValueError('升级包文件或 SHA256SUMS 缺失') from exc
+    required = {'update.sh', 'payload/version.info', 'payload/fstab', *INSTALLED_FILES,
+                'payload/boot-v2.5.img', 'payload/boot-v3.img'}
+    files = {str(f.relative_to(root)) for f in root.rglob('*') if f.is_file()}
+    if not required <= checksums.keys() or files - {'SHA256SUMS', 'readme.txt'} != checksums.keys():
+        raise ValueError('升级包文件清单不完整或含未校验文件')
+    version = read_version(root/'payload/version.info')
+    if not version:
+        raise ValueError('升级包 version.info 无有效固件版本')
+    compatible = COMPATIBLE.read_bytes()
+    match = re.search(rb'V[0-9]+', compatible)
+    model = match.group().decode() if match else ''
+    image = {'V100': 'boot-v2.5.img', 'V130': 'boot-v3.img'}.get(model)
+    if not image:
+        raise ValueError('升级包不支持当前硬件型号: '+model)
+    info = inspect_image(root/'payload'/image)
+    return dict(**info, firmware_version=version, hardware_model=model,
+                files={name: checksums[name] for name in INSTALLED_FILES})
+
+
+def inspect_package(path):
+    with unpack_package(path) as root:
+        return inspect_package_root(root)
+
+
+def verify_installed(info):
+    if read_version() != info['firmware_version']:
+        raise RuntimeError('升级后 version.info 与目标固件版本不一致')
+    for name, digest in info['files'].items():
+        if name not in INSTALLED_FILES or file_hash(INSTALLED_FILES[name]) != digest:
+            raise RuntimeError('升级后文件 SHA-256 不匹配: '+name)
+    if partition_hash(info['size']) != info['sha256']:
+        raise RuntimeError('启动分区 SHA-256 校验失败')
+
 
 
 def require_battery():
@@ -165,28 +286,27 @@ def persist(value):
 
 def install(path, job, report, run, force=False):
     require_battery()
-    report('检查 3588 启动镜像')
-    info = inspect_image(path)
-    check_target(info['size'], run)
-    if partition_hash(info['size']) == info['sha256'] and not force:
-        return dict(status='启动分区已匹配，跳过写入与重启', **info)
-    require_battery()
-    pending = dict(id=job['id'], kind='rk3588_boot', status='running', stage='写入启动分区',
-                   boot_id=BOOT_ID.read_text().strip(), **info)
-    persist(pending)
-    try:
-        report('写入 3588 启动分区，请勿断电')
-        run(['dd', 'if='+str(path), 'of='+str(DEVICE), 'bs=4M', 'conv=fsync', 'status=progress'], 600)
-        report('回读校验 3588 启动分区')
-        if partition_hash(info['size']) != info['sha256']:
-            raise RuntimeError('启动分区写入后 SHA-256 不匹配，未重启')
-        pending['stage'] = 'awaiting_reboot'; persist(pending)
-        run(['sync'])
-        return dict(status='awaiting_reboot', installed=True, boot_verified=False,
-                    reboot_pending=True, **info)
-    except Exception as exc:
-        pending.update(status='failed', message=str(exc)); persist(pending)
-        raise
+    report('校验 3588 固件升级包')
+    with unpack_package(path) as root:
+        info = inspect_package_root(root)
+        check_target(info['size'], run)
+        require_battery()
+        pending = dict(id=job['id'], kind='rk3588_boot', status='running', stage='执行 update.sh',
+                       boot_id=BOOT_ID.read_text().strip(), **info)
+        persist(pending)
+        try:
+            report('执行 3588 固件 update.sh，请勿断电', target_version=info['firmware_version'])
+            # Fail on command errors even if the vendor script omits `set -e`.
+            run(['/bin/sh', '-e', root/'update.sh'], 900)
+            report('校验 3588 固件版本、文件和启动分区')
+            verify_installed(info)
+            run(['sync'])
+            pending['stage'] = 'awaiting_reboot'; persist(pending)
+            return dict(status='awaiting_reboot', installed=True, boot_verified=False,
+                        reboot_pending=True, **info)
+        except Exception as exc:
+            pending.update(status='failed', message=str(exc)); persist(pending)
+            raise
 
 
 def recover(run):
@@ -206,11 +326,11 @@ def recover(run):
             save_task(old, STATE)
             return
         check_target(pending['size'], run)
-        if partition_hash(pending['size']) != pending['sha256']:
-            raise RuntimeError('重启后启动分区 SHA-256 校验失败')
+        verify_installed(pending)
         old.update(status='success', success=True, boot_verified=True,
                    stage='3588 启动固件重启后校验通过', message='',
-                   result={'sha256': pending['sha256'], 'status': '重启后校验通过',
+                   result={'sha256': pending['sha256'], 'firmware_version': pending['firmware_version'],
+                           'status': '重启后校验通过',
                            'installed': True, 'boot_verified': True})
     except Exception as exc:
         old.update(status='failed', success=False, boot_verified=False,

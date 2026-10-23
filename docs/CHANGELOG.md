@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- 3588 设备固件升级改为校验并执行完整发布包内 update.sh，支持 WebUI 上传归档或 PC 解压目录；成功后单独确认重启。补充缓存 /home/user/version.info 至 Web/API 与 metadata 的 rk3588_firmware_version，数据版本保持 3.3，原有字段格式不变（7b2ec87 同功能补充）。
+
 - 系统 syslog 改用本机 `/var/log/ugripper-syslog/syslog.log`，启动前按挂载顺序创建目录并固定读写权限，消除 `/tmp` 后挂载遮蔽目录的问题；保留原格式、容量轮转及事件增量复制至数据盘，跨重启不重复导出已有源文件；配置提交成功后删除旧 `/tmp/logbuf`，本地历史轮转文件最多保留 9 个。
 
 

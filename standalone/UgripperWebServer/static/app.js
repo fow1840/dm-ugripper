@@ -49,6 +49,7 @@ function render(s){const versions=s.device_versions||{};setDeviceLanguage(s.conf
   const stamp=gripper?.checked_at?' · '+new Date(gripper.checked_at*1000).toLocaleString():'';
   $('#firmwareVersions').append(row(label+'夹爪固件',(gripper?.version|| (gripper?.status==='disconnected'?'未连接':gripper?.status==='unavailable'?'版本不可用':gripper?.status==='pending'?'等待自动读取':'状态待更新'))+stamp,!!gripper?.version));
  }
+ $('#firmwareVersions').append(row('3588 设备固件版本',versionValue(versions.rk3588_firmware_version),null));
  $('#firmwareVersions').append(row('胸部主摄固件',versionValue(versions.cam_chest_firmware_version),null));
  if((!settingsLoaded||s.task?.kind==='configuration'&&s.task?.finished)&&!settingsDirty){for(const select of document.querySelectorAll('#configurationForm select')){const value=s.configuration?.[select.name];select.value=value??'';select.required=true;}settingsLoaded=true;}
  $('#connection').textContent=(s.service_active?'数采服务在线':'数采服务已停止')+' · '+new Date().toLocaleTimeString();
@@ -88,7 +89,40 @@ function confirmAction(text,fixture=false,protectedOperation=false){
 }
 function upload(file,password){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('POST','/api/v1/upload');x.setRequestHeader('X-UGripper-Request','1');x.setRequestHeader('X-UGripper-Maintenance-Password',password);x.upload.onprogress=e=>{$('#progress').value=e.loaded/e.total*100;$('#taskText').textContent='正在上传 '+Math.round(e.loaded/e.total*100)+'%'};x.onload=()=>{try{const v=JSON.parse(x.responseText);x.status===201?resolve(v):reject(Error(v.error||'上传失败'))}catch(e){reject(e)}};x.onerror=()=>reject(Error('上传连接中断'));x.send(file)})}
 $('#firmwareKind').onchange=()=>{$('#firmwareFile').accept=$('#firmwareKind').value==='main_camera'?'.img':'.hex';$('#firmwareFile').value=''};
-for(const form of document.querySelectorAll('.upgradeForm'))form.onsubmit=async e=>{e.preventDefault();const kind=form.dataset.kind||$('#firmwareKind').value,file=form.querySelector('input[type=file]').files[0];if(!file||file.size>=200*1024**2||!file.size){message('请选择小于 200 MiB 的文件');return}if(busy){message('录制或维护进行中');return}const batteryError=upgradeBatteryError(last?.battery);if(batteryError){message(batteryError);return}const password=await confirmAction('确认使用 '+file.name+' 执行'+(kind==='software'?'软件覆盖安装':kind==='rk3588_boot'?'3588 启动固件升级，写入校验成功后等待单独确认重启':'左右两侧固件升级')+'？过程中请勿断电或拔插设备。',false,true);if(!password)return;form.querySelector('button').disabled=true;uploading=true;$('#taskPanel').hidden=false;try{const u=await upload(file,password);await post('/api/v1/execute',{kind,upload:u.upload,confirm:true,force:kind==='main_camera'&&$('#forceFlash').checked},password);message();form.reset()}catch(e){message(e.message)}finally{uploading=false;form.querySelector('button').disabled=false;refresh()}};
+function packageFirmwareDirectory(files){
+ const parts=[],names=new Set();let size=1024;
+ for(const file of files){
+  const path=file.webkitRelativePath.split('/').slice(1).join('/');
+  if(!path||path.length>100||path.split('/').some(p=>!p||p==='.'||p==='..'||!/^[A-Za-z0-9_.+-]+$/.test(p))||names.has(path))throw Error('升级目录包含非法或重复文件名');
+  names.add(path);size+=512+Math.ceil(file.size/512)*512;
+  if(size>=200*1024**2||names.size>256)throw Error('请选择小于 200 MiB 的完整升级目录');
+  const header=new Uint8Array(512),encoder=new TextEncoder();
+  const put=(offset,value)=>header.set(encoder.encode(value),offset);
+  const octal=(offset,width,value)=>put(offset,value.toString(8).padStart(width-1,'0')+'\0');
+  put(0,path);octal(100,8,420);octal(108,8,0);octal(116,8,0);octal(124,12,file.size);octal(136,12,0);
+  header.fill(32,148,156);put(156,'0');put(257,'ustar\0');put(263,'00');
+  const checksum=header.reduce((sum,value)=>sum+value,0);put(148,checksum.toString(8).padStart(6,'0')+'\0 ');
+  parts.push(header,file,new Uint8Array((512-file.size%512)%512));
+ }
+ if(!names.has('update.sh')||!names.has('SHA256SUMS')||!names.has('payload/version.info'))throw Error('请选择包含 update.sh、SHA256SUMS 和 payload 的发布目录');
+ parts.push(new Uint8Array(1024));
+ return new File(parts,'firmware-release.tar',{type:'application/x-tar'});
+}
+$('#bootInputMode').onchange=()=>{
+ const directory=$('#bootInputMode').value==='directory';
+ $('#bootArchive').hidden=directory;$('#bootArchive').required=!directory;$('#bootArchive').value='';
+ $('#bootDirectory').hidden=!directory;$('#bootDirectory').required=directory;$('#bootDirectory').value='';
+};
+for(const form of document.querySelectorAll('.upgradeForm'))form.onsubmit=async e=>{
+ e.preventDefault();const kind=form.dataset.kind||$('#firmwareKind').value;let file;
+ try{file=kind==='rk3588_boot'&&$('#bootInputMode').value==='directory'?packageFirmwareDirectory($('#bootDirectory').files):form.querySelector('input[type=file]').files[0]}catch(error){message(error.message);return}
+ if(!file||file.size>=200*1024**2||!file.size){message('请选择小于 200 MiB 的文件');return}
+ if(busy){message('录制或维护进行中');return}const batteryError=upgradeBatteryError(last?.battery);if(batteryError){message(batteryError);return}
+ const password=await confirmAction('确认使用 '+file.name+' 执行'+(kind==='software'?'软件覆盖安装':kind==='rk3588_boot'?'3588 设备固件升级，脚本执行及校验成功后等待单独确认重启':'左右两侧固件升级')+'？过程中请勿断电或拔插设备。',false,true);if(!password)return;
+ form.querySelector('button').disabled=true;uploading=true;$('#taskPanel').hidden=false;
+ try{const u=await upload(file,password);await post('/api/v1/execute',{kind,upload:u.upload,confirm:true,force:kind==='main_camera'&&$('#forceFlash').checked},password);message();form.reset();if(kind==='rk3588_boot')$('#bootInputMode').onchange()}
+ catch(e){message(e.message)}finally{uploading=false;refresh()}
+};
 for(const button of document.querySelectorAll('[data-zero-side]'))button.onclick=async()=>{
  const side=button.dataset.zeroSide,label=side==='left'?'左':'右';
  if(busy){message('录制或维护进行中');return}

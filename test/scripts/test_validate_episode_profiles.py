@@ -306,6 +306,18 @@ class ValidateEpisodeProfileTest(unittest.TestCase):
         self.assertEqual(list(payload), VALIDATOR.EXPECTED_METADATA_KEY_ORDER)
         self.assertFalse(any(f.severity == "FAIL" for f in self.validate_metadata(payload).findings))
 
+    def test_metadata_3_3_additive_board_version_preserves_legacy(self):
+        current = metadata()
+        historical = dict(current)
+        del historical["rk3588_firmware_version"]
+        for payload in (current, historical):
+            self.assertFalse(any(f.severity == "FAIL" for f in self.validate_metadata(payload).findings))
+        for value in ("", "unknown", 123):
+            payload = dict(current, rk3588_firmware_version=value)
+            self.assertTrue(any(f.severity == "FAIL" for f in self.validate_metadata(payload).findings))
+        reordered = dict(historical, rk3588_firmware_version=current["rk3588_firmware_version"])
+        self.assertTrue(any(f.severity == "FAIL" for f in self.validate_metadata(reordered).findings))
+
     def test_metadata_3_3_binding_and_required_version_consistency(self):
         for field, value in (("ego_bound", "false"), ("ego_software_version", "1.0.5"), ("gripper_left_firmware_version", ""), ("cam_left_firmware_version", "unknown")):
             payload = metadata()

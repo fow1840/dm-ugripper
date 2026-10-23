@@ -26,7 +26,7 @@
 - 主摄升级独立读取镜像版本与所选设备版本，镜像检查不依赖摄像头在线；仅明确 CLI 参数/usage 错误才兼容旧命令，设备缺失或镜像读取失败不重试，保留原命令、退出码及输出。Web 缺摄预检和设备版本错误显示具体 /dev/cam_left 或 /dev/cam_right，避免误报镜像失败。
 - 主摄 DFU 强制调用 `/usr/local/lib/ugripper-web/bin/dfu-util`，不回退系统 PATH；夹爪是串口 Ymodem OTA，不使用 DFU。
 - 夹爪：单份 HEX 顺序升级左右夹爪，校验 HEX checksum/地址跨度，固定 `/dev/left_gripper`、`/dev/right_gripper`，禁止自动选串口；两次版本回读一致才成功。
-- metadata 3.3 在 data_version 后固定增加 12 个版本字符串；ego_bound（布尔值）紧邻 ego_software_version 之前，hardware_list 末项为 ego_sn（未绑定为空）。主摄固件版本取 USB iSerial；胸摄未启用、+nostereo 双目固件写 "disabled"；未绑定 Ego 两个版本为空。起录前所有启用设备版本必须已知，缺项拒绝创建 episode，待机继续限频重试；起录冻结版本和绑定 SN，停录只消费内存副本。其余 metadata 字段、顺序、类型及 calibration 格式保持不变。Ego 拉回并完成远端大小校验与清理后，在本地 ego/metadata.json 写 related_episode_name 和 related_episode_uuid，分别等于 UMI episode_name（不带 -temp）和 data_uuid。 范本：`.codex/skills/validate-episode-data/references/metadata-v3.3.json`。
+- metadata 3.3 在 data_version 后包含 13 个版本字符串（新增 rk3588_firmware_version 位于 ego_firmware_version 后、hardware_list 前，来自 /home/user/version.info，复用现有版本缓存；历史 3.3 缺少该新增字段仍兼容）；ego_bound（布尔值）紧邻 ego_software_version 之前，hardware_list 末项为 ego_sn（未绑定为空）。主摄固件版本取 USB iSerial；胸摄未启用、+nostereo 双目固件写 "disabled"；未绑定 Ego 两个版本为空。起录前所有启用设备版本必须已知，缺项拒绝创建 episode，待机继续限频重试；起录冻结版本和绑定 SN，停录只消费内存副本。其余 metadata 字段、顺序、类型及 calibration 格式保持不变。Ego 拉回并完成远端大小校验与清理后，在本地 ego/metadata.json 写 related_episode_name 和 related_episode_uuid，分别等于 UMI episode_name（不带 -temp）和 data_uuid。 范本：`.codex/skills/validate-episode-data/references/metadata-v3.3.json`。
 - 固件信息：UGripper 自动发布 `/dev/shm/ugripper/firmware_status.json`，Web 仅读取左右主摄 USB iSerial 和夹爪版本，不提供手动读取操作。夹爪版本复用运行时 HMI 驱动的串口，在启动、重连或升级后服务恢复时读取；失败每 30 秒限频重试，录制中只显示缓存。设备断开清除该侧展示，状态快照超过 15 秒显示待更新；主摄只读取 sysfs，未知/失败不会回退到旧维护任务缓存。
 - 编码器读数：配置页开始后通过 `POST /api/v1/encoder/stream` 持续接收 NDJSON，串口保持连接，目标 100 Hz，显示实际频率；浏览器绘制受屏幕帧率限制。停止/隐藏/离开页面会取消请求，网络写入超时 1 秒，每次约 60 秒兜底释放并恢复串口参数。仅读 `0x0041`，CRC 校验，不写零位。原始计数保留无符号寄存器值，角度和弧度按与录制驱动一致的有符号 16 位计数换算（大于等于 32768 时减 65536）；例如 61364 显示约 −22.92° / −0.4000 rad，不将负角度转换成 0–360°，也不裁剪到机械行程范围。读取期间与录制、维护互斥。
 - 编码器标零：仅配置页提供左/右独立按钮，请求必须携带 `side=left/right`，缺少或指定 both 均拒绝；弹窗明确所选侧并要求确认指定治具。只检测并执行所选侧，不会在无治具的自动测试中写零位。
@@ -96,13 +96,15 @@ WebUI 与外部 API 的软件、主摄、夹爪及 RK3588 启动固件升级统�
 
 ## RK3588 启动固件升级
 
-升级页新增独立“3588 启动固件升级”卡片。上传适配当前背包硬件的 RK3588 FIT `boot.img`（非空且小于 200 MiB），输入维护密码执行升级；写入校验完成后等待独立重启指令。该入口参考 production_tools 背包工具，仅更新 boot 启动分区，不支持整盘 `update.img`、rootfs、Mender artifact 或主摄 IMG。
+升级页“3588 设备固件升级”支持两种上传方式：直接选择 `.tar.gz` / `.tgz` / `.tar` 发布包；或在 PC 解压后选择包含 `update.sh`、`SHA256SUMS` 和 `payload/` 的整个发布目录。目录由浏览器保留路径与内容打包上传，无须手动重新压缩。不再接受单独 `boot.img`。上传及解压总量各须小于 200 MiB，最多 256 个归档条目；只接受普通文件/目录，拒绝链接、越界路径及重复文件。
 
-- root worker 解析 FIT 和默认 kernel/设备树，校验 arm64、RK3588 设备树及各镜像 SHA-256；支持内嵌数据和 FIT 外部数据。此校验不是发布者签名认证，也不能证明所有板级外设兼容，须使用交付给当前硬件的镜像。
-- 固定写入 `/dev/mmcblk0p3`，检查本机 RK3588 compatible、块设备、分区 `PARTNAME=boot/PARTN=3` 和容量；不接受客户端指定分区。分区布局不匹配时拒绝，不能自动猜测其他分区。
-- 按镜像长度比较分区 SHA-256；完全一致时跳过刷写与重启。否则在录制/维护/USB 升级互斥锁内停止数采，执行 `dd bs=4M conv=fsync`，写后回读一致后恢复服务并返回 `awaiting_reboot`（`success: true`、`boot_verified: false`），等待独立重启指令。写后校验失败不自动重启、不自动重刷。
-- 写入前将镜像长度、SHA-256、任务 ID 和 boot ID 持久写入 root 专属 `boot-pending.json`。独立重启指令获取录制/维护互斥锁、清理临时升级包目录并请求重启，锁持有至关机。网页临时断开，重新连接后读取任务状态。维护服务启动后只有检测到新的 boot ID、且原任务到达等待重启阶段，才进行分区回读并标记重启后校验成功；单纯服务重启保留等待重启状态，中途断电不被当作成功，不自动再次刷写。
-- 没有 A/B 回滚或 Web 救砖功能。升级中不能断电；若镜像导致设备无法启动，Web 也无法恢复，需要设备既有的离线恢复流程。分区回读成功只说明字节一致与系统重新上线，不代替外设功能验收。
+- root worker 校验 SHA256SUMS 全部文件、`payload/version.info`、本机硬件型号和选用 FIT 的 kernel/设备树/hash；V100 使用 `boot-v2.5.img`，V130 使用 `boot-v3.img`，并检查固定 `/dev/mmcblk0p3` 的 boot 分区身份和容量。这不是发布者签名认证，须使用交付给当前硬件的完整发布包。
+- 持有录制/维护/USB 升级互斥锁并停数采后，以 `/bin/sh -e update.sh` 执行厂商脚本（命令失败即中止）；同版本也执行。脚本负责更新整个发布包，Web 不再自行执行旧的裸镜像写入流程。电量至少 30%，不可用/过期拒绝。
+- 示例 `RB1021_CFTC_RK3588_V1.0.3.2_20261022143700_alpha.tar.gz` 的实际版本取自 `payload/version.info`：`V1.0.3.2_20261022143700_release`，不根据包名推断。其脚本写 boot、调整文件系统、替换 Wi-Fi 驱动与启动脚本、覆盖 rsyslog/logrotate 配置并重启 rsyslog；V100 还可能替换 fstab、调整/挂载数据分区，并清空 `/home/ubuntu/Downloads/`。这些是包内脚本行为，升级会影响原有日志配置。
+- 脚本返回成功后，核对 `/home/user/version.info`、驱动/启动脚本/日志配置文件 SHA-256 和 boot 分区 SHA-256，全部匹配才返回 `awaiting_reboot`（`success=true`、`boot_verified=false`），恢复服务并等待单独重启指令；失败不自动重启或重刷。包内脚本应只安装，不自行重启。
+- 写入前持久保存目标版本、文件/hash、任务 ID 和 boot ID；独立重启指令获取互斥锁、清理临时升级包后请求重启。新 boot ID 下维护服务再次核对版本、文件和 boot 分区，通过才标记最终成功；同一 boot ID 的服务重启保持等待状态，中断不冒充成功。
+- Runtime 按现有版本缓存周期读取 `/home/user/version.info`，字段为 `rk3588_firmware_version`，Web 概览、统一/指定版本 API 共用 `firmware_status.json`。文件缺失/内容无效显示未识别，不填默认版本；起录前版本必须已知，起录冻结后随 metadata 写入，`data_version` 保持 `3.3`，原有字段顺序和格式不变。
+- 没有 A/B 回滚或 Web 救砖功能；升级不能断电，无法启动时需走设备既有离线恢复流程。回读成功不代替外设功能验收。
 
 ### 录制触觉告警图像留存
 
