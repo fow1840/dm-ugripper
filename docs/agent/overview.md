@@ -859,7 +859,7 @@ ffprobe 使用 JSON 输出，stdout/stderr 分离并在进程运行时持续排�
 
 Ego STOP 每 50–150ms 查询目录，录制中的增量周期不变。文件大小一次 ADB 批量读取；尾部补拉后重新批量核对，全部一致时不重复补拉，不符仍走有限恢复。MP4 头刷新、修复检查和删除前复核保留。STOP Python 完成拉取后保持存活，收到主机数据刷盘确认才在同一进程清理远端；清理完成/退出后才越过收尾屏障，主机退出或预算耗尽则保留远端。
 
-发现同名 `-invalid` 时核对 metadata 的设备序列号、episode 名、UUID、起始时间与本次 START；本地已有 UUID 时要求一致，不把旧失败目录当成本次结果。确认后立即记录 `invalid / ego_pull_incomplete` 与 App 的 `quality_check_err_type`，有界补拉失败诊断数据并保留远端，不再等待普通目录直到 60 秒。未发布完整 metadata 或身份不符的候选限频记录诊断后继续观察。该终态纳入既有绑定 Ego 的 ERROR_5 门禁。
+发现同名 `-invalid` 时核对 metadata 的设备序列号、episode 名、UUID、起始时间与本次 START；本地已有 UUID 时要求一致，不把旧失败目录当成本次结果。确认后立即记录 `invalid / ego_pull_incomplete` 与 App 的 `quality_check_err_type`，有界补拉失败诊断数据并保留远端，不再等待普通目录直到 60 秒。正常完成目录优先；仅当临时目录和正常目录均不存在时检查同名 `-invalid`。未发布完整 metadata 或身份不符的失败候选限频记录诊断后继续观察。该终态纳入既有绑定 Ego 的 ERROR_5 门禁。
 
 本地关闭后的预校验及触觉分析与 Ego 拉取并行；最终完整校验继续执行。触觉结果在最终 metadata 存在后原子发布并前台刷盘，不再在 Ready 后启动 episode metadata 的后台重写。日志早期快照和末尾补增量全部完成、最终前台 `sync -f` 返回后才允许 Ready。内核不可中断写盘仍不得通过超时提前放行绿灯。
 
@@ -872,3 +872,9 @@ Ego STOP 每 50–150ms 查询目录，录制中的增量周期不变。文件�
 - 外部应用把完整包原子放入 `/var/lib/ugripper-web/upgrade-packages/`，调用 `POST /api/v1/upgrades` 即强制升级，无二次确认；仍检查包合法性、设备匹配、录制/维护互斥及至少 30% 的有效背包电量。Web 与外部共用维护 worker，结果按任务 ID 保存在 `upgrade-results/`。
 - 3588 固件写入回读成功后返回 `awaiting_reboot / success=true / boot_verified=false`，不自动重启；外部或 Web 单独发送任务 reboot 指令。重启前清理临时升级目录，实际重启后再次清理并校验 boot 分区；任务记录和恢复标记保留在临时目录之外。服务重启保持等待状态，不自动重刷。
 - 参数、字段、状态与调用示例见 [设备 API 汇总](../device-api.md)。
+
+### Ego 长录终态校验与不完整数据报错
+
+Ego metadata 包含随录制时长增加的授时映射段，终态身份校验允许最大16 MiB，按既有1 MiB传输块读取；设备SN、episode、UUID及START时间校验保持不变。正常完成目录沿用最终文件补拉和大小核对，不因同名旧 `-invalid` 增加身份校验；仅失败终态使用上述有界 metadata 身份检查。
+
+已尝试Ego录制且收尾返回 ego_pull_incomplete 时，无论当前绑定快照是否存在，均使episode失败、metadata记录对应错误并进入ERROR_5；不再把该错误当作可选设备的非致命失败。未启用/未发现可选Ego且没有录制的原有成功分支保留。远端清理失败仍不覆盖已经核实完整的拉取结果。

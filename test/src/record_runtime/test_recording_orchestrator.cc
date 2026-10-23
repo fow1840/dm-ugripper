@@ -505,7 +505,7 @@ TEST(RecordingOrchestratorTest, RecordedEgoDisconnectIsFatalEvenIfBindingStateWa
     EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
 }
 
-TEST(RecordingOrchestratorTest, OptionalEgoPullIncompleteRemainsNonFatal)
+TEST(RecordingOrchestratorTest, OptionalEgoPullIncompleteCannotReportSuccess)
 {
     RecordingHarness harness;
     harness.ego_required = false;
@@ -515,8 +515,10 @@ TEST(RecordingOrchestratorTest, OptionalEgoPullIncompleteRemainsNonFatal)
     ASSERT_TRUE(orchestrator.StartRecording(false));
 
     g_steady_ms += 100;
-    ASSERT_TRUE(orchestrator.StopRecording(false, "stop"));
-    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Ready);
+    ASSERT_FALSE(orchestrator.StopRecording(false, "stop"));
+    EXPECT_EQ(harness.led_states.back(), RuntimeLedState::Error5);
+    EXPECT_EQ(harness.metadata_error_types.back(), DA::Ugripper::kErrorTypeEgoPullIncomplete);
+    EXPECT_EQ(harness.ego_cleanup_calls, 0);
 }
 
 TEST(RecordingOrchestratorTest, EgoRemoteCleanupFailureIsNonFatalAfterVerifiedPull)

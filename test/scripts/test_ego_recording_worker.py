@@ -1270,6 +1270,28 @@ class EgoInvalidTerminalTests(unittest.TestCase):
                 "data_uuid": "current-uuid", "recording_start_utc_us": WORKER.now_ms()*1000,
                 "quality_check_status": "fail", "quality_check_err_type": "main_camera_short_stream"}
 
+    def test_long_recording_metadata_is_read_in_bounded_chunks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            metadata = self.metadata()
+            metadata["time_sync_mapping"] = {"segments": ["x" * (WORKER.TRANSFER_CHUNK_BYTES + 100)]}
+            payload = json.dumps(metadata).encode()
+            adb = mock.Mock(serial="test")
+            adb.exec_out_bytes.side_effect = lambda path, offset, count: payload[offset:offset+count]
+            with mock.patch.object(WORKER, "remote_file_size", return_value=len(payload)):
+                result = WORKER.read_terminal_metadata(adb, {"serial": "test", "started_at_ms": WORKER.now_ms()},
+                    "/remote", "episode_0001", "episode_0001", Path(directory))
+            self.assertEqual(result, metadata)
+            self.assertEqual(adb.exec_out_bytes.call_count, 2)
+            for call in adb.exec_out_bytes.call_args_list:
+                self.assertLessEqual(call.args[2], WORKER.TRANSFER_CHUNK_BYTES)
+
+    def test_oversized_terminal_metadata_is_rejected_before_transfer(self):
+        adb = mock.Mock()
+        with mock.patch.object(WORKER, "remote_file_size", return_value=16 * 1024 * 1024 + 1):
+            with self.assertRaisesRegex(ValueError, "limit 16 MiB"):
+                WORKER.read_terminal_metadata(adb, {}, "/remote", "episode_0001", "episode_0001", Path("/unused"))
+        adb.exec_out_bytes.assert_not_called()
+
     def test_identity_rejects_stale_wrong_device_uuid_and_malformed_metadata(self):
         with tempfile.TemporaryDirectory() as directory:
             local = Path(directory)
@@ -1292,30 +1314,30 @@ class EgoInvalidTerminalTests(unittest.TestCase):
                 self.assertFalse((local/"invalid_metadata.json").exists())
 
     def test_current_invalid_finishes_without_sleep_and_retains_remote_even_if_pull_fails(self):
-        # A recycled normal name may coexist; the matching invalid identity wins.
-        for old_normal in (False, True):
-            with self.subTest(old_normal=old_normal), tempfile.TemporaryDirectory() as directory:
-                episode = Path(directory)
-                status_file = episode/"ego/ego_sync.json"
-                status = {"serial":"test", "started_at_ms":WORKER.now_ms()}
-                args = argparse.Namespace(episode_dir=episode, status_file=status_file, interval=1)
-                adb = mock.Mock(serial="test")
-                adb.exec_out_bytes.return_value = json.dumps(self.metadata()).encode()
-                with mock.patch.object(WORKER, "remote_dir_exists", side_effect=[False, old_normal, True]), \
-                     mock.patch.object(WORKER, "remote_file_sizes", return_value={}), \
-                     mock.patch.object(WORKER, "sync_episode_once", side_effect=RuntimeError("pull interrupted")), \
-                     mock.patch.object(WORKER, "remove_remote_episode") as remove, \
-                     mock.patch.object(WORKER.time, "sleep") as sleep, \
-                     mock.patch.object(WORKER, "ugripper_log"):
-                    self.assertEqual(WORKER.finish_stop(args, adb, status, True, True, "", "", "/remote",
-                                                       "episode_0001-temp", time.monotonic()+60), 1)
-                result = WORKER.read_status(status_file)
-                self.assertEqual(result["status"], "invalid")
-                self.assertIn("main_camera_short_stream", result["error"])
-                self.assertEqual(result["remote_cleanup"]["status"], "preserved")
-                self.assertEqual(result["invalid_pull_error"], "pull interrupted")
-                self.assertTrue((episode/"ego/invalid_metadata.json").exists())
-                sleep.assert_not_called(); remove.assert_not_called()
+        # Without a normal terminal, a matching invalid remains a hard failure.
+        with tempfile.TemporaryDirectory() as directory:
+            episode = Path(directory)
+            status_file = episode/"ego/ego_sync.json"
+            status = {"serial":"test", "started_at_ms":WORKER.now_ms()}
+            args = argparse.Namespace(episode_dir=episode, status_file=status_file, interval=1)
+            adb = mock.Mock(serial="test")
+            adb.exec_out_bytes.return_value = json.dumps(self.metadata()).encode()
+            with mock.patch.object(WORKER, "remote_dir_exists", side_effect=[False, False, True]), \
+                 mock.patch.object(WORKER, "remote_file_sizes", return_value={}), \
+                 mock.patch.object(WORKER, "sync_episode_once", side_effect=RuntimeError("pull interrupted")), \
+                 mock.patch.object(WORKER, "remove_remote_episode") as remove, \
+                 mock.patch.object(WORKER.time, "sleep") as sleep, \
+                 mock.patch.object(WORKER, "ugripper_log"):
+                self.assertEqual(WORKER.finish_stop(args, adb, status, True, True, "", "", "/remote",
+                                                   "episode_0001-temp", time.monotonic()+60), 1)
+            result = WORKER.read_status(status_file)
+            self.assertEqual(result["status"], "invalid")
+            self.assertIn("main_camera_short_stream", result["error"])
+            self.assertEqual(result["remote_cleanup"]["status"], "preserved")
+            self.assertEqual(result["invalid_pull_error"], "pull interrupted")
+            self.assertTrue((episode/"ego/invalid_metadata.json").exists())
+            sleep.assert_not_called(); remove.assert_not_called()
+
 
     def test_stale_invalid_does_not_override_current_normal_terminal(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1324,7 +1346,9 @@ class EgoInvalidTerminalTests(unittest.TestCase):
             args=argparse.Namespace(episode_dir=episode,status_file=status_file,interval=1)
             metadata=self.metadata(); metadata["recording_start_utc_us"]-=3600_000_000
             adb=mock.Mock(serial="test"); adb.exec_out_bytes.side_effect=[json.dumps(metadata).encode(), json.dumps(self.metadata()).encode()]
-            with mock.patch.object(WORKER,"remote_dir_exists",side_effect=[False,True,True]), \
+            with mock.patch.object(WORKER,"probe_invalid_episode", side_effect=AssertionError("old invalid must not be inspected")), \
+                 mock.patch.object(WORKER,"read_terminal_metadata", side_effect=AssertionError("normal terminal needs no invalid-triggered identity read")), \
+                 mock.patch.object(WORKER,"remote_dir_exists",side_effect=[False,True]), \
                  mock.patch.object(WORKER,"remote_file_sizes",return_value={}), \
                  mock.patch.object(WORKER,"sync_episode_once",return_value={}), \
                  mock.patch.object(WORKER,"recover_finalized_episode_files",return_value=(True,{},"","")), \
@@ -1334,26 +1358,6 @@ class EgoInvalidTerminalTests(unittest.TestCase):
                 self.assertEqual(WORKER.finish_stop(args,adb,status,True,True,"","","/remote",
                                                    "episode_0001-temp",time.monotonic()+60),0)
             self.assertEqual(WORKER.read_status(status_file)["status"],"finalized")
-
-    def test_partial_invalid_metadata_cannot_fall_through_to_stale_normal_name(self):
-        with tempfile.TemporaryDirectory() as directory:
-            episode=Path(directory); status_file=episode/"ego/ego_sync.json"
-            status={"serial":"test", "started_at_ms":WORKER.now_ms()}
-            args=argparse.Namespace(episode_dir=episode,status_file=status_file,interval=1)
-            stale=self.metadata(); stale["recording_start_utc_us"]-=3600_000_000
-            adb=mock.Mock(serial="test")
-            adb.exec_out_bytes.side_effect=[b"{partial",json.dumps(stale).encode(),json.dumps(self.metadata()).encode()]
-            with mock.patch.object(WORKER,"remote_dir_exists",side_effect=[False,True,True,False,False,True]), \
-                 mock.patch.object(WORKER,"remote_file_sizes",return_value={}), \
-                 mock.patch.object(WORKER,"sync_episode_once",return_value={}) as sync, \
-                 mock.patch.object(WORKER,"app_package",return_value="other"), \
-                 mock.patch.object(WORKER.time,"sleep"), \
-                 mock.patch.object(WORKER,"ugripper_log"):
-                self.assertEqual(WORKER.finish_stop(args,adb,status,True,True,"","","/remote",
-                                                   "episode_0001-temp",time.monotonic()+60),1)
-            self.assertEqual(WORKER.read_status(status_file)["status"],"invalid")
-            self.assertEqual(sync.call_args.args[2],"episode_0001-invalid")
-            self.assertEqual(sync.call_count,1)
 
     def test_invalid_name_is_never_a_cleanup_target(self):
         self.assertFalse(WORKER.safe_remote_episode_name("episode_0001-invalid"))

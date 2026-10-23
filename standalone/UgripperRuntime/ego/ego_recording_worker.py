@@ -2596,9 +2596,13 @@ def _run_stop(args: argparse.Namespace, deadline: float) -> int:
 def read_terminal_metadata(adb, status, remote_root, remote_episode, final_episode, local_dir):
     metadata_path = remote_path(remote_root, remote_episode, "metadata.json")
     size = remote_file_size(adb, metadata_path)
-    if type(size) is not int or not 0 < size <= 65536:
-        raise ValueError("invalid/missing metadata size (limit 64 KiB)")
-    metadata = json.loads(adb.exec_out_bytes(metadata_path, 0, size))
+    # Long recordings include clock-mapping segments; 30 minutes already exceeds
+    # 64 KiB. Keep an overall bound and retain the transport's chunk bound.
+    if type(size) is not int or not 0 < size <= 16 * 1024 * 1024:
+        raise ValueError(f"invalid/missing metadata size: {size} (limit 16 MiB)")
+    payload = b"".join(adb.exec_out_bytes(metadata_path, offset, min(TRANSFER_CHUNK_BYTES, size - offset))
+                       for offset in range(0, size, TRANSFER_CHUNK_BYTES))
+    metadata = json.loads(payload)
     if not isinstance(metadata, dict):
         raise ValueError("metadata is not an object")
     # START requires <5 ms clock offset. A 50 ms tolerance covers quantization
@@ -2712,17 +2716,12 @@ def finish_stop(args, adb, status, stop_succeeded, recording_started,
             write_status(args.status_file, status)
             ugripper_log("ERROR", status["error"], component="ego", error_code="UGR-82-01")
             return 1
-        if not temp_exists:
+        # A completed normal directory takes precedence over an old same-name
+        # invalid directory. Only inspect invalid terminals when no normal one exists.
+        if not temp_exists and not final_exists:
             invalid = probe_invalid_episode(adb, status, remote_root, final_episode, local_episode_dir)
             if invalid is not None:
                 return finish_invalid_episode(args, adb, status, remote_root, invalid)
-            if final_exists and status.get("invalid_candidate"):
-                # An unready invalid metadata and a recycled normal name can
-                # coexist. Do not pull that normal directory without identity.
-                try:
-                    read_terminal_metadata(adb, status, remote_root, final_episode, final_episode, local_episode_dir)
-                except (ValueError, TypeError, OSError, RuntimeError):
-                    final_exists = False
         if temp_exists:
             current_remote = remote_episode
             current_exists = True

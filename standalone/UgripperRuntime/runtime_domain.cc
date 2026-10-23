@@ -1459,7 +1459,8 @@ bool RecordingOrchestrator::StopRecording(bool due_to_error,
                                           : std::string();
     const bool fatal_ego_failure =
         !ego_stop_ok &&
-        (ego_required || ego_failure_error_type == kErrorTypeEgoDisconnected);
+        (ego_required || ego_failure_error_type == kErrorTypeEgoDisconnected ||
+         ego_failure_error_type == kErrorTypeEgoPullIncomplete);
     const bool ego_required_ok = !fatal_ego_failure;
     if (fatal_ego_failure)
     {
