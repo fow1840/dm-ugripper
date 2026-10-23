@@ -878,3 +878,11 @@ Ego STOP 每 50–150ms 查询目录，录制中的增量周期不变。文件�
 Ego metadata 包含随录制时长增加的授时映射段，终态身份校验允许最大16 MiB，按既有1 MiB传输块读取；设备SN、episode、UUID及START时间校验保持不变。正常完成目录沿用最终文件补拉和大小核对，不因同名旧 `-invalid` 增加身份校验；仅失败终态使用上述有界 metadata 身份检查。
 
 已尝试Ego录制且收尾返回 ego_pull_incomplete 时，无论当前绑定快照是否存在，均使episode失败、metadata记录对应错误并进入ERROR_5；不再把该错误当作可选设备的非致命失败。未启用/未发现可选Ego且没有录制的原有成功分支保留。远端清理失败仍不覆盖已经核实完整的拉取结果。
+
+### USB IRQ 启动亲和性兜底
+
+UGripper的root ExecStartPre运行config/usb_irq_affinity.py，按在线CPU容量识别RK3588大核，动态发现USB控制器IRQ，按供应商usb-irq.sh的USB总线顺序去重并均分到大核，仅调整默认亲和性；不写死IRQ号。已有仅大核策略及非默认显式策略保留，不重复覆盖供应商配置。未使用的PCI MSI向量不调整；非RK3588或无大小核时跳过。
+
+`UGRIPPER_USB_IRQ_BIG_CORES=false` 可在systemd drop-in关闭软件兜底，后续固件接管时可使用。运行中的irqbalance会导致跳过并明确记录冲突，软件不禁用全局irqbalance服务；测试固件需继续保持其关闭，或由系统管理员配置IRQ排除策略。只在服务启动运行，不后台循环抢占亲和性；固件后续变更不被软件改回。启动时尚未发现的控制器需下次服务启动重新发现。
+
+状态保存在root专用/run/ugripper-usb-irq-affinity，停止/启动失败只恢复本软件确实更改且IRQ身份、当前值、boot_id仍匹配的项目；外部修改保留。不修改内核cmdline、全局workqueue、USB电源或CPU深睡设置。启动/恢复失败写journal；IRQ优化失败不阻止应用启动。

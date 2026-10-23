@@ -503,6 +503,7 @@ copy_if_exists "$PACKAGED_BUILD_DIR/standalone/FaysStereoRecorder/lib" \
     "$TARGET_INSTALL_ROOT/bin/FaysStereoRecorder/lib"
 copy_if_exists "config/ensure_main_camera_packet_size_once.sh" \
     "$TARGET_INSTALL_ROOT/config/ensure_main_camera_packet_size_once.sh"
+copy_if_exists "config/usb_irq_affinity.py" "$TARGET_INSTALL_ROOT/config/usb_irq_affinity.py"
 copy_if_exists "config/cpu_affinity.py" "$TARGET_INSTALL_ROOT/config/cpu_affinity.py"
 copy_if_exists "config/uvc_workqueue_affinity.py" \
     "$TARGET_INSTALL_ROOT/config/uvc_workqueue_affinity.py"
