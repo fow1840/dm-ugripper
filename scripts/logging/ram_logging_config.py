@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import stat
 import subprocess
 import sys
@@ -39,20 +40,27 @@ def file_data(value, mode=0o644):
 def desired(user):
     result = {
         JOURNAL: file_data('[Journal]\n' + ''.join(f'{k}={v}\n' for k, v in JOURNAL_VALUES.items())),
-        RSYSLOG: file_data('''# Managed bounded RAM output; excludes system rsyslog.d rules.
+        RSYSLOG: file_data('''# Managed bounded local output; excludes system rsyslog.d rules.
 module(load="imuxsock")
 module(load="imklog")
-global(maxMessageSize="64k" workDirectory="/tmp/logbuf")
+global(maxMessageSize="64k" workDirectory="/var/log/ugripper-syslog")
 $PrivDropToUser syslog
 $PrivDropToGroup adm
-$outchannel ugripper_ram,/tmp/logbuf/syslog.log,5242880,/usr/local/lib/ugripper/logging/rotate_syslog.py
+$FileOwner syslog
+$FileGroup adm
+$FileCreateMode 0640
+$Umask 0027
+$outchannel ugripper_ram,/var/log/ugripper-syslog/syslog.log,5242880,/usr/local/lib/ugripper/logging/rotate_syslog.py
 *.* :omfile:$ugripper_ram
 '''),
-        '/etc/systemd/system/rsyslog.service.d/90-ugripper-ram.conf': file_data('''[Service]
+        '/etc/systemd/system/rsyslog.service.d/90-ugripper-ram.conf': file_data('''[Unit]
+RequiresMountsFor=/var/log/ugripper-syslog
+[Service]
+ExecStartPre=+/usr/bin/install -d -m 0750 -o syslog -g adm /var/log/ugripper-syslog
 ExecStart=
 ExecStart=/usr/sbin/rsyslogd -n -iNONE -f /etc/ugripper/rsyslog-ram.conf
 '''),
-        '/etc/tmpfiles.d/ugripper-ram-logs.conf': file_data('d /tmp/logbuf 0750 syslog adm -\n'),
+        '/etc/tmpfiles.d/ugripper-ram-logs.conf': {'kind': 'absent'},
         SUDOERS: file_data(f'{user} ALL=(root) NOPASSWD: {BASE}/rotate_journal.sh ""\n', 0o440),
         RECOVERY: file_data(f'''[Unit]
 Description=Recover interrupted UGripper logging configuration
@@ -190,17 +198,18 @@ class Configuration:
         self.run('/usr/bin/id', user)
         for group in ('adm', 'systemd-journal', 'syslog'):
             self.run('/usr/bin/getent', 'group', group)
-        for directory in ('/run/log/journal', '/tmp/logbuf'):
+        for directory in ('/run/log/journal', '/var/log', '/var/log/ugripper-syslog',
+                          '/var/log/ugripper-syslog/syslog.log'):
             if self.path(directory).is_symlink():
-                raise RuntimeError('unsafe RAM log symlink: ' + directory)
-        for target in ('/tmp', '/run/log'):
+                raise RuntimeError('unsafe local log symlink: ' + directory)
+        for target in ('/run/log',):
             fs = self.run('/usr/bin/findmnt', '-rn', '-o', 'FSTYPE', '--target', target).stdout.strip()
             if fs != 'tmpfs':
                 raise RuntimeError(target + ' must reside on tmpfs')
         for helper in ('rotate_journal.sh', 'rotate_syslog.py'):
             self.run('/usr/bin/test', '-x', BASE + '/' + helper)
-        # RAM directory creation is not a persistent configuration change.
-        self.run('/usr/bin/install', '-d', '-m', '0750', '-o', 'syslog', '-g', 'adm', '/tmp/logbuf')
+        # Prepare only the dedicated log directory; never change /var/log permissions.
+        self.run('/usr/bin/install', '-d', '-m', '0750', '-o', 'syslog', '-g', 'adm', '/var/log/ugripper-syslog')
         # Validate the exact bytes before any live configuration is changed.
         with tempfile.TemporaryDirectory(prefix='ugripper-config-check-') as temp:
             for key, tool, flags in ((RSYSLOG, '/usr/sbin/rsyslogd', ['-N1', '-f']),
@@ -230,7 +239,9 @@ class Configuration:
         self.run('/usr/sbin/visudo', '-cf', SUDOERS)
         if not {'adm', 'systemd-journal'} <= self.groups(user):
             raise RuntimeError('log reader group grant failed')
-        self.run('/usr/bin/test', '-f', '/tmp/logbuf/syslog.log')
+        self.run('/usr/bin/test', '-f', '/var/log/ugripper-syslog/syslog.log')
+        self.run('/usr/bin/sudo', '-n', '-u', user, '/usr/bin/test', '-r',
+                 '/var/log/ugripper-syslog/syslog.log')
         self.run('/usr/bin/sudo', '-n', '-u', user, '/usr/bin/sudo', '-n', BASE + '/rotate_journal.sh')
 
     def restore_pending(self, boot=False):
@@ -307,7 +318,6 @@ class Configuration:
                 self.publish(name, value)
             if pending['added_groups']:
                 self.run('/usr/sbin/usermod', '-a', '-G', ','.join(pending['added_groups']), user)
-            self.run('/usr/bin/systemd-tmpfiles', '--create', '/etc/tmpfiles.d/ugripper-ram-logs.conf')
             self.restart_and_check()
             self.verify(user)
             if original is None:
@@ -330,6 +340,17 @@ class Configuration:
                     self.publish(name, before[name])
                 self.run('/usr/bin/systemctl', 'daemon-reload')
             raise
+        # Retire the obsolete buffer only after the new configuration commits.
+        legacy = self.path('/tmp/logbuf')
+        try:
+            if legacy.is_symlink():
+                legacy.unlink()
+            elif legacy.exists():
+                if legacy.is_mount():
+                    raise RuntimeError('refuse to delete mounted legacy buffer')
+                shutil.rmtree(legacy)
+        except (OSError, RuntimeError) as exc:
+            print(f'warning: legacy log buffer cleanup failed: {exc}', file=sys.stderr)
         print('logging configuration committed; services and effective policy verified')
 
     def uninstall(self):

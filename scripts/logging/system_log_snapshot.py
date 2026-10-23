@@ -40,7 +40,7 @@ def committed_files(manifest):
 
 
 class Snapshot:
-    def __init__(self, disk, source=Path('/tmp/logbuf'),
+    def __init__(self, disk, source=Path('/var/log/ugripper-syslog'),
                  machine=None, boot=None, total_limit=500*MIB, volume_limit=100*MIB, retention=30*86400,
                  require_mount=True,
                  flush=syncfs):
@@ -93,7 +93,7 @@ class Snapshot:
         return path
 
     def sources(self, stack):
-        # Pin descriptors and finite lengths under the RAM rotation lock. No USB
+        # Pin descriptors and finite lengths under the local rotation lock. No USB
         # IO holds this lock, so the logging producer is never blocked by disk IO.
         # Before the first rotation there may not be a lock file yet; retry if
         # it appears during discovery. Missing source paths are rotation races.
@@ -118,13 +118,13 @@ class Snapshot:
                     stream = attempt_stack.enter_context(os.fdopen(fd, 'rb'))
                     st = os.fstat(stream.fileno())
                     if not stat.S_ISREG(st.st_mode):
-                        raise RuntimeError('nonregular RAM syslog source')
-                    key = f'{self.boot}:{st.st_dev}:{st.st_ino}'
+                        raise RuntimeError('nonregular local syslog source')
+                    key = f'{self.machine}:{st.st_dev}:{st.st_ino}'
                     if key not in seen:
                         result.append((stream, st.st_size, key))
                         seen.add(key)
                 if not result:
-                    raise FileNotFoundError('no RAM syslog source')
+                    raise FileNotFoundError('no local syslog source')
                 counter = self.source/'dropped_bytes'
                 evicted = int(counter.read_text()) if counter.exists() else 0
                 if not lock and rotation.exists():
@@ -135,7 +135,7 @@ class Snapshot:
                 return result, evicted
             except FileNotFoundError:
                 if attempt == 3:
-                    raise RuntimeError('RAM syslog unavailable or rotating continuously')
+                    raise RuntimeError('local syslog unavailable or rotating continuously')
             finally:
                 attempt_stack.close()
 

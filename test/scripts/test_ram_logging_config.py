@@ -30,9 +30,9 @@ class ConfigTransactionTest(unittest.TestCase):
         self.old = cfg.file_data('original journal config\n', 0o640)
         self.config.publish(cfg.JOURNAL, self.old)
         self.config.publish('/etc/systemd/system/log-persist.timer', {'kind': 'symlink', 'target': '/lib/systemd/system/log-persist.timer'})
-        self.config.path('/tmp/logbuf').mkdir(parents=True)
-        self.config.path('/tmp/logbuf/syslog.log').touch()
-        self.config.path('/var/log').mkdir(parents=True)
+        self.config.path('/var/log/ugripper-syslog').mkdir(parents=True)
+        self.config.path('/var/log/ugripper-syslog/syslog.log').touch()
+        self.config.path('/var/log').mkdir(parents=True, exist_ok=True)
         self.config.path('/var/log/journal').symlink_to('/mnt/data_disk/old-journal')
         self.initial = {key: self.config.read(key) for key in [*cfg.desired('ubuntu'), '/var/log/journal']}
 
@@ -81,6 +81,39 @@ class ConfigTransactionTest(unittest.TestCase):
         self.config.uninstall()
         self.assert_restored()
         self.assertIsNone(self.config.load('original.json'))
+
+    def test_legacy_buffer_deleted_only_after_success(self):
+        legacy = self.config.path('/tmp/logbuf')
+        legacy.mkdir(parents=True)
+        (legacy / 'syslog.log').write_text('obsolete log')
+        self.failure = lambda a: a[0].endswith('rsyslogd')
+        with self.assertRaises(RuntimeError):
+            self.config.install('ubuntu')
+        self.assertTrue((legacy / 'syslog.log').exists())
+        self.config.install('ubuntu')
+        self.assertFalse(legacy.exists())
+
+    def test_local_log_permissions_and_startup_order(self):
+        values = cfg.desired('ubuntu')
+        text = lambda key: base64.b64decode(values[key]['data']).decode()
+        policy = text(cfg.RSYSLOG)
+        self.assertIn('/var/log/ugripper-syslog/syslog.log', policy)
+        self.assertIn('$FileCreateMode 0640', policy)
+        self.assertIn('$FileGroup adm', policy)
+        unit = text('/etc/systemd/system/rsyslog.service.d/90-ugripper-ram.conf')
+        self.assertIn('RequiresMountsFor=/var/log/ugripper-syslog', unit)
+        self.assertIn('ExecStartPre=+/usr/bin/install -d -m 0750 -o syslog -g adm', unit)
+        self.assertEqual(values['/etc/tmpfiles.d/ugripper-ram-logs.conf']['kind'], 'absent')
+        self.config.install('ubuntu')
+        self.assertFalse(any(a[0].endswith('findmnt') and a[-1] == '/tmp' for a in self.calls))
+
+    def test_symlink_log_destination_is_rejected(self):
+        log = self.config.path('/var/log/ugripper-syslog/syslog.log')
+        log.unlink()
+        log.symlink_to('/mnt/data_disk/syslog')
+        with self.assertRaisesRegex(RuntimeError, 'symlink'):
+            self.config.install('ubuntu')
+        self.assert_restored()
 
     def test_invalid_candidate_does_not_change_live_policy(self):
         self.failure = lambda a: a[0].endswith('rsyslogd')

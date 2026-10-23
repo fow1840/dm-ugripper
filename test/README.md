@@ -36,7 +36,7 @@
 
 ## 当前脚本
 - `test/scripts/test_system_log_snapshot.py`
-  - 无硬件回归：syslog 完整行增量/单卷与总容量/年龄、有限复制边界、轮转与截断竞争、刷盘失败不提交、重试去孤儿、跨 boot、挂载/软链拒绝、原实验 journal 仅成功提交后清理、RAM 轮转及前台同步。执行 `.venv/bin/python test/scripts/test_system_log_snapshot.py`；Ready/失败边界另由 RecordingOrchestrator 测试覆盖。
+  - 无硬件回归：syslog 完整行增量/单卷与总容量/年龄、有限复制边界、轮转与截断竞争、刷盘失败不提交、重试去孤儿、跨 boot、挂载/软链拒绝、原实验 journal 仅成功提交后清理、本地轮转容量/文件数上限及前台同步。执行 `.venv/bin/python test/scripts/test_system_log_snapshot.py`；Ready/失败边界另由 RecordingOrchestrator 测试覆盖。
 - `test/scripts/camera_test.sh`
   - 直接拉起多路 `ffmpeg`，验证非主相机录制稳定性，并收集 `vmstat`、`top`、`ps` 等运行态信息。
 - `test/scripts/camera_crash_capture.sh`

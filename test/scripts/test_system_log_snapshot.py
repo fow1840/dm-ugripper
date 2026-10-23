@@ -75,6 +75,24 @@ class SystemLogSnapshotTest(unittest.TestCase):
         self.assertEqual(self.contents(), b'first\npartial-end\nnew\n')
         self.assertEqual(len(self.manifest()['offsets']), 2)
 
+    def test_small_rotations_have_a_file_count_limit(self):
+        for i in range(20):
+            self.active.write_bytes(b'x\n')
+            rotate_syslog.rotate(self.source)
+        self.assertEqual(len(list(self.source.glob('syslog.*.log'))), 9)
+        self.assertEqual(int((self.source/'dropped_bytes').read_text()), 22)
+
+    def test_rotation_order_survives_clock_rollback(self):
+        self.active.write_bytes(b'old\n')
+        with patch.object(rotate_syslog.time, 'time_ns', return_value=200):
+            rotate_syslog.rotate(self.source)
+        self.active.write_bytes(b'new\n')
+        with patch.object(rotate_syslog.time, 'time_ns', return_value=100):
+            rotate_syslog.rotate(self.source)
+        self.active.write_bytes(b'last\n')
+        self.snapshot().run()
+        self.assertEqual(self.contents(), b'old\nnew\nlast\n')
+
     def test_rotation_after_pinning_does_not_lose_or_follow(self):
         snap = self.snapshot(); original = snap.sources
         def rotating(stack):
@@ -97,10 +115,11 @@ class SystemLogSnapshotTest(unittest.TestCase):
         self.active.write_bytes(b'x\n'); self.snapshot().run()
         self.assertEqual(self.manifest()['source_truncations'], 2)
 
-    def test_boot_change_restarts_source_offsets(self):
+    def test_boot_change_preserves_persistent_source_offsets(self):
         self.snapshot().run(); snap = self.snapshot(); snap.boot = 'boot-b'; snap.run()
-        self.assertEqual(self.contents(), b'first\nfirst\n')
-        self.assertTrue(all(k.startswith('boot-b:') for k in self.manifest()['offsets']))
+        self.assertEqual(self.contents(), b'first\n')
+        self.assertEqual(self.manifest()['copied_bytes'], 0)
+        self.assertTrue(all(k.startswith('a'*32 + ':') for k in self.manifest()['offsets']))
 
     def test_volume_and_total_capacity_and_age(self):
         self.active.write_bytes(b'aaaa\nbbbb\ncccc\ndddd\n')
