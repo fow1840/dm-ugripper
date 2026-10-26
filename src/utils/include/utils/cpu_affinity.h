@@ -48,7 +48,14 @@ inline CpuAffinityPlan MakeCpuAffinityPlan(CpuRole role) {
         DM_LOG_WARN("[CPU] fays_split requires all CPUs 0-7 in original allowance; keeping inherited affinity");
         return plan;
     }
-    const unsigned mask = role == CpuRole::Auxiliary ? 0x0f : (role == CpuRole::Fays || role == CpuRole::EncoderRequest) ? 0x30 : role == CpuRole::Video ? 0xc0 : 0xff;
+    // Only the service bootstrap publishes this after checking online/isolated
+    // CPU3 and the original full allowance. Preserve the legacy fallback.
+    const char* active = std::getenv("UGRIPPER_ENCODER_CPU3_ACTIVE");
+    const bool encoderCpu3 = active && std::strcmp(active, "1") == 0;
+    const unsigned mask = encoderCpu3 && (role == CpuRole::Sensor || role == CpuRole::EncoderRequest)
+        ? 0x08 : role == CpuRole::Auxiliary ? (encoderCpu3 ? 0x07 : 0x0f)
+        : (role == CpuRole::Fays || role == CpuRole::EncoderRequest) ? 0x30
+        : role == CpuRole::Video ? 0xc0 : 0xff;
     CPU_ZERO(&plan.cpus);
     for (int cpu = 0; cpu < 8; ++cpu) if (mask & (1u << cpu)) CPU_SET(cpu, &plan.cpus);
     plan.enabled = true;

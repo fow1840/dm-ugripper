@@ -50,6 +50,23 @@ class CpuAffinityTest(unittest.TestCase):
                 change.assert_called_once_with(0, set(range(4)))
                 self.assertEqual(os.environ['UGRIPPER_CPU_BASE_MASK'], 'ff')
 
+    def test_cpu3_requires_online_isolated_and_can_be_disabled(self):
+        for isolated, online, enabled, expected in [
+                ('3-7', '0-7', 'true', True),
+                ('4-7', '0-7', 'true', False),
+                ('3-7', '0-2,4-7', 'true', False),
+                ('3-7', '0-7', 'false', False),
+                ('bad', '0-7', 'true', False)]:
+            with self.subTest(isolated=isolated, online=online, enabled=enabled), tempfile.TemporaryDirectory() as root:
+                self.topology(root)
+                cpu = Path(root) / 'devices/system/cpu'
+                (cpu / 'isolated').write_text(isolated)
+                (cpu / 'online').write_text(online)
+                with patch.object(m.os, 'sched_getaffinity', return_value=set(range(8))), patch.object(m.os, 'sched_setaffinity') as change, patch.dict(os.environ, {'UGRIPPER_ENCODER_CPU3': enabled}, clear=True):
+                    m.configure('fays_split', Path(root))
+                    change.assert_called_once_with(0, set(range(3 if expected else 4)))
+                    self.assertEqual(os.environ['UGRIPPER_ENCODER_CPU3_ACTIVE'], '1' if expected else '0')
+
 
 if __name__ == '__main__':
     unittest.main()

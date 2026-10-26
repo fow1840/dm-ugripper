@@ -903,3 +903,9 @@ Ego在远端采集，当前主机没有逐流实时序号/累计计数接口：�
 定向排查主摄补帧/时间戳与传输丢帧时，可在 CMake 配置中开启 `-DUGRIPPER_MAIN_CAMERA_FRAME_TRACE=ON`。`CameraRecorder` 在 episode 中缓冲写入 `left_cam_main.frame_trace.csv` / `right_cam_main.frame_trace.csv`，不向系统日志逐帧输出。capture 行记录 V4L2 sequence、主机 steady 时间、原始 SEI encoder PTS/XU 时间、有效性、编码连续性及 H.265 POC；output 行记录应用 ordinal、原始/修正后的 Unix 时间及最终 PTS。`xu_or_unix_us` 列在 capture 行为 XU 时间，在 output 行为修正前 Unix 时间。H.264 的 POC 列为 -1，不表示 H.264 解析失败。
 
 测试需同时保留原始视频、日志、构建标识，停录后检查 sequence/POC 连续性及完整软件解码；最终 PTS 的 40ms gap 不能单独作为确认丢帧。Debug 构建和逐帧诊断会改变负载，本轮未复现不能证明长期零丢帧。常规发布保持此选项 OFF，测试结束恢复原程序。
+
+### 编码器 CPU3 正式分配
+
+`fays_split` 服务启动时，在 RK3588 原始允许 CPU0–7、CPU3 在线且列于内核 `isolated` 的条件下，bootstrap 设置内部 `UGRIPPER_ENCODER_CPU3_ACTIVE=1`。SensorRecorder 主线程及后续创建的左右独立请求、接收解析、写盘线程均为 CPU3；请求线程再次配置亲和性时也保持 CPU3。服务辅助进程改为 CPU0–2，主摄、双目和触觉沿用现有分配。日志线程在主线程改绑之前创建，继承辅助核；CPU3 隔离不等于排除所有内核/IRQ工作。
+
+条件不满足时保留原 `fays_split` 分配，不修改固件、内核启动参数或全局 workqueue。可通过服务 drop-in 设置 `UGRIPPER_ENCODER_CPU3=false` 并重启回退；`UGRIPPER_CPU_PROFILE=off` 关闭整个绑核配置。内部 ACTIVE 标志由 bootstrap 清除并重算，不能作为用户配置项。
