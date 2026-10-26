@@ -1,3 +1,4 @@
+#include "utils/stereo_frame_loss_state.h"
 #include "record_runtime.h"
 #include "record_runtime/runtime_episode_internal.h"
 #include "record_runtime/runtime_split_internal.h"
@@ -1004,7 +1005,7 @@ void RecordRuntime::monitorStereoFrameLoss()
         stereoLossStopDeadlineMs_ = 0;
     }
     for (const char* camera : {"stereo_left.mkv", "stereo_right.mkv"}) {
-        std::ifstream input(fs::path(episode) / (std::string(camera) + ".frame_loss.json"));
+        std::ifstream input(DA::utils::StereoFrameLossStatePath(episode, camera));
         if (!input) continue;
         const auto loss = json::parse(input, nullptr, false);
         if (loss.is_discarded() || !loss.is_object()) continue;

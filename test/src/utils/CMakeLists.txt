@@ -39,3 +39,7 @@ target_include_directories(test_camera_timestamp_offsets
 add_host_only_gtest(test_logging_v3
     test_logging_v3.cc
 )
+
+add_host_only_gtest(test_stream_loss_monitor
+    test_stream_loss_monitor.cc
+)

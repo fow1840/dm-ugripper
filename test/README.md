@@ -232,3 +232,5 @@ python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
 - `test/scripts/test_ram_logging_config.py`：隔离配置树验证候选预校验、逐文件原子替换、首次备份保留、安装/卸载失败回滚、服务/组恢复、外部修改保护及中断恢复；不修改本机系统配置。
 
 STOP 定向回归还覆盖 Ego `-invalid` 终态：本次身份核对、同名旧目录拒绝、已有 UUID 冲突、metadata 未完整发布、失败副本保留以及非法 cleanup 目标拒绝。板端比较须使用同一存储驱动/设备，分别记录短录与长录 STOP 阶段；Ready 后观察 metadata、系统日志文件树应保持不变，不能把仅 Runtime QC 通过视为完整深度数据校验。
+
+`test_stream_loss_monitor` 覆盖2%与10帧严格边界、每episode一次日志事件、首帧/跨episode、持续低频和批量交付计数；板端验证应检查四路触觉全部编码线程实际亲和性、正常录制无误触发、阈值故障时错误锁存，以及每路 `[stream_loss] summary` 日志与实际数据的一致性，以及 episode 无额外诊断 JSON。主机时间估算不等价于硬件漏采，Ego远端内部流尚无实时计数遥测。

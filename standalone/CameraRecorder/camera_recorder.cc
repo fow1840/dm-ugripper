@@ -1,4 +1,5 @@
 #include "utils/cpu_affinity.h"
+#include "utils/stream_loss_reporting.h"
 #include "camera_recorder/tactile_timing.h"
 #include "camera_recorder/camera_recorder.h"
 #include "camera_recorder/camera_command_builder.h"
@@ -1095,7 +1096,7 @@ public:
     }
 
     bool HasFailure() const override {
-        return failure_;
+        return failure_ || loss_fault_.load();
     }
 
     std::optional<int> ExitCode() const override {
@@ -1163,6 +1164,14 @@ protected:
         }
         const int64_t system_time_us = UsesTactileCaptureClock()
             ? *tactile_unix_origin_us_ + frame_pts_us : CurrentSystemTimeUs();
+        if (UsesTactileCaptureClock() && frame_pts_us >= 0) {
+            loss_monitor_.ObserveCountSpan(static_cast<uint64_t>(frame_pts_us) * 1000, 1000000000ULL / std::max(1, config_.fps));
+            if (DA::utils::ReportStreamLoss(loss_monitor_, true, config_.name,
+                                           "output_pts_span_estimate", "UGR-20-02")) {
+                loss_fault_.store(true);
+                g_stop_requested.store(true);
+            }
+        }
         ++observed_output_frame_count_;
         if (record_time_offset_us_.has_value()) {
             last_frame_pts_us_ = frame_pts_us;
@@ -1281,6 +1290,8 @@ protected:
             return;
         }
         final_stats_logged_ = true;
+        if (UsesTactileCaptureClock())
+            DA::utils::LogStreamLossSummary(loss_monitor_, config_.name, "output_pts_span_estimate");
 
         std::optional<int64_t> first_pts_us;
         std::optional<int64_t> first_system_time_us;
@@ -1332,6 +1343,8 @@ protected:
     std::optional<int64_t> last_frame_pts_us_;
     std::optional<int64_t> last_frame_system_time_us_;
     std::optional<int64_t> record_time_offset_us_;
+    DA::utils::StreamLossMonitor loss_monitor_;
+    std::atomic<bool> loss_fault_{false};
     uint64_t observed_output_frame_count_ = 0;
     bool final_stats_logged_ = false;
     std::optional<int64_t> tactile_unix_origin_us_;
@@ -1347,6 +1360,7 @@ public:
 
     ~MainCameraRecorder() override {
         Stop();
+        if (loss_monitor_.Received()) DA::utils::LogStreamLossSummary(loss_monitor_, config_.name, "v4l2_sequence_and_invalid");
     }
 
     const CameraConfig& config() const override {
@@ -2130,6 +2144,23 @@ private:
         };
         if (options_.codec == "h265") inspect(h265_pictures_, h265_continuity_);
         else inspect(h264_pictures_, h264_continuity_);
+        if (startup_gate_open_) {
+            uint64_t missing = 0;
+            if (loss_sequence_) {
+                const uint32_t delta = sequence - *loss_sequence_;
+                if (delta > 1 && delta < 0x80000000U) missing = delta - 1;
+            }
+            loss_sequence_ = sequence;
+            loss_monitor_.Observe(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count()), missing + (frame.valid ? 0 : 1), frame.valid);
+            if (DA::utils::ReportStreamLoss(loss_monitor_, true, config_.name,
+                                           "v4l2_sequence_and_invalid", "UGR-20-02")) {
+                SetFailure("main camera stream loss ratio >2%: " + config_.name);
+                WriteCameraRecorderFault(options_.output_dir, config_, "stream loss ratio >2%");
+                g_stop_requested.store(true);
+                return false;
+            }
+        }
         if (!rtc_tset_us_ || !rtc_pset_us_) {
             SetFailure("missing synchronized XU RTC Tset/Pset for " + config_.name);
             return false;
@@ -2646,6 +2677,8 @@ private:
     bool cadence_reset_logged_ = false;
     bool startup_gate_open_ = false;
     int startup_gate_checked_frames_ = 0;
+    DA::utils::StreamLossMonitor loss_monitor_;
+    std::optional<uint32_t> loss_sequence_;
     int startup_gate_dropped_frames_ = 0;
     ugripper::camera::MainCameraStartupBuffer startup_buffer_;
     unsigned startup_drop_logs_ = 0;

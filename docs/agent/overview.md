@@ -839,9 +839,9 @@ ctest --test-dir build/host-tests -L host-only --output-on-failure
 
 每侧按本条录制实际送入编码器的相邻原始 Fays 时间戳、名义帧率估算缺失帧数（半帧周期容差），跨会话和首帧不计间隔；SDK 暂无新帧轮询次数不计为掉帧。每侧单次连续缺失超过 3 帧复用 `UGR-22-04`，日志给出相机、累计 `dropped_frames`、本次 `gap_dropped_frames` 和帧序号。runtime 首次发现超限后用单调时钟等待 1 秒再错误停录，倒计时不阻塞控制循环、不因后续丢帧延长；用户主动停录和其他严重故障仍可优先结束。
 
-每路 `stereo_*.mkv.frame_loss.json` 为内部诊断统计文件，不扩展 metadata 协议。单侧单次连续缺失超过 3 帧时，通过现有 `quality_check_status=fail` 与 `quality_check_err_type=stereo_frame_loss` 上报；掉帧数只保存在诊断文件和日志中，不新增 metadata 字段。`stereo_frame_loss` 映射 `UGR-22-04`，原有 `frame_loss` 语义保持。统计基于保留帧时间间隔，包含可从间隔观察到的 SDK/应用队列缺帧；不是硬件序列号精确计数，首帧之前及末帧之后缺帧由既有无帧/断流检测负责。
+双目丢帧状态仅在 `/dev/shm/ugripper_stereo_loss_*` 进程间传递，不写入 episode；录制端、运行时和停录校验共用路径计算。单侧单次连续缺失超过 3 帧时，通过现有 `quality_check_status=fail` 与 `quality_check_err_type=stereo_frame_loss` 上报；掉帧数只保存在共享内存状态和日志中，不新增 metadata 字段。`stereo_frame_loss` 映射 `UGR-22-04`，原有 `frame_loss` 语义保持。统计基于保留帧时间间隔，包含可从间隔观察到的 SDK/应用队列缺帧；不是硬件序列号精确计数，首帧之前及末帧之后缺帧由既有无帧/断流检测负责。
 
-双目停录门限只比较一次相邻保留帧间隔对应的连续缺失数，不将多个间隔累加。诊断文件保存 `max_consecutive_dropped_frames`，保证一次超限不会被后续小间隔覆盖；累计 `dropped_frames` 仅用于日志统计。两次各缺 2 帧不触发停录，单次缺 4 帧触发；metadata 不增加字段。
+双目停录门限只比较一次相邻保留帧间隔对应的连续缺失数，不将多个间隔累加。共享内存状态保存 `max_consecutive_dropped_frames`，保证一次超限不会被后续小间隔覆盖；累计 `dropped_frames` 仅用于日志统计。两次各缺 2 帧不触发停录，单次缺 4 帧触发；metadata 不增加字段。
 
 ### 停录 QC 视频探测一致性
 
@@ -887,7 +887,12 @@ UGripper的root ExecStartPre运行config/usb_irq_affinity.py，按在线CPU容�
 
 状态保存在root专用/run/ugripper-usb-irq-affinity，停止/启动失败只恢复本软件确实更改且IRQ身份、当前值、boot_id仍匹配的项目；外部修改保留。不修改内核cmdline、全局workqueue、USB电源或CPU深睡设置。启动/恢复失败写journal；IRQ优化失败不阻止应用启动。
 
-
-### 两核触觉分配
+### 两核触觉分配与采集丢失诊断
 
 `fays_split` 下，触觉 FFmpeg 在 fork 后 exec 前固定到单个大核：left_l/right_l→CPU6，left_r/right_r→CPU7；解码/编码工作线程继承亲和性，不使用后台 taskset 扫描。其他角色及 USB IRQ/workqueue 策略不变，profile off/不支持的拓扑仍保留继承设置。
+
+本机采集流使用 O(1) 状态统计，按每路本次 episode 的 `missing/(received+missing)` 严格大于2%报 ERROR；相机 missing 严格大于10报 WARNING。首个有效样本作为基准，比例错误至少观察1秒以避免首帧边界和短批次扰动；该秒内计数仍保留。每路每级别只首次记录日志，错误锁存并经 recorder 失败链路结束录制；原有严重断流、队列溢出和双目单次连续缺失>3帧保护保留。各路统计仅在首次告警/错误及收尾写日志，不生成 `*.stream_health.json` 或其他 episode 附加文件，不改变 metadata、媒体或 MCAP 格式。
+
+口径：主摄使用启动门控通过后的 V4L2 sequence 缺失及无效帧，不把 PTS 的1µs/40ms节律当确认丢帧；仍不能检测相机编码前漏采或仅发生在固件内部的缺帧。触觉按输出PTS跨度、实际帧数与配置名义周期估算（不把一长一短的抖动分别累加为丢帧）；双目使用保留帧的设备时间，覆盖采集至消费链路的总缺失估计、不与队列丢弃重复相加；Fays IMU按SDK标定的 `imu.update_rate` 和原始设备时间估算，名义频率不可用时报监测错误；编码器在平滑前按原始主机接收时间的累计应有数与实际有效数比较，避免把同一批次成批交付逐个当丢失。后几类是估计值，不能区分硬件漏采和传输/调度迟到，批次补齐后当前缺口可下降但已发错误不撤销。写盘失败、时间回退、完全断流仍由原有保护处理。
+
+Ego在远端采集，当前主机没有逐流实时序号/累计计数接口：仅已有连接、传输和停录完整性校验；Ego内部视频/IMU漏采实时检测尚未覆盖，需要供应商提供遥测，不能标记为零丢帧。当前生产本机模态为主摄、触觉、双目、Fays IMU和编码器；未启用设备不参与统计。

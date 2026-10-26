@@ -1,3 +1,4 @@
+#include "utils/stereo_frame_loss_state.h"
 #include "record_runtime/episode_manager.h"
 #include "record_runtime/runtime_episode_internal.h"
 #include "record_runtime/runtime_types.h"
@@ -1303,7 +1304,7 @@ bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir
         for (const char* camera : {"stereo_left.mkv", "stereo_right.mkv"}) {
             json loss;
             std::string loadError;
-            if (loadJsonFile((fs::path(episodeDir) / (std::string(camera) + ".frame_loss.json")).string(), &loss, &loadError)
+            if (loadJsonFile((DA::utils::StereoFrameLossStatePath(episodeDir, camera)).string(), &loss, &loadError)
                 && loss.is_object() && loss.value("max_consecutive_dropped_frames", uint64_t{0}) > 3) {
                 return setEpisodeValidationFailure(errorMessage, errorTypes, DA::Ugripper::kErrorTypeStereoFrameLoss,
                     std::string("UGR-22-04 stereo frame loss camera=") + camera +
