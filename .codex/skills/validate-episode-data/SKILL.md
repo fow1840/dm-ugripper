@@ -5,6 +5,18 @@ description: 为 ugripper 项目执行 episode 数据深度校验。用于用户
 
 # validate-episode-data
 
+## 数据合同冻结（强制）
+
+用户要求 `metadata.json` 和全部数据文件不能多、不能少、格式不能变。本节优先于下文历史宽松检查；检查脚本返回 PASS 不代表本节已完成。
+
+- 先按明确的数据版本及普通 / `+nostereo`、胸摄、音频、Ego 启用状态确定既定文件清单与 schema，再递归比对 episode 的全部目录和文件（含隐藏文件）。基线使用 `references/checklist.md` 的既定产物和 `references/metadata-v3.3.json`，条件产物必须有对应版本的明确合同；不得把被检查数据、当前新增代码或其 `require_files` 自报内容直接当作白名单。
+- 输出 `missing_files`、`unexpected_files` 和 `schema_changes`。任何少文件、多文件、未登记目录或格式漂移均判 **FAIL**，不能降为 WARN 或因视频可播放而放行。`require_files`、实际文件和独立合同须三方一致；不得通过修改 metadata 来掩盖多余文件。
+- `frameloss*.json`、`frame_loss*.json` 及其他未登记的丢帧统计、诊断 JSON 都属于额外产物，必须 FAIL；改名、移入子目录或登记到 `require_files` 也不能自动获得许可。丢帧分析结果写到 episode 外的报告目录或标准输出。
+- 格式冻结覆盖 `metadata.json`、`calibration.json`、`info.json`、Ego 元数据及全部数据文件：递归检查 JSON 键集合、既定字段顺序、类型、嵌套结构、数组元素结构和时间单位；检查媒体容器、轨道及编码合同，MCAP 的 topic、消息编码和 schema。禁止新增、删除、改名字段或 topic，禁止把数值改成字符串、改变单位或时间语义。动态值（SN、UUID、时间、帧数等）按语义验证，不与范本值逐字相等。
+- 已明确登记的历史版本和可选字段仅适用于对应历史合同，不得借“历史兼容”放宽当前新录数据。未知版本、无法确定条件文件清单或缺少格式基线时，明确报告“合同校验未完成”，总体不得 PASS；不得猜测或自动学习新格式。
+- 如现有脚本没有检查额外文件或完整格式，必须补充只读检查并单列证据；无法完成时列出未覆盖项，不得声称已固化或已通过。校验不得删除、修复、重写数据，也不得在 episode 内保存报告、缓存或临时文件。
+- 只有用户明确要求变更数据合同，才可更新清单、schema 或范本，并说明具体差异；排查丢帧、修复采集、加日志或更新 skill 本身不构成扩展数据格式的授权。
+
 ## 固定执行顺序
 
 1. 先阅读 `docs/agent/overview.md`，确认当前 episode 产物、`metadata.json` 3.3 版本和时间字段语义、`calibration.json` 3.1 外参结构，以及普通或 `+nostereo` profile 的视频 / sensor / Fays 输出结构。
