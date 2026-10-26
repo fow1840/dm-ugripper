@@ -1975,6 +1975,19 @@ private:
                            << " max_timestamp_adjustment_us=" << max_timestamp_adjustment_us_).str());
     }
 
+#if UGRIPPER_MAIN_CAMERA_FRAME_TRACE
+    // Capture-thread only. Buffered diagnostic output; disabled by default.
+    std::ofstream frame_trace_;
+    std::ostream& FrameTrace() {
+        if (!frame_trace_.is_open()) {
+            frame_trace_.open(options_.output_dir / (config_.name + ".frame_trace.csv"));
+            if (!frame_trace_) throw std::runtime_error("cannot open main camera frame trace");
+            frame_trace_ << "event,sequence_or_ordinal,host_steady_us,encoder_us,xu_or_unix_us,valid,continuous,intra,poc,poc_bits,vcl_bytes,corrected_us,output_pts_us\n";
+        }
+        return frame_trace_;
+    }
+#endif
+
     struct PendingFrame {
         GstBuffer* buffer;
         int64_t unix_us;
@@ -1993,6 +2006,12 @@ private:
         previous_raw_frame_ = frame;
         previous_raw_frame_->buffer = nullptr;
         const auto pts_us = UpdateFrameTimingFromCapture(corrected_us);
+#if UGRIPPER_MAIN_CAMERA_FRAME_TRACE
+        FrameTrace() << "output," << frame.ordinal << ",0," << frame.encoder_us << ','
+            << frame.unix_us << ",1," << frame.continuous << ',' << frame.intra
+            << ",-1,0," << frame.vcl_bytes << ',' << corrected_us << ',' << pts_us << '\n';
+#endif
+
         GST_BUFFER_PTS(frame.buffer) = static_cast<GstClockTime>(pts_us) * 1000ULL;
         GST_BUFFER_DTS(frame.buffer) = GST_BUFFER_PTS(frame.buffer);
         GST_BUFFER_DURATION(frame.buffer) = static_cast<GstClockTime>(NominalFrameDurationUs()) * 1000ULL;
@@ -2141,6 +2160,20 @@ private:
                 frame.valid ? picture : std::nullopt, sequence);
             frame.intra = !picture || picture->intra;
             frame.vcl_bytes = picture ? picture->vcl_bytes : 0;
+#if UGRIPPER_MAIN_CAMERA_FRAME_TRACE
+            int64_t poc = -1; unsigned poc_bits = 0;
+            if constexpr (requires { picture->poc; picture->poc_bits; }) {
+                if (picture) { poc = picture->poc; poc_bits = picture->poc_bits; }
+            }
+            FrameTrace() << "capture," << sequence << ','
+                << std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count() << ','
+                << (timestamp ? timestamp->encoder_pts_us : 0) << ','
+                << (timestamp ? timestamp->xu_time_us : 0) << ','
+                << frame.valid << ',' << frame.continuous << ',' << frame.intra << ','
+                << poc << ',' << poc_bits << ',' << frame.vcl_bytes << ",0,0\n";
+#endif
+
         };
         if (options_.codec == "h265") inspect(h265_pictures_, h265_continuity_);
         else inspect(h264_pictures_, h264_continuity_);

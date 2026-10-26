@@ -233,4 +233,13 @@ python test/scripts/mains_flicker_window.py --hz 60 --fullscreen
 
 STOP 定向回归还覆盖 Ego `-invalid` 终态：本次身份核对、同名旧目录拒绝、已有 UUID 冲突、metadata 未完整发布、失败副本保留以及非法 cleanup 目标拒绝。板端比较须使用同一存储驱动/设备，分别记录短录与长录 STOP 阶段；Ready 后观察 metadata、系统日志文件树应保持不变，不能把仅 Runtime QC 通过视为完整深度数据校验。
 
+双目不完整帧现场监测：[`fays_short_frame_monitor.py`](scripts/fays_short_frame_monitor.py) 旁路采集 USB 帧长度，不修改 buffer、Ego 绑定或录制状态；手动复现步骤、判定边界与离线分析见 [使用说明](scripts/fays_short_frame_monitor.md)。
+
 `test_stream_loss_monitor` 覆盖2%与10帧严格边界、每episode一次日志事件、首帧/跨episode、持续低频和批量交付计数；板端验证应检查四路触觉全部编码线程实际亲和性、正常录制无误触发、阈值故障时错误锁存，以及每路 `[stream_loss] summary` 日志与实际数据的一致性，以及 episode 无额外诊断 JSON。主机时间估算不等价于硬件漏采，Ego远端内部流尚无实时计数遥测。
+
+
+### 主摄逐帧诊断（默认关闭）
+
+定向排查主摄补帧/时间戳与传输丢帧时，可在 CMake 配置中开启 `-DUGRIPPER_MAIN_CAMERA_FRAME_TRACE=ON`。`CameraRecorder` 在 episode 中缓冲写入 `left_cam_main.frame_trace.csv` / `right_cam_main.frame_trace.csv`，不向系统日志逐帧输出。capture 行记录 V4L2 sequence、主机 steady 时间、原始 SEI encoder PTS/XU 时间、有效性、编码连续性及 H.265 POC；output 行记录应用 ordinal、原始/修正后的 Unix 时间及最终 PTS。`xu_or_unix_us` 列在 capture 行为 XU 时间，在 output 行为修正前 Unix 时间。H.264 的 POC 列为 -1，不表示 H.264 解析失败。
+
+测试需同时保留原始视频、日志、构建标识，停录后检查 sequence/POC 连续性及完整软件解码；最终 PTS 的 40ms gap 不能单独作为确认丢帧。Debug 构建和逐帧诊断会改变负载，本轮未复现不能证明长期零丢帧。常规发布保持此选项 OFF，测试结束恢复原程序。

@@ -896,3 +896,10 @@ UGripper的root ExecStartPre运行config/usb_irq_affinity.py，按在线CPU容�
 口径：主摄使用启动门控通过后的 V4L2 sequence 缺失及无效帧，不把 PTS 的1µs/40ms节律当确认丢帧；仍不能检测相机编码前漏采或仅发生在固件内部的缺帧。触觉按输出PTS跨度、实际帧数与配置名义周期估算（不把一长一短的抖动分别累加为丢帧）；双目使用保留帧的设备时间，覆盖采集至消费链路的总缺失估计、不与队列丢弃重复相加；Fays IMU按SDK标定的 `imu.update_rate` 和原始设备时间估算，名义频率不可用时报监测错误；编码器在平滑前按原始主机接收时间的累计应有数与实际有效数比较，避免把同一批次成批交付逐个当丢失。后几类是估计值，不能区分硬件漏采和传输/调度迟到，批次补齐后当前缺口可下降但已发错误不撤销。写盘失败、时间回退、完全断流仍由原有保护处理。
 
 Ego在远端采集，当前主机没有逐流实时序号/累计计数接口：仅已有连接、传输和停录完整性校验；Ego内部视频/IMU漏采实时检测尚未覆盖，需要供应商提供遥测，不能标记为零丢帧。当前生产本机模态为主摄、触觉、双目、Fays IMU和编码器；未启用设备不参与统计。
+
+
+### 主摄逐帧诊断（默认关闭）
+
+定向排查主摄补帧/时间戳与传输丢帧时，可在 CMake 配置中开启 `-DUGRIPPER_MAIN_CAMERA_FRAME_TRACE=ON`。`CameraRecorder` 在 episode 中缓冲写入 `left_cam_main.frame_trace.csv` / `right_cam_main.frame_trace.csv`，不向系统日志逐帧输出。capture 行记录 V4L2 sequence、主机 steady 时间、原始 SEI encoder PTS/XU 时间、有效性、编码连续性及 H.265 POC；output 行记录应用 ordinal、原始/修正后的 Unix 时间及最终 PTS。`xu_or_unix_us` 列在 capture 行为 XU 时间，在 output 行为修正前 Unix 时间。H.264 的 POC 列为 -1，不表示 H.264 解析失败。
+
+测试需同时保留原始视频、日志、构建标识，停录后检查 sequence/POC 连续性及完整软件解码；最终 PTS 的 40ms gap 不能单独作为确认丢帧。Debug 构建和逐帧诊断会改变负载，本轮未复现不能证明长期零丢帧。常规发布保持此选项 OFF，测试结束恢复原程序。

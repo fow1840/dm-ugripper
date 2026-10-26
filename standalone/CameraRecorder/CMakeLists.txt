@@ -1,4 +1,5 @@
 set(APP_NAME CameraRecorder)
+option(UGRIPPER_MAIN_CAMERA_FRAME_TRACE "Write main-camera per-frame diagnostic CSV (test only)" OFF)
 
 find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -68,6 +69,7 @@ target_link_libraries(${APP_NAME}
 )
 target_compile_definitions(${APP_NAME}
     PRIVATE
+        UGRIPPER_MAIN_CAMERA_FRAME_TRACE=$<BOOL:${UGRIPPER_MAIN_CAMERA_FRAME_TRACE}>
         CAMERA_RECORDER_HAS_GSTREAMER=$<BOOL:${CAMERA_RECORDER_HAS_GSTREAMER}>
         UGRIPPER_ENABLE_PERF_LOG=$<BOOL:${UGRIPPER_ENABLE_PERF_LOG}>
 )
