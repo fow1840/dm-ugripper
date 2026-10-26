@@ -19,4 +19,9 @@ inline std::filesystem::path StereoFrameLossStatePath(std::filesystem::path epis
     return std::filesystem::path("/dev/shm") /
         ("ugripper_stereo_loss_" + std::to_string(hash) + ".json");
 }
+inline std::filesystem::path StreamLossResultPath(const std::filesystem::path& episode,
+                                                 const std::string& stream) {
+    return StereoFrameLossStatePath(episode, "final_loss_" + stream);
+}
+
 }

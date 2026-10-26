@@ -392,6 +392,10 @@ int main(int argc, char *argv[]) {
 
     EncoderRuntime rightEncoder{rightConfig, nullptr, mcap::Channel("encoder_right", "binary", rightWriter.encoderSchema.id)};
     EncoderRuntime leftEncoder{leftConfig, nullptr, mcap::Channel("encoder_left", "binary", leftWriter.encoderSchema.id)};
+    if (!DA::utils::WriteStreamLossResult(std::filesystem::path(rightWriter.outputFile).parent_path(),
+            "encoder_right", rightEncoder.lossMonitor, false) ||
+        !DA::utils::WriteStreamLossResult(std::filesystem::path(leftWriter.outputFile).parent_path(),
+            "encoder_left", leftEncoder.lossMonitor, false)) return 1;
     rightEncoder.timestampSmoothing = CreateBatchTimestampSmoothingState("encoder_right", kEncoderNominalPeriodNs);
     leftEncoder.timestampSmoothing = CreateBatchTimestampSmoothingState("encoder_left", kEncoderNominalPeriodNs);
     PendingWriteQueue rightPendingWrites{rightConfig.label};
@@ -503,12 +507,6 @@ int main(int argc, char *argv[]) {
                     encoderRuntime.firstSampleLogged = true;
                 }
             }
-            if (wroteFrame && DA::utils::ReportStreamLoss(encoderRuntime.lossMonitor, false,
-                    encoderRuntime.channel.topic,
-                    "raw_host_receive_span_estimate", "UGR-30-07")) {
-                if (exitCode == 0) exitCode = 1;
-                g_stopFlag = true;
-            }
             auto smoothedFrames =
                 SmoothTimestampedBatch(&encoderRuntime.timestampSmoothing, std::move(batchFrames));
             for (auto &frame : smoothedFrames) {
@@ -560,8 +558,6 @@ int main(int argc, char *argv[]) {
 
     g_stopFlag = true;
     if (readyFd >= 0) ::close(readyFd);
-    DA::utils::LogStreamLossSummary(rightEncoder.lossMonitor, "encoder_right", "raw_host_receive_span_estimate");
-    DA::utils::LogStreamLossSummary(leftEncoder.lossMonitor, "encoder_left", "raw_host_receive_span_estimate");
     DM_LOG_INFO("Stopping sensors...");
 
     if (rightEncoder.readThread.joinable()) {
@@ -613,6 +609,7 @@ int main(int argc, char *argv[]) {
                 queuedSample.hostTimestampNs == 0 ? CurrentSystemTimeNs() : queuedSample.hostTimestampNs;
             const auto *sampleBytes = reinterpret_cast<const std::byte *>(&sample);
             frame.payload.assign(sampleBytes, sampleBytes + sizeof(sample));
+            encoderRuntime.lossMonitor.ObserveCountSpan(frame.host_timestamp_ns, kEncoderNominalPeriodNs);
             batchFrames.push_back(std::move(frame));
         }
         auto smoothedFrames =
@@ -634,6 +631,12 @@ int main(int argc, char *argv[]) {
         leftWriterThread.join();
     }
 
+    for (auto* encoder : {&rightEncoder, &leftEncoder}) {
+        const auto& output = encoder == &rightEncoder ? rightWriter.outputFile : leftWriter.outputFile;
+        if (!DA::utils::FinalizeStreamLoss(encoder->lossMonitor, std::filesystem::path(output).parent_path(),
+                encoder == &rightEncoder ? "encoder_right" : "encoder_left",
+                "raw_host_receive_span_estimate", "UGR-30-07")) exitCode = 1;
+    }
     rightWriter.writer.close();
     leftWriter.writer.close();
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "[BatchTimestamp-encoder_right] batches=" << rightEncoder.timestampSmoothing.smoothed_batch_count

@@ -1671,6 +1671,13 @@ public:
         const std::string normalizedOutputDir = NormalizeOutputDir(outputDir);
         const std::string mcapPath = normalizedOutputDir + mcapFileName_;
 
+        videoLoss_ = DA::utils::StreamLossMonitor{};
+        if (!DA::utils::WriteStreamLossResult(normalizedOutputDir, videoFileName_, videoLoss_, false) ||
+            !DA::utils::WriteStreamLossResult(normalizedOutputDir, videoFileName_ + ".imu", {}, false)) {
+            std::lock_guard<std::mutex> clockLock(clockMutex_);
+            clockMapper_.SetRecording(false);
+            return;
+        }
         recordingOutputDir_ = normalizedOutputDir;
         const uint64_t sessionId = recordingSessionSeed_.fetch_add(1, std::memory_order_relaxed) + 1;
         recordingSessionId_.store(sessionId, std::memory_order_release);
@@ -1720,6 +1727,8 @@ public:
         while (!camTsQueue_.TryPushBatch(pendingCamSamples_)) std::this_thread::yield();
         mRecorder_.Stop();
         if (stoppedSessionId != 0) {
+            DA::utils::FinalizeStreamLoss(videoLoss_, recordingOutputDir_, videoFileName_,
+                "retained_device_time_estimate", "UGR-22-04");
             mcapControlQueue_.PushStop(stoppedSessionId).get();
         }
         drainingSession_.store(0, std::memory_order_release);
@@ -2093,9 +2102,6 @@ private:
                 if (loggerOpen && sample.sessionId != 0 && sample.sessionId == activeLoggerSessionId) {
                     const auto ts = sample.imu.timestamp;
                     imuLoss.ObservePeriodic(ts, imuPeriod);
-                    if (DA::utils::ReportStreamLoss(imuLoss, false,
-                            imuStreamName, "device_time_calibrated_period_estimate", "UGR-22-06"))
-                        imuSessionFault_.store(true);
                     mDataLogger_.LogImu(sample.imu, sample.publishTimeNs);
                 }
             }
@@ -2152,7 +2158,7 @@ private:
                     camTsQueue_.TryDrainTo(camBatch, 256);
                     writeSamples();
                 }
-                DA::utils::LogStreamLossSummary(imuLoss, imuStreamName, "device_time_calibrated_period_estimate");
+                DA::utils::FinalizeStreamLoss(imuLoss, recordingOutputDir_, imuStreamName, "device_time_calibrated_period_estimate", "UGR-22-06");
                 mDataLogger_.Close();
                 loggerOpen = false;
                 activeLoggerSessionId = 0;
@@ -2352,7 +2358,6 @@ private:
     void VideoEncodeThread() {
         bool videoSessionOpen = false;
         uint32_t frameIndex = 0;
-        DA::utils::StreamLossMonitor videoLoss;
         bool videoContinuousFaultLogged_ = false;
         uint64_t activeVideoSessionId = 0;
         fays_stereo_recorder::FrameLossCounter lossCounter(1000000000ULL / std::max(1, recordFps_));
@@ -2412,7 +2417,6 @@ private:
                         videoSessionOpen = true;
                         activeVideoSessionId = sessionId;
                         frameIndex = 0;
-                        videoLoss = DA::utils::StreamLossMonitor{};
                         videoContinuousFaultLogged_ = false;
                         lossCounter = fays_stereo_recorder::FrameLossCounter(1000000000ULL / std::max(1, recordFps_));
                         sessionWidth = vf.width;
@@ -2442,13 +2446,9 @@ private:
                     }
 
                     const uint64_t missing = lossCounter.Observe(vf.faysTsNs);
-                    videoLoss.Observe(vf.faysTsNs, missing);
-                    if (DA::utils::ReportStreamLoss(videoLoss, true, videoFileName_,
-                            "retained_device_time_estimate", "UGR-22-04")) {
-                        imuSessionFault_.store(true);
-                    }
+                    videoLoss_.Observe(vf.faysTsNs, missing);
                     // Existing continuity fault is preserved, but log only once
-                    // per episode. Small gaps use the cumulative warning above.
+                    // per episode. Cumulative rate is checked only at STOP.
                     if (missing > 3 && lossCounter.MaxConsecutive() == missing && !videoContinuousFaultLogged_) {
                         videoContinuousFaultLogged_ = true;
                         DM_LOG_ERROR_CODE("UGR-22-04", "stereo consecutive frame loss camera={} missing={}", videoFileName_, missing);
@@ -2480,7 +2480,6 @@ private:
                     frameIndex++;
                 }
             } else if (videoSessionOpen) {
-                DA::utils::LogStreamLossSummary(videoLoss, videoFileName_, "retained_device_time_estimate");
                 mRecorder_.Stop();
                 videoSessionOpen = false;
                 activeVideoSessionId = 0;
@@ -2489,7 +2488,6 @@ private:
 
         std::shared_lock<std::shared_mutex> producerLock(recordingWriteMtx_);
         if (videoSessionOpen) {
-            DA::utils::LogStreamLossSummary(videoLoss, videoFileName_, "retained_device_time_estimate");
             mRecorder_.Stop();
         }
         while (!pendingCamSamples.empty()) {
@@ -2661,6 +2659,7 @@ private:
     std::atomic<uint64_t> lastRuntimeStatusWriteNs_;
     struct CallbackSample { AtrakIMU imu{}; uint64_t steadyNs = 0, wallNs = 0, sessionId = 0; };
     fays_stereo_recorder::ImuCallbackQueue<CallbackSample, 8192> callbackQueue_;
+    DA::utils::StreamLossMonitor videoLoss_; // protected by recordingWriteMtx_
     std::atomic<bool> callbackAccepting_{false}, imuSessionFault_{false};
     std::atomic<uint64_t> callbackInFlight_{0}, callbackSession_{0}, drainingSession_{0};
     std::atomic<uint64_t> sessionMinDeviceNs_{0}, sessionMaxDeviceNs_{UINT64_MAX};

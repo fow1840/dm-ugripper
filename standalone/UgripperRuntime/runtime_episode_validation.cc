@@ -1300,6 +1300,29 @@ bool DA::Ugripper::EpisodeManager::ValidateEpisode(const std::string &episodeDir
                                                     std::vector<TactileValidationFinding> *tactileFindings,
                                                     bool validateMetadata) const
 {
+    if (validateMetadata) {
+        std::vector<std::string> streams = {"left_cam_main", "right_cam_main", "left_tcam_l",
+            "left_tcam_r", "right_tcam_l", "right_tcam_r", "encoder_left", "encoder_right"};
+        if (stereoEnabled_) {
+            for (const char* stream : {"stereo_left.mkv", "stereo_right.mkv",
+                                      "stereo_left.mkv.imu", "stereo_right.mkv.imu"})
+                streams.emplace_back(stream);
+        }
+        for (const auto& stream : streams) {
+            const auto resultPath = DA::utils::StreamLossResultPath(episodeDir, stream);
+            if (!fs::exists(resultPath)) continue; // older recorders have no result
+            json result;
+            std::string error;
+            if (!loadJsonFile(resultPath.string(), &result, &error) || !result.is_object() ||
+                !result.contains("finalized") || !result["finalized"].is_boolean() ||
+                !result["finalized"].get<bool>() ||
+                !result.contains("rate_exceeded") || !result["rate_exceeded"].is_boolean() ||
+                result["rate_exceeded"].get<bool>()) {
+                return setEpisodeValidationFailure(errorMessage, errorTypes, DA::Ugripper::kErrorTypeRuntimeError,
+                    "stream final loss check failed: " + stream + " (loss ratio >2% or final result unavailable)");
+            }
+        }
+    }
     if (stereoEnabled_) {
         for (const char* camera : {"stereo_left.mkv", "stereo_right.mkv"}) {
             json loss;

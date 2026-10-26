@@ -947,6 +947,9 @@ public:
     }
 
     bool Start() override {
+        if (UsesTactileCaptureClock() && !started_ && !DA::utils::WriteStreamLossResult(
+                options_.output_dir, config_.name, loss_monitor_, false)) return false;
+
         if (started_) {
             return running_;
         }
@@ -1165,9 +1168,9 @@ protected:
         const int64_t system_time_us = UsesTactileCaptureClock()
             ? *tactile_unix_origin_us_ + frame_pts_us : CurrentSystemTimeUs();
         if (UsesTactileCaptureClock() && frame_pts_us >= 0) {
-            loss_monitor_.ObserveCountSpan(static_cast<uint64_t>(frame_pts_us) * 1000, 1000000000ULL / std::max(1, config_.fps));
+            loss_monitor_.ObserveCountSpan(static_cast<uint64_t>(frame_pts_us) * 1000, 1000000000ULL / std::max(1, config_.fps), true);
             if (DA::utils::ReportStreamLoss(loss_monitor_, true, config_.name,
-                                           "output_pts_span_estimate", "UGR-20-02")) {
+                                           "output_pts_span_estimate", "UGR-20-02", 7)) {
                 loss_fault_.store(true);
                 g_stop_requested.store(true);
             }
@@ -1290,8 +1293,9 @@ protected:
             return;
         }
         final_stats_logged_ = true;
-        if (UsesTactileCaptureClock())
-            DA::utils::LogStreamLossSummary(loss_monitor_, config_.name, "output_pts_span_estimate");
+        if (UsesTactileCaptureClock() && !DA::utils::FinalizeStreamLoss(
+                loss_monitor_, options_.output_dir, config_.name, "output_pts_span_estimate", "UGR-20-02"))
+            loss_fault_.store(true);
 
         std::optional<int64_t> first_pts_us;
         std::optional<int64_t> first_system_time_us;
@@ -1360,7 +1364,6 @@ public:
 
     ~MainCameraRecorder() override {
         Stop();
-        if (loss_monitor_.Received()) DA::utils::LogStreamLossSummary(loss_monitor_, config_.name, "v4l2_sequence_and_invalid");
     }
 
     const CameraConfig& config() const override {
@@ -1375,6 +1378,8 @@ public:
         if (started_) {
             return running_;
         }
+        if (!DA::utils::WriteStreamLossResult(options_.output_dir, config_.name, loss_monitor_, false))
+            return false;
         std::string error_message;
         if (!OpenDevice(&error_message) || !CreatePipeline(&error_message)) {
             failure_ = true;
@@ -1470,6 +1475,12 @@ public:
             }
         }
 
+        if (started_ && !loss_finalized_) {
+            loss_finalized_ = true;
+            if (!DA::utils::FinalizeStreamLoss(loss_monitor_, options_.output_dir,
+                    config_.name, "v4l2_sequence_and_invalid", "UGR-20-02"))
+                SetFailure("main camera final stream loss check failed: " + config_.name);
+        }
         CleanupPipeline();
         CleanupDevice();
         running_ = false;
@@ -2187,9 +2198,9 @@ private:
             loss_monitor_.Observe(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count()), missing + (frame.valid ? 0 : 1), frame.valid);
             if (DA::utils::ReportStreamLoss(loss_monitor_, true, config_.name,
-                                           "v4l2_sequence_and_invalid", "UGR-20-02")) {
-                SetFailure("main camera stream loss ratio >2%: " + config_.name);
-                WriteCameraRecorderFault(options_.output_dir, config_, "stream loss ratio >2%");
+                                           "v4l2_sequence_and_invalid", "UGR-20-02", 3)) {
+                SetFailure("main camera consecutive frame loss >3: " + config_.name);
+                WriteCameraRecorderFault(options_.output_dir, config_, "consecutive frame loss >3");
                 g_stop_requested.store(true);
                 return false;
             }
@@ -2710,6 +2721,7 @@ private:
     bool cadence_reset_logged_ = false;
     bool startup_gate_open_ = false;
     int startup_gate_checked_frames_ = 0;
+    bool loss_finalized_ = false;
     DA::utils::StreamLossMonitor loss_monitor_;
     std::optional<uint32_t> loss_sequence_;
     int startup_gate_dropped_frames_ = 0;
