@@ -2786,6 +2786,7 @@ int main(int argc, char** argv) {
     DM_LOG_INIT("FaysStereoRecorder", "info", "./logs/FaysStereoRecorder.log",
                 1024 * 1024 * 10, 3, false);
     DA::utils::ConfigureCpuAffinity(DA::utils::CpuRole::Fays);
+    DA::utils::ConfigureAcquisitionPriority();
     if (argc < 2) {
         std::cerr << "Usage: error_code=UGR-70-01" << std::endl;
         std::cerr << "  ./fays_record_example <config_path> [output_directory] [--video-name name] [--mcap-name name]" << std::endl;

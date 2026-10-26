@@ -909,3 +909,9 @@ Ego在远端采集，当前主机没有逐流实时序号/累计计数接口：�
 `fays_split` 服务启动时，在 RK3588 原始允许 CPU0–7、CPU3 在线且列于内核 `isolated` 的条件下，bootstrap 设置内部 `UGRIPPER_ENCODER_CPU3_ACTIVE=1`。SensorRecorder 主线程及后续创建的左右独立请求、接收解析、写盘线程均为 CPU3；请求线程再次配置亲和性时也保持 CPU3。服务辅助进程改为 CPU0–2，主摄、双目和触觉沿用现有分配。日志线程在主线程改绑之前创建，继承辅助核；CPU3 隔离不等于排除所有内核/IRQ工作。
 
 条件不满足时保留原 `fays_split` 分配，不修改固件、内核启动参数或全局 workqueue。可通过服务 drop-in 设置 `UGRIPPER_ENCODER_CPU3=false` 并重启回退；`UGRIPPER_CPU_PROFILE=off` 关闭整个绑核配置。内部 ACTIVE 标志由 bootstrap 清除并重算，不能作为用户配置项。
+
+### 采集普通调度优先级
+
+`ugripper.service` 使用 `LimitNICE=30` 允许子进程将 nice 提高至 -10，设置 `UGRIPPER_ACQUISITION_NICE=-10`，不设置服务整体 Nice 或实时调度策略。CameraRecorder、FaysStereoRecorder、SensorRecorder 在主线程启动采集工作之前应用设置，随后创建的请求、接收、写盘线程及 FFmpeg 子进程继承优先级；已创建的日志线程保留继承值。Runtime、Web、上传等辅助进程不主动提高优先级。
+
+仅普通 `SCHED_OTHER` 调度应用该设置，保留管理员指定的其他调度策略及更高优先级。支持 -10..0；未设置或空值不操作，非法值及权限不足明确告警。服务 drop-in 设置 `UGRIPPER_ACQUISITION_NICE=0` 后重启可回退。无需 CAP_SYS_NICE，不修改全局资源限制；nice 只影响CPU竞争，不能保证消除I/O、USB和内存带宽竞争。本次仅本地检查，尚未在更换夹爪后的240部署验证。

@@ -12,6 +12,9 @@ Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStartPre=-+/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/uvc_workqueue_affinity.py apply
 ExecStartPre=-+/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/usb_irq_affinity.py apply
 Environment="UGRIPPER_CPU_PROFILE=fays_split"
+# Permit acquisition children to request nice=-10 without CAP_SYS_NICE.
+LimitNICE=30
+Environment="UGRIPPER_ACQUISITION_NICE=-10"
 ExecStart=/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/cpu_affinity.py -- /bin/bash -lc '/opt/ugripper/run_record.sh'
 ExecStopPost=-+/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/usb_irq_affinity.py restore
 ExecStopPost=-+/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/uvc_workqueue_affinity.py restore

@@ -341,6 +341,7 @@ int main(int argc, char *argv[]) {
                 3,
                 false);
     DA::utils::ConfigureCpuAffinity(DA::utils::CpuRole::Sensor);
+    DA::utils::ConfigureAcquisitionPriority();
 
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);

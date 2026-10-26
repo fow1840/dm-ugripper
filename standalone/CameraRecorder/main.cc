@@ -61,6 +61,7 @@ int main(int argc, char** argv) {
                 3,
                 false);
     DA::utils::ConfigureCpuAffinity(DA::utils::CpuRole::Video);
+    DA::utils::ConfigureAcquisitionPriority();
 
     try {
         using namespace camera_recorder;

@@ -43,3 +43,7 @@ add_host_only_gtest(test_logging_v3
 add_host_only_gtest(test_stream_loss_monitor
     test_stream_loss_monitor.cc
 )
+
+add_host_only_gtest(test_acquisition_priority
+    test_acquisition_priority.cc
+)

@@ -1,5 +1,6 @@
 #pragma once
 #include <sched.h>
+#include "utils/acquisition_priority.h"
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -66,4 +67,14 @@ inline void ConfigureCpuAffinity(CpuRole role) {
     if (!plan.Apply()) DM_LOG_WARN("[CPU] failed to set affinity: {}", std::strerror(errno));
     else if (plan.enabled) DM_LOG_DEBUG("[CPU] applied fays_split role={}", static_cast<int>(role));
 }
+inline void ConfigureAcquisitionPriority() {
+    const auto r = ApplyAcquisitionPriority(std::getenv("UGRIPPER_ACQUISITION_NICE"));
+    if (r.status == AcquisitionPriorityResult::Invalid)
+        DM_LOG_WARN("[CPU] invalid UGRIPPER_ACQUISITION_NICE; expected -10..0, keeping priority");
+    else if (r.status == AcquisitionPriorityResult::Failed)
+        DM_LOG_WARN("[CPU] acquisition nice requested={} failed: {}; check service LimitNICE", r.requested, std::strerror(r.error));
+    else if (r.status != AcquisitionPriorityResult::Disabled)
+        DM_LOG_INFO("[CPU] acquisition nice requested={} actual={} (existing scheduler policy preserved)", r.requested, r.actual);
+}
+
 }
