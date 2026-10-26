@@ -1,3 +1,4 @@
+#include "utils/cpu_affinity.h"
 #include "camera_recorder/tactile_timing.h"
 #include "camera_recorder/camera_recorder.h"
 #include "camera_recorder/camera_command_builder.h"
@@ -964,6 +965,13 @@ public:
             return false;
         }
 
+        auto child_cpu_plan = DA::utils::MakeCpuAffinityPlan(DA::utils::CpuRole::Video);
+        if (child_cpu_plan.enabled && UsesTactileCaptureClock()) {
+            // Pin before exec: every decoder/encoder worker inherits the same core.
+            const bool right_finger = config_.device == "/dev/tcam_left_r" || config_.device == "/dev/tcam_right_r";
+            CPU_ZERO(&child_cpu_plan.cpus);
+            CPU_SET(right_finger ? 7 : 6, &child_cpu_plan.cpus);
+        }
         const int child_fd_limit = ChildFileDescriptorLimit();
         pid_t pid = fork();
         if (pid < 0) {
@@ -976,6 +984,7 @@ public:
         }
 
         if (pid == 0) {
+            if (!child_cpu_plan.Apply()) _exit(126);
             if (!ConfigureManagedChildProcessGroup()) {
                 _exit(126);
             }

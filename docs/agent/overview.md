@@ -886,3 +886,8 @@ UGripper的root ExecStartPre运行config/usb_irq_affinity.py，按在线CPU容�
 `UGRIPPER_USB_IRQ_BIG_CORES=false` 可在systemd drop-in关闭软件兜底，后续固件接管时可使用。运行中的irqbalance会导致跳过并明确记录冲突，软件不禁用全局irqbalance服务；测试固件需继续保持其关闭，或由系统管理员配置IRQ排除策略。只在服务启动运行，不后台循环抢占亲和性；固件后续变更不被软件改回。启动时尚未发现的控制器需下次服务启动重新发现。
 
 状态保存在root专用/run/ugripper-usb-irq-affinity，停止/启动失败只恢复本软件确实更改且IRQ身份、当前值、boot_id仍匹配的项目；外部修改保留。不修改内核cmdline、全局workqueue、USB电源或CPU深睡设置。启动/恢复失败写journal；IRQ优化失败不阻止应用启动。
+
+
+### 两核触觉分配
+
+`fays_split` 下，触觉 FFmpeg 在 fork 后 exec 前固定到单个大核：left_l/right_l→CPU6，left_r/right_r→CPU7；解码/编码工作线程继承亲和性，不使用后台 taskset 扫描。其他角色及 USB IRQ/workqueue 策略不变，profile off/不支持的拓扑仍保留继承设置。

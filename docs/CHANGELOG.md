@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+- 将 fays_split 的四路触觉编码进程明确分配到 CPU6/7，工作线程继承，减少隔离核下负载集中。
 - 服务启动时为RK3588默认USB IRQ亲和性提供大核分配兜底，保留固件显式策略，支持关闭；停止时按归属恢复，检测irqbalance冲突而不修改其全局配置。
 
 - 3588 设备固件升级改为校验并执行完整发布包内 update.sh，支持 WebUI 上传归档或 PC 解压目录；成功后单独确认重启。补充缓存 /home/user/version.info 至 Web/API 与 metadata 的 rk3588_firmware_version，数据版本保持 3.3，原有字段格式不变（7b2ec87 同功能补充）。
