@@ -369,6 +369,12 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
     {
         errorType->clear();
     }
+    // Only an explicitly bound Ego participates in the episode contract.
+    // An unrelated ADB interface must not create an unbound recording sidecar.
+    if (!isEgoRequired())
+    {
+        return true;
+    }
     if (!fs::exists(options_.egoRecordingScript))
     {
         if (errorMessage != nullptr)
@@ -595,6 +601,10 @@ bool RecordRuntime::stopEgoRecording(const std::string &episodeDir,
                                      int64_t,
                                      std::string *errorMessage)
 {
+    if (!egoRecordingAttempted_)
+    {
+        return true;
+    }
     if (!fs::exists(options_.egoRecordingScript))
     {
         if (errorMessage != nullptr)
