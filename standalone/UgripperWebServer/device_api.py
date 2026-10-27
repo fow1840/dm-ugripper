@@ -81,7 +81,9 @@ def _package_entry(fields, result):
             result[fields['Package']+':'+fields['Architecture']] = value
 
 
-def versions(names=None):
+def versions(names=None, *, details=False, scope="product"):
+    if scope not in ('product', 'all'):
+        raise ValueError('invalid_scope')
     cached = mapping(read_json(FIRMWARE_STATUS))
     values = mapping(cached.get('device_versions'))
     stamp = cached.get('updated_at_ms')
@@ -89,7 +91,8 @@ def versions(names=None):
     installed, package_stamp = packages()
     default_packages = sorted(n for n in (installed or {}) if ':' not in n)
     keys = names if names is not None else list(dict.fromkeys(
-        ['hardware_version', *ALIASES, 'data_version', *FIRMWARE_FIELDS, *values, *ALLOW, *default_packages]))
+        ['hardware_version', 'data_version', *ALLOW, *FIRMWARE_FIELDS] +
+        (default_packages if scope == 'all' else [])))
     result = {}
     for name in keys:
         if name in ALIASES or name not in ('hardware_version', 'data_version', *FIRMWARE_FIELDS) and name not in values:
@@ -108,10 +111,13 @@ def versions(names=None):
                 'disabled' if value == 'disabled' else 'ready' if value else 'unrecognized')
             result[name] = dict(version=value if current else None, status=state,
                                 source=str(FIRMWARE_STATUS), updated_at_ms=stamp)
+    if not details:
+        result = {name: {key: item[key] for key in ('version', 'status')}
+                  for name, item in result.items()}
     return {'versions': result}
 
 
-def devices(ids=None):
+def devices(ids=None, *, details=False):
     if ids and any(name not in DEVICE_IDS for name in ids):
         raise ValueError('unknown_device')
     cached = mapping(read_json(FIRMWARE_STATUS))
@@ -152,6 +158,12 @@ def devices(ids=None):
             # The binding status reader has already enforced freshness and identity.
             value['enabled'] = ego.get('bound')
             value['updated_at_ms'] = ego.get('updated_at_ms')
+        value['serial'] = value.get('serial') or None
+        if not details:
+            value = {key: value.get(key) for key in
+                     ('serial', 'enabled', 'connected', 'identified', 'stream', 'status')}
+            if name == 'ego':
+                value['bound'] = ego.get('bound')
         result[name] = value
     return {'devices': result}
 
@@ -189,3 +201,35 @@ def recording():
                 maintenance_available=available and not pending,
                 battery_ready=battery_ready,
                 can_upgrade=active is False and available and not pending and battery_ready)
+
+
+def option(query, name, default):
+    values = query.get(name, [default])
+    if len(values) != 1:
+        raise ValueError('invalid_' + name)
+    return values[0]
+
+
+def detail_option(query):
+    value = option(query, 'details', 'false')
+    if value not in ('true', 'false'):
+        raise ValueError('invalid_details')
+    return value == 'true'
+
+
+def task_summary(value):
+    """Bounded polling contract: no logs, per-round results or image payloads."""
+    keys = ('id', 'status', 'stage', 'success', 'started', 'updated', 'finished',
+            'reboot_pending', 'boot_verified', 'phase', 'group', 'round',
+            'remaining_s', 'phase_deadline')
+    return {key: value[key] for key in keys
+            if key in value and (value[key] is None or type(value[key]) in (str, int, float, bool))}
+
+
+def status_summary():
+    from production_test import snapshot
+    from time_sync_test import snapshot as sync_snapshot
+    return dict(recording=recording(), battery=battery_status(),
+                task=task_summary(mapping(read_json(STATE/'task.json'))),
+                production=task_summary(mapping(snapshot())),
+                time_sync=task_summary(mapping(sync_snapshot())))

@@ -20,7 +20,7 @@ from urllib.parse import urlsplit, parse_qs, quote
 from common import BASE, STATE, DATA, MAX_UPLOAD, Busy, read_json, rpc, operation_lock
 from common import ugripper_log, log_exception
 from telemetry import status
-from device_api import versions as api_versions, devices as api_devices, recording as api_recording, select
+from device_api import versions as api_versions, devices as api_devices, recording as api_recording, select, detail_option, option, status_summary
 from upgrade_state import task_result
 from encoder_probe import read_encoders, stream_encoders
 
@@ -54,6 +54,21 @@ def add_archive(tar, fd, name):
             try: add_archive(tar,cfd,name+'/'+child)
             finally: os.close(cfd)
 
+def api_error(message, status):
+    codes = {400: 'invalid_request', 403: 'forbidden', 404: 'not_found',
+             409: 'device_busy', 416: 'invalid_range', 500: 'internal_error'}
+    specific = {'invalid_selector', 'unknown_device', 'invalid_details', 'invalid_scope', 'task_not_found', 'snapshot_not_found'}
+    code = message if message in specific else codes.get(status, 'request_failed')
+    return dict(code=code, message=message, retryable=status == 409)
+
+
+def task_response(value, kind):
+    result = dict(value)
+    if result.get('id'):
+        result['status_url'] = '/api/v1/tasks/' + kind + '/' + result['id']
+    return result
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version='UGripper'
     def log_request(self,code='-',size='-'):
@@ -78,6 +93,8 @@ class Handler(BaseHTTPRequestHandler):
         for k,v in (extra or {}).items():self.send_header(k,v)
         self.end_headers()
     def json(self,value,code=200,extra=None):
+        if code >= 400 and isinstance(value, dict) and isinstance(value.get('error'), str):
+            value = dict(value, error=api_error(value['error'], code))
         b=json.dumps(value,ensure_ascii=False).encode();self.headers_out(code,'application/json; charset=utf-8',len(b),extra);self.wfile.write(b)
     def body(self,maximum):
         if self.headers.get('Transfer-Encoding'):raise ValueError('不支持分块上传')
@@ -127,15 +144,15 @@ class Handler(BaseHTTPRequestHandler):
                 if body.get('confirm') is not True:raise ValueError('请确认盖板正常且无接触')
                 return self.json(rpc(dict(body,action='tactile_reset')))
             if path=='/api/v1/snapshot':
-                return self.json(rpc(dict(action='snapshot',kind=body.get('kind'))),202)
+                return self.json(task_response(rpc(dict(action='snapshot',kind=body.get('kind'))), 'snapshot'),202)
             if path=='/api/v1/encoder/stream':return self.encoder_stream()
             if path=='/api/v1/time-sync/start':
-                return self.json(rpc(dict(action='time_sync_start',settings=body)),202)
+                return self.json(task_response(rpc(dict(action='time_sync_start',settings=body)), 'time-sync'),202)
             if path=='/api/v1/time-sync/cancel':
                 return self.json(rpc(dict(action='time_sync_cancel',id=body.get('id'))))
             if path=='/api/v1/production/start':
                 if body.get('confirm') is not True:raise ValueError('请确认维护操作')
-                return self.json(rpc(dict(action='production_start')),202)
+                return self.json(task_response(rpc(dict(action='production_start')), 'production'),202)
             if path=='/api/v1/production/cancel':return self.json(rpc(dict(action='production_cancel',id=body.get('id'))))
             if path=='/api/v1/encoder/read':return self.json(read_encoders())
             if path=='/api/v1/camera/version-cancel':
@@ -152,21 +169,42 @@ class Handler(BaseHTTPRequestHandler):
                     token=body.get('upload','')
                     if isinstance(token,str) and re.fullmatch(r'[0-9a-f]{32}',token):
                         (STATE/'uploads'/token).unlink(missing_ok=True)
-                return self.json(result,202)
+                return self.json(task_response(result, 'maintenance'),202)
         else:
             if path=='/api/v1/snapshot':return self.snapshot_file()
-            if path=='/api/v1/status':return self.json(status())
             query=parse_qs(urlsplit(self.path).query,keep_blank_values=True)
+            if path=='/api/v1/status':
+                return self.json(status() if detail_option(query) else status_summary())
             if path=='/api/v1/versions':
-                return self.json(api_versions(select(query,'fields')))
+                return self.json(api_versions(select(query,'fields'), details=detail_option(query), scope=option(query,'scope','product')))
             if path=='/api/v1/devices':
-                return self.json(api_devices(select(query,'ids')))
+                return self.json(api_devices(select(query,'ids'), details=detail_option(query)))
             if path=='/api/v1/recording':
                 return self.json(api_recording())
             match = re.fullmatch(r'/api/v1/upgrades/([0-9a-f]{32})',path)
             if match:
                 task=task_result(match.group(1))
                 return self.json(task if task else {'error':'task_not_found'},200 if task else 404)
+            match = re.fullmatch(r'/api/v1/tasks/(production|time-sync|maintenance|snapshot)/([0-9a-f]{32})', path)
+            if match:
+                kind, job = match.groups()
+                if kind == 'snapshot':
+                    value = read_json(STATE/'snapshots'/job/'result.json')
+                elif kind == 'maintenance':
+                    value = task_result(job)
+                    if not value:
+                        value = read_json(STATE/'task.json')
+                        if not isinstance(value, dict) or value.get('id') != job:
+                            value = None
+                else:
+                    if kind == 'production':
+                        from production_test import snapshot
+                    else:
+                        from time_sync_test import snapshot
+                    value = snapshot()
+                    if not isinstance(value, dict) or value.get('id') != job:
+                        value = None
+                return self.json(value if value else {'error':'task_not_found'}, 200 if value else 404)
             if path=='/api/v1/data':return self.list_data()
             if path=='/api/v1/download':return self.download()
             if path=='/api/v1/logs':return self.logs()
@@ -189,12 +227,15 @@ class Handler(BaseHTTPRequestHandler):
             self.connection.settimeout(1)
             self.headers_out(200,'application/x-ndjson')
             try:
-                self.wfile.write((json.dumps(first)+'\n').encode());self.wfile.flush()
+                self.wfile.write((json.dumps(dict(first, type='sample'))+'\n').encode());self.wfile.flush()
                 for sample in samples:
-                    self.wfile.write((json.dumps(sample)+'\n').encode());self.wfile.flush()
+                    self.wfile.write((json.dumps(dict(sample, type='sample'))+'\n').encode());self.wfile.flush()
             except (ValueError, OSError) as exc:
                 with contextlib.suppress(OSError):
-                    self.wfile.write((json.dumps({'error':str(exc)})+'\n').encode());self.wfile.flush()
+                    error = dict(type='error', error=dict(code='encoder_stream_failed', message=str(exc), retryable=False))
+                    self.wfile.write((json.dumps(error)+'\n').encode());self.wfile.flush()
+            else:
+                self.wfile.write((json.dumps(dict(type='end', reason='duration_limit'))+'\n').encode());self.wfile.flush()
             finally: self.close_connection=True
 
     def snapshot_file(self):
@@ -203,8 +244,11 @@ class Handler(BaseHTTPRequestHandler):
         if not re.fullmatch(r'[0-9a-f]{32}',job):raise ValueError('抓图任务无效')
         if name!='result.json' and not re.fullmatch(r'[A-Za-z0-9_-]+\.(?:jpg|png)',name):raise ValueError('图片名称无效')
         path=STATE/'snapshots'/job/name
-        with path.open('rb') as source:
-            data=source.read(16*1024*1024)
+        try:
+            with path.open('rb') as source:
+                data=source.read(16*1024*1024)
+        except FileNotFoundError:
+            return self.json({'error':'snapshot_not_found'},404)
         self.headers_out(200,'application/json; charset=utf-8' if name=='result.json' else 'image/png' if name.endswith('.png') else 'image/jpeg',len(data))
         self.wfile.write(data)
 

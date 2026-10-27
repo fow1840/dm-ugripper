@@ -917,3 +917,9 @@ Ego在远端采集，当前主机没有逐流实时序号/累计计数接口：�
 `ugripper.service` 使用 `LimitNICE=30` 允许子进程将 nice 提高至 -10，设置 `UGRIPPER_ACQUISITION_NICE=-10`，不设置服务整体 Nice 或实时调度策略。CameraRecorder、FaysStereoRecorder、SensorRecorder 在主线程启动采集工作之前应用设置，随后创建的请求、接收、写盘线程及 FFmpeg 子进程继承优先级；已创建的日志线程保留继承值。Runtime、Web、上传等辅助进程不主动提高优先级。
 
 仅普通 `SCHED_OTHER` 调度应用该设置，保留管理员指定的其他调度策略及更高优先级。支持 -10..0；未设置或空值不操作，非法值及权限不足明确告警。服务 drop-in 设置 `UGRIPPER_ACQUISITION_NICE=0` 后重启可回退。无需 CAP_SYS_NICE，不修改全局资源限制；nice 只影响CPU竞争，不能保证消除I/O、USB和内存带宽竞争。本次仅本地检查，尚未在更换夹爪后的240部署验证。
+
+### 外部 API 默认精简响应
+
+当前 `/api/v1/versions` 默认只返回 17 项产品版本（五个软件包、硬件/数据版本及十个固件版本），每项仅 version/status；任意包名仍可用 fields 查询，scope=all 才枚举系统包，details=true 才附加来源和时间。`/devices` 默认固定六个状态字段、空 SN 为 null，Ego 另含 bound，诊断字段显式 details=true。`/status` 默认仅录制、电量和维护/生产/授时任务摘要，不夹带历史轮次或日志；details=true 获取完整 Web 状态。Web 已同步显式读取详情，详情 versions/devices 使用同一查询结构，标签列表单列 device_cards。无旧响应兼容层；升级与录制互斥行为不变。接入见 docs/device-api.md。
+
+HTTP 错误统一为 error.code/message/retryable，409 表示解除互斥后可重试，不能据此自动重发不确定是否已接受的升级。抓图、生产、授时及 Web 维护提交返回 status_url，/api/v1/tasks/{kind}/{id} 校验任务身份后读取既有结果，不新增历史库。编码器 NDJSON 增加 sample/error/end 类型，正常时限结束明确发送 end，断线不能当作正常结束；Web 同步消费。抓图结果被清理后返回 404。

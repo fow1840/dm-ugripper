@@ -40,17 +40,34 @@ class DeviceApiTests(unittest.TestCase):
                                     'cam_left_firmware_version':'iserial-label',
                                     'cam_chest_firmware_version':'disabled'})
         result = api.versions()['versions']
-        self.assertEqual(result['software_version']['version'], 'v2.1.15')
+        self.assertNotIn('software_version', result)
         self.assertEqual(result['ugripper']['version'], '2.1.15')
-        self.assertEqual(result['custom-app']['version'], '4.2')
+        self.assertNotIn('custom-app', result)
+        self.assertEqual(api.versions(scope='all')['versions']['custom-app']['version'], '4.2')
         self.assertEqual(result['cam_chest_firmware_version']['status'], 'disabled')
         self.assertTrue(set(api.FIRMWARE_FIELDS).issubset(result))
         self.assertEqual(api.versions(['ugripper:arm64'])['versions']['ugripper:arm64']['version'], '2.1.15')
         self.assertEqual(api.versions(['removed'])['versions']['removed']['status'], 'not_installed')
 
+    def test_compact_contract_and_explicit_diagnostics(self):
+        self.cache(device_versions={'hardware_version':'v2.5.0'},
+                   devices={'cam_left':{'serial':'','connected':False,'enabled':True}})
+        for item in api.versions()['versions'].values():
+            self.assertEqual(set(item), {'version','status'})
+        item = api.devices(['cam_left'])['devices']['cam_left']
+        self.assertIsNone(item['serial'])
+        self.assertNotIn('source', item)
+        self.assertIn('source', api.devices(['cam_left'], details=True)['devices']['cam_left'])
+        for query in ({'details':['1']}, {'details':['true','false']}):
+            with self.assertRaises(ValueError): api.detail_option(query)
+        with self.assertRaises(ValueError): api.versions(scope='bad')
+        summary = api.task_summary({'id':'job','status':'running','results':['x'*100000],
+                                    'log':'x'*100000,'stage':{'unexpected':'object'}})
+        self.assertEqual(summary, {'id':'job','status':'running'})
+
     def test_rk3588_version_uses_existing_runtime_cache(self):
         self.cache(device_versions={'rk3588_firmware_version':'V1.0.3.2_20261022143700_release'})
-        item=api.versions(['rk3588_firmware_version'])['versions']['rk3588_firmware_version']
+        item=api.versions(['rk3588_firmware_version'], details=True)['versions']['rk3588_firmware_version']
         self.assertEqual(item['version'],'V1.0.3.2_20261022143700_release')
         self.assertEqual(item['status'],'ready')
         self.assertEqual(item['source'],str(self.firmware))

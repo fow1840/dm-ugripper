@@ -61,10 +61,6 @@ def status():
         usage = round(100 * (1 - (now[1] - CPU_PREV[1]) / (now[0] - CPU_PREV[0])), 1)
     CPU_PREV = now
     mem = {l.split(':')[0]: int(l.split()[1])*1024 for l in Path('/proc/meminfo').read_text().splitlines()}
-    versions = {}
-    for name in ALLOW:
-        p = command(['dpkg-query', '-W', '-f=${Status}\t${Version}', name])
-        versions[name] = p.stdout.split('\t')[-1] if p.returncode == 0 and 'install ok installed' in p.stdout else ''
     devices = []
     for side, label in [('left', '左'), ('right', '右')]:
         for key, title in [(f'{side}_gripper','夹爪'),(f'{side}_encoder','编码器'),
@@ -91,10 +87,11 @@ def status():
         busy = True
     from production_test import snapshot
     from time_sync_test import snapshot as sync_snapshot
-    return dict(time_sync=sync_snapshot(),production=snapshot(),device_sn=env.get('DEVICE_SN',''), versions=versions, devices=devices,
+    from device_api import versions as api_versions, devices as api_devices, recording as api_recording
+    return dict(time_sync=sync_snapshot(),production=snapshot(),device_sn=env.get('DEVICE_SN',''), versions=api_versions()["versions"], devices=api_devices()["devices"], device_cards=devices,
                 cpu_percent=usage, memory=dict(total=mem['MemTotal'], used=mem['MemTotal']-mem['MemAvailable']),
                 disks=dict(data=disk(DATA, True), system=disk('/')), busy=busy,
-                recording=Path('/tmp/umi_recording.lock').exists(),
+                recording=api_recording(),
                 firmware=firmware_status(), device_versions=device_versions(), battery=battery_status(), configuration=read_settings(), ego=ego_status(), tactile=panel_status(), tactile_alarm=latest_alarm(),
                 task=read_json(STATE/'task.json'),
                 service_active=command(['systemctl','is-active','ugripper.service']).returncode == 0)

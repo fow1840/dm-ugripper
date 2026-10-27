@@ -2,7 +2,7 @@
 const $=s=>document.querySelector(s);let fileOffset=0,directory='',current='overview',busy=false,last=null,uploading=false,settingsLoaded=false,settingsDirty=false;
 function el(tag,text,cls){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e}
 function message(text=''){$('#message').textContent=text}
-async function api(url,options={}){const r=await fetch(url,options);let value=await r.json();if(!r.ok){throw Error(value.error||'请求失败')}return value}
+async function api(url,options={}){const r=await fetch(url,options);let value=await r.json();if(!r.ok){throw Error(value.error?.message||'请求失败')}return value}
 function post(url,value,password){const headers={'Content-Type':'application/json','X-UGripper-Request':'1'};if(password)headers['X-UGripper-Maintenance-Password']=password;return api(url,{method:'POST',headers,body:JSON.stringify(value)})}
 let versionConfirmationOpen=false,answeredVersionToken='';
 async function confirmCameraVersion(task){
@@ -28,18 +28,18 @@ function updateUpgradeBatteryButtons(error){
 function bytes(n){return (n/1024**3).toFixed(1)+' GiB'}
 function metric(label,value,detail){const p=el('article',undefined,'panel metric');p.append(el('p',label,'muted'),el('div',value,'value'),el('p',detail,'muted'));return p}
 function row(label,value,good){const d=el('div',undefined,'device');d.append(el('span',label),el('span',value,'state '+(good===null?'':good?'good':'bad')));return d}
-function render(s){const versions=s.device_versions||{};setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProduction(s.production||{});renderTimeSync(s);last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);renderTactileAlarm(s.tactile_alarm||{},s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording?'录制中':s.busy?'维护 / 传输中':'空闲';
+function render(s){const versions=s.device_versions||{};setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProduction(s.production||{});renderTimeSync(s);last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);renderTactileAlarm(s.tactile_alarm||{},s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording.active?'录制中':s.recording.active===null?'录制状态未知':s.busy?'维护 / 传输中':'空闲';
  const d=s.disks.data,m=s.memory;$('#metrics').replaceChildren(metric('CPU 占用',s.cpu_percent===null?'—':s.cpu_percent+'%','设备系统'),metric('内存使用',Math.round(m.used/m.total*100)+'%',bytes(m.used)+' / '+bytes(m.total)),metric('数据盘剩余',d.mounted?bytes(d.free):'未挂载',d.mounted?'总容量 '+bytes(d.total):'请连接数据盘'),metric('系统盘剩余',bytes(s.disks.system.free),'总容量 '+bytes(s.disks.system.total)));
  const battery=s.battery||{};updateUpgradeBatteryButtons(upgradeBatteryError(battery));const batteryMetric=metric('背包电量',battery.connected?battery.percent+'%':'电量不可用',battery.connected?(battery.charging?'充电中':battery.discharging?'放电中':'已连接'):'请检查蓝牙电量服务');
  batteryMetric.id='batteryMetric';if(battery.connected&&battery.percent<=10)batteryMetric.classList.add('battery-low');$('#metrics').prepend(batteryMetric);
- for(const side of ['left','right']){const identity=s.firmware?.gripper?.[side];$('#'+side+'DeviceSn').textContent='SN: '+(identity?.connected&&identity.serial?identity.serial:'—');$('#'+side+'Devices').replaceChildren(...s.devices.filter(d=>d.side===side).map(d=>row(d.label,!d.present?'未识别':d.stream===null?'已识别':d.stream?'正常出流':'暂未出流',d.present&&(d.stream===null||d.stream))));}
+ for(const side of ['left','right']){const identity=s.firmware?.gripper?.[side];$('#'+side+'DeviceSn').textContent='SN: '+(identity?.connected&&identity.serial?identity.serial:'—');$('#'+side+'Devices').replaceChildren(...s.device_cards.filter(d=>d.side===side).map(d=>row(d.label,!d.present?'未识别':d.stream===null?'已识别':d.stream?'正常出流':'暂未出流',d.present&&(d.stream===null||d.stream))));}
  const ego=s.ego||{},bound=ego.bound,connected=ego.connected;
  $('#egoStatus').replaceChildren(row('绑定状态',bound===true?'已绑定':bound===false?'未绑定':'未知',bound===true?true:null),row('连接状态',connected===true?'已连接':connected===false?'未连接':bound===false?'未检测（未绑定）':'未知（等待状态更新）',connected===true?true:connected===false?false:null));
  if(ego.bound)$('#egoStatus').append(row('电量',ego.battery?ego.battery.percent+'%'+(ego.battery.charging?' · 充电中':''):'电量不可用',ego.battery?true:null));
  if(ego.bound){const ts=ego.time_sync,ready=ts?.status==='ok';$('#egoStatus').append(row('时间同步',ready?'已与背包同步':ts?.status==='legacy'?'旧版录制前校时':ts?.status==='disconnected'?'授时连接断开':ts?.status==='error'?'授时异常':'正在与背包同步',ready?true:null));const measured=v=>typeof v==='number'&&Number.isFinite(v)?v.toFixed(3)+' ms':'暂无测量';$('#egoStatus').append(row('与背包偏差',measured(ts?.offset_ms),null),row('往返延迟 RTT',measured(ts?.rtt_ms),null));}
  if(ego.serial)$('#egoStatus').append(row('序列号',ego.serial,null));
  if(ego.bound)for(const [key,label]of [['firmware_version','固件版本'],['software_version','软件版本']])$('#egoStatus').append(row(label,(ego[key]||'未读取')+(ego.connected!==true&&ego[key]?'（缓存）':''),null));
- $('#versions').replaceChildren(row('硬件版本',versions.hardware_version||'未读取',null),...Object.entries(s.versions).map(([k,v])=>row(k,v||'未安装',!!v)));
+ $('#versions').replaceChildren(row('硬件版本',versions.hardware_version||'未读取',null),...Object.entries(s.versions).map(([k,v])=>row(k,v.version||v.status,v.status==='ready')));
  const versionValue=value=>value==='disabled'?'未启用':value||'未读取';
  $('#firmwareVersions').replaceChildren();
  for(const [side,label]of [['left','左'],['right','右']]){
@@ -63,8 +63,8 @@ $('#rebootUpgrade').onclick=async()=>{
  if(!password)return;
  try{await post('/api/v1/upgrades/'+task.id+'/reboot',{},password);message('重启指令已接受');refresh()}catch(e){message(e.message)}
 };
-async function refresh(){if($('#workspace').hidden)return;try{render(await api('/api/v1/status'))}catch(e){if(last)last.battery={connected:false};updateUpgradeBatteryButtons('电量数据不可用或已过期，禁止升级');$('#connection').textContent='连接中断';$('#timeSyncFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';$('#productionFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';updateTactileImageWarnings([]);message(e.message)}}
-for(const b of document.querySelectorAll('nav [data-page]'))b.onclick=()=>{current=b.dataset.page;for(const x of document.querySelectorAll('.page'))x.hidden=x.id!==current;for(const x of document.querySelectorAll('nav [data-page]'))x.classList.toggle('selected',x===b);$('#title').textContent=({overview:'设备概览',data:'录制数据',upgrade:'升级维护',settings:'配置'})[current];if(current==='data')loadFiles()};
+async function refresh(){if($('#workspace').hidden)return;try{render(await api('/api/v1/status?details=true'))}catch(e){if(last)last.battery={connected:false};updateUpgradeBatteryButtons('电量数据不可用或已过期，禁止升级');$('#connection').textContent='连接中断';$('#timeSyncFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';$('#productionFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';updateTactileImageWarnings([]);message(e.message)}}
+for(const b of document.querySelectorAll('nav [data-page]'))b.onclick=()=>{current=b.dataset.page;for(const x of document.querySelectorAll('.page'))x.hidden=x.id!==current;for(const x of document.querySelectorAll('nav [data-page]'))x.classList.toggle('selected',x===b);$('#title').textContent=({overview:'设备概览',inspection:'点检',data:'录制数据',upgrade:'升级维护',settings:'配置'})[current];if(current==='data')loadFiles()};
 async function loadFiles(){try{const v=await api('/api/v1/data?path='+encodeURIComponent(directory)+'&offset='+fileOffset);$('#previousFiles').disabled=fileOffset===0;$('#nextFiles').disabled=!v.has_more;$('#directory').textContent='/'+directory;$('#files').replaceChildren();for(const f of v.entries){const item=el('div',undefined,'file'),actions=el('div',undefined,'actions'),path=directory?directory+'/'+f.name:f.name;item.append(el('span',f.name,'name'));if(f.directory){const open=el('button','打开','secondary');open.onclick=()=>{directory=path;fileOffset=0;loadFiles()};actions.append(open)}const download=el('button',f.directory?'打包下载':'下载','secondary');download.onclick=()=>startDownload('/api/v1/download?path='+encodeURIComponent(path));actions.append(download);item.append(actions);$('#files').append(item)}}catch(e){message(e.message)}}
 $('#previousFiles').onclick=()=>{fileOffset=Math.max(0,fileOffset-200);loadFiles()};$('#nextFiles').onclick=()=>{fileOffset+=200;loadFiles()};
 $('#parent').onclick=()=>{directory=directory.split('/').slice(0,-1).join('/');fileOffset=0;loadFiles()};
@@ -87,7 +87,7 @@ function confirmAction(text,fixture=false,protectedOperation=false){
   $('#confirmDialog').oncancel=event=>{event.preventDefault();finish(false)};
  });
 }
-function upload(file,password){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('POST','/api/v1/upload');x.setRequestHeader('X-UGripper-Request','1');x.setRequestHeader('X-UGripper-Maintenance-Password',password);x.upload.onprogress=e=>{$('#progress').value=e.loaded/e.total*100;$('#taskText').textContent='正在上传 '+Math.round(e.loaded/e.total*100)+'%'};x.onload=()=>{try{const v=JSON.parse(x.responseText);x.status===201?resolve(v):reject(Error(v.error||'上传失败'))}catch(e){reject(e)}};x.onerror=()=>reject(Error('上传连接中断'));x.send(file)})}
+function upload(file,password){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('POST','/api/v1/upload');x.setRequestHeader('X-UGripper-Request','1');x.setRequestHeader('X-UGripper-Maintenance-Password',password);x.upload.onprogress=e=>{$('#progress').value=e.loaded/e.total*100;$('#taskText').textContent='正在上传 '+Math.round(e.loaded/e.total*100)+'%'};x.onload=()=>{try{const v=JSON.parse(x.responseText);x.status===201?resolve(v):reject(Error(v.error?.message||'上传失败'))}catch(e){reject(e)}};x.onerror=()=>reject(Error('上传连接中断'));x.send(file)})}
 $('#firmwareKind').onchange=()=>{$('#firmwareFile').accept=$('#firmwareKind').value==='main_camera'?'.img':'.hex';$('#firmwareFile').value=''};
 function packageFirmwareDirectory(files){
  const parts=[],names=new Set();let size=1024;
@@ -153,12 +153,12 @@ async function pollEncoder(){
  const request=new AbortController();encoderRequest=request;
  try{
   const response=await fetch('/api/v1/encoder/stream',{method:'POST',headers:{'Content-Type':'application/json','X-UGripper-Request':'1'},body:'{}',signal:request.signal});
-  if(!response.ok)throw Error((await response.json()).error);
+  if(!response.ok)throw Error((await response.json()).error?.message);
   const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
   while(encoderReading){
    const {value,done}=await reader.read();if(done)break;
    buffer+=decoder.decode(value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop();
-   for(const line of lines){if(!line)continue;const sample=JSON.parse(line);if(sample.error)throw Error(sample.error);encoderLatest=sample;}
+   for(const line of lines){if(!line)continue;const sample=JSON.parse(line);if(sample.type==='error')throw Error(sample.error.message);if(sample.type==='sample')encoderLatest=sample;}
    if(!encoderFrame)encoderFrame=requestAnimationFrame(drawEncoder);
   }
   if(encoderReading)stopEncoderReading('读取已结束，串口已释放（每次最多 60 秒）');

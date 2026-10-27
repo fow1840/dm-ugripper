@@ -50,11 +50,65 @@ class AnonymousAccessTests(unittest.TestCase):
         self.assertNotIn(b'daimon', body)
         self.assertNotIn('Set-Cookie', headers)
         with patch.object(server, 'status', return_value={'recording': False}):
-            code, headers, body = self.request('GET', '/api/v1/status')
+            code, headers, body = self.request('GET', '/api/v1/status?details=true')
         self.assertEqual(code, 200)
         self.assertFalse(json.loads(body)['recording'])
         self.assertNotIn('Set-Cookie', headers)
         self.assertEqual(self.request('GET', '/api/v1/session')[0], 404)
+
+    def test_compact_status_and_inventory_options(self):
+        with patch.object(server, 'status_summary', return_value={'recording': {'state':'idle'}}) as summary, patch.object(server, 'status') as full:
+            code, _, data = self.request('GET', '/api/v1/status')
+            self.assertEqual(code, 200)
+            self.assertEqual(json.loads(data)['recording']['state'], 'idle')
+            summary.assert_called_once()
+            full.assert_not_called()
+        with patch.object(server, 'api_versions', return_value={'versions':{}}) as versions:
+            self.assertEqual(self.request('GET', '/api/v1/versions?scope=all&details=true')[0], 200)
+            versions.assert_called_once_with(None, details=True, scope='all')
+        with patch.object(server, 'api_devices', return_value={'devices':{}}) as devices:
+            self.assertEqual(self.request('GET', '/api/v1/devices?ids=cam_left')[0], 200)
+            devices.assert_called_once_with(['cam_left'], details=False)
+        self.assertEqual(self.request('GET', '/api/v1/status?details=1')[0], 400)
+
+    def test_error_contract_and_task_identity(self):
+        code, _, data = self.request('GET', '/api/v1/missing')
+        self.assertEqual(code, 404)
+        self.assertEqual(json.loads(data)['error'],
+                         {'code':'not_found','message':'接口不存在','retryable':False})
+        job = 'a'*32
+        with patch('production_test.snapshot', return_value={'id':job,'status':'running'}):
+            code, _, data = self.request('GET', '/api/v1/tasks/production/'+job)
+            self.assertEqual(code, 200)
+            self.assertEqual(json.loads(data)['id'], job)
+            code, _, data = self.request('GET', '/api/v1/tasks/production/'+'b'*32)
+            self.assertEqual(code, 404)
+            self.assertEqual(json.loads(data)['error']['code'], 'task_not_found')
+        with patch.object(server, 'rpc', return_value={'ok':True,'id':job}):
+            code, _, data = self.request('POST', '/api/v1/snapshot',
+                                        '{"kind":"local"}', {'X-UGripper-Request':'1'})
+            self.assertEqual(code, 202)
+            self.assertEqual(json.loads(data)['status_url'], '/api/v1/tasks/snapshot/'+job)
+
+    def test_encoder_stream_has_explicit_terminal_message(self):
+        def samples():
+            yield {'left':{'status':'ok'},'right':{'status':'ok'}}
+        with patch.object(server, 'stream_encoders', samples):
+            code, _, data = self.request('POST', '/api/v1/encoder/stream', '{}',
+                                         {'X-UGripper-Request':'1'})
+        self.assertEqual(code, 200)
+        messages = [json.loads(line) for line in data.splitlines()]
+        self.assertEqual(messages[0]['type'], 'sample')
+        self.assertEqual(messages[-1], {'type':'end','reason':'duration_limit'})
+        def failed():
+            yield {'left':{'status':'ok'}}
+            raise ValueError('lost stream')
+        with patch.object(server, 'stream_encoders', failed):
+            _, _, data = self.request('POST', '/api/v1/encoder/stream', '{}',
+                                      {'X-UGripper-Request':'1'})
+        messages = [json.loads(line) for line in data.splitlines()]
+        self.assertEqual(messages[-1]['error']['code'], 'encoder_stream_failed')
+        self.assertEqual(messages[-1]['type'], 'error')
 
     def test_write_requires_origin_protection_and_operation_confirmation(self):
         body = json.dumps({'kind': 'zeroing'})
@@ -66,7 +120,7 @@ class AnonymousAccessTests(unittest.TestCase):
         with patch.object(server, 'rpc') as rpc:
             code, _, data = self.request('POST', '/api/v1/execute', body, headers)
         self.assertEqual(code, 400)
-        self.assertIn('请确认维护操作', json.loads(data)['error'])
+        self.assertIn('请确认维护操作', json.loads(data)['error']['message'])
         rpc.assert_not_called()
 
     def test_protected_routes_reject_missing_or_wrong_password_before_side_effects(self):
@@ -79,7 +133,7 @@ class AnonymousAccessTests(unittest.TestCase):
                     with patch.object(server, 'rpc') as rpc, patch.object(server.Handler, 'upload') as upload:
                         code, _, data = self.request('POST', path, '{}', headers)
                     self.assertEqual(code, 403)
-                    self.assertEqual(json.loads(data)['error'], '维护密码错误，请重新输入')
+                    self.assertEqual(json.loads(data)['error']['message'], '维护密码错误，请重新输入')
                     rpc.assert_not_called()
                     upload.assert_not_called()
 

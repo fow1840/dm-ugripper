@@ -1,10 +1,12 @@
 # 设备 API 汇总
 
-地址沿用 WebUI：`https://<设备IP>:8080`。GET 无需登录；POST 携带 `X-UGripper-Request: 1`、`X-UGripper-Maintenance-Password: <维护密码>` 和 JSON 请求体。外部升级无需弹窗或 `confirm` 字段。浏览器 Origin 仍需同源；原生客户端可不发送 Origin。自签名证书示例用 `curl -k`，正式接入可信任设备证书。
+更新于 **2026-10-27**，按当前 2.1.15 开发工作区的 HTTP 路由与 worker 实现核对；不保证 2.1.11–2.1.14 安装包已提供全部接口。本文涵盖外部专用查询/升级接口，以及可由原生客户端调用的 Web 共用接口。
+
+地址沿用 WebUI：`https://<设备IP>:8080`。GET 无需登录；所有 POST 必须携带 `X-UGripper-Request: 1`。仅上传、execute、主摄版本确认、外部升级及其 reboot 路由额外要求 `X-UGripper-Maintenance-Password: <维护密码>`。除原始二进制上传外，POST 使用 JSON 对象请求体，即使没有参数也发送 `{}`。外部升级无需弹窗或 `confirm` 字段。浏览器 Origin 仍需同源；原生客户端可不发送 Origin。自签名证书示例用 `curl -k`，正式接入可信任设备证书。
 
 | 方法与路径 | 用途 |
 | --- | --- |
-| `GET /api/v1/versions` | 全部软件、硬件及固件版本 |
+| `GET /api/v1/versions` | 产品相关软件、硬件及固件版本（默认精简） |
 | `GET /api/v1/versions?fields=ugripper,hardware_version,cam_left_firmware_version` | 指定版本，英文逗号分隔 |
 | `GET /api/v1/devices` | 全部硬件连接与识别信息 |
 | `GET /api/v1/devices?ids=left_gripper,cam_left` | 指定设备 |
@@ -13,9 +15,18 @@
 | `GET /api/v1/upgrades/{id}` | 查询该任务的进度与最终结果 |
 | `POST /api/v1/upgrades/{id}/reboot` | 单独指令重启，JSON 为 `{}` |
 
+## 请求与兼容约定
+
+- 默认监听设备以太网地址的 8080 端口，实际地址由设备 Web 配置决定。无需 Cookie、登录会话或 Bearer token；维护密码逐次校验。
+- 所有 POST 要求有效 `Content-Length`，不接受 `Transfer-Encoding: chunked`。普通 JSON 请求体必须非空且严格小于 4096 字节；`/upload` 使用原始文件体，严格小于 200 MiB。
+- GET 返回 JSON，下载/图像除外；编码器流返回逐行 JSON。HTTP 错误统一为 `{"error":{"code":"稳定错误码","message":"可读说明","retryable":false}}`；成功响应仍按各接口合同，不假定都含 `ok`。
+- `fields`、`ids` 支持逗号分隔或重复 query 参数，去重后最多 128 项；每项 1–128 字符，仅允许字母、数字及 `_.+:-`，首字符必须为字母或数字。空项/非法字符返回 400；未知设备 ID 返回 400 `unknown_device`，未知包名按 `not_installed` 返回。
+- `/recording` 只查询状态，**普通录制没有通用 START/STOP HTTP 路由；轨迹点检使用专用接口**。后文生产/授时测试会主动录制，但不是普通录制控制接口。
+- `/status` 默认返回精简摘要，`recording` 为与 `/recording` 相同的对象。`/status?details=true` 显式返回完整 Web 状态；其中 `versions/devices` 与专用查询使用相同对象结构，UI 用设备标签列表另放 `device_cards`。摘要与详情的 `recording` 均与 `/recording` 使用相同对象结构。
+
 ## 版本查询
 
-`fields` 支持任意已安装 deb 软件包名（可带 `:arm64` 等架构限定），例如 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint`、`device-ota-mender`。不传 `fields` 返回全部已安装包和下列 metadata 版本字段；以后现有版本缓存新增的字段也自动可查询。
+`fields` 支持任意已安装 deb 软件包名（可带 `:arm64` 等架构限定），例如 `das-usb-updater`、`ugripper`、`bluetooth-gatt-server`、`databot-device-joint`、`device-ota-mender`。不传 `fields` 仅返回五个产品软件包名、`hardware_version`、`data_version` 和下列固件字段，共 17 项；不重复返回软件包对应的 metadata 别名，不自动加入系统包。显式 `fields` 仍支持 metadata 别名与任意包名。`scope=all` 才额外枚举全部已安装包；`details=true` 才返回每项的 `source/updated_at_ms`。非法 scope/details 返回 400。
 
 | metadata 字段 | 来源/含义 |
 | --- | --- |
@@ -33,10 +44,12 @@
 | `rk3588_firmware_version` | `/home/user/version.info`，由 Runtime 缓存的背包设备固件版本 |
 
 ```json
-{"versions":{"ugripper":{"version":"2.1.15","status":"ready","source":"dpkg","updated_at_ms":1792300000000},"hardware_version":{"version":"v2.5.0","status":"ready","source":"/dev/shm/ugripper/firmware_status.json","updated_at_ms":1792300001000}}}
+{"versions":{"ugripper":{"version":"2.1.15","status":"ready"},"hardware_version":{"version":"v2.5.0","status":"ready"}}}
 ```
 
 `status`：`ready` 已知、`disabled` 未启用（version 为 `disabled`）、`unrecognized` 缓存有效但版本未识别、`stale` 缓存过期、`unavailable` 缓存/数据库不可用、`not_installed` 未安装的软件包。未知值为 `null`，过期值不冒充当前版本。版本值从设备读取，示例值不作为默认值。
+
+默认每项固定为 `version/status`，软件统一用包名呈现；`software_version` 等 metadata 别名仅在显式 fields 查询时返回。
 
 软件读取 dpkg 已有状态数据库，并按文件变化刷新进程内缓存；固件/硬件读取 Runtime 现有 `firmware_status.json`，有效期 15 秒。不会主动查询串口、相机或 ADB，不另建版本快照。`rk3588_firmware_version` 同时写入 metadata 3.3（位于 `ego_firmware_version` 后、`hardware_list` 前），其余字段格式及数据版本不变。指定查询：`GET /api/v1/versions?fields=rk3588_firmware_version`，缺失/非法版本按未识别返回，不使用包名或默认值。
 
@@ -53,12 +66,14 @@
 - `ego`
 
 ```json
-{"devices":{"cam_left":{"id":"cam_left","path":"/dev/cam_left","serial":"SN123","enabled":true,"connected":true,"identified":true,"stream":null,"status":"connected","connection_source":"device_node","updated_at_ms":1792300001000,"source":"/dev/shm/ugripper/firmware_status.json","error":""}}}
+{"devices":{"cam_left":{"serial":"SN123","enabled":true,"connected":true,"identified":true,"stream":null,"status":"connected"}}}
 ```
+
+默认设备以固定 ID 为对象键，不重复输出 id；字段固定为 `serial/enabled/connected/identified/stream/status`，Ego 另有 `bound`。未知或空 SN 统一为 `null`。`details=true` 增加路径、来源、时间及错误诊断字段。
 
 `connected`、`identified`、`enabled` 为 `true/false/null`；`null` 表示未知，不能当作已连接。普通设备 `status` 包括 `connected/disconnected/unrecognized/disabled/unknown/stale/unavailable`。连接正常但必需 SN 未读出为 `unrecognized`。
 
-`connection_source=device_node` 表示设备节点存在，不代表已验证出流；夹爪使用 `hmi_activity` 活跃状态。双目/IMU 的 `stream` 复用现有 Fays 出流缓存，IMU 的 SN 来源于所属双目，标记 `identity_source=stereo_camera`。编码器不提供独立 SN，`identified=null`，不伪造身份；其余无出流缓存的设备 `stream=null`。Ego 复用绑定状态，附加 `bound`，状态为 `connected/disconnected/unbound/unknown`。
+`connection_source=device_node` 表示设备节点存在，不代表已验证出流；夹爪使用 `hmi_activity` 活跃状态。双目/IMU 的 `stream` 使用 UVC/FT601 共用的只读状态解析：设备节点存在、recorder PID 存活、`running=true`，且状态写入时间和对应图像/IMU 最近样本时间均在 3 秒内才为 true。状态缺失或过期为 false；不能将 `connected=true` 等同于正在出流。IMU 的 SN 来源于所属双目，标记 `identity_source=stereo_camera`。编码器不提供独立 SN，`identified=null`，不伪造身份；其余无出流缓存的设备 `stream=null`。Ego 复用绑定状态，附加 `bound`，状态为 `connected/disconnected/unbound/unknown`。
 
 ## 录制状态
 
@@ -111,7 +126,7 @@ POST 不接受任意 shell 命令。无需 `confirm`，`force` 固定为 true。
 
 已接受的源文件移入 root 私有区，任务结束清理。**重启指令执行前和新开机恢复时清空整个临时升级目录**，包括未提交包；同一次开机仅重启维护服务不会清空该目录。任务结果保存在 `/var/lib/ugripper-web/upgrade-results/{id}.json`，boot 恢复标记在 `/var/lib/ugripper-maintenance/boot-pending.json`，均不在临时目录内。
 
-HTTP 错误：400 参数/文件/前置校验失败，403 请求校验/密码错误，404 任务不存在，409 录制/维护/测试/U盘升级冲突，500 服务内部错误。任务错误码包括 `upgrade_failed/service_restore_failed/cleanup_failed/maintenance_interrupted/maintenance_restart_failed/boot_verification_failed/reboot_schedule_failed/reboot_timeout`；主摄详细原因保留在逐侧结果中。无法连接或请求超时不能推断升级成功，应恢复连接后查询任务。
+单文件下载另可能返回 206（范围响应）或 416（范围无效）。HTTP 错误：400 参数/文件/前置校验失败，403 请求校验/密码错误，404 任务不存在，409 录制/维护/测试/U盘升级冲突，500 服务内部错误。任务错误码包括 `upgrade_failed/service_restore_failed/cleanup_failed/maintenance_interrupted/maintenance_restart_failed/boot_verification_failed/reboot_schedule_failed/reboot_timeout`；主摄详细原因保留在逐侧结果中。无法连接或请求超时不能推断升级成功，应恢复连接后查询任务。
 
 ## 调用示例
 
@@ -133,4 +148,131 @@ curl -k -X POST "$base/api/v1/upgrades/<id>/reboot" \
   -H 'X-UGripper-Request: 1' \
   -H "X-UGripper-Maintenance-Password: $MAINTENANCE_PASSWORD" \
   -H 'Content-Type: application/json' -d '{}'
+```
+
+
+## Web 共用接口清单
+
+以下接口同样可以通过 HTTPS 调用，但返回结构随 Web 功能演进；接入时应按实际安装版本核对。表中“密码”指额外维护密码头，所有 POST 仍需要固定请求头和同源检查。
+
+| 方法与路径 | 参数/请求体 | 密码 | 返回与用途 |
+| --- | --- | --- | --- |
+| `GET /api/v1/status` | 无 | 否 | 默认摘要；`details=true` 获取完整 Web 状态及测试结果 |
+| `GET /api/v1/data` | `path`、`offset` | 否 | 数据目录列表 |
+| `GET /api/v1/download` | `path` | 否 | 单文件或目录 tar |
+| `GET /api/v1/logs` | 无 | 否 | 日志 tar.gz |
+| `POST /api/v1/snapshot` | `{"kind":"local"}`；也支持 `ego`、`tactile` | 否 | 202，返回抓图 `id` |
+| `GET /api/v1/snapshot` | `id`、`file`（默认 `result.json`） | 否 | 抓图结果或图片 |
+| `GET /api/v1/tactile/alarm-mask` | `id`、`camera`、`scope` | 否 | 告警盖板底图叠加 mask 的 PNG |
+| `POST /api/v1/tactile/reset` | `id/camera/scope/serial/confirm` | 否 | 用本次检查结果重置指定触觉基线 |
+| `POST /api/v1/encoder/read` | `{}` | 否 | 左右编码器单次读数 |
+| `POST /api/v1/encoder/stream` | `{}` | 否 | 200，`application/x-ndjson` 持续读数 |
+| `POST /api/v1/time-sync/start` | `duration_s/count/delay_s` | 否 | 202，启动毫秒表录制测试 |
+| `POST /api/v1/time-sync/cancel` | `{"id":"任务ID"}` | 否 | 取消对应测试 |
+| `POST /api/v1/production/start` | `{"confirm":true}` | 否 | 202，启动固定生产录制压测 |
+| `POST /api/v1/production/cancel` | `{"id":"任务ID"}` | 否 | 取消对应压测 |
+| `POST /api/v1/upload` | 原始二进制文件体，非 multipart | 是 | 201，返回 `upload/size/sha256` |
+| `POST /api/v1/execute` | `kind/confirm` 及对应参数 | 是 | 202，启动 Web 维护任务 |
+| `POST /api/v1/camera/version-confirm` | `id/token/accepted` | 是 | 回应当前主摄版本读取失败确认 |
+| `POST /api/v1/camera/version-cancel` | `id/token` | 否 | 拒绝该确认，终止后续升级步骤 |
+
+### 聚合状态与新鲜度
+
+`/status` 默认仅包含 `recording`、`battery`、`task`、`production`、`time_sync`。后三项只返回存在的任务 ID、状态、阶段、时间、轮次及剩余时间等标量字段，不含日志、轮次列表、图片或完整结果。
+
+`/status?details=true` 顶层包含 `device_sn`、`versions`、`device_versions`、`firmware`、`devices`、`device_cards`、`cpu_percent`、`memory`、`disks`、`busy`、`recording`、`service_active`、`battery`、`configuration`、`ego`、`tactile`、`tactile_alarm`、`task`、`production`、`time_sync`。CPU 首次采样可能为 null；内存与磁盘容量为字节。`busy=false` 只是当前检查结果，不保证下一次维护请求能获取锁。
+
+摘要适合持续轮询，详细状态按需获取；Web 页面显式请求 details=true 来展示完整诊断与测试记录。`task` 为当前 Web 维护任务；生产和时间同步测试分别读取 `production`、`time_sync`。外部升级使用 `/upgrades/{id}` 查询持久化任务，不能仅凭聚合状态的最新任务判断历史任务成败。建议按需轮询，Web 通常约 3 秒刷新；不要把轮询失败当作设备断连的最终证据。
+
+### 数据及日志下载
+
+`path` 相对于设备数据根目录（默认 `/mnt/data_disk`），例如 `<设备SN小写>/data/episode_20261027_0001`，不是相对于某一 episode。空 path 表示根目录。不接受绝对路径、空路径段、`.`、`..`、符号链接及任何 `-temp` 路径段；数据盘必须已挂载。
+
+`/data` 返回 `{"entries":[{"name":"...","size":123,"directory":false}],"offset":0,"has_more":false}`。名称倒序，每批检查 200 个目录项；`offset` 默认 0、负值按 0，下一页增加 200。过滤临时目录后返回数量可能少于 200，是否继续以 `has_more` 为准；目录的 size 不是递归总大小。
+
+`/download` 的普通文件为 `application/octet-stream`，支持单段 `Range: bytes=起点-终点` 或 `bytes=起点-`；不支持后缀范围或多段范围。目录为流式 `application/x-tar`，跳过临时目录，不支持 tar 断点续传。`/logs` 为压缩日志归档。目录浏览、下载和日志获取都会获取维护互斥锁；下载整个响应期间阻止录制，录制中请求会返回 409。
+
+```sh
+curl -k --get "$base/api/v1/data" --data-urlencode 'path=<设备SN小写>/data' --data-urlencode 'offset=0'
+curl -k --get "$base/api/v1/download" \
+  --data-urlencode 'path=<设备SN小写>/data/episode_20261027_0001' -o episode.tar
+curl -k "$base/api/v1/logs" -o ugripper-logs.tar.gz
+```
+
+### 抓图、触觉告警与基线
+
+抓图提交后轮询 `/snapshot?id=<id>&file=result.json`，按结果中的图片文件名请求同一路由。提交响应附 `status_url`，可直接轮询该地址获取结果；原 `/snapshot?id=...` 仍用于图片及结果读取。结果或图片已清理返回 HTTP 404 `snapshot_not_found`。任务 ID 为 32 位小写十六进制；图片文件名只允许字母、数字、下划线、连字符以及 `.jpg/.png` 后缀。下一次抓图会删除前一次结果，应及时下载。抓图与录制/维护互斥，本机图片不保证同时曝光；Ego 抓图会实际短录并拉取图片，失败时可能保留远端诊断数据。
+
+`kind=tactile` 为手动盖板检查，结果不写入连续三次损坏历史。重置请求必须来自该次抓图结果，传入匹配的 `id`、`camera`、USB `serial`，`scope` 为 `reference` 或 `persistent`，且 `confirm=true` 表示确认盖板正常且无接触。该操作会修改基线，不能当作只读检测。
+
+实时告警读取 `/status?details=true` 的 `tactile_alarm`，使用其组 `id` 及 `images` 中的 `camera/scope` 请求 `/tactile/alarm-mask`。告警组可能被新结果替换，旧 ID 请求失败时重新取状态，不混用两组图片。该图像接口与手动抓图结果目录不同。
+
+### 编码器与自动测试
+
+编码器单次读数返回 `left/right` 对象，每侧包含 `status`；成功包含 `position`（无符号原始寄存器）、`angle_deg`、`angle_rad`、`read_at`（Unix 秒），不可用时附 `message`。角度按有符号 16 位计数换算，不能将 `position` 直接当成弧度。
+
+编码器流逐行返回左右读数，以及 `rate_hz`、`dropped`、`remaining_s`。目标约 100 Hz，每次约 60 秒释放；断开连接可结束读取。每行使用 `type=sample/error/end`：sample 保留左右读数等原字段；error 包含 `error.code/message/retryable`；正常到达会话时限发送 `{"type":"end","reason":"duration_limit"}`。异常 error 是终态，不再发送正常 end；连接中断而未收到终态表示未确认结束。串口读取期间持有互斥锁，不写零位。
+
+时间同步测试请求示例为 `{"duration_s":100,"count":1,"delay_s":2}`：时长 1–3600 秒、组数 1–100、延迟为非负整数且小于时长；需要 GPIO139 毫秒表。完整结果查询 `/status?details=true` 的 `time_sync`。生产测试使用固定 A/B 录制计划，完整结果查询 `/status?details=true` 的 `production`，具体计划见 [Web 维护说明](../standalone/UgripperWebServer/README.md)。两者均会真实录制和占用设备，浏览器/客户端退出不自动取消；需要发送对应 cancel 请求并等待收尾。
+
+### Web 上传与维护流程
+
+外部自动升级优先使用前文 `/upgrades`。如无法直接放包，也可先向 `/upload` 发送原始文件，取得 `upload` token，再调用 `/execute`。每台设备仅保留一个未提交上传，新上传清理旧文件；上传 token 不是外部 `/upgrades` 的文件名，不能混用。
+
+`/execute` 必须 `confirm=true`，支持：
+
+| kind | 额外字段 | 行为 |
+| --- | --- | --- |
+| `software/main_camera/gripper/rk3588_boot` | `upload`；可选布尔 `force` | Web 升级流程；与外部接口固定强制策略不同 |
+| `zeroing` | `side="left"` 或 `"right"`、`fixture="FIXTURE_READY"` | 仅所选侧编码器标零，必须实际安装指定治具 |
+| `configuration` | `settings` | 保存四项设备参数并恢复数采服务 |
+
+`settings` 必须恰好包含以下四个字符串字段，不接受部分更新或额外字段：
+
+```json
+{"UGRIPPER_LANG":"zh","CAMERA_CODEC":"h265","ENABLE_CHEST_CAM_MAIN":"false","UGRIPPER_POWER_LINE_FREQUENCY":"50"}
+```
+
+允许值分别为 `zh/en`、`h265/h264`、`false/true`、`50/60`。注意布尔开关在这里是字符串。维护任务详细结果读取 `/status?details=true` 的 `task`；主摄版本读取失败的确认须使用当前任务给出的 id/token，`accepted=true` 才授权跳过该次读取，最多等待 5 分钟。外部 `/upgrades` 自动处理该确认，不需要再调用确认路由。
+
+## 接入依据
+
+本文核对入口为 [server.py](../standalone/UgripperWebServer/server.py)、[device_api.py](../standalone/UgripperWebServer/device_api.py)、[maintenance.py](../standalone/UgripperWebServer/maintenance.py)、[fays_status.py](../standalone/UgripperWebServer/fays_status.py) 及对应状态/抓图/测试模块。此次为源码合同核对，未对真实设备执行升级、基线重置、标零或测试录制。
+
+
+## 统一错误与任务查询约定
+
+当前未对外发布的 API 直接使用新错误格式；Web 已同步，不提供旧字符串错误的兼容层。HTTP 错误码如下：
+
+| code | HTTP | 含义 |
+| --- | --- | --- |
+| `invalid_request` | 400 | 请求格式或业务前置校验失败，具体看 message |
+| `invalid_selector/unknown_device/invalid_details/invalid_scope` | 400 | 查询参数不合法 |
+| `forbidden` | 403 | 固定请求头、Origin 或维护密码校验失败 |
+| `not_found` | 404 | 接口不存在 |
+| `task_not_found/snapshot_not_found` | 404 | 任务或抓图结果不存在、已被替换或清理 |
+| `device_busy` | 409 | 录制、维护或测试互斥冲突，retryable=true |
+| `invalid_range` | 416 | 单文件下载范围无效 |
+| `internal_error` | 500 | 内部异常，先检查日志及原任务结果 |
+
+`retryable=true` 表示冲突解除后可重试，不表示服务端已自动重试。升级请求超时或返回内部错误时，不能盲目再次提交；先核查原任务，避免重复写入。任务结果内部的 `error`、`reason` 等诊断字段与 HTTP 错误对象不同，仍按任务自身格式解析。
+
+抓图、生产测试、授时测试和 Web execute 提交成功时统一附加 `status_url`，客户端直接使用返回 URL，无需拼装：
+
+```json
+{"ok":true,"id":"0123456789abcdef0123456789abcdef","status_url":"/api/v1/tasks/production/0123456789abcdef0123456789abcdef"}
+```
+
+`GET /api/v1/tasks/{kind}/{id}` 的 kind 为 `production`、`time-sync`、`maintenance`、`snapshot`，GET 无需密码。查询结果沿用对应任务的原始结果结构，不强行改写其业务状态：例如生产测试有 `passed/cancelled/interrupted`，抓图有 `ok/partial/failed`，不能仅判断是否 `success`。
+
+生产/授时查询只匹配当前保留任务的 ID；旧任务被替换后返回 404，不返回新任务冒充旧结果。维护查询优先读取按 ID 保存的结果，再核对当前任务；抓图读取对应结果目录，其生命周期仍为下一次抓图前。外部升级继续使用提交响应已有的 `/upgrades/{id}` 查询地址。这里只统一查询入口，不新增任务历史库或自动重试。
+
+时间字段按单位解析：查询缓存的 `updated_at_ms` 是 Unix 毫秒；维护任务 `started/updated/finished` 和编码器 `read_at` 是 Unix 秒；抓图 `*_at_ns` 是 Unix 纳秒；`remaining_s` 为剩余秒数，不是绝对时间。未为此重写已有任务存储字段。
+
+最小错误处理示例：
+
+```sh
+curl -k -sS 'https://192.168.2.240:8080/api/v1/versions?fields=ugripper' | jq
+# 需要自动判断时同时检查 HTTP 状态；message 供人阅读，程序分支使用 error.code。
+# 有副作用的请求不要配置无条件自动重试。
 ```
