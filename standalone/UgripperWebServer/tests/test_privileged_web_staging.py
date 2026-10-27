@@ -6,6 +6,11 @@ import unittest
 
 
 class PrivilegedWebStagingTest(unittest.TestCase):
+    def test_inspection_worker_dependencies_are_packaged_privately(self):
+        script = (Path(__file__).resolve().parents[3]/'build_deb.sh').read_text()
+        for name in ('inspection', 'encoder_probe', 'production_test', 'common', 'environment_config'):
+            self.assertIn('copy_if_exists "standalone/UgripperWebServer/'+name+'.py" "$WEB_PRIVILEGED_ROOT/'+name+'.py"', script)
+
     def test_existing_staging_is_refreshed_without_nested_or_stale_modules(self):
         script = (Path(__file__).resolve().parents[3]/'build_deb.sh').read_text()
         start = script.index('# Refresh privileged Web directories in place;')

@@ -958,6 +958,7 @@ bool DA::Ugripper::EpisodeManager::WriteFinalMetadata(const std::string &episode
     }
     metadata["hardware_list"] = std::move(hardwareList);
     metadata["episode_name"] = stripEpisodeTempSuffix(episodePath.filename().string());
+    metadata["test_dataset_name"] = testDatasetName_;
     metadata["data_uuid"] = existingMetadata.value("data_uuid", generateUuid());
     metadata["audio_uuid"] = hasAudio ? existingMetadata.value("audio_uuid", generateUuid()) : "";
     metadata["quality_check_status"] = qualityOk ? "success" : "fail";

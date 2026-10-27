@@ -36,6 +36,7 @@
     "ego_sn": ""
   },
   "episode_name": "episode_20260727_0001",
+  "test_dataset_name": "",
   "data_uuid": "test-uuid",
   "audio_uuid": "",
   "quality_check_status": "success",

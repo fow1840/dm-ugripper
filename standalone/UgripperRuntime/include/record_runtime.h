@@ -239,6 +239,9 @@ private:
     void initializeTactileCameraRuntimeStates();
     void maintainTactileCameraRuntimeStates();
     void syncTactileCameraRuntimeStatesToEpisodeManager();
+    std::string requestedTestDataset_;
+    std::string requestedTestId_;
+    std::string activeTestId_;
     bool startRecording(bool resetRecording);
     bool stopRecording(bool dueToError, const std::string &reason, const std::string &errorType = "");
     void handleButtons(const ButtonSnapshot &buttons);

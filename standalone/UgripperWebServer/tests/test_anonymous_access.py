@@ -110,6 +110,19 @@ class AnonymousAccessTests(unittest.TestCase):
         self.assertEqual(messages[-1]['error']['code'], 'encoder_stream_failed')
         self.assertEqual(messages[-1]['type'], 'error')
 
+    def test_inspection_routes_share_worker_and_check_task_identity(self):
+        headers={'X-UGripper-Request':'1'}
+        with patch.object(server, 'rpc', return_value={'id':'a'*32}) as rpc:
+            code, _, _ = self.request('POST','/api/v1/inspection/encoder/start','{"side":"left"}',headers)
+            self.assertEqual(code,202)
+            self.assertEqual(rpc.call_args.args[0]['side'],'left')
+            code, _, _ = self.request('POST','/api/v1/inspection/trajectory/start','{}',headers)
+            self.assertEqual(code,202)
+            self.assertEqual(rpc.call_args.args[0]['kind'],'trajectory')
+        with patch('inspection.snapshot', return_value={'id':'a'*32,'status':'running'}):
+            self.assertEqual(self.request('GET','/api/v1/tasks/inspection/'+'a'*32)[0],200)
+            self.assertEqual(self.request('GET','/api/v1/tasks/inspection/'+'b'*32)[0],404)
+
     def test_write_requires_origin_protection_and_operation_confirmation(self):
         body = json.dumps({'kind': 'zeroing'})
         self.assertEqual(self.request('POST', '/api/v1/execute', body)[0], 403)

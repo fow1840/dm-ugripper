@@ -229,7 +229,8 @@ def task_summary(value):
 def status_summary():
     from production_test import snapshot
     from time_sync_test import snapshot as sync_snapshot
-    return dict(recording=recording(), battery=battery_status(),
+    from inspection import snapshot as inspection_snapshot
+    return dict(inspection=task_summary(mapping(inspection_snapshot())),recording=recording(), battery=battery_status(),
                 task=task_summary(mapping(read_json(STATE/'task.json'))),
                 production=task_summary(mapping(snapshot())),
                 time_sync=task_summary(mapping(sync_snapshot())))

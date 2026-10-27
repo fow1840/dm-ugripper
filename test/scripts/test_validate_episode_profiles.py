@@ -306,6 +306,21 @@ class ValidateEpisodeProfileTest(unittest.TestCase):
         self.assertEqual(list(payload), VALIDATOR.EXPECTED_METADATA_KEY_ORDER)
         self.assertFalse(any(f.severity == "FAIL" for f in self.validate_metadata(payload).findings))
 
+    def test_test_dataset_name_order_values_and_legacy(self):
+        original = metadata()
+        for value in ('', 'trajectory_test', 'production_test'):
+            payload = {}
+            for key, item in original.items():
+                payload[key] = item
+                if key == 'episode_name': payload['test_dataset_name'] = value
+            self.assertFalse(any(f.severity=='FAIL' for f in self.validate_metadata(payload).findings))
+        for value in (None, 1, [], 'unknown'):
+            invalid = dict(payload, test_dataset_name=value)
+            self.assertTrue(any(f.code=='metadata_test_dataset_name' for f in self.validate_metadata(invalid).findings))
+        self.assertFalse(any(f.severity=='FAIL' for f in self.validate_metadata(original).findings))
+        reordered = dict(original, test_dataset_name='trajectory_test')
+        self.assertTrue(any(f.code=='metadata_schema_key_order' for f in self.validate_metadata(reordered).findings))
+
     def test_metadata_3_3_additive_board_version_preserves_legacy(self):
         current = metadata()
         historical = dict(current)

@@ -422,7 +422,13 @@ class Handler(socketserver.StreamRequestHandler):
         try:
             self.request.settimeout(10)
             req=json.loads(self.rfile.readline(4096))
-            if req.get('action')=='production_start':
+            if req.get('action')=='inspection_start':
+                from inspection import start
+                value=start(req.get('kind'), req.get('side','both'))
+            elif req.get('action')=='inspection_stop':
+                from inspection import stop
+                value=stop(req.get('kind'), req.get('id'))
+            elif req.get('action')=='production_start':
                 from production_test import start
                 value=start()
             elif req.get('action')=='production_cancel':
@@ -472,6 +478,8 @@ if __name__=='__main__':
     recover()
     from time_sync_test import recover as recover_time_sync
     recover_time_sync()
+    from inspection import recover as recover_inspection
+    recover_inspection()
     from camera_snapshot import SNAPSHOTS
     shutil.rmtree(SNAPSHOTS, ignore_errors=True)
     for name in ('web_reset_request.json','web_reset_response.json','web_reset.gray'):

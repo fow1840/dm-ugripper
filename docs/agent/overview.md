@@ -923,3 +923,7 @@ Ego在远端采集，当前主机没有逐流实时序号/累计计数接口：�
 当前 `/api/v1/versions` 默认只返回 17 项产品版本（五个软件包、硬件/数据版本及十个固件版本），每项仅 version/status；任意包名仍可用 fields 查询，scope=all 才枚举系统包，details=true 才附加来源和时间。`/devices` 默认固定六个状态字段、空 SN 为 null，Ego 另含 bound，诊断字段显式 details=true。`/status` 默认仅录制、电量和维护/生产/授时任务摘要，不夹带历史轮次或日志；details=true 获取完整 Web 状态。Web 已同步显式读取详情，详情 versions/devices 使用同一查询结构，标签列表单列 device_cards。无旧响应兼容层；升级与录制互斥行为不变。接入见 docs/device-api.md。
 
 HTTP 错误统一为 error.code/message/retryable，409 表示解除互斥后可重试，不能据此自动重发不确定是否已接受的升级。抓图、生产、授时及 Web 维护提交返回 status_url，/api/v1/tasks/{kind}/{id} 校验任务身份后读取既有结果，不新增历史库。编码器 NDJSON 增加 sample/error/end 类型，正常时限结束明确发送 end，断线不能当作正常结束；Web 同步消费。抓图结果被清理后返回 404。
+
+### 编码器与轨迹点检
+
+Web 点检页和 inspection API 共用后台任务：人工五次开合、左右独立端点判定；闭合 [-150,150]，最大张开 [-4200,-3800]，均为有符号原始计数。0.5秒稳定窗、80计数抖动、500计数最小方向行程，180秒限时；不中途标零、不检测触觉错位。轨迹点检由 Web 在提交前倒数5秒，API立即请求起录，手动停止。FIFO 测试指令绑定32位任务ID与5秒有效期，停止核对会话ID；正常录制及QC链路不变。生产压测每轮也使用独立测试ID。metadata 3.3仅在episode_name后增加test_dataset_name字符串，标准为空，轨迹trajectory_test，生产production_test；历史缺项兼容为空。任务结果独立于metadata，服务中断标记未完成。

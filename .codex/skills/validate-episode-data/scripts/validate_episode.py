@@ -64,6 +64,7 @@ EXPECTED_METADATA_KEY_ORDER = [
     *METADATA_33_VERSION_FIELDS[10:],
     "hardware_list",
     "episode_name",
+    "test_dataset_name",
     "data_uuid",
     "audio_uuid",
     "quality_check_status",
@@ -76,7 +77,7 @@ EXPECTED_METADATA_KEY_ORDER = [
     "require_files",
     "video_details",
 ]
-OPTIONAL_METADATA_KEYS = {"task_start_s", "task_stop_s", "rk3588_firmware_version"}
+OPTIONAL_METADATA_KEYS = {"test_dataset_name", "task_start_s", "task_stop_s", "rk3588_firmware_version"}
 REQUIRED_METADATA_FIELDS = [
     "device_sn",
     "device_type",
@@ -687,7 +688,7 @@ class EpisodeValidator:
             key
             for key in EXPECTED_METADATA_KEY_ORDER
             if (not legacy_schema or key not in version_specific_keys)
-            and (data_version not in {"3.0", "3.1", "3.2"} or key not in {*METADATA_33_VERSION_FIELDS, "ego_bound"})
+            and (data_version not in {"3.0", "3.1", "3.2"} or key not in {*METADATA_33_VERSION_FIELDS, "ego_bound", "test_dataset_name"})
         ]
         metadata_key_order = list(self.metadata.keys())
         expected_metadata_key_order = [
@@ -703,6 +704,8 @@ class EpisodeValidator:
                 actual_order=metadata_key_order,
                 expected_order=expected_metadata_key_order,
             )
+        if "test_dataset_name" in self.metadata and self.metadata["test_dataset_name"] not in ("", "trajectory_test", "production_test"):
+            self.add_finding("FAIL", "metadata_test_dataset_name", "测试数据集标识无效")
         metadata_keys = set(self.metadata.keys())
         expected_metadata_keys = set(schema_key_order)
         missing_keys = sorted((expected_metadata_keys - OPTIONAL_METADATA_KEYS) - metadata_keys)

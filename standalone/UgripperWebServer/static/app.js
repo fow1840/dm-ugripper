@@ -28,7 +28,7 @@ function updateUpgradeBatteryButtons(error){
 function bytes(n){return (n/1024**3).toFixed(1)+' GiB'}
 function metric(label,value,detail){const p=el('article',undefined,'panel metric');p.append(el('p',label,'muted'),el('div',value,'value'),el('p',detail,'muted'));return p}
 function row(label,value,good){const d=el('div',undefined,'device');d.append(el('span',label),el('span',value,'state '+(good===null?'':good?'good':'bad')));return d}
-function render(s){const versions=s.device_versions||{};setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProduction(s.production||{});renderTimeSync(s);last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);renderTactileAlarm(s.tactile_alarm||{},s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording.active?'录制中':s.recording.active===null?'录制状态未知':s.busy?'维护 / 传输中':'空闲';
+function render(s){renderInspection(s);const versions=s.device_versions||{};setDeviceLanguage(s.configuration?.UGRIPPER_LANG);renderProduction(s.production||{});renderTimeSync(s);last=s;busy=s.busy;$('#captureLocal').disabled=busy||captureRunning;$('#captureEgo').disabled=busy||captureRunning;$('#detectCover').disabled=busy||captureRunning;renderTactileStatus(s.tactile||[]);renderTactileAlarm(s.tactile_alarm||{},s.tactile||[]);$('#sn').textContent=s.device_sn||'UGRIPPER';$('#mode').textContent=s.recording.active?'录制中':s.recording.active===null?'录制状态未知':s.busy?'维护 / 传输中':'空闲';
  const d=s.disks.data,m=s.memory;$('#metrics').replaceChildren(metric('CPU 占用',s.cpu_percent===null?'—':s.cpu_percent+'%','设备系统'),metric('内存使用',Math.round(m.used/m.total*100)+'%',bytes(m.used)+' / '+bytes(m.total)),metric('数据盘剩余',d.mounted?bytes(d.free):'未挂载',d.mounted?'总容量 '+bytes(d.total):'请连接数据盘'),metric('系统盘剩余',bytes(s.disks.system.free),'总容量 '+bytes(s.disks.system.total)));
  const battery=s.battery||{};updateUpgradeBatteryButtons(upgradeBatteryError(battery));const batteryMetric=metric('背包电量',battery.connected?battery.percent+'%':'电量不可用',battery.connected?(battery.charging?'充电中':battery.discharging?'放电中':'已连接'):'请检查蓝牙电量服务');
  batteryMetric.id='batteryMetric';if(battery.connected&&battery.percent<=10)batteryMetric.classList.add('battery-low');$('#metrics').prepend(batteryMetric);
@@ -369,3 +369,61 @@ function renderTactileAlarm(saved,states){
   card.append(el('p',item.kind==='structural_blocks'?'结构异常区域':'异常核心区域','muted'));container.append(card);
  }
 }
+
+let inspectionJob = null, inspectionCountdown = null, inspectionSubmitting = false;
+function cancelInspectionCountdown() {
+ if(inspectionCountdown!==null)clearInterval(inspectionCountdown);
+ inspectionCountdown=null;
+ $('#inspectionCountdown').textContent='';
+ $('#inspectionCountdownCancel').hidden=true;
+ if(last)renderInspection(last);
+}
+function renderInspection(s) {
+ inspectionJob=s.inspection||{};
+ const running=inspectionJob.status==='running';
+ const blocked=!!s.busy||s.recording?.active!==false||running||inspectionSubmitting||inspectionCountdown!==null;
+ $('#inspectionEncoderStart').disabled=blocked;
+ $('#inspectionTrajectoryStart').disabled=blocked;
+ $('#inspectionEncoderCancel').disabled=!running||inspectionJob.kind!=='encoder';
+ $('#inspectionTrajectoryStop').disabled=!running||inspectionJob.kind!=='trajectory';
+ if(!inspectionJob.id)return;
+ const box=$(inspectionJob.kind==='encoder'?'#inspectionEncoderResult':'#inspectionTrajectoryResult');
+ box.replaceChildren(el('p',`${inspectionJob.status} / ${inspectionJob.result||'等待结果'}${inspectionJob.code?' · '+inspectionJob.code:''}`));
+ if(inspectionJob.message)box.append(el('p',inspectionJob.message));
+ if(inspectionJob.episode)box.append(el('p',inspectionJob.episode));
+ const phases={prepare_open:'请充分张开并保持',close:'请轻合并保持',open:'请充分张开并保持',done:'已完成'};
+ for(const [side,state] of Object.entries(inspectionJob.sides||{})) {
+  box.append(el('h3',`${side==='left'?'左手':'右手'}：${state.completed_cycles}/5 · ${phases[state.phase]||state.phase} · ${state.value??'—'}`));
+  const table=el('table','');
+  for(const check of state.checks||[]) {
+   const tr=el('tr','');
+   for(const value of [check.cycle,check.endpoint==='closed'?'闭合':'张开',check.value,check.status,check.code||'—'])tr.append(el('td',String(value)));
+   table.append(tr);
+  }
+  box.append(table);
+ }
+}
+async function beginInspection(kind) {
+ inspectionSubmitting=true;if(last)renderInspection(last);
+ try {await post('/api/v1/inspection/'+kind+'/start',kind==='encoder'?{side:$('#inspectionSide').value}:{});await refresh();}
+ catch(e){message(e.message)}
+ finally{inspectionSubmitting=false;if(last)renderInspection(last)}
+}
+$('#inspectionEncoderStart').onclick=()=>beginInspection('encoder');
+$('#inspectionEncoderCancel').onclick=async()=>{try{await post('/api/v1/inspection/encoder/cancel',{id:inspectionJob.id});await refresh()}catch(e){message(e.message)}};
+$('#inspectionTrajectoryStop').onclick=async()=>{try{await post('/api/v1/inspection/trajectory/stop',{id:inspectionJob.id});await refresh()}catch(e){message(e.message)}};
+$('#inspectionTrajectoryStart').onclick=()=>{
+ if(inspectionCountdown!==null||inspectionSubmitting)return;
+ let remaining=5;
+ $('#inspectionCountdown').textContent=`${remaining} 秒后开始`;
+ $('#inspectionCountdownCancel').hidden=false;
+ inspectionCountdown=setInterval(()=>{
+  remaining-=1;
+  if(remaining<=0){cancelInspectionCountdown();beginInspection('trajectory');}
+  else $('#inspectionCountdown').textContent=`${remaining} 秒后开始`;
+ },1000);
+ if(last)renderInspection(last);
+};
+$('#inspectionCountdownCancel').onclick=cancelInspectionCountdown;
+for(const button of document.querySelectorAll('nav [data-page]'))button.addEventListener('click',()=>{if(button.dataset.page!=='inspection')cancelInspectionCountdown()});
+window.addEventListener('pagehide',cancelInspectionCountdown);

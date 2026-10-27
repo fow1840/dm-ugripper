@@ -42,6 +42,7 @@ public:
     void SetMainCameraRuntimeStates(const std::array<MainCameraRuntimeState, 3> &states);
     void SetTactileCameraRuntimeStates(const std::array<TactileCameraRuntimeState, 4> &states);
     void SetDeviceVersions(const DeviceVersions &versions, const std::string &egoSerial);
+    void SetTestDatasetName(const std::string &name) { testDatasetName_ = name; }
     void SetTaskMarkers(std::optional<double> taskStartS,
                         std::optional<double> taskStopS);
     void MarkTactileReferencePendingForSide(const std::string &side,
@@ -107,6 +108,7 @@ private:
     std::array<GripperRuntimeState, 2> gripperRuntimeStates_{};
     std::array<MainCameraRuntimeState, 3> mainCameraRuntimeStates_{};
     std::array<TactileCameraRuntimeState, 4> tactileCameraRuntimeStates_{};
+    std::string testDatasetName_;
     std::optional<double> taskStartS_;
     std::optional<double> taskStopS_;
 };

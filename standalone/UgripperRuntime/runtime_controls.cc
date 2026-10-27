@@ -95,6 +95,7 @@ bool RecordRuntime::writeRecordingLock(const std::string &episodeDir)
     json lock = {
         {"pid", static_cast<int>(getpid())},
         {"episode_dir", episodeDir},
+        {"test_request_id", activeTestId_},
         {"state", "starting"},
         {"updated_at_ms", currentEpochMs()},
         {"started_at_ms", currentEpochMs()},
@@ -200,6 +201,8 @@ bool RecordRuntime::startRecording(bool resetRecording)
         return false;
     }
     if (episodeManager_ == nullptr) return false;
+    activeTestId_ = requestedTestId_;
+    episodeManager_->SetTestDatasetName(requestedTestDataset_);
     episodeManager_->SetDeviceVersions(deviceVersions_, egoBoundSerial_);
     cancelBackgroundTactileValidation();
     tactileTriggeredAudioCommand_.clear();
@@ -1082,6 +1085,31 @@ bool RecordRuntime::pollRecordControlPipe()
 
 bool RecordRuntime::processRecordControlCommand(const std::string &rawCommand)
 {
+    // Expiring, session-bound test commands cannot stop an unrelated recording.
+    if (!rawCommand.empty() && rawCommand.front() == '{')
+    {
+        const auto request = json::parse(rawCommand, nullptr, false);
+        if (!request.is_object() || !request.contains("id") || !request["id"].is_string() ||
+            !request.contains("expires_ms") || !request["expires_ms"].is_number_unsigned() ||
+            !request.contains("action") || !request["action"].is_string()) return false;
+        const auto id = request["id"].get<std::string>();
+        const auto expires = request["expires_ms"].get<uint64_t>();
+        if (id.size() != 32 || id.find_first_not_of("0123456789abcdef") != std::string::npos ||
+            expires < currentEpochMs() || expires > currentEpochMs() + 10000) return false;
+        const auto action = request["action"].get<std::string>();
+        if (action == "test_stop")
+            return isRecordingActive() && activeTestId_ == id && stopRecording(false, "", "");
+        if (action != "test_start" || isRecordingActive() ||
+            !request.contains("dataset") || !request["dataset"].is_string()) return false;
+        const auto dataset = request["dataset"].get<std::string>();
+        if (dataset != "trajectory_test" && dataset != "production_test") return false;
+        requestedTestDataset_ = dataset;
+        requestedTestId_ = id;
+        const bool started = startRecording(false);
+        requestedTestDataset_.clear();
+        requestedTestId_.clear();
+        return started;
+    }
     std::string command = trim(rawCommand);
     std::transform(command.begin(), command.end(), command.begin(), [](unsigned char ch) {
         return static_cast<char>(std::toupper(ch));

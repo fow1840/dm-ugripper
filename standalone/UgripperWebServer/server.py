@@ -140,6 +140,13 @@ class Handler(BaseHTTPRequestHandler):
             match = re.fullmatch(r'/api/v1/upgrades/([0-9a-f]{32})/reboot',path)
             if match:
                 return self.json(rpc(dict(action='upgrade_reboot',id=match.group(1))),202)
+            match = re.fullmatch(r'/api/v1/inspection/(encoder|trajectory)/(start|cancel|stop)', path)
+            if match:
+                kind, action = match.groups()
+                if (kind, action) not in (('encoder','start'),('encoder','cancel'),('trajectory','start'),('trajectory','stop')):
+                    raise ValueError('invalid_inspection_action')
+                return self.json(rpc(dict(action='inspection_start' if action=='start' else 'inspection_stop',
+                                          kind=kind, side=body.get('side','both'), id=body.get('id'))),202 if action=='start' else 200)
             if path=='/api/v1/tactile/reset':
                 if body.get('confirm') is not True:raise ValueError('请确认盖板正常且无接触')
                 return self.json(rpc(dict(body,action='tactile_reset')))
@@ -185,10 +192,14 @@ class Handler(BaseHTTPRequestHandler):
             if match:
                 task=task_result(match.group(1))
                 return self.json(task if task else {'error':'task_not_found'},200 if task else 404)
-            match = re.fullmatch(r'/api/v1/tasks/(production|time-sync|maintenance|snapshot)/([0-9a-f]{32})', path)
+            match = re.fullmatch(r'/api/v1/tasks/(production|time-sync|maintenance|snapshot|inspection)/([0-9a-f]{32})', path)
             if match:
                 kind, job = match.groups()
-                if kind == 'snapshot':
+                if kind == 'inspection':
+                    from inspection import snapshot
+                    value = snapshot()
+                    if value.get('id') != job: value = None
+                elif kind == 'snapshot':
                     value = read_json(STATE/'snapshots'/job/'result.json')
                 elif kind == 'maintenance':
                     value = task_result(job)

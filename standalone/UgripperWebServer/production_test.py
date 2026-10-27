@@ -1,6 +1,7 @@
 """Device-owned production recording schedule. No browser heartbeat dependency."""
 import contextlib
 import fcntl
+import json
 import os
 from pathlib import Path
 import threading
@@ -80,7 +81,11 @@ def check_episode(path, duration):
 
 def stop_owned(path):
     live=read_json(RECORD_LOCK)
-    if live and live.get('episode_dir') == str(path):send('STOP')
+    if live and live.get('episode_dir') == str(path):
+        if live.get('test_request_id'):
+            send(json.dumps(dict(action='test_stop', id=live['test_request_id'], expires_ms=int(time.time()*1000)+5000)))
+        else:
+            send('STOP')
     deadline=time.monotonic()+90
     while RECORD_LOCK.exists() and time.monotonic()<deadline:time.sleep(0.1)
     if RECORD_LOCK.exists():raise RuntimeError('stop/finalization timeout (90 s)')
@@ -95,11 +100,12 @@ def run_round(group, number, duration, pause, future):
         if RECORD_LOCK.exists():raise RuntimeError('unexpected recording already active')
         if not os.path.ismount(DATA):raise RuntimeError('data disk not mounted')
         if command(['systemctl','is-active','ugripper.service']).returncode:raise RuntimeError('recording service inactive')
-        send('START')
+        request_id = uuid.uuid4().hex
+        send(json.dumps(dict(action='test_start', id=request_id, dataset='production_test', expires_ms=int(time.time()*1000)+5000)))
         deadline=time.monotonic()+30
         while time.monotonic()<deadline:
             live=read_json(RECORD_LOCK)
-            if live.get('episode_dir'):
+            if live.get('episode_dir') and live.get('test_request_id') == request_id:
                 owned=Path(live['episode_dir']);row['episode']=str(owned);save();break
             # Observe a pending START even after cancel, so it can be stopped safely.
             time.sleep(0.05)

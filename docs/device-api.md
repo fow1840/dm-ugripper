@@ -276,3 +276,26 @@ curl -k -sS 'https://192.168.2.240:8080/api/v1/versions?fields=ugripper' | jq
 # 需要自动判断时同时检查 HTTP 状态；message 供人阅读，程序分支使用 error.code。
 # 有副作用的请求不要配置无条件自动重试。
 ```
+
+
+## 点检（编码器开合与轨迹测试）
+
+Web 新增“点检”页，与 App 使用相同接口。此次不做触觉错位检测，不采接触基线、不执行标零。
+
+| 接口 | JSON | 行为 |
+| --- | --- | --- |
+| `POST /api/v1/inspection/encoder/start` | `{"side":"both"}`，也可 left/right | 202，后台检查人工 5 次完整开合 |
+| `POST /api/v1/inspection/encoder/cancel` | `{"id":"任务ID"}` | 取消本任务，未完成不判通过 |
+| `POST /api/v1/inspection/trajectory/start` | `{}` | 202，立即请求轨迹测试起录，API 无倒计时 |
+| `POST /api/v1/inspection/trajectory/stop` | `{"id":"任务ID"}` | 停止对应测试会话并等待正常收尾 |
+| `GET /api/v1/tasks/inspection/{id}` | 无 | 查询当前保留点检任务，旧 ID 返回 404 |
+
+POST 使用 `X-UGripper-Request: 1`，无维护密码，仍检查 Origin。提交返回 id/status_url；/status 提供 inspection 摘要，details=true 提供完整检查记录。执行状态 status 与检查结论 result 分开，completed 不等于 pass。关闭页面不会取消已提交任务；worker 重启后标记 interrupted，不自动续跑。
+
+编码器使用有符号 16 位原始计数。首次张开稳定作为准备，随后每侧独立完成五次闭合、张开；每端点停稳至少 0.5 秒，窗口内峰峰值不超过 80，较上端点方向行程至少 500 才计入下一个端点。判定不以进入合格区间作为计数条件，越界也记录失败。当前参数需要板端人工开合验收；任意中间位置的长停顿可能被识别为不合格端点，应按页面提示连续完成动作。检查最多 180 秒。
+
+闭合 [-150,150]，小于/大于分别 closed_below_range/closed_above_range；张开 [-4200,-3800]，小于 -4200 为 open_above_range（幅度过量），大于 -3800 为 open_below_range（幅度不足）。边界通过。每项包含 cycle/endpoint/value/limits/status/code；不足五次为 cycles_incomplete，位置持续抖动附 position_unstable，读取异常 encoder_read_failed。
+
+Web 轨迹按钮先倒数 5 秒，取消或离开点检页即取消尚未提交的倒计时；倒数结束才发送 API。API 立即请求起录但仍受正常设备就绪门禁约束，不保证零启动耗时。手动停止只作用于同一任务 ID 的会话。最终通过仅指原有录制 QC 通过，不代表自动验证轨迹形状。
+
+metadata 3.3 在 episode_name 后立即增加字符串 test_dataset_name：空字符串为标准数据，trajectory_test 为轨迹测试，production_test 为生产压测。起录冻结标识，失败数据保留；普通下一条恢复为空。只增加这一字段，其他 metadata 字段和 data_version 不变；历史 3.3 缺该字段按标准数据解释。测试任务 ID 仅保存在运行状态，不添加到 metadata。

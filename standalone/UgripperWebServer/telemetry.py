@@ -87,8 +87,9 @@ def status():
         busy = True
     from production_test import snapshot
     from time_sync_test import snapshot as sync_snapshot
+    from inspection import snapshot as inspection_snapshot
     from device_api import versions as api_versions, devices as api_devices, recording as api_recording
-    return dict(time_sync=sync_snapshot(),production=snapshot(),device_sn=env.get('DEVICE_SN',''), versions=api_versions()["versions"], devices=api_devices()["devices"], device_cards=devices,
+    return dict(inspection=inspection_snapshot(),time_sync=sync_snapshot(),production=snapshot(),device_sn=env.get('DEVICE_SN',''), versions=api_versions()["versions"], devices=api_devices()["devices"], device_cards=devices,
                 cpu_percent=usage, memory=dict(total=mem['MemTotal'], used=mem['MemTotal']-mem['MemAvailable']),
                 disks=dict(data=disk(DATA, True), system=disk('/')), busy=busy,
                 recording=api_recording(),

@@ -87,12 +87,12 @@ def read_encoders():
         return {side: read_encoder(Path('/dev') / (side + '_encoder')) for side in ('left', 'right')}
 
 
-def stream_encoders(duration=60):
+def stream_encoders(duration=60, sides=('left','right'), acquire_lock=True):
     """100 Hz target, persistent descriptors, bounded read and connection lifetime."""
     import contextlib
-    with operation_lock(), contextlib.ExitStack() as stack:
+    with (operation_lock() if acquire_lock else contextlib.nullcontext()), contextlib.ExitStack() as stack:
         ports = {}
-        for side in ('left', 'right'):
+        for side in sides:
             fd = os.open('/dev/' + side + '_encoder', os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK | os.O_CLOEXEC)
             stack.callback(os.close, fd)
             original = termios.tcgetattr(fd)
@@ -110,9 +110,9 @@ def stream_encoders(duration=60):
             ports[side] = fd
         start = tick = time.monotonic()
         count = 0
-        valid = dict(left=0, right=0)
-        missed = dict(left=0, right=0)
-        dropped = dict(left=0, right=0)
+        valid = dict.fromkeys(sides, 0)
+        missed = dict.fromkeys(sides, 0)
+        dropped = dict.fromkeys(sides, 0)
         while time.monotonic() - start < duration:
             values = {}
             for side, fd in ports.items():
