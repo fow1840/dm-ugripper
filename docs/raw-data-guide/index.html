@@ -1,0 +1,971 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>UGripper 2.1.11–2.1.15 原始数据使用指南</title><style>*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:#f5f7fa;color:#233044;font:16px/1.8 system-ui,-apple-system,"Segoe UI",sans-serif}header{background:#132b42;color:white;padding:42px max(24px,calc((100vw - 1200px)/2));}header p{color:#bfcedb;margin:8px 0}.eyebrow{color:#73ded2;font-size:13px;letter-spacing:2px}.layout{max-width:1240px;margin:auto;display:grid;grid-template-columns:230px minmax(0,1fr);gap:32px;padding:32px 24px}nav{position:sticky;top:24px;align-self:start;font-size:14px}nav a{display:block;padding:8px 10px;color:#41566d;text-decoration:none;border-left:2px solid #d6e0e8}nav a:hover{border-color:#168c82;background:#e7f3f1}main{min-width:0;background:white;padding:32px;border:1px solid #e1e7ed;border-radius:12px}h1{font-size:30px;line-height:1.4}main h1{display:none}h2{margin-top:44px;padding-top:12px;border-top:1px solid #e1e7ed;font-size:24px}h3{font-size:19px;margin-top:30px}h4{font-size:17px}a{color:#08786f}code{font:0.88em ui-monospace,Consolas,monospace;background:#eef2f6;padding:2px 4px;border-radius:4px;overflow-wrap:anywhere}.notice{border-left:4px solid #d69628;background:#fff7e8;padding:18px}.table-wrap{overflow:auto;margin:20px 0}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:12px;text-align:left;border:1px solid #dfe6ec;min-width:100px;vertical-align:top}th{background:#edf4f7}tbody tr:nth-child(even){background:#f8fafc}.codebox{background:#122536;color:#dce8f2;border-radius:8px;overflow:hidden;margin:20px 0}.codebar{display:flex;justify-content:space-between;padding:8px 16px;background:#20394e;font-size:12px}pre{overflow:auto;padding:16px;margin:0;line-height:1.65}pre code{background:none;padding:0;white-space:pre;color:inherit;overflow-wrap:normal}button{cursor:pointer;border:1px solid #8ca7ba;border-radius:4px;background:transparent;color:inherit;padding:4px 12px}li{margin:8px 0}footer{color:#66788a;font-size:13px;padding-top:28px}@media(max-width:850px){.layout{display:block;padding:16px}nav{position:static;margin-bottom:20px;display:flex;overflow:auto;gap:8px}nav a{min-width:150px}main{padding:20px}header{padding:28px 24px}}@media print{body,main{background:white}header{background:white;color:black;padding:0}header p{color:#333}.layout{display:block;padding:0}nav,.copy{display:none}main{border:0;padding:0}pre{white-space:pre-wrap}pre code{white-space:pre-wrap}.table-wrap{overflow:visible}h2{break-after:avoid}.codebox{background:#f4f4f4;color:black}a{color:inherit}}[hidden]{display:none!important}.version-picker{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:24px}.version-picker select{font:inherit;padding:8px 36px 8px 12px;border:1px solid #8ca7ba;border-radius:6px;background:#fff;color:#132b42}.version-picker span{font-size:14px;color:#bfcedb}details{margin:16px 0;padding:12px 16px;background:#f4f8fa;border-radius:8px}summary{cursor:pointer;font-weight:600}.version-summary{padding:14px 18px;background:#e9f6f3;border-left:4px solid #168c82}@media print{.version-picker span{color:#333}.version-picker select{appearance:none;border:0}}
+</style></head><body><header><div class="eyebrow">UGRIPPER · DATA REFERENCE</div><h1>原始数据使用指南</h1><p>2.1.11 — 2.1.15 · 版本差异 / 数据格式 / 时间对齐 / 质量检查</p><p>更新于 2026-10-27 · 可离线阅读及打印 · 2.1.15 为开发快照</p><div class="version-picker"><label for="guide-version">阅读版本</label><select id="guide-version"><option value="2.1.15" selected>2.1.15 · 最新（开发快照）</option><option value="2.1.14">2.1.14</option><option value="2.1.13">2.1.13</option><option value="2.1.12">2.1.12</option><option value="2.1.11">2.1.11</option></select><span id="version-status" role="status" aria-live="polite">metadata 3.3 / calibration 3.1</span></div><noscript><p>当前显示最新 2.1.15；切换版本需要启用 JavaScript。</p></noscript></header><div class="layout"><nav aria-label="章节目录"><a href="#section-2">0. 先选对版本</a><a href="#section-3">1. 数据目录与文件</a><a href="#section-4">2. 元数据与标定</a><a href="#section-8">3. 视频怎么读取</a><a href="#section-9">4. MCAP 格式与读取</a><a href="#section-13">5. 如何统一时间轴</a><a href="#section-19">6. 质量结果与使用边界</a></nav><main id="guide-content"><h1 id="section-1">UGripper 原始数据使用指南</h1>
+<aside class="notice"><strong>不推荐用户直接处理设备原始数据。请优先使用平台处理后的数据集。</strong><br><br>原始数据包含多种时间域、设备标定和异常状态，直接解码或按帧号拼接可能产生时间错位及错误样本。仅在平台数据不能满足调试、研究或自定义处理需求时，参考本文读取原始数据，并自行完成格式、同步和质量检查。平台数据的具体处理范围以对应数据集说明为准。</aside>
+<p>正在阅读 <strong>UGripper 2.1.15</strong>：metadata <strong>3.3</strong> / calibration <strong>3.1</strong>。核对依据：开发快照 · e67627b + 工作区改动。实际文件中的协议版本优先；同名安装包可能包含后续修复。</p>
+<p>本文用于组内同步原始数据格式与时间对齐约定。阅读顺序：先确认产物与版本，再读取视频/MCAP，最后统一时间轴并检查质量。本文中的数据路径均为示例，请替换为实际路径。文内代码可直接复制运行，不依赖项目仓库或随附脚本。</p>
+<h2 id="section-2">0. 先选对版本</h2>
+<p class="version-summary">当前选择：<strong>2.1.15</strong> · metadata 3.3 · calibration 3.1</p><details><summary>展开 2.1.11–2.1.15 版本差异对照</summary><p>以下为 2026-10-27 核对的仓库版本。实际数据始终以文件内版本字段为准；同名安装包可能含后续修复，不能仅凭软件版本替换数据协议判断。</p>
+<div class="table-wrap"><table><thead><tr><th>软件版本</th><th>核对依据</th><th>metadata data_version</th><th>calibration format_version</th><th>读取差异</th></tr></thead><tbody><tr><td>2.1.11</td><td>V2.1.11 · df25df8</td><td>3.1</td><td>3.0</td><td>不要求 boot_time_s、tactile_damage_sn_list 及独立主摄外参状态；不要按新格式判缺项</td></tr><tr><td>2.1.12</td><td>V2.1.12 · 465634b</td><td>3.2</td><td>3.1</td><td>增加开机时间、触觉损坏 SN 列表及独立外参状态；缺外参 warning 并使用默认值</td></tr><tr><td>2.1.13</td><td>V2.1.13 · 4ca0aa7</td><td>3.2</td><td>3.1</td><td>沿用上述格式；读取时仍核实实际配置、文件与质量结果</td></tr><tr><td>2.1.14</td><td>V2.1.14 · 11bb74d</td><td>3.2</td><td>3.1</td><td>沿用上述格式和外参兼容；包含 Fays 校时映射恢复等运行时修复</td></tr><tr><td>2.1.15</td><td>开发快照，HEAD e67627b + 工作区改动；无对应 tag</td><td>3.3</td><td>3.1</td><td>新增软件/固件版本信息及 Ego 关联；新增字段和质量规则按实际包核对</td></tr></tbody></table></div>
+<p>2.1.11 的 calibration 3.0 没有当前的独立主摄外参合同，不能把缺少 main_cam_extrinsic_calib_status 当作文件损坏。2.1.12–2.1.14 不应被要求具备 metadata 3.3 的版本扩展字段。下文 metadata 表覆盖当前格式，各版本只读取其协议中存在的字段。</p>
+<p>所有版本都应先检查质量结果，再解码原始数据。后文标明“当前开发”的收尾屏障、丢失率门限和 FT601 说明，不追溯适用于旧 tag。Fays IMU 的主机时间在旧版由取数时记录、当前由回调接收时记录，两者都不是精确采样时刻。</p>
+</details><h2 id="section-3">1. 数据目录与文件</h2>
+<p>设备数据通常位于 <code>/mnt/data_disk/&lt;设备SN小写&gt;/data/episode_YYYYMMDD_NNNN/</code>。录制中的目录带 <code>-temp</code> 后缀；请使用停录、收尾、质量检查及刷盘完成后的最终目录。当前实现完成这些步骤后才恢复 Ready；历史版本还需确认后台校验已结束。最终目录存在不等于质量合格。</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>episode_YYYYMMDD_NNNN/
+  metadata.json             # 背包元数据与质量结果
+  calibration.json          # 背包相机/传感器标定
+  cam_left.mkv              # 左、右夹爪主摄
+  cam_right.mkv
+  tcam_left_l.mkv           # 四路触觉相机
+  tcam_left_r.mkv
+  tcam_right_l.mkv
+  tcam_right_r.mkv
+  stereo_left.mkv           # 左、右双目模组的视频
+  stereo_right.mkv
+  sensor_left.mcap          # 左、右编码器等传感器消息
+  sensor_right.mcap
+  fays_data_left.mcap       # 双目帧时间戳及 Fays IMU
+  fays_data_right.mcap
+  ego/                     # 可选；有独立 metadata/calibration
+    metadata.json
+    calibration.json
+    rgb.mp4
+    tracking.mp4
+    ctrl.mp4
+    sensor.mcap
+    audio.m4a
+    ego_sync.json</code></pre></div>
+<ul><li><code>+nostereo</code> 包不生成双目视频与 Fays MCAP；可选胸部主摄为 <code>cam_chest.mkv</code>。</li><li><code>audio_pre.wav</code>、<code>audio_post.wav</code>、<code>validation_error.log</code> 按录制条件或异常情况生成。</li><li>持续授时版本可能保存 <code>ego/time_sync_samples.jsonl</code>；毫秒表测试可能保存 <code>stopwatch_timing.json</code>，它们不是每条数据的必需文件。</li><li><code>left/right</code> 是设备侧别；触觉文件末尾的 <code>l/r</code> 是该侧夹爪上的传感器位置，不是另一只夹爪。</li><li>双目视频当前通常为 640×800，上下拼接两个 640×400 图像。每个模组都有两目，左右模组不能当成一对双目。图像次序与 cam0/cam1 对应应结合该 SDK/固件及标定确认。</li></ul>
+<h2 id="section-4">2. 元数据与标定</h2>
+<h3 id="section-5">2.1 metadata.json</h3>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义与用法</th></tr></thead><tbody><tr><td><code>test_dataset_name</code></td><td>紧随 episode_name；空字符串为标准数据，trajectory_test 为轨迹测试，production_test 为生产压测。历史 3.3 缺项按标准数据解释。测试标识不代表质量通过。</td></tr><tr><td><code>data_version</code></td><td>本版本写出 3.3；请先读取实际 data_version，再按对应协议解析</td></tr><tr><td><code>software_version</code>、<code>hardware_version</code></td><td>用于定位软件行为与设备差异</td></tr><tr><td><code>device_sn</code>、<code>hardware_list</code></td><td>背包与各传感器身份；用于匹配标定</td></tr><tr><td><code>camera_codec</code></td><td>视频编码配置，实际编码仍应通过视频流确认</td></tr><tr><td><code>require_files</code></td><td>当前录制配置的必需文件；Ego 文件可能不在其中，需另查</td></tr><tr><td><code>video_details</code></td><td>每路视频名称、时间起点、时长等；按 <code>name</code> 匹配，不依赖数组顺序</td></tr><tr><td><code>video_details[].start_offset_us</code></td><td><strong>PTS=0 对应的绝对 Unix 微秒</strong>，不是相对 episode 起点</td></tr><tr><td><code>collection_duration_s</code></td><td>采集时长汇总；不代表每一路覆盖同一时间区间</td></tr><tr><td><code>task_start_s</code>、<code>task_stop_s</code></td><td>人工任务标记，Unix 秒；0 或缺失不作为有效时刻</td></tr><tr><td><code>boot_time_s</code></td><td>系统开机时刻，Unix 秒；不是需要加到所有流上的时间偏移</td></tr><tr><td><code>quality_check_status</code></td><td><code>success</code> / <code>fail</code> / 空；空值不代表成功</td></tr><tr><td><code>quality_check_err_type</code></td><td>主失败原因，更多证据看日志</td></tr><tr><td><code>tactile_damage_sn_list</code></td><td>触觉损坏检测结果 SN；当前实现于收尾完成前发布，历史版本可能由后台校验更新</td></tr></tbody></table></div>
+<p>当前 metadata 3.3 记录各软件及设备固件版本；<code>rk3588_firmware_version</code> 为背包系统固件版本，历史 3.3 数据缺少该新增字段仍兼容。软件版本与数据协议版本独立，不能仅凭 <code>software_version</code> 推断 JSON 字段是否存在；读取 JSON 应按字段名访问。</p>
+<ul><li><code>ego_bound</code> 为布尔值，<code>hardware_list.ego_sn</code> 为绑定的 Ego SN；未绑定时 SN 及 Ego 两个版本字符串为空。</li><li>主摄固件版本取 USB iSerial；未启用胸摄及 <code>+nostereo</code> 包的双目固件版本写 <code>&quot;disabled&quot;</code>。</li><li>当前起录前要求启用设备的版本信息已就绪，起录时冻结版本和绑定 SN，停录使用该快照。这项门禁与夹爪外参是否齐全是两回事。</li><li>本地 <code>ego/metadata.json</code> 的 <code>related_episode_name</code>、<code>related_episode_uuid</code> 分别关联背包 <code>episode_name</code>（不带 <code>-temp</code>）及 <code>data_uuid</code>；历史数据可能没有这些字段。</li></ul>
+<p>随附的格式范本见 <a href="examples/metadata-v3.3.json">metadata-v3.3.json</a>。范本仅示意字段，不作为具体设备版本、帧率或时间值的依据。</p>
+<h3 id="section-6">2.2 calibration.json</h3>
+<p>本版本标定格式为 3.1；它与 metadata 的 <code>data_version=3.3</code> 是两套独立版本号。包含相机模型、分辨率、内参、畸变、外参及标定状态等；主摄外参可来自夹爪存储的眼眼/手眼标定，Fays 使用模组标定。</p>
+<p>使用前核对设备 SN、图像尺寸、相机模型、畸变模型及标定有效状态。默认结构参数或单位矩阵不等于完成有效标定。变换矩阵必须确认源/目标坐标系、单位、左右乘约定；不要根据字段名自行推断。SDK 的 <code>timeshift_cam*_to_imu0</code> 也不能未经核对就叠加到已对齐的落盘时间上。</p>
+<p>夹爪二进制读写协议不等同于 episode JSON 格式，读取原始数据时应以随数据保存的标定 JSON 为准。Ego 使用自己的 <code>ego/calibration.json</code>，不能套用背包相机标定。</p>
+<h4 id="section-7">缺少夹爪外参时的兼容行为</h4>
+<p>已核对的 <code>V2.1.12</code>–<code>V2.1.14</code> 及当前实现已兼容未存储外参的旧夹爪：仅缺少或无效的夹爪外参不会阻止录制，也不会因此进入 ERROR。写出标定时记录 <code>WARN: gripper extrinsics unavailable ... using structural default</code>，逐项使用约定的默认结构外参；另一项有有效实读值时保留实读值，不从历史 episode 补值。</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义</th></tr></thead><tbody><tr><td><code>calibration_info.calibration_status</code></td><td>原有主摄内参及 Fays 标定的汇总状态</td></tr><tr><td><code>calibration_info.main_cam_extrinsic_calib_status</code></td><td>左右主摄的两项外参均有效实读时为 <code>calibrated</code>，否则为 <code>uncalibrated</code></td></tr><tr><td><code>observation.images.cam_left_main/right_main.extrinsics.T_base_main_camera</code></td><td>主摄与基座间的 4×4 变换；来自夹爪 UCAL V3 对应字段，缺失时用默认值</td></tr><tr><td><code>observation.images.cam_left_main/right_main.extrinsics.T_main_camera_stereo_cam0</code></td><td>主摄与双目 cam0 间的 4×4 变换；来自夹爪 UCAL V2 及后续版本对应字段，缺失时用默认值</td></tr></tbody></table></div>
+<p>表中 <code>cam_left_main/right_main</code> 表示两个独立键。两种标定状态彼此独立；<code>uncalibrated</code> 配合合法默认矩阵可以通过格式校验，但不证明几何精度合格。外参状态是汇总值，不能仅凭它判断具体哪一侧、哪一个矩阵为默认值。需要实测外参的几何重建任务应筛选该状态，并核实对应标定来源。主摄内参缺失、设备断连或其他采集异常仍按各自规则判失败，不属于此兼容范围。</p>
+<h2 id="section-8">3. 视频怎么读取</h2>
+<p>主摄、触觉和双目以 MKV 保存，编码可为 H.264/H.265；Ego 使用其应用生成的视频。先探测实际流信息，不硬编码分辨率、帧率或颜色格式。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>ffprobe -v error -select_streams v:0 \
+  -show_entries stream=codec_name,width,height,pix_fmt,time_base,avg_frame_rate \
+  -of json /path/to/episode/cam_left.mkv
+
+ffprobe -v error -select_streams v:0 -show_frames \
+  -show_entries frame=pts,best_effort_timestamp,pict_type \
+  -of json /path/to/episode/cam_left.mkv &gt; /tmp/cam_left_frames.json</code></pre></div>
+<p>使用 FFmpeg/PyAV 等解码；逐帧保存对应 PTS 和 <code>time_base</code>，不要在导出时自动补帧或按固定 FPS 重建时间。解码帧按显示时间关联，不能把存在重排序的视频直接按压缩包数组下标对应图像。遇到缺失 PTS 应标记异常，不静默用帧号代替。</p>
+<p>双目源图像为灰度，但编码文件可能以 YUV420 表示；解码成 RGB 不会增加原始图像精度。当前 NV12 编码使用有限范围亮度，分析像素值时注意解码器的色彩范围转换。视频帧率字段是播放参数，不能单独证明没有采集丢帧。</p>
+<h2 id="section-9">4. MCAP 格式与读取</h2>
+<p>这些文件是<strong>通用 MCAP 容器，不是 ROS 2 bag</strong>。<code>ros2 bag info</code> 或 Foxglove 的 ROS 导入失败，不足以说明文件损坏。可视化前可能需要转成对应 schema。</p>
+<h3 id="section-10">4.1 背包自定义二进制 payload</h3>
+<div class="table-wrap"><table><thead><tr><th>文件 / topic</th><th>字节数</th><th>小端 payload</th><th>含义</th></tr></thead><tbody><tr><td><code>sensor_*.mcap</code> / <code>encoder_left</code> 或 <code>encoder_right</code></td><td>8</td><td><code>&lt;if</code></td><td>int32 原始计数 + float32 弧度</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>i</code></td><td>48</td><td><code>&lt;6d</code></td><td>float64：gx, gy, gz, ax, ay, az</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>c</code></td><td>4</td><td><code>&lt;I</code></td><td>uint32 视频帧索引 frameIndex</td></tr></tbody></table></div>
+<p>MCAP 消息头的 <code>publishTime</code> / <code>logTime</code> 不在上述 payload 中。Python API 分别叫 <code>publish_time</code> / <code>log_time</code>。即使 schema 描述使用 JSON 文本，channel 的 <code>message_encoding=binary</code> 仍表示 payload 不是 JSON。</p>
+<p>编码器弧度可乘 <code>180/π</code> 转为角度，不把原始计数直接当作角度。Fays IMU 数值沿用 SDK 输出，轴向和单位需按所用 SDK/固件协议确认；不要未经确认换算为度/秒或乘重力加速度。未知 topic 应保留 schema、encoding 与原始字节，不能套用上表。Ego MCAP 由外部应用产生，按其 schema 解码。</p>
+<h3 id="section-11">4.2 准备读取环境</h3>
+<p>在独立的数据分析 Python 环境中安装 MCAP 和压缩依赖。视频探测需要系统中可用的 FFmpeg/ffprobe；不要修改设备运行环境或交叉编译环境。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>python -m pip install mcap lz4 zstandard</code></pre></div>
+<p>下面的代码直接使用第三方 MCAP 库，不依赖 UGripper 仓库。替换文件路径后即可运行。示例面向当前背包二进制格式，Ego 数据需按其消息 schema 单独解析。</p>
+<h3 id="section-12">4.3 最小读取示例</h3>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>import struct
+from collections import Counter
+from mcap.reader import make_reader
+
+# 可替换为 sensor_left/right.mcap 或 fays_data_left/right.mcap。
+path = &quot;/path/to/episode/fays_data_left.mcap&quot;
+counts = Counter()
+previous = {}
+
+with open(path, &quot;rb&quot;) as source:
+    messages = make_reader(source).iter_messages(log_time_order=False)
+    for schema, channel, msg in messages:
+        topic = channel.topic
+        counts[topic] += 1
+        t_ns = msg.publish_time
+        if topic in previous and t_ns &lt;= previous[topic]:
+            print(&quot;重复或回退:&quot;, topic, previous[topic], t_ns)
+        previous[topic] = t_ns
+        decoded = None
+        if channel.message_encoding == &quot;binary&quot;:
+            if topic in (&quot;encoder_left&quot;, &quot;encoder_right&quot;):
+                if len(msg.data) != 8:
+                    raise ValueError(&quot;encoder payload 长度异常&quot;)
+                raw, rad = struct.unpack(&quot;&lt;if&quot;, msg.data)
+                decoded = {&quot;raw&quot;: raw, &quot;rad&quot;: rad}
+            elif topic == &quot;c&quot;:
+                if len(msg.data) != 4:
+                    raise ValueError(&quot;camera payload 长度异常&quot;)
+                frame_index, = struct.unpack(&quot;&lt;I&quot;, msg.data)
+                decoded = {&quot;frame_index&quot;: frame_index}
+            elif topic == &quot;i&quot;:
+                if len(msg.data) != 48:
+                    raise ValueError(&quot;IMU payload 长度异常&quot;)
+                values = struct.unpack(&quot;&lt;6d&quot;, msg.data)
+                decoded = dict(zip(
+                    (&quot;gx&quot;, &quot;gy&quot;, &quot;gz&quot;, &quot;ax&quot;, &quot;ay&quot;, &quot;az&quot;), values))
+        # 仅打印每个 topic 的前三条，避免大文件输出过多。
+        if counts[topic] &lt;= 3:
+            print(topic, &quot;publish_ns=&quot;, t_ns,
+                  &quot;log_ns=&quot;, msg.log_time, &quot;sample=&quot;, decoded,
+                  &quot;encoding=&quot;, channel.message_encoding,
+                  &quot;schema=&quot;, schema.name if schema else None)
+
+print(&quot;各 topic 消息数量:&quot;, dict(counts))</code></pre></div>
+<p>保留文件内顺序可以检查真实回退；先按时间排序会掩盖此类异常。处理大文件应流式读取，不必将全部图像和传感器消息放入内存。</p>
+<h2 id="section-13">5. 如何统一时间轴</h2>
+<p>单位速查：<code>task_*_s/boot_time_s</code> 为秒，<code>start_offset_us</code> 为微秒，MCAP 消息头时间为纳秒；<code>PTS</code> 是 tick，必须乘 <code>time_base</code> 才是秒。</p>
+<p>统一目标是 Unix 纳秒整数 <code>t_ns</code>。Unix 时间本身不随时区改变；中国时区只影响显示。使用整数或有理数换算，避免大时间戳经浮点数转换损失精度。</p>
+<div class="table-wrap"><table><thead><tr><th>数据流</th><th>Unix 纳秒换算</th></tr></thead><tbody><tr><td>主摄、触觉视频</td><td><code>start_offset_us × 1000 + PTS × time_base × 10^9</code></td></tr><tr><td>本机 encoder 等 Unix 域 MCAP 消息</td><td>直接取消息头 <code>publish_time</code></td></tr><tr><td>双目视频</td><td>与同侧 <code>c</code> 消息的 frameIndex 对应，取其 <code>publish_time</code></td></tr><tr><td>Fays IMU</td><td><code>publish_time</code> 为主机接收时刻（Unix 纳秒），可用于接收时间对齐；精确采样对齐见 5.2</td></tr><tr><td>Ego 单调时钟 topic</td><td>用 Ego metadata/head_pose 锚点换算，见下文</td></tr><tr><td>Ego 已为 Unix 的 metainfo 等 topic</td><td>直接使用，不能再次加偏移</td></tr></tbody></table></div>
+<h3 id="section-14">5.1 主摄与触觉</h3>
+<p>主摄录制端已完成固件时钟映射及必要修正，使用最终落盘 PTS；不再用原始 SEI 替换，也不重复加历史补偿。</p>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>from fractions import Fraction
+
+start_offset_us = 1780000000000000  # 实际取本路 metadata
+pts = 40                          # 实际取解码帧
+base = Fraction(1, 1000)           # 实际取该帧/视频 time_base
+relative_ns = Fraction(pts) * base * 1_000_000_000
+t_ns = start_offset_us * 1000 + round(relative_ns)
+# 1780000000040000000 ns</code></pre></div>
+<p>如果已经读取 <code>pts_time</code> 秒值，不要再乘 time_base。不能把每路首帧分别归零后声称它们已同步。</p>
+<h3 id="section-15">5.2 双目与 IMU</h3>
+<p>双目 MKV 使用固定帧率播放轴，设备 gap 可能被压紧。<strong>不能用 MKV PTS 或帧号/FPS 重建双目真实采集时间</strong>。必须读取同侧 Fays MCAP 的 <code>c</code> 消息，核对帧数、索引连续性与顺序后关联解码图像。</p>
+<p><code>frameIndex</code> 是录制端每条视频从 0 开始的连续写入索引，不是相机硬件帧号。索引连续也可能存在采集丢帧，需检查相邻 <code>c.log_time</code> 的时间间隔。</p>
+<p>视频帧数与 <code>c</code> 消息数量不一致时，不能从缺失位置之后继续按数组下标强行配对；先定位异常，无法恢复对应关系的区段标记不可用。</p>
+<p>Fays 两类消息的时间含义不同：</p>
+<ul><li><code>c.log_time</code> 是图像设备时间；<code>c.publish_time</code> 是映射到背包 Unix 时间并完成相机补偿后的时间，不要再次应用补偿。</li><li><code>i.log_time</code> 是 IMU 原始设备采样时间；<code>i.publish_time</code> 是主机获取该样本时的 Unix 时间（当前为回调接收时刻，旧版为 SDK 取数时刻），包含传输与调度延迟，并非用相机映射得到的采样时间。成批到达时，接收间隔不能代表真实采样间隔。</li></ul>
+<p>设备侧 gap、回退及 IMU 采样频率应检查 <code>log_time</code>；<code>publish_time</code> 可用于接收时间覆盖检查，但不能据此宣称 IMU 与图像已精确同步。需要精确跨模态采样对齐时，须根据该 SDK/固件的共同设备时钟和映射证据建立并验证转换，保留延迟误差；缺少映射证据时不要把接收时间当作采样真值。FT601 图像与 IMU 共用 USB 传输也不改变这个区别。</p>
+<h3 id="section-16">5.3 Ego</h3>
+<p>新版 Ego 通过 USB ACM 串口持续与背包系统时钟对齐；旧版使用录制前 ADB 校时。离线状态下，两者时间一致不代表已经对准标准 UTC。同步状态、offset、RTT 描述协议测量质量，不是曝光时刻精度证明。</p>
+<p>已支持的 Ego 数据中，<code>head_pose/controller_pose/imu</code> 可能使用设备单调时间。令：</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>A_us = ego/metadata.json 中 head_pose_details[name=head_pose].start_offset_us
+H0_ns = head_pose 首条有效消息的原始 publish_time
+Delta_ns = A_us × 1000 - H0_ns
+Ego Unix 时间 = 原始 publish_time + Delta_ns</code></pre></div>
+<p>只对确认共用该单调时钟域的 topic 使用此偏移；<code>*_metainfo</code> 等已是 Unix 的消息不加。缺锚点、应用版本不匹配或时间域不明时应停止自动换算，不能仅凭时间戳大小猜测。</p>
+<p>Ego 视频需要其自身 metadata 中对应视频的时间起点和时间基定义，不能使用背包根目录的视频起点，也不能默认所有 Ego 视频与 head_pose 同一起点。应用版本不同可能改变字段与格式；无法确认视频时间定义时，保留原始 PTS 并请求该版本的格式说明。</p>
+<h3 id="section-17">5.4 对齐多个流</h3>
+<ol><li>分别建立逐帧/逐消息 Unix 时间，保留原始序号及时间戳。</li><li>检查重复、回退、gap、首末覆盖和视频/MCAP 对应关系。</li><li>共同区间取 <code>[max(各流首时刻), min(各流末时刻)]</code>；无交集就不能生成完整多模态样本。</li><li>选择主摄时刻或统一采样网格，图像取最近帧并限制误差；连续量按需插值，姿态使用符合其定义的四元数插值。长 gap 不跨越插值。</li><li>输出有效性标记和每路匹配误差。需要相对时间时，最后统一减去同一个 <code>t0_ns</code>。</li></ol>
+<p>统一时间域不等于硬件曝光同步。滚动快门、曝光时长、固件时间定义和传输延迟仍可能带来误差；物理精度须通过毫秒表或共同事件验证。首次启动错峰与持续时间漂移应分开统计。</p>
+<h3 id="section-18">5.5 对齐结果最少保留什么</h3>
+<p>建议每条对齐样本保留：共同参考时间 <code>t_ns</code>、各路原始帧/消息索引、各路原始时间、匹配误差 <code>delta_ms=(流时间−参考时间)/10^6</code> 和有效性标记。正值表示该路晚于参考时间。这样发现错位时可以追溯，而不必重新猜测匹配关系。</p>
+<p>检查 gap 时使用真实采集时间：主摄/触觉用落盘 PTS，双目用同侧 <code>c.log_time</code>。分别统计启动阶段和稳定采集阶段，不把平均 FPS 正常或 frameIndex 连续当作无丢帧。Ego 首帧较晚说明启动错峰，不能直接作为持续授时误差。</p>
+<h2 id="section-19">6. 质量结果与使用边界</h2>
+<p>先检查最终 <code>quality_check_status</code> 和 <code>quality_check_err_type</code>，再按用途做逐流检查。<code>success</code> 表示通过该软件版本的运行时检查，不代表全部传感器无丢帧、外参完成实测或曝光严格同步；<code>fail</code> 数据应保留错误原因，不能只删除异常文件后当作正常样本。</p>
+<p>当前开发实现的本机采集检查包括：录制中主摄/双目单次连续缺失超过 3 帧、触觉达到 8 帧时触发故障处理；停录排空后，任一受监测流最终 <code>missing/(received+missing)</code> 严格大于 2% 判失败。编码器和 Fays IMU 另有断流、时钟及队列异常检查。这些门限不能倒推为所有 2.1.14 包的规则，具体以录制版本为准。</p>
+<p>丢失统计有不同证据来源：主摄主要依据 V4L2 sequence 和无效帧，触觉依据输出 PTS，双目及 Fays IMU 依据设备时间，编码器依据原始接收时间估算。统计不能覆盖所有固件内部漏采，也不能完全区分采样丢失与传输迟到。当前逐流统计保存在运行日志及临时运行状态中，不新增 episode 的逐流统计 JSON 或 metadata 字段；Ego 远端实时漏采不在本机统计覆盖内。</p>
+<p>建议至少复核必需文件、视频可解码性、MCAP topic/消息数、各流首末覆盖、时间回退/gap、双目图像与 <code>c</code> 消息对应关系，以及任务所需的标定有效性。主摄可能出现固件重复时间戳及输出 PTS 钳制，不能把最终 PTS 的单个间隔直接当作硬件漏采证明。</p><footer>核对依据：版本 tag 的 UgripperRuntime 元数据与标定写出逻辑、FaysStereoRecorder 时间戳写入逻辑，以及当前工作区实现。实际数据字段优先于本文示例。</footer></main></div><template id="guide-2.1.15"><h1 id="section-1">UGripper 原始数据使用指南</h1>
+<aside class="notice"><strong>不推荐用户直接处理设备原始数据。请优先使用平台处理后的数据集。</strong><br><br>原始数据包含多种时间域、设备标定和异常状态，直接解码或按帧号拼接可能产生时间错位及错误样本。仅在平台数据不能满足调试、研究或自定义处理需求时，参考本文读取原始数据，并自行完成格式、同步和质量检查。平台数据的具体处理范围以对应数据集说明为准。</aside>
+<p>正在阅读 <strong>UGripper 2.1.15</strong>：metadata <strong>3.3</strong> / calibration <strong>3.1</strong>。核对依据：开发快照 · e67627b + 工作区改动。实际文件中的协议版本优先；同名安装包可能包含后续修复。</p>
+<p>本文用于组内同步原始数据格式与时间对齐约定。阅读顺序：先确认产物与版本，再读取视频/MCAP，最后统一时间轴并检查质量。本文中的数据路径均为示例，请替换为实际路径。文内代码可直接复制运行，不依赖项目仓库或随附脚本。</p>
+<h2 id="section-2">0. 先选对版本</h2>
+<p class="version-summary">当前选择：<strong>2.1.15</strong> · metadata 3.3 · calibration 3.1</p><details><summary>展开 2.1.11–2.1.15 版本差异对照</summary><p>以下为 2026-10-27 核对的仓库版本。实际数据始终以文件内版本字段为准；同名安装包可能含后续修复，不能仅凭软件版本替换数据协议判断。</p>
+<div class="table-wrap"><table><thead><tr><th>软件版本</th><th>核对依据</th><th>metadata data_version</th><th>calibration format_version</th><th>读取差异</th></tr></thead><tbody><tr><td>2.1.11</td><td>V2.1.11 · df25df8</td><td>3.1</td><td>3.0</td><td>不要求 boot_time_s、tactile_damage_sn_list 及独立主摄外参状态；不要按新格式判缺项</td></tr><tr><td>2.1.12</td><td>V2.1.12 · 465634b</td><td>3.2</td><td>3.1</td><td>增加开机时间、触觉损坏 SN 列表及独立外参状态；缺外参 warning 并使用默认值</td></tr><tr><td>2.1.13</td><td>V2.1.13 · 4ca0aa7</td><td>3.2</td><td>3.1</td><td>沿用上述格式；读取时仍核实实际配置、文件与质量结果</td></tr><tr><td>2.1.14</td><td>V2.1.14 · 11bb74d</td><td>3.2</td><td>3.1</td><td>沿用上述格式和外参兼容；包含 Fays 校时映射恢复等运行时修复</td></tr><tr><td>2.1.15</td><td>开发快照，HEAD e67627b + 工作区改动；无对应 tag</td><td>3.3</td><td>3.1</td><td>新增软件/固件版本信息及 Ego 关联；新增字段和质量规则按实际包核对</td></tr></tbody></table></div>
+<p>2.1.11 的 calibration 3.0 没有当前的独立主摄外参合同，不能把缺少 main_cam_extrinsic_calib_status 当作文件损坏。2.1.12–2.1.14 不应被要求具备 metadata 3.3 的版本扩展字段。下文 metadata 表覆盖当前格式，各版本只读取其协议中存在的字段。</p>
+<p>所有版本都应先检查质量结果，再解码原始数据。后文标明“当前开发”的收尾屏障、丢失率门限和 FT601 说明，不追溯适用于旧 tag。Fays IMU 的主机时间在旧版由取数时记录、当前由回调接收时记录，两者都不是精确采样时刻。</p>
+</details><h2 id="section-3">1. 数据目录与文件</h2>
+<p>设备数据通常位于 <code>/mnt/data_disk/&lt;设备SN小写&gt;/data/episode_YYYYMMDD_NNNN/</code>。录制中的目录带 <code>-temp</code> 后缀；请使用停录、收尾、质量检查及刷盘完成后的最终目录。当前实现完成这些步骤后才恢复 Ready；历史版本还需确认后台校验已结束。最终目录存在不等于质量合格。</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>episode_YYYYMMDD_NNNN/
+  metadata.json             # 背包元数据与质量结果
+  calibration.json          # 背包相机/传感器标定
+  cam_left.mkv              # 左、右夹爪主摄
+  cam_right.mkv
+  tcam_left_l.mkv           # 四路触觉相机
+  tcam_left_r.mkv
+  tcam_right_l.mkv
+  tcam_right_r.mkv
+  stereo_left.mkv           # 左、右双目模组的视频
+  stereo_right.mkv
+  sensor_left.mcap          # 左、右编码器等传感器消息
+  sensor_right.mcap
+  fays_data_left.mcap       # 双目帧时间戳及 Fays IMU
+  fays_data_right.mcap
+  ego/                     # 可选；有独立 metadata/calibration
+    metadata.json
+    calibration.json
+    rgb.mp4
+    tracking.mp4
+    ctrl.mp4
+    sensor.mcap
+    audio.m4a
+    ego_sync.json</code></pre></div>
+<ul><li><code>+nostereo</code> 包不生成双目视频与 Fays MCAP；可选胸部主摄为 <code>cam_chest.mkv</code>。</li><li><code>audio_pre.wav</code>、<code>audio_post.wav</code>、<code>validation_error.log</code> 按录制条件或异常情况生成。</li><li>持续授时版本可能保存 <code>ego/time_sync_samples.jsonl</code>；毫秒表测试可能保存 <code>stopwatch_timing.json</code>，它们不是每条数据的必需文件。</li><li><code>left/right</code> 是设备侧别；触觉文件末尾的 <code>l/r</code> 是该侧夹爪上的传感器位置，不是另一只夹爪。</li><li>双目视频当前通常为 640×800，上下拼接两个 640×400 图像。每个模组都有两目，左右模组不能当成一对双目。图像次序与 cam0/cam1 对应应结合该 SDK/固件及标定确认。</li></ul>
+<h2 id="section-4">2. 元数据与标定</h2>
+<h3 id="section-5">2.1 metadata.json</h3>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义与用法</th></tr></thead><tbody><tr><td><code>test_dataset_name</code></td><td>紧随 episode_name；空字符串为标准数据，trajectory_test 为轨迹测试，production_test 为生产压测。历史 3.3 缺项按标准数据解释。测试标识不代表质量通过。</td></tr><tr><td><code>data_version</code></td><td>本版本写出 3.3；请先读取实际 data_version，再按对应协议解析</td></tr><tr><td><code>software_version</code>、<code>hardware_version</code></td><td>用于定位软件行为与设备差异</td></tr><tr><td><code>device_sn</code>、<code>hardware_list</code></td><td>背包与各传感器身份；用于匹配标定</td></tr><tr><td><code>camera_codec</code></td><td>视频编码配置，实际编码仍应通过视频流确认</td></tr><tr><td><code>require_files</code></td><td>当前录制配置的必需文件；Ego 文件可能不在其中，需另查</td></tr><tr><td><code>video_details</code></td><td>每路视频名称、时间起点、时长等；按 <code>name</code> 匹配，不依赖数组顺序</td></tr><tr><td><code>video_details[].start_offset_us</code></td><td><strong>PTS=0 对应的绝对 Unix 微秒</strong>，不是相对 episode 起点</td></tr><tr><td><code>collection_duration_s</code></td><td>采集时长汇总；不代表每一路覆盖同一时间区间</td></tr><tr><td><code>task_start_s</code>、<code>task_stop_s</code></td><td>人工任务标记，Unix 秒；0 或缺失不作为有效时刻</td></tr><tr><td><code>boot_time_s</code></td><td>系统开机时刻，Unix 秒；不是需要加到所有流上的时间偏移</td></tr><tr><td><code>quality_check_status</code></td><td><code>success</code> / <code>fail</code> / 空；空值不代表成功</td></tr><tr><td><code>quality_check_err_type</code></td><td>主失败原因，更多证据看日志</td></tr><tr><td><code>tactile_damage_sn_list</code></td><td>触觉损坏检测结果 SN；当前实现于收尾完成前发布，历史版本可能由后台校验更新</td></tr></tbody></table></div>
+<p>当前 metadata 3.3 记录各软件及设备固件版本；<code>rk3588_firmware_version</code> 为背包系统固件版本，历史 3.3 数据缺少该新增字段仍兼容。软件版本与数据协议版本独立，不能仅凭 <code>software_version</code> 推断 JSON 字段是否存在；读取 JSON 应按字段名访问。</p>
+<ul><li><code>ego_bound</code> 为布尔值，<code>hardware_list.ego_sn</code> 为绑定的 Ego SN；未绑定时 SN 及 Ego 两个版本字符串为空。</li><li>主摄固件版本取 USB iSerial；未启用胸摄及 <code>+nostereo</code> 包的双目固件版本写 <code>&quot;disabled&quot;</code>。</li><li>当前起录前要求启用设备的版本信息已就绪，起录时冻结版本和绑定 SN，停录使用该快照。这项门禁与夹爪外参是否齐全是两回事。</li><li>本地 <code>ego/metadata.json</code> 的 <code>related_episode_name</code>、<code>related_episode_uuid</code> 分别关联背包 <code>episode_name</code>（不带 <code>-temp</code>）及 <code>data_uuid</code>；历史数据可能没有这些字段。</li></ul>
+<p>随附的格式范本见 <a href="examples/metadata-v3.3.json">metadata-v3.3.json</a>。范本仅示意字段，不作为具体设备版本、帧率或时间值的依据。</p>
+<h3 id="section-6">2.2 calibration.json</h3>
+<p>本版本标定格式为 3.1；它与 metadata 的 <code>data_version=3.3</code> 是两套独立版本号。包含相机模型、分辨率、内参、畸变、外参及标定状态等；主摄外参可来自夹爪存储的眼眼/手眼标定，Fays 使用模组标定。</p>
+<p>使用前核对设备 SN、图像尺寸、相机模型、畸变模型及标定有效状态。默认结构参数或单位矩阵不等于完成有效标定。变换矩阵必须确认源/目标坐标系、单位、左右乘约定；不要根据字段名自行推断。SDK 的 <code>timeshift_cam*_to_imu0</code> 也不能未经核对就叠加到已对齐的落盘时间上。</p>
+<p>夹爪二进制读写协议不等同于 episode JSON 格式，读取原始数据时应以随数据保存的标定 JSON 为准。Ego 使用自己的 <code>ego/calibration.json</code>，不能套用背包相机标定。</p>
+<h4 id="section-7">缺少夹爪外参时的兼容行为</h4>
+<p>已核对的 <code>V2.1.12</code>–<code>V2.1.14</code> 及当前实现已兼容未存储外参的旧夹爪：仅缺少或无效的夹爪外参不会阻止录制，也不会因此进入 ERROR。写出标定时记录 <code>WARN: gripper extrinsics unavailable ... using structural default</code>，逐项使用约定的默认结构外参；另一项有有效实读值时保留实读值，不从历史 episode 补值。</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义</th></tr></thead><tbody><tr><td><code>calibration_info.calibration_status</code></td><td>原有主摄内参及 Fays 标定的汇总状态</td></tr><tr><td><code>calibration_info.main_cam_extrinsic_calib_status</code></td><td>左右主摄的两项外参均有效实读时为 <code>calibrated</code>，否则为 <code>uncalibrated</code></td></tr><tr><td><code>observation.images.cam_left_main/right_main.extrinsics.T_base_main_camera</code></td><td>主摄与基座间的 4×4 变换；来自夹爪 UCAL V3 对应字段，缺失时用默认值</td></tr><tr><td><code>observation.images.cam_left_main/right_main.extrinsics.T_main_camera_stereo_cam0</code></td><td>主摄与双目 cam0 间的 4×4 变换；来自夹爪 UCAL V2 及后续版本对应字段，缺失时用默认值</td></tr></tbody></table></div>
+<p>表中 <code>cam_left_main/right_main</code> 表示两个独立键。两种标定状态彼此独立；<code>uncalibrated</code> 配合合法默认矩阵可以通过格式校验，但不证明几何精度合格。外参状态是汇总值，不能仅凭它判断具体哪一侧、哪一个矩阵为默认值。需要实测外参的几何重建任务应筛选该状态，并核实对应标定来源。主摄内参缺失、设备断连或其他采集异常仍按各自规则判失败，不属于此兼容范围。</p>
+<h2 id="section-8">3. 视频怎么读取</h2>
+<p>主摄、触觉和双目以 MKV 保存，编码可为 H.264/H.265；Ego 使用其应用生成的视频。先探测实际流信息，不硬编码分辨率、帧率或颜色格式。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>ffprobe -v error -select_streams v:0 \
+  -show_entries stream=codec_name,width,height,pix_fmt,time_base,avg_frame_rate \
+  -of json /path/to/episode/cam_left.mkv
+
+ffprobe -v error -select_streams v:0 -show_frames \
+  -show_entries frame=pts,best_effort_timestamp,pict_type \
+  -of json /path/to/episode/cam_left.mkv &gt; /tmp/cam_left_frames.json</code></pre></div>
+<p>使用 FFmpeg/PyAV 等解码；逐帧保存对应 PTS 和 <code>time_base</code>，不要在导出时自动补帧或按固定 FPS 重建时间。解码帧按显示时间关联，不能把存在重排序的视频直接按压缩包数组下标对应图像。遇到缺失 PTS 应标记异常，不静默用帧号代替。</p>
+<p>双目源图像为灰度，但编码文件可能以 YUV420 表示；解码成 RGB 不会增加原始图像精度。当前 NV12 编码使用有限范围亮度，分析像素值时注意解码器的色彩范围转换。视频帧率字段是播放参数，不能单独证明没有采集丢帧。</p>
+<h2 id="section-9">4. MCAP 格式与读取</h2>
+<p>这些文件是<strong>通用 MCAP 容器，不是 ROS 2 bag</strong>。<code>ros2 bag info</code> 或 Foxglove 的 ROS 导入失败，不足以说明文件损坏。可视化前可能需要转成对应 schema。</p>
+<h3 id="section-10">4.1 背包自定义二进制 payload</h3>
+<div class="table-wrap"><table><thead><tr><th>文件 / topic</th><th>字节数</th><th>小端 payload</th><th>含义</th></tr></thead><tbody><tr><td><code>sensor_*.mcap</code> / <code>encoder_left</code> 或 <code>encoder_right</code></td><td>8</td><td><code>&lt;if</code></td><td>int32 原始计数 + float32 弧度</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>i</code></td><td>48</td><td><code>&lt;6d</code></td><td>float64：gx, gy, gz, ax, ay, az</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>c</code></td><td>4</td><td><code>&lt;I</code></td><td>uint32 视频帧索引 frameIndex</td></tr></tbody></table></div>
+<p>MCAP 消息头的 <code>publishTime</code> / <code>logTime</code> 不在上述 payload 中。Python API 分别叫 <code>publish_time</code> / <code>log_time</code>。即使 schema 描述使用 JSON 文本，channel 的 <code>message_encoding=binary</code> 仍表示 payload 不是 JSON。</p>
+<p>编码器弧度可乘 <code>180/π</code> 转为角度，不把原始计数直接当作角度。Fays IMU 数值沿用 SDK 输出，轴向和单位需按所用 SDK/固件协议确认；不要未经确认换算为度/秒或乘重力加速度。未知 topic 应保留 schema、encoding 与原始字节，不能套用上表。Ego MCAP 由外部应用产生，按其 schema 解码。</p>
+<h3 id="section-11">4.2 准备读取环境</h3>
+<p>在独立的数据分析 Python 环境中安装 MCAP 和压缩依赖。视频探测需要系统中可用的 FFmpeg/ffprobe；不要修改设备运行环境或交叉编译环境。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>python -m pip install mcap lz4 zstandard</code></pre></div>
+<p>下面的代码直接使用第三方 MCAP 库，不依赖 UGripper 仓库。替换文件路径后即可运行。示例面向当前背包二进制格式，Ego 数据需按其消息 schema 单独解析。</p>
+<h3 id="section-12">4.3 最小读取示例</h3>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>import struct
+from collections import Counter
+from mcap.reader import make_reader
+
+# 可替换为 sensor_left/right.mcap 或 fays_data_left/right.mcap。
+path = &quot;/path/to/episode/fays_data_left.mcap&quot;
+counts = Counter()
+previous = {}
+
+with open(path, &quot;rb&quot;) as source:
+    messages = make_reader(source).iter_messages(log_time_order=False)
+    for schema, channel, msg in messages:
+        topic = channel.topic
+        counts[topic] += 1
+        t_ns = msg.publish_time
+        if topic in previous and t_ns &lt;= previous[topic]:
+            print(&quot;重复或回退:&quot;, topic, previous[topic], t_ns)
+        previous[topic] = t_ns
+        decoded = None
+        if channel.message_encoding == &quot;binary&quot;:
+            if topic in (&quot;encoder_left&quot;, &quot;encoder_right&quot;):
+                if len(msg.data) != 8:
+                    raise ValueError(&quot;encoder payload 长度异常&quot;)
+                raw, rad = struct.unpack(&quot;&lt;if&quot;, msg.data)
+                decoded = {&quot;raw&quot;: raw, &quot;rad&quot;: rad}
+            elif topic == &quot;c&quot;:
+                if len(msg.data) != 4:
+                    raise ValueError(&quot;camera payload 长度异常&quot;)
+                frame_index, = struct.unpack(&quot;&lt;I&quot;, msg.data)
+                decoded = {&quot;frame_index&quot;: frame_index}
+            elif topic == &quot;i&quot;:
+                if len(msg.data) != 48:
+                    raise ValueError(&quot;IMU payload 长度异常&quot;)
+                values = struct.unpack(&quot;&lt;6d&quot;, msg.data)
+                decoded = dict(zip(
+                    (&quot;gx&quot;, &quot;gy&quot;, &quot;gz&quot;, &quot;ax&quot;, &quot;ay&quot;, &quot;az&quot;), values))
+        # 仅打印每个 topic 的前三条，避免大文件输出过多。
+        if counts[topic] &lt;= 3:
+            print(topic, &quot;publish_ns=&quot;, t_ns,
+                  &quot;log_ns=&quot;, msg.log_time, &quot;sample=&quot;, decoded,
+                  &quot;encoding=&quot;, channel.message_encoding,
+                  &quot;schema=&quot;, schema.name if schema else None)
+
+print(&quot;各 topic 消息数量:&quot;, dict(counts))</code></pre></div>
+<p>保留文件内顺序可以检查真实回退；先按时间排序会掩盖此类异常。处理大文件应流式读取，不必将全部图像和传感器消息放入内存。</p>
+<h2 id="section-13">5. 如何统一时间轴</h2>
+<p>单位速查：<code>task_*_s/boot_time_s</code> 为秒，<code>start_offset_us</code> 为微秒，MCAP 消息头时间为纳秒；<code>PTS</code> 是 tick，必须乘 <code>time_base</code> 才是秒。</p>
+<p>统一目标是 Unix 纳秒整数 <code>t_ns</code>。Unix 时间本身不随时区改变；中国时区只影响显示。使用整数或有理数换算，避免大时间戳经浮点数转换损失精度。</p>
+<div class="table-wrap"><table><thead><tr><th>数据流</th><th>Unix 纳秒换算</th></tr></thead><tbody><tr><td>主摄、触觉视频</td><td><code>start_offset_us × 1000 + PTS × time_base × 10^9</code></td></tr><tr><td>本机 encoder 等 Unix 域 MCAP 消息</td><td>直接取消息头 <code>publish_time</code></td></tr><tr><td>双目视频</td><td>与同侧 <code>c</code> 消息的 frameIndex 对应，取其 <code>publish_time</code></td></tr><tr><td>Fays IMU</td><td><code>publish_time</code> 为主机接收时刻（Unix 纳秒），可用于接收时间对齐；精确采样对齐见 5.2</td></tr><tr><td>Ego 单调时钟 topic</td><td>用 Ego metadata/head_pose 锚点换算，见下文</td></tr><tr><td>Ego 已为 Unix 的 metainfo 等 topic</td><td>直接使用，不能再次加偏移</td></tr></tbody></table></div>
+<h3 id="section-14">5.1 主摄与触觉</h3>
+<p>主摄录制端已完成固件时钟映射及必要修正，使用最终落盘 PTS；不再用原始 SEI 替换，也不重复加历史补偿。</p>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>from fractions import Fraction
+
+start_offset_us = 1780000000000000  # 实际取本路 metadata
+pts = 40                          # 实际取解码帧
+base = Fraction(1, 1000)           # 实际取该帧/视频 time_base
+relative_ns = Fraction(pts) * base * 1_000_000_000
+t_ns = start_offset_us * 1000 + round(relative_ns)
+# 1780000000040000000 ns</code></pre></div>
+<p>如果已经读取 <code>pts_time</code> 秒值，不要再乘 time_base。不能把每路首帧分别归零后声称它们已同步。</p>
+<h3 id="section-15">5.2 双目与 IMU</h3>
+<p>双目 MKV 使用固定帧率播放轴，设备 gap 可能被压紧。<strong>不能用 MKV PTS 或帧号/FPS 重建双目真实采集时间</strong>。必须读取同侧 Fays MCAP 的 <code>c</code> 消息，核对帧数、索引连续性与顺序后关联解码图像。</p>
+<p><code>frameIndex</code> 是录制端每条视频从 0 开始的连续写入索引，不是相机硬件帧号。索引连续也可能存在采集丢帧，需检查相邻 <code>c.log_time</code> 的时间间隔。</p>
+<p>视频帧数与 <code>c</code> 消息数量不一致时，不能从缺失位置之后继续按数组下标强行配对；先定位异常，无法恢复对应关系的区段标记不可用。</p>
+<p>Fays 两类消息的时间含义不同：</p>
+<ul><li><code>c.log_time</code> 是图像设备时间；<code>c.publish_time</code> 是映射到背包 Unix 时间并完成相机补偿后的时间，不要再次应用补偿。</li><li><code>i.log_time</code> 是 IMU 原始设备采样时间；<code>i.publish_time</code> 是主机获取该样本时的 Unix 时间（当前为回调接收时刻，旧版为 SDK 取数时刻），包含传输与调度延迟，并非用相机映射得到的采样时间。成批到达时，接收间隔不能代表真实采样间隔。</li></ul>
+<p>设备侧 gap、回退及 IMU 采样频率应检查 <code>log_time</code>；<code>publish_time</code> 可用于接收时间覆盖检查，但不能据此宣称 IMU 与图像已精确同步。需要精确跨模态采样对齐时，须根据该 SDK/固件的共同设备时钟和映射证据建立并验证转换，保留延迟误差；缺少映射证据时不要把接收时间当作采样真值。FT601 图像与 IMU 共用 USB 传输也不改变这个区别。</p>
+<h3 id="section-16">5.3 Ego</h3>
+<p>新版 Ego 通过 USB ACM 串口持续与背包系统时钟对齐；旧版使用录制前 ADB 校时。离线状态下，两者时间一致不代表已经对准标准 UTC。同步状态、offset、RTT 描述协议测量质量，不是曝光时刻精度证明。</p>
+<p>已支持的 Ego 数据中，<code>head_pose/controller_pose/imu</code> 可能使用设备单调时间。令：</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>A_us = ego/metadata.json 中 head_pose_details[name=head_pose].start_offset_us
+H0_ns = head_pose 首条有效消息的原始 publish_time
+Delta_ns = A_us × 1000 - H0_ns
+Ego Unix 时间 = 原始 publish_time + Delta_ns</code></pre></div>
+<p>只对确认共用该单调时钟域的 topic 使用此偏移；<code>*_metainfo</code> 等已是 Unix 的消息不加。缺锚点、应用版本不匹配或时间域不明时应停止自动换算，不能仅凭时间戳大小猜测。</p>
+<p>Ego 视频需要其自身 metadata 中对应视频的时间起点和时间基定义，不能使用背包根目录的视频起点，也不能默认所有 Ego 视频与 head_pose 同一起点。应用版本不同可能改变字段与格式；无法确认视频时间定义时，保留原始 PTS 并请求该版本的格式说明。</p>
+<h3 id="section-17">5.4 对齐多个流</h3>
+<ol><li>分别建立逐帧/逐消息 Unix 时间，保留原始序号及时间戳。</li><li>检查重复、回退、gap、首末覆盖和视频/MCAP 对应关系。</li><li>共同区间取 <code>[max(各流首时刻), min(各流末时刻)]</code>；无交集就不能生成完整多模态样本。</li><li>选择主摄时刻或统一采样网格，图像取最近帧并限制误差；连续量按需插值，姿态使用符合其定义的四元数插值。长 gap 不跨越插值。</li><li>输出有效性标记和每路匹配误差。需要相对时间时，最后统一减去同一个 <code>t0_ns</code>。</li></ol>
+<p>统一时间域不等于硬件曝光同步。滚动快门、曝光时长、固件时间定义和传输延迟仍可能带来误差；物理精度须通过毫秒表或共同事件验证。首次启动错峰与持续时间漂移应分开统计。</p>
+<h3 id="section-18">5.5 对齐结果最少保留什么</h3>
+<p>建议每条对齐样本保留：共同参考时间 <code>t_ns</code>、各路原始帧/消息索引、各路原始时间、匹配误差 <code>delta_ms=(流时间−参考时间)/10^6</code> 和有效性标记。正值表示该路晚于参考时间。这样发现错位时可以追溯，而不必重新猜测匹配关系。</p>
+<p>检查 gap 时使用真实采集时间：主摄/触觉用落盘 PTS，双目用同侧 <code>c.log_time</code>。分别统计启动阶段和稳定采集阶段，不把平均 FPS 正常或 frameIndex 连续当作无丢帧。Ego 首帧较晚说明启动错峰，不能直接作为持续授时误差。</p>
+<h2 id="section-19">6. 质量结果与使用边界</h2>
+<p>先检查最终 <code>quality_check_status</code> 和 <code>quality_check_err_type</code>，再按用途做逐流检查。<code>success</code> 表示通过该软件版本的运行时检查，不代表全部传感器无丢帧、外参完成实测或曝光严格同步；<code>fail</code> 数据应保留错误原因，不能只删除异常文件后当作正常样本。</p>
+<p>当前开发实现的本机采集检查包括：录制中主摄/双目单次连续缺失超过 3 帧、触觉达到 8 帧时触发故障处理；停录排空后，任一受监测流最终 <code>missing/(received+missing)</code> 严格大于 2% 判失败。编码器和 Fays IMU 另有断流、时钟及队列异常检查。这些门限不能倒推为所有 2.1.14 包的规则，具体以录制版本为准。</p>
+<p>丢失统计有不同证据来源：主摄主要依据 V4L2 sequence 和无效帧，触觉依据输出 PTS，双目及 Fays IMU 依据设备时间，编码器依据原始接收时间估算。统计不能覆盖所有固件内部漏采，也不能完全区分采样丢失与传输迟到。当前逐流统计保存在运行日志及临时运行状态中，不新增 episode 的逐流统计 JSON 或 metadata 字段；Ego 远端实时漏采不在本机统计覆盖内。</p>
+<p>建议至少复核必需文件、视频可解码性、MCAP topic/消息数、各流首末覆盖、时间回退/gap、双目图像与 <code>c</code> 消息对应关系，以及任务所需的标定有效性。主摄可能出现固件重复时间戳及输出 PTS 钳制，不能把最终 PTS 的单个间隔直接当作硬件漏采证明。</p><footer>核对依据：版本 tag 的 UgripperRuntime 元数据与标定写出逻辑、FaysStereoRecorder 时间戳写入逻辑，以及当前工作区实现。实际数据字段优先于本文示例。</footer></template>
+<template id="guide-2.1.14"><h1 id="section-1">UGripper 原始数据使用指南</h1>
+<aside class="notice"><strong>不推荐用户直接处理设备原始数据。请优先使用平台处理后的数据集。</strong><br><br>原始数据包含多种时间域、设备标定和异常状态，直接解码或按帧号拼接可能产生时间错位及错误样本。仅在平台数据不能满足调试、研究或自定义处理需求时，参考本文读取原始数据，并自行完成格式、同步和质量检查。平台数据的具体处理范围以对应数据集说明为准。</aside>
+<p>正在阅读 <strong>UGripper 2.1.14</strong>：metadata <strong>3.2</strong> / calibration <strong>3.1</strong>。核对依据：V2.1.14 · 11bb74d。实际文件中的协议版本优先；同名安装包可能包含后续修复。</p>
+<p>本文用于组内同步原始数据格式与时间对齐约定。阅读顺序：先确认产物与版本，再读取视频/MCAP，最后统一时间轴并检查质量。本文中的数据路径均为示例，请替换为实际路径。文内代码可直接复制运行，不依赖项目仓库或随附脚本。</p>
+<h2 id="section-2">0. 先选对版本</h2>
+<p class="version-summary">当前选择：<strong>2.1.14</strong> · metadata 3.2 · calibration 3.1</p><details><summary>展开 2.1.11–2.1.15 版本差异对照</summary><p>以下为 2026-10-27 核对的仓库版本。实际数据始终以文件内版本字段为准；同名安装包可能含后续修复，不能仅凭软件版本替换数据协议判断。</p>
+<div class="table-wrap"><table><thead><tr><th>软件版本</th><th>核对依据</th><th>metadata data_version</th><th>calibration format_version</th><th>读取差异</th></tr></thead><tbody><tr><td>2.1.11</td><td>V2.1.11 · df25df8</td><td>3.1</td><td>3.0</td><td>不要求 boot_time_s、tactile_damage_sn_list 及独立主摄外参状态；不要按新格式判缺项</td></tr><tr><td>2.1.12</td><td>V2.1.12 · 465634b</td><td>3.2</td><td>3.1</td><td>增加开机时间、触觉损坏 SN 列表及独立外参状态；缺外参 warning 并使用默认值</td></tr><tr><td>2.1.13</td><td>V2.1.13 · 4ca0aa7</td><td>3.2</td><td>3.1</td><td>沿用上述格式；读取时仍核实实际配置、文件与质量结果</td></tr><tr><td>2.1.14</td><td>V2.1.14 · 11bb74d</td><td>3.2</td><td>3.1</td><td>沿用上述格式和外参兼容；包含 Fays 校时映射恢复等运行时修复</td></tr><tr><td>2.1.15</td><td>开发快照，HEAD e67627b + 工作区改动；无对应 tag</td><td>3.3</td><td>3.1</td><td>新增软件/固件版本信息及 Ego 关联；新增字段和质量规则按实际包核对</td></tr></tbody></table></div>
+<p>2.1.11 的 calibration 3.0 没有当前的独立主摄外参合同，不能把缺少 main_cam_extrinsic_calib_status 当作文件损坏。2.1.12–2.1.14 不应被要求具备 metadata 3.3 的版本扩展字段。下文 metadata 表覆盖当前格式，各版本只读取其协议中存在的字段。</p>
+<p>所有版本都应先检查质量结果，再解码原始数据。后文标明“当前开发”的收尾屏障、丢失率门限和 FT601 说明，不追溯适用于旧 tag。Fays IMU 的主机时间在旧版由取数时记录、当前由回调接收时记录，两者都不是精确采样时刻。</p>
+</details><h2 id="section-3">1. 数据目录与文件</h2>
+<p>设备数据通常位于 <code>/mnt/data_disk/&lt;设备SN小写&gt;/data/episode_YYYYMMDD_NNNN/</code>。录制中的目录带 <code>-temp</code> 后缀；请使用停录、收尾、质量检查及刷盘完成后的最终目录。读取前还需确认该安装包的后台校验已结束。最终目录存在不等于质量合格。</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>episode_YYYYMMDD_NNNN/
+  metadata.json             # 背包元数据与质量结果
+  calibration.json          # 背包相机/传感器标定
+  cam_left.mkv              # 左、右夹爪主摄
+  cam_right.mkv
+  tcam_left_l.mkv           # 四路触觉相机
+  tcam_left_r.mkv
+  tcam_right_l.mkv
+  tcam_right_r.mkv
+  stereo_left.mkv           # 左、右双目模组的视频
+  stereo_right.mkv
+  sensor_left.mcap          # 左、右编码器等传感器消息
+  sensor_right.mcap
+  fays_data_left.mcap       # 双目帧时间戳及 Fays IMU
+  fays_data_right.mcap
+  ego/                     # 可选；有独立 metadata/calibration
+    metadata.json
+    calibration.json
+    rgb.mp4
+    tracking.mp4
+    ctrl.mp4
+    sensor.mcap
+    audio.m4a
+    ego_sync.json</code></pre></div>
+<ul><li><code>+nostereo</code> 包不生成双目视频与 Fays MCAP；可选胸部主摄为 <code>cam_chest.mkv</code>。</li><li><code>audio_pre.wav</code>、<code>audio_post.wav</code>、<code>validation_error.log</code> 按录制条件或异常情况生成。</li><li>持续授时版本可能保存 <code>ego/time_sync_samples.jsonl</code>；毫秒表测试可能保存 <code>stopwatch_timing.json</code>，它们不是每条数据的必需文件。</li><li><code>left/right</code> 是设备侧别；触觉文件末尾的 <code>l/r</code> 是该侧夹爪上的传感器位置，不是另一只夹爪。</li><li>双目视频当前通常为 640×800，上下拼接两个 640×400 图像。每个模组都有两目，左右模组不能当成一对双目。图像次序与 cam0/cam1 对应应结合该 SDK/固件及标定确认。</li></ul>
+<h2 id="section-4">2. 元数据与标定</h2>
+<h3 id="section-5">2.1 metadata.json</h3>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义与用法</th></tr></thead><tbody><tr><td><code>data_version</code></td><td>本版本写出 3.2；请先读取实际 data_version，再按对应协议解析</td></tr><tr><td><code>software_version</code>、<code>hardware_version</code></td><td>用于定位软件行为与设备差异</td></tr><tr><td><code>device_sn</code>、<code>hardware_list</code></td><td>背包与各传感器身份；用于匹配标定</td></tr><tr><td><code>camera_codec</code></td><td>视频编码配置，实际编码仍应通过视频流确认</td></tr><tr><td><code>require_files</code></td><td>当前录制配置的必需文件；Ego 文件可能不在其中，需另查</td></tr><tr><td><code>video_details</code></td><td>每路视频名称、时间起点、时长等；按 <code>name</code> 匹配，不依赖数组顺序</td></tr><tr><td><code>video_details[].start_offset_us</code></td><td><strong>PTS=0 对应的绝对 Unix 微秒</strong>，不是相对 episode 起点</td></tr><tr><td><code>collection_duration_s</code></td><td>采集时长汇总；不代表每一路覆盖同一时间区间</td></tr><tr><td><code>task_start_s</code>、<code>task_stop_s</code></td><td>人工任务标记，Unix 秒；0 或缺失不作为有效时刻</td></tr><tr><td><code>boot_time_s</code></td><td>系统开机时刻，Unix 秒；不是需要加到所有流上的时间偏移</td></tr><tr><td><code>quality_check_status</code></td><td><code>success</code> / <code>fail</code> / 空；空值不代表成功</td></tr><tr><td><code>quality_check_err_type</code></td><td>主失败原因，更多证据看日志</td></tr><tr><td><code>tactile_damage_sn_list</code></td><td>触觉损坏检测结果 SN；可能由后台校验更新；读取前确认收尾及校验已完成</td></tr></tbody></table></div>
+<p>此版本使用 metadata 3.2，不要求 metadata 3.3 新增的软件/固件版本扩展、<code>ego_bound</code>、<code>hardware_list.ego_sn</code> 或 Ego 的 <code>related_episode_*</code> 字段。不要将缺少这些新增字段判为数据损坏。</p><h3 id="section-6">2.2 calibration.json</h3>
+<p>本版本标定格式为 3.1；它与 metadata 的 <code>data_version=3.2</code> 是两套独立版本号。包含相机模型、分辨率、内参、畸变、外参及标定状态等；主摄外参按本版本标定合同读取，Fays 使用模组标定。</p>
+<p>使用前核对设备 SN、图像尺寸、相机模型、畸变模型及标定有效状态。默认结构参数或单位矩阵不等于完成有效标定。变换矩阵必须确认源/目标坐标系、单位、左右乘约定；不要根据字段名自行推断。SDK 的 <code>timeshift_cam*_to_imu0</code> 也不能未经核对就叠加到已对齐的落盘时间上。</p>
+<p>夹爪二进制读写协议不等同于 episode JSON 格式，读取原始数据时应以随数据保存的标定 JSON 为准。Ego 使用自己的 <code>ego/calibration.json</code>，不能套用背包相机标定。</p>
+<h4 id="section-7">缺少夹爪外参时的兼容行为</h4>
+<p>已核对的 <code>V2.1.12</code>–<code>V2.1.14</code> 及当前实现已兼容未存储外参的旧夹爪：仅缺少或无效的夹爪外参不会阻止录制，也不会因此进入 ERROR。写出标定时记录 <code>WARN: gripper extrinsics unavailable ... using structural default</code>，逐项使用约定的默认结构外参；另一项有有效实读值时保留实读值，不从历史 episode 补值。</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义</th></tr></thead><tbody><tr><td><code>calibration_info.calibration_status</code></td><td>原有主摄内参及 Fays 标定的汇总状态</td></tr><tr><td><code>calibration_info.main_cam_extrinsic_calib_status</code></td><td>左右主摄的两项外参均有效实读时为 <code>calibrated</code>，否则为 <code>uncalibrated</code></td></tr><tr><td><code>observation.images.cam_left_main/right_main.extrinsics.T_base_main_camera</code></td><td>主摄与基座间的 4×4 变换；来自夹爪 UCAL V3 对应字段，缺失时用默认值</td></tr><tr><td><code>observation.images.cam_left_main/right_main.extrinsics.T_main_camera_stereo_cam0</code></td><td>主摄与双目 cam0 间的 4×4 变换；来自夹爪 UCAL V2 及后续版本对应字段，缺失时用默认值</td></tr></tbody></table></div>
+<p>表中 <code>cam_left_main/right_main</code> 表示两个独立键。两种标定状态彼此独立；<code>uncalibrated</code> 配合合法默认矩阵可以通过格式校验，但不证明几何精度合格。外参状态是汇总值，不能仅凭它判断具体哪一侧、哪一个矩阵为默认值。需要实测外参的几何重建任务应筛选该状态，并核实对应标定来源。主摄内参缺失、设备断连或其他采集异常仍按各自规则判失败，不属于此兼容范围。</p>
+<h2 id="section-8">3. 视频怎么读取</h2>
+<p>主摄、触觉和双目以 MKV 保存，编码可为 H.264/H.265；Ego 使用其应用生成的视频。先探测实际流信息，不硬编码分辨率、帧率或颜色格式。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>ffprobe -v error -select_streams v:0 \
+  -show_entries stream=codec_name,width,height,pix_fmt,time_base,avg_frame_rate \
+  -of json /path/to/episode/cam_left.mkv
+
+ffprobe -v error -select_streams v:0 -show_frames \
+  -show_entries frame=pts,best_effort_timestamp,pict_type \
+  -of json /path/to/episode/cam_left.mkv &gt; /tmp/cam_left_frames.json</code></pre></div>
+<p>使用 FFmpeg/PyAV 等解码；逐帧保存对应 PTS 和 <code>time_base</code>，不要在导出时自动补帧或按固定 FPS 重建时间。解码帧按显示时间关联，不能把存在重排序的视频直接按压缩包数组下标对应图像。遇到缺失 PTS 应标记异常，不静默用帧号代替。</p>
+<p>双目源图像为灰度，但编码文件可能以 YUV420 表示；解码成 RGB 不会增加原始图像精度。分析像素值时应以该文件的色彩范围为准，注意解码器的范围转换。视频帧率字段是播放参数，不能单独证明没有采集丢帧。</p>
+<h2 id="section-9">4. MCAP 格式与读取</h2>
+<p>这些文件是<strong>通用 MCAP 容器，不是 ROS 2 bag</strong>。<code>ros2 bag info</code> 或 Foxglove 的 ROS 导入失败，不足以说明文件损坏。可视化前可能需要转成对应 schema。</p>
+<h3 id="section-10">4.1 背包自定义二进制 payload</h3>
+<div class="table-wrap"><table><thead><tr><th>文件 / topic</th><th>字节数</th><th>小端 payload</th><th>含义</th></tr></thead><tbody><tr><td><code>sensor_*.mcap</code> / <code>encoder_left</code> 或 <code>encoder_right</code></td><td>8</td><td><code>&lt;if</code></td><td>int32 原始计数 + float32 弧度</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>i</code></td><td>48</td><td><code>&lt;6d</code></td><td>float64：gx, gy, gz, ax, ay, az</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>c</code></td><td>4</td><td><code>&lt;I</code></td><td>uint32 视频帧索引 frameIndex</td></tr></tbody></table></div>
+<p>MCAP 消息头的 <code>publishTime</code> / <code>logTime</code> 不在上述 payload 中。Python API 分别叫 <code>publish_time</code> / <code>log_time</code>。即使 schema 描述使用 JSON 文本，channel 的 <code>message_encoding=binary</code> 仍表示 payload 不是 JSON。</p>
+<p>编码器弧度可乘 <code>180/π</code> 转为角度，不把原始计数直接当作角度。Fays IMU 数值沿用 SDK 输出，轴向和单位需按所用 SDK/固件协议确认；不要未经确认换算为度/秒或乘重力加速度。未知 topic 应保留 schema、encoding 与原始字节，不能套用上表。Ego MCAP 由外部应用产生，按其 schema 解码。</p>
+<h3 id="section-11">4.2 准备读取环境</h3>
+<p>在独立的数据分析 Python 环境中安装 MCAP 和压缩依赖。视频探测需要系统中可用的 FFmpeg/ffprobe；不要修改设备运行环境或交叉编译环境。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>python -m pip install mcap lz4 zstandard</code></pre></div>
+<p>下面的代码直接使用第三方 MCAP 库，不依赖 UGripper 仓库。替换文件路径后即可运行。示例面向当前背包二进制格式，Ego 数据需按其消息 schema 单独解析。</p>
+<h3 id="section-12">4.3 最小读取示例</h3>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>import struct
+from collections import Counter
+from mcap.reader import make_reader
+
+# 可替换为 sensor_left/right.mcap 或 fays_data_left/right.mcap。
+path = &quot;/path/to/episode/fays_data_left.mcap&quot;
+counts = Counter()
+previous = {}
+
+with open(path, &quot;rb&quot;) as source:
+    messages = make_reader(source).iter_messages(log_time_order=False)
+    for schema, channel, msg in messages:
+        topic = channel.topic
+        counts[topic] += 1
+        t_ns = msg.publish_time
+        if topic in previous and t_ns &lt;= previous[topic]:
+            print(&quot;重复或回退:&quot;, topic, previous[topic], t_ns)
+        previous[topic] = t_ns
+        decoded = None
+        if channel.message_encoding == &quot;binary&quot;:
+            if topic in (&quot;encoder_left&quot;, &quot;encoder_right&quot;):
+                if len(msg.data) != 8:
+                    raise ValueError(&quot;encoder payload 长度异常&quot;)
+                raw, rad = struct.unpack(&quot;&lt;if&quot;, msg.data)
+                decoded = {&quot;raw&quot;: raw, &quot;rad&quot;: rad}
+            elif topic == &quot;c&quot;:
+                if len(msg.data) != 4:
+                    raise ValueError(&quot;camera payload 长度异常&quot;)
+                frame_index, = struct.unpack(&quot;&lt;I&quot;, msg.data)
+                decoded = {&quot;frame_index&quot;: frame_index}
+            elif topic == &quot;i&quot;:
+                if len(msg.data) != 48:
+                    raise ValueError(&quot;IMU payload 长度异常&quot;)
+                values = struct.unpack(&quot;&lt;6d&quot;, msg.data)
+                decoded = dict(zip(
+                    (&quot;gx&quot;, &quot;gy&quot;, &quot;gz&quot;, &quot;ax&quot;, &quot;ay&quot;, &quot;az&quot;), values))
+        # 仅打印每个 topic 的前三条，避免大文件输出过多。
+        if counts[topic] &lt;= 3:
+            print(topic, &quot;publish_ns=&quot;, t_ns,
+                  &quot;log_ns=&quot;, msg.log_time, &quot;sample=&quot;, decoded,
+                  &quot;encoding=&quot;, channel.message_encoding,
+                  &quot;schema=&quot;, schema.name if schema else None)
+
+print(&quot;各 topic 消息数量:&quot;, dict(counts))</code></pre></div>
+<p>保留文件内顺序可以检查真实回退；先按时间排序会掩盖此类异常。处理大文件应流式读取，不必将全部图像和传感器消息放入内存。</p>
+<h2 id="section-13">5. 如何统一时间轴</h2>
+<p>单位速查：<code>task_*_s/boot_time_s</code> 为秒，<code>start_offset_us</code> 为微秒，MCAP 消息头时间为纳秒；<code>PTS</code> 是 tick，必须乘 <code>time_base</code> 才是秒。</p>
+<p>统一目标是 Unix 纳秒整数 <code>t_ns</code>。Unix 时间本身不随时区改变；中国时区只影响显示。使用整数或有理数换算，避免大时间戳经浮点数转换损失精度。</p>
+<div class="table-wrap"><table><thead><tr><th>数据流</th><th>Unix 纳秒换算</th></tr></thead><tbody><tr><td>主摄、触觉视频</td><td><code>start_offset_us × 1000 + PTS × time_base × 10^9</code></td></tr><tr><td>本机 encoder 等 Unix 域 MCAP 消息</td><td>直接取消息头 <code>publish_time</code></td></tr><tr><td>双目视频</td><td>与同侧 <code>c</code> 消息的 frameIndex 对应，取其 <code>publish_time</code></td></tr><tr><td>Fays IMU</td><td><code>publish_time</code> 为主机接收时刻（Unix 纳秒），可用于接收时间对齐；精确采样对齐见 5.2</td></tr><tr><td>Ego 单调时钟 topic</td><td>用 Ego metadata/head_pose 锚点换算，见下文</td></tr><tr><td>Ego 已为 Unix 的 metainfo 等 topic</td><td>直接使用，不能再次加偏移</td></tr></tbody></table></div>
+<h3 id="section-14">5.1 主摄与触觉</h3>
+<p>主摄录制端已完成固件时钟映射及必要修正，使用最终落盘 PTS；不再用原始 SEI 替换，也不重复加历史补偿。</p>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>from fractions import Fraction
+
+start_offset_us = 1780000000000000  # 实际取本路 metadata
+pts = 40                          # 实际取解码帧
+base = Fraction(1, 1000)           # 实际取该帧/视频 time_base
+relative_ns = Fraction(pts) * base * 1_000_000_000
+t_ns = start_offset_us * 1000 + round(relative_ns)
+# 1780000000040000000 ns</code></pre></div>
+<p>如果已经读取 <code>pts_time</code> 秒值，不要再乘 time_base。不能把每路首帧分别归零后声称它们已同步。</p>
+<h3 id="section-15">5.2 双目与 IMU</h3>
+<p>双目 MKV 使用固定帧率播放轴，设备 gap 可能被压紧。<strong>不能用 MKV PTS 或帧号/FPS 重建双目真实采集时间</strong>。必须读取同侧 Fays MCAP 的 <code>c</code> 消息，核对帧数、索引连续性与顺序后关联解码图像。</p>
+<p><code>frameIndex</code> 是录制端每条视频从 0 开始的连续写入索引，不是相机硬件帧号。索引连续也可能存在采集丢帧，需检查相邻 <code>c.log_time</code> 的时间间隔。</p>
+<p>视频帧数与 <code>c</code> 消息数量不一致时，不能从缺失位置之后继续按数组下标强行配对；先定位异常，无法恢复对应关系的区段标记不可用。</p>
+<p>Fays 两类消息的时间含义不同：</p>
+<ul><li><code>c.log_time</code> 是图像设备时间；<code>c.publish_time</code> 是映射到背包 Unix 时间并完成相机补偿后的时间，不要再次应用补偿。</li><li><code>i.log_time</code> 是 IMU 原始设备采样时间；<code>i.publish_time</code> 是主机获取该样本时的 Unix 时间（当前为回调接收时刻，旧版为 SDK 取数时刻），包含传输与调度延迟，并非用相机映射得到的采样时间。成批到达时，接收间隔不能代表真实采样间隔。</li></ul>
+<p>设备侧 gap、回退及 IMU 采样频率应检查 <code>log_time</code>；<code>publish_time</code> 可用于接收时间覆盖检查，但不能据此宣称 IMU 与图像已精确同步。需要精确跨模态采样对齐时，须根据该 SDK/固件的共同设备时钟和映射证据建立并验证转换，保留延迟误差；缺少映射证据时不要把接收时间当作采样真值。</p>
+<h3 id="section-16">5.3 Ego</h3>
+<p>新版 Ego 通过 USB ACM 串口持续与背包系统时钟对齐；旧版使用录制前 ADB 校时。离线状态下，两者时间一致不代表已经对准标准 UTC。同步状态、offset、RTT 描述协议测量质量，不是曝光时刻精度证明。</p>
+<p>已支持的 Ego 数据中，<code>head_pose/controller_pose/imu</code> 可能使用设备单调时间。令：</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>A_us = ego/metadata.json 中 head_pose_details[name=head_pose].start_offset_us
+H0_ns = head_pose 首条有效消息的原始 publish_time
+Delta_ns = A_us × 1000 - H0_ns
+Ego Unix 时间 = 原始 publish_time + Delta_ns</code></pre></div>
+<p>只对确认共用该单调时钟域的 topic 使用此偏移；<code>*_metainfo</code> 等已是 Unix 的消息不加。缺锚点、应用版本不匹配或时间域不明时应停止自动换算，不能仅凭时间戳大小猜测。</p>
+<p>Ego 视频需要其自身 metadata 中对应视频的时间起点和时间基定义，不能使用背包根目录的视频起点，也不能默认所有 Ego 视频与 head_pose 同一起点。应用版本不同可能改变字段与格式；无法确认视频时间定义时，保留原始 PTS 并请求该版本的格式说明。</p>
+<h3 id="section-17">5.4 对齐多个流</h3>
+<ol><li>分别建立逐帧/逐消息 Unix 时间，保留原始序号及时间戳。</li><li>检查重复、回退、gap、首末覆盖和视频/MCAP 对应关系。</li><li>共同区间取 <code>[max(各流首时刻), min(各流末时刻)]</code>；无交集就不能生成完整多模态样本。</li><li>选择主摄时刻或统一采样网格，图像取最近帧并限制误差；连续量按需插值，姿态使用符合其定义的四元数插值。长 gap 不跨越插值。</li><li>输出有效性标记和每路匹配误差。需要相对时间时，最后统一减去同一个 <code>t0_ns</code>。</li></ol>
+<p>统一时间域不等于硬件曝光同步。滚动快门、曝光时长、固件时间定义和传输延迟仍可能带来误差；物理精度须通过毫秒表或共同事件验证。首次启动错峰与持续时间漂移应分开统计。</p>
+<h3 id="section-18">5.5 对齐结果最少保留什么</h3>
+<p>建议每条对齐样本保留：共同参考时间 <code>t_ns</code>、各路原始帧/消息索引、各路原始时间、匹配误差 <code>delta_ms=(流时间−参考时间)/10^6</code> 和有效性标记。正值表示该路晚于参考时间。这样发现错位时可以追溯，而不必重新猜测匹配关系。</p>
+<p>检查 gap 时使用真实采集时间：主摄/触觉用落盘 PTS，双目用同侧 <code>c.log_time</code>。分别统计启动阶段和稳定采集阶段，不把平均 FPS 正常或 frameIndex 连续当作无丢帧。Ego 首帧较晚说明启动错峰，不能直接作为持续授时误差。</p>
+<h2 id="section-19">6. 质量结果与使用边界</h2>
+<p>先检查最终 <code>quality_check_status</code> 和 <code>quality_check_err_type</code>，再按用途做逐流检查。<code>success</code> 表示通过该软件版本的运行时检查，不代表全部传感器无丢帧、外参完成实测或曝光严格同步；<code>fail</code> 数据应保留错误原因，不能只删除异常文件后当作正常样本。</p>
+<p>本页不将 2.1.15 开发版的连续缺失门限和最终 2% 丢失率规则套用于此版本。请依据本次录制的质量结果及日志判断；成功结果不替代离线逐帧检查，也不证明 Ego 远端无漏采。</p><p>建议至少复核必需文件、视频可解码性、MCAP topic/消息数、各流首末覆盖、时间回退/gap、双目图像与 <code>c</code> 消息对应关系，以及任务所需的标定有效性。主摄可能出现固件重复时间戳及输出 PTS 钳制，不能把最终 PTS 的单个间隔直接当作硬件漏采证明。</p><footer>核对依据：版本 tag 的 UgripperRuntime 元数据与标定写出逻辑、FaysStereoRecorder 时间戳写入逻辑，以及当前工作区实现。实际数据字段优先于本文示例。</footer></template>
+<template id="guide-2.1.13"><h1 id="section-1">UGripper 原始数据使用指南</h1>
+<aside class="notice"><strong>不推荐用户直接处理设备原始数据。请优先使用平台处理后的数据集。</strong><br><br>原始数据包含多种时间域、设备标定和异常状态，直接解码或按帧号拼接可能产生时间错位及错误样本。仅在平台数据不能满足调试、研究或自定义处理需求时，参考本文读取原始数据，并自行完成格式、同步和质量检查。平台数据的具体处理范围以对应数据集说明为准。</aside>
+<p>正在阅读 <strong>UGripper 2.1.13</strong>：metadata <strong>3.2</strong> / calibration <strong>3.1</strong>。核对依据：V2.1.13 · 4ca0aa7。实际文件中的协议版本优先；同名安装包可能包含后续修复。</p>
+<p>本文用于组内同步原始数据格式与时间对齐约定。阅读顺序：先确认产物与版本，再读取视频/MCAP，最后统一时间轴并检查质量。本文中的数据路径均为示例，请替换为实际路径。文内代码可直接复制运行，不依赖项目仓库或随附脚本。</p>
+<h2 id="section-2">0. 先选对版本</h2>
+<p class="version-summary">当前选择：<strong>2.1.13</strong> · metadata 3.2 · calibration 3.1</p><details><summary>展开 2.1.11–2.1.15 版本差异对照</summary><p>以下为 2026-10-27 核对的仓库版本。实际数据始终以文件内版本字段为准；同名安装包可能含后续修复，不能仅凭软件版本替换数据协议判断。</p>
+<div class="table-wrap"><table><thead><tr><th>软件版本</th><th>核对依据</th><th>metadata data_version</th><th>calibration format_version</th><th>读取差异</th></tr></thead><tbody><tr><td>2.1.11</td><td>V2.1.11 · df25df8</td><td>3.1</td><td>3.0</td><td>不要求 boot_time_s、tactile_damage_sn_list 及独立主摄外参状态；不要按新格式判缺项</td></tr><tr><td>2.1.12</td><td>V2.1.12 · 465634b</td><td>3.2</td><td>3.1</td><td>增加开机时间、触觉损坏 SN 列表及独立外参状态；缺外参 warning 并使用默认值</td></tr><tr><td>2.1.13</td><td>V2.1.13 · 4ca0aa7</td><td>3.2</td><td>3.1</td><td>沿用上述格式；读取时仍核实实际配置、文件与质量结果</td></tr><tr><td>2.1.14</td><td>V2.1.14 · 11bb74d</td><td>3.2</td><td>3.1</td><td>沿用上述格式和外参兼容；包含 Fays 校时映射恢复等运行时修复</td></tr><tr><td>2.1.15</td><td>开发快照，HEAD e67627b + 工作区改动；无对应 tag</td><td>3.3</td><td>3.1</td><td>新增软件/固件版本信息及 Ego 关联；新增字段和质量规则按实际包核对</td></tr></tbody></table></div>
+<p>2.1.11 的 calibration 3.0 没有当前的独立主摄外参合同，不能把缺少 main_cam_extrinsic_calib_status 当作文件损坏。2.1.12–2.1.14 不应被要求具备 metadata 3.3 的版本扩展字段。下文 metadata 表覆盖当前格式，各版本只读取其协议中存在的字段。</p>
+<p>所有版本都应先检查质量结果，再解码原始数据。后文标明“当前开发”的收尾屏障、丢失率门限和 FT601 说明，不追溯适用于旧 tag。Fays IMU 的主机时间在旧版由取数时记录、当前由回调接收时记录，两者都不是精确采样时刻。</p>
+</details><h2 id="section-3">1. 数据目录与文件</h2>
+<p>设备数据通常位于 <code>/mnt/data_disk/&lt;设备SN小写&gt;/data/episode_YYYYMMDD_NNNN/</code>。录制中的目录带 <code>-temp</code> 后缀；请使用停录、收尾、质量检查及刷盘完成后的最终目录。读取前还需确认该安装包的后台校验已结束。最终目录存在不等于质量合格。</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>episode_YYYYMMDD_NNNN/
+  metadata.json             # 背包元数据与质量结果
+  calibration.json          # 背包相机/传感器标定
+  cam_left.mkv              # 左、右夹爪主摄
+  cam_right.mkv
+  tcam_left_l.mkv           # 四路触觉相机
+  tcam_left_r.mkv
+  tcam_right_l.mkv
+  tcam_right_r.mkv
+  stereo_left.mkv           # 左、右双目模组的视频
+  stereo_right.mkv
+  sensor_left.mcap          # 左、右编码器等传感器消息
+  sensor_right.mcap
+  fays_data_left.mcap       # 双目帧时间戳及 Fays IMU
+  fays_data_right.mcap
+  ego/                     # 可选；有独立 metadata/calibration
+    metadata.json
+    calibration.json
+    rgb.mp4
+    tracking.mp4
+    ctrl.mp4
+    sensor.mcap
+    audio.m4a
+    ego_sync.json</code></pre></div>
+<ul><li><code>+nostereo</code> 包不生成双目视频与 Fays MCAP；可选胸部主摄为 <code>cam_chest.mkv</code>。</li><li><code>audio_pre.wav</code>、<code>audio_post.wav</code>、<code>validation_error.log</code> 按录制条件或异常情况生成。</li><li>持续授时版本可能保存 <code>ego/time_sync_samples.jsonl</code>；毫秒表测试可能保存 <code>stopwatch_timing.json</code>，它们不是每条数据的必需文件。</li><li><code>left/right</code> 是设备侧别；触觉文件末尾的 <code>l/r</code> 是该侧夹爪上的传感器位置，不是另一只夹爪。</li><li>双目视频当前通常为 640×800，上下拼接两个 640×400 图像。每个模组都有两目，左右模组不能当成一对双目。图像次序与 cam0/cam1 对应应结合该 SDK/固件及标定确认。</li></ul>
+<h2 id="section-4">2. 元数据与标定</h2>
+<h3 id="section-5">2.1 metadata.json</h3>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义与用法</th></tr></thead><tbody><tr><td><code>data_version</code></td><td>本版本写出 3.2；请先读取实际 data_version，再按对应协议解析</td></tr><tr><td><code>software_version</code>、<code>hardware_version</code></td><td>用于定位软件行为与设备差异</td></tr><tr><td><code>device_sn</code>、<code>hardware_list</code></td><td>背包与各传感器身份；用于匹配标定</td></tr><tr><td><code>camera_codec</code></td><td>视频编码配置，实际编码仍应通过视频流确认</td></tr><tr><td><code>require_files</code></td><td>当前录制配置的必需文件；Ego 文件可能不在其中，需另查</td></tr><tr><td><code>video_details</code></td><td>每路视频名称、时间起点、时长等；按 <code>name</code> 匹配，不依赖数组顺序</td></tr><tr><td><code>video_details[].start_offset_us</code></td><td><strong>PTS=0 对应的绝对 Unix 微秒</strong>，不是相对 episode 起点</td></tr><tr><td><code>collection_duration_s</code></td><td>采集时长汇总；不代表每一路覆盖同一时间区间</td></tr><tr><td><code>task_start_s</code>、<code>task_stop_s</code></td><td>人工任务标记，Unix 秒；0 或缺失不作为有效时刻</td></tr><tr><td><code>boot_time_s</code></td><td>系统开机时刻，Unix 秒；不是需要加到所有流上的时间偏移</td></tr><tr><td><code>quality_check_status</code></td><td><code>success</code> / <code>fail</code> / 空；空值不代表成功</td></tr><tr><td><code>quality_check_err_type</code></td><td>主失败原因，更多证据看日志</td></tr><tr><td><code>tactile_damage_sn_list</code></td><td>触觉损坏检测结果 SN；可能由后台校验更新；读取前确认收尾及校验已完成</td></tr></tbody></table></div>
+<p>此版本使用 metadata 3.2，不要求 metadata 3.3 新增的软件/固件版本扩展、<code>ego_bound</code>、<code>hardware_list.ego_sn</code> 或 Ego 的 <code>related_episode_*</code> 字段。不要将缺少这些新增字段判为数据损坏。</p><h3 id="section-6">2.2 calibration.json</h3>
+<p>本版本标定格式为 3.1；它与 metadata 的 <code>data_version=3.2</code> 是两套独立版本号。包含相机模型、分辨率、内参、畸变、外参及标定状态等；主摄外参按本版本标定合同读取，Fays 使用模组标定。</p>
+<p>使用前核对设备 SN、图像尺寸、相机模型、畸变模型及标定有效状态。默认结构参数或单位矩阵不等于完成有效标定。变换矩阵必须确认源/目标坐标系、单位、左右乘约定；不要根据字段名自行推断。SDK 的 <code>timeshift_cam*_to_imu0</code> 也不能未经核对就叠加到已对齐的落盘时间上。</p>
+<p>夹爪二进制读写协议不等同于 episode JSON 格式，读取原始数据时应以随数据保存的标定 JSON 为准。Ego 使用自己的 <code>ego/calibration.json</code>，不能套用背包相机标定。</p>
+<h4 id="section-7">缺少夹爪外参时的兼容行为</h4>
+<p>已核对的 <code>V2.1.12</code>–<code>V2.1.14</code> 及当前实现已兼容未存储外参的旧夹爪：仅缺少或无效的夹爪外参不会阻止录制，也不会因此进入 ERROR。写出标定时记录 <code>WARN: gripper extrinsics unavailable ... using structural default</code>，逐项使用约定的默认结构外参；另一项有有效实读值时保留实读值，不从历史 episode 补值。</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义</th></tr></thead><tbody><tr><td><code>calibration_info.calibration_status</code></td><td>原有主摄内参及 Fays 标定的汇总状态</td></tr><tr><td><code>calibration_info.main_cam_extrinsic_calib_status</code></td><td>左右主摄的两项外参均有效实读时为 <code>calibrated</code>，否则为 <code>uncalibrated</code></td></tr><tr><td><code>observation.images.cam_left_main/right_main.extrinsics.T_base_main_camera</code></td><td>主摄与基座间的 4×4 变换；来自夹爪 UCAL V3 对应字段，缺失时用默认值</td></tr><tr><td><code>observation.images.cam_left_main/right_main.extrinsics.T_main_camera_stereo_cam0</code></td><td>主摄与双目 cam0 间的 4×4 变换；来自夹爪 UCAL V2 及后续版本对应字段，缺失时用默认值</td></tr></tbody></table></div>
+<p>表中 <code>cam_left_main/right_main</code> 表示两个独立键。两种标定状态彼此独立；<code>uncalibrated</code> 配合合法默认矩阵可以通过格式校验，但不证明几何精度合格。外参状态是汇总值，不能仅凭它判断具体哪一侧、哪一个矩阵为默认值。需要实测外参的几何重建任务应筛选该状态，并核实对应标定来源。主摄内参缺失、设备断连或其他采集异常仍按各自规则判失败，不属于此兼容范围。</p>
+<h2 id="section-8">3. 视频怎么读取</h2>
+<p>主摄、触觉和双目以 MKV 保存，编码可为 H.264/H.265；Ego 使用其应用生成的视频。先探测实际流信息，不硬编码分辨率、帧率或颜色格式。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>ffprobe -v error -select_streams v:0 \
+  -show_entries stream=codec_name,width,height,pix_fmt,time_base,avg_frame_rate \
+  -of json /path/to/episode/cam_left.mkv
+
+ffprobe -v error -select_streams v:0 -show_frames \
+  -show_entries frame=pts,best_effort_timestamp,pict_type \
+  -of json /path/to/episode/cam_left.mkv &gt; /tmp/cam_left_frames.json</code></pre></div>
+<p>使用 FFmpeg/PyAV 等解码；逐帧保存对应 PTS 和 <code>time_base</code>，不要在导出时自动补帧或按固定 FPS 重建时间。解码帧按显示时间关联，不能把存在重排序的视频直接按压缩包数组下标对应图像。遇到缺失 PTS 应标记异常，不静默用帧号代替。</p>
+<p>双目源图像为灰度，但编码文件可能以 YUV420 表示；解码成 RGB 不会增加原始图像精度。分析像素值时应以该文件的色彩范围为准，注意解码器的范围转换。视频帧率字段是播放参数，不能单独证明没有采集丢帧。</p>
+<h2 id="section-9">4. MCAP 格式与读取</h2>
+<p>这些文件是<strong>通用 MCAP 容器，不是 ROS 2 bag</strong>。<code>ros2 bag info</code> 或 Foxglove 的 ROS 导入失败，不足以说明文件损坏。可视化前可能需要转成对应 schema。</p>
+<h3 id="section-10">4.1 背包自定义二进制 payload</h3>
+<div class="table-wrap"><table><thead><tr><th>文件 / topic</th><th>字节数</th><th>小端 payload</th><th>含义</th></tr></thead><tbody><tr><td><code>sensor_*.mcap</code> / <code>encoder_left</code> 或 <code>encoder_right</code></td><td>8</td><td><code>&lt;if</code></td><td>int32 原始计数 + float32 弧度</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>i</code></td><td>48</td><td><code>&lt;6d</code></td><td>float64：gx, gy, gz, ax, ay, az</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>c</code></td><td>4</td><td><code>&lt;I</code></td><td>uint32 视频帧索引 frameIndex</td></tr></tbody></table></div>
+<p>MCAP 消息头的 <code>publishTime</code> / <code>logTime</code> 不在上述 payload 中。Python API 分别叫 <code>publish_time</code> / <code>log_time</code>。即使 schema 描述使用 JSON 文本，channel 的 <code>message_encoding=binary</code> 仍表示 payload 不是 JSON。</p>
+<p>编码器弧度可乘 <code>180/π</code> 转为角度，不把原始计数直接当作角度。Fays IMU 数值沿用 SDK 输出，轴向和单位需按所用 SDK/固件协议确认；不要未经确认换算为度/秒或乘重力加速度。未知 topic 应保留 schema、encoding 与原始字节，不能套用上表。Ego MCAP 由外部应用产生，按其 schema 解码。</p>
+<h3 id="section-11">4.2 准备读取环境</h3>
+<p>在独立的数据分析 Python 环境中安装 MCAP 和压缩依赖。视频探测需要系统中可用的 FFmpeg/ffprobe；不要修改设备运行环境或交叉编译环境。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>python -m pip install mcap lz4 zstandard</code></pre></div>
+<p>下面的代码直接使用第三方 MCAP 库，不依赖 UGripper 仓库。替换文件路径后即可运行。示例面向当前背包二进制格式，Ego 数据需按其消息 schema 单独解析。</p>
+<h3 id="section-12">4.3 最小读取示例</h3>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>import struct
+from collections import Counter
+from mcap.reader import make_reader
+
+# 可替换为 sensor_left/right.mcap 或 fays_data_left/right.mcap。
+path = &quot;/path/to/episode/fays_data_left.mcap&quot;
+counts = Counter()
+previous = {}
+
+with open(path, &quot;rb&quot;) as source:
+    messages = make_reader(source).iter_messages(log_time_order=False)
+    for schema, channel, msg in messages:
+        topic = channel.topic
+        counts[topic] += 1
+        t_ns = msg.publish_time
+        if topic in previous and t_ns &lt;= previous[topic]:
+            print(&quot;重复或回退:&quot;, topic, previous[topic], t_ns)
+        previous[topic] = t_ns
+        decoded = None
+        if channel.message_encoding == &quot;binary&quot;:
+            if topic in (&quot;encoder_left&quot;, &quot;encoder_right&quot;):
+                if len(msg.data) != 8:
+                    raise ValueError(&quot;encoder payload 长度异常&quot;)
+                raw, rad = struct.unpack(&quot;&lt;if&quot;, msg.data)
+                decoded = {&quot;raw&quot;: raw, &quot;rad&quot;: rad}
+            elif topic == &quot;c&quot;:
+                if len(msg.data) != 4:
+                    raise ValueError(&quot;camera payload 长度异常&quot;)
+                frame_index, = struct.unpack(&quot;&lt;I&quot;, msg.data)
+                decoded = {&quot;frame_index&quot;: frame_index}
+            elif topic == &quot;i&quot;:
+                if len(msg.data) != 48:
+                    raise ValueError(&quot;IMU payload 长度异常&quot;)
+                values = struct.unpack(&quot;&lt;6d&quot;, msg.data)
+                decoded = dict(zip(
+                    (&quot;gx&quot;, &quot;gy&quot;, &quot;gz&quot;, &quot;ax&quot;, &quot;ay&quot;, &quot;az&quot;), values))
+        # 仅打印每个 topic 的前三条，避免大文件输出过多。
+        if counts[topic] &lt;= 3:
+            print(topic, &quot;publish_ns=&quot;, t_ns,
+                  &quot;log_ns=&quot;, msg.log_time, &quot;sample=&quot;, decoded,
+                  &quot;encoding=&quot;, channel.message_encoding,
+                  &quot;schema=&quot;, schema.name if schema else None)
+
+print(&quot;各 topic 消息数量:&quot;, dict(counts))</code></pre></div>
+<p>保留文件内顺序可以检查真实回退；先按时间排序会掩盖此类异常。处理大文件应流式读取，不必将全部图像和传感器消息放入内存。</p>
+<h2 id="section-13">5. 如何统一时间轴</h2>
+<p>单位速查：<code>task_*_s/boot_time_s</code> 为秒，<code>start_offset_us</code> 为微秒，MCAP 消息头时间为纳秒；<code>PTS</code> 是 tick，必须乘 <code>time_base</code> 才是秒。</p>
+<p>统一目标是 Unix 纳秒整数 <code>t_ns</code>。Unix 时间本身不随时区改变；中国时区只影响显示。使用整数或有理数换算，避免大时间戳经浮点数转换损失精度。</p>
+<div class="table-wrap"><table><thead><tr><th>数据流</th><th>Unix 纳秒换算</th></tr></thead><tbody><tr><td>主摄、触觉视频</td><td><code>start_offset_us × 1000 + PTS × time_base × 10^9</code></td></tr><tr><td>本机 encoder 等 Unix 域 MCAP 消息</td><td>直接取消息头 <code>publish_time</code></td></tr><tr><td>双目视频</td><td>与同侧 <code>c</code> 消息的 frameIndex 对应，取其 <code>publish_time</code></td></tr><tr><td>Fays IMU</td><td><code>publish_time</code> 为主机接收时刻（Unix 纳秒），可用于接收时间对齐；精确采样对齐见 5.2</td></tr><tr><td>Ego 单调时钟 topic</td><td>用 Ego metadata/head_pose 锚点换算，见下文</td></tr><tr><td>Ego 已为 Unix 的 metainfo 等 topic</td><td>直接使用，不能再次加偏移</td></tr></tbody></table></div>
+<h3 id="section-14">5.1 主摄与触觉</h3>
+<p>主摄录制端已完成固件时钟映射及必要修正，使用最终落盘 PTS；不再用原始 SEI 替换，也不重复加历史补偿。</p>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>from fractions import Fraction
+
+start_offset_us = 1780000000000000  # 实际取本路 metadata
+pts = 40                          # 实际取解码帧
+base = Fraction(1, 1000)           # 实际取该帧/视频 time_base
+relative_ns = Fraction(pts) * base * 1_000_000_000
+t_ns = start_offset_us * 1000 + round(relative_ns)
+# 1780000000040000000 ns</code></pre></div>
+<p>如果已经读取 <code>pts_time</code> 秒值，不要再乘 time_base。不能把每路首帧分别归零后声称它们已同步。</p>
+<h3 id="section-15">5.2 双目与 IMU</h3>
+<p>双目 MKV 使用固定帧率播放轴，设备 gap 可能被压紧。<strong>不能用 MKV PTS 或帧号/FPS 重建双目真实采集时间</strong>。必须读取同侧 Fays MCAP 的 <code>c</code> 消息，核对帧数、索引连续性与顺序后关联解码图像。</p>
+<p><code>frameIndex</code> 是录制端每条视频从 0 开始的连续写入索引，不是相机硬件帧号。索引连续也可能存在采集丢帧，需检查相邻 <code>c.log_time</code> 的时间间隔。</p>
+<p>视频帧数与 <code>c</code> 消息数量不一致时，不能从缺失位置之后继续按数组下标强行配对；先定位异常，无法恢复对应关系的区段标记不可用。</p>
+<p>Fays 两类消息的时间含义不同：</p>
+<ul><li><code>c.log_time</code> 是图像设备时间；<code>c.publish_time</code> 是映射到背包 Unix 时间并完成相机补偿后的时间，不要再次应用补偿。</li><li><code>i.log_time</code> 是 IMU 原始设备采样时间；<code>i.publish_time</code> 是主机获取该样本时的 Unix 时间（当前为回调接收时刻，旧版为 SDK 取数时刻），包含传输与调度延迟，并非用相机映射得到的采样时间。成批到达时，接收间隔不能代表真实采样间隔。</li></ul>
+<p>设备侧 gap、回退及 IMU 采样频率应检查 <code>log_time</code>；<code>publish_time</code> 可用于接收时间覆盖检查，但不能据此宣称 IMU 与图像已精确同步。需要精确跨模态采样对齐时，须根据该 SDK/固件的共同设备时钟和映射证据建立并验证转换，保留延迟误差；缺少映射证据时不要把接收时间当作采样真值。</p>
+<h3 id="section-16">5.3 Ego</h3>
+<p>新版 Ego 通过 USB ACM 串口持续与背包系统时钟对齐；旧版使用录制前 ADB 校时。离线状态下，两者时间一致不代表已经对准标准 UTC。同步状态、offset、RTT 描述协议测量质量，不是曝光时刻精度证明。</p>
+<p>已支持的 Ego 数据中，<code>head_pose/controller_pose/imu</code> 可能使用设备单调时间。令：</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>A_us = ego/metadata.json 中 head_pose_details[name=head_pose].start_offset_us
+H0_ns = head_pose 首条有效消息的原始 publish_time
+Delta_ns = A_us × 1000 - H0_ns
+Ego Unix 时间 = 原始 publish_time + Delta_ns</code></pre></div>
+<p>只对确认共用该单调时钟域的 topic 使用此偏移；<code>*_metainfo</code> 等已是 Unix 的消息不加。缺锚点、应用版本不匹配或时间域不明时应停止自动换算，不能仅凭时间戳大小猜测。</p>
+<p>Ego 视频需要其自身 metadata 中对应视频的时间起点和时间基定义，不能使用背包根目录的视频起点，也不能默认所有 Ego 视频与 head_pose 同一起点。应用版本不同可能改变字段与格式；无法确认视频时间定义时，保留原始 PTS 并请求该版本的格式说明。</p>
+<h3 id="section-17">5.4 对齐多个流</h3>
+<ol><li>分别建立逐帧/逐消息 Unix 时间，保留原始序号及时间戳。</li><li>检查重复、回退、gap、首末覆盖和视频/MCAP 对应关系。</li><li>共同区间取 <code>[max(各流首时刻), min(各流末时刻)]</code>；无交集就不能生成完整多模态样本。</li><li>选择主摄时刻或统一采样网格，图像取最近帧并限制误差；连续量按需插值，姿态使用符合其定义的四元数插值。长 gap 不跨越插值。</li><li>输出有效性标记和每路匹配误差。需要相对时间时，最后统一减去同一个 <code>t0_ns</code>。</li></ol>
+<p>统一时间域不等于硬件曝光同步。滚动快门、曝光时长、固件时间定义和传输延迟仍可能带来误差；物理精度须通过毫秒表或共同事件验证。首次启动错峰与持续时间漂移应分开统计。</p>
+<h3 id="section-18">5.5 对齐结果最少保留什么</h3>
+<p>建议每条对齐样本保留：共同参考时间 <code>t_ns</code>、各路原始帧/消息索引、各路原始时间、匹配误差 <code>delta_ms=(流时间−参考时间)/10^6</code> 和有效性标记。正值表示该路晚于参考时间。这样发现错位时可以追溯，而不必重新猜测匹配关系。</p>
+<p>检查 gap 时使用真实采集时间：主摄/触觉用落盘 PTS，双目用同侧 <code>c.log_time</code>。分别统计启动阶段和稳定采集阶段，不把平均 FPS 正常或 frameIndex 连续当作无丢帧。Ego 首帧较晚说明启动错峰，不能直接作为持续授时误差。</p>
+<h2 id="section-19">6. 质量结果与使用边界</h2>
+<p>先检查最终 <code>quality_check_status</code> 和 <code>quality_check_err_type</code>，再按用途做逐流检查。<code>success</code> 表示通过该软件版本的运行时检查，不代表全部传感器无丢帧、外参完成实测或曝光严格同步；<code>fail</code> 数据应保留错误原因，不能只删除异常文件后当作正常样本。</p>
+<p>本页不将 2.1.15 开发版的连续缺失门限和最终 2% 丢失率规则套用于此版本。请依据本次录制的质量结果及日志判断；成功结果不替代离线逐帧检查，也不证明 Ego 远端无漏采。</p><p>建议至少复核必需文件、视频可解码性、MCAP topic/消息数、各流首末覆盖、时间回退/gap、双目图像与 <code>c</code> 消息对应关系，以及任务所需的标定有效性。主摄可能出现固件重复时间戳及输出 PTS 钳制，不能把最终 PTS 的单个间隔直接当作硬件漏采证明。</p><footer>核对依据：版本 tag 的 UgripperRuntime 元数据与标定写出逻辑、FaysStereoRecorder 时间戳写入逻辑，以及当前工作区实现。实际数据字段优先于本文示例。</footer></template>
+<template id="guide-2.1.12"><h1 id="section-1">UGripper 原始数据使用指南</h1>
+<aside class="notice"><strong>不推荐用户直接处理设备原始数据。请优先使用平台处理后的数据集。</strong><br><br>原始数据包含多种时间域、设备标定和异常状态，直接解码或按帧号拼接可能产生时间错位及错误样本。仅在平台数据不能满足调试、研究或自定义处理需求时，参考本文读取原始数据，并自行完成格式、同步和质量检查。平台数据的具体处理范围以对应数据集说明为准。</aside>
+<p>正在阅读 <strong>UGripper 2.1.12</strong>：metadata <strong>3.2</strong> / calibration <strong>3.1</strong>。核对依据：V2.1.12 · 465634b。实际文件中的协议版本优先；同名安装包可能包含后续修复。</p>
+<p>本文用于组内同步原始数据格式与时间对齐约定。阅读顺序：先确认产物与版本，再读取视频/MCAP，最后统一时间轴并检查质量。本文中的数据路径均为示例，请替换为实际路径。文内代码可直接复制运行，不依赖项目仓库或随附脚本。</p>
+<h2 id="section-2">0. 先选对版本</h2>
+<p class="version-summary">当前选择：<strong>2.1.12</strong> · metadata 3.2 · calibration 3.1</p><details><summary>展开 2.1.11–2.1.15 版本差异对照</summary><p>以下为 2026-10-27 核对的仓库版本。实际数据始终以文件内版本字段为准；同名安装包可能含后续修复，不能仅凭软件版本替换数据协议判断。</p>
+<div class="table-wrap"><table><thead><tr><th>软件版本</th><th>核对依据</th><th>metadata data_version</th><th>calibration format_version</th><th>读取差异</th></tr></thead><tbody><tr><td>2.1.11</td><td>V2.1.11 · df25df8</td><td>3.1</td><td>3.0</td><td>不要求 boot_time_s、tactile_damage_sn_list 及独立主摄外参状态；不要按新格式判缺项</td></tr><tr><td>2.1.12</td><td>V2.1.12 · 465634b</td><td>3.2</td><td>3.1</td><td>增加开机时间、触觉损坏 SN 列表及独立外参状态；缺外参 warning 并使用默认值</td></tr><tr><td>2.1.13</td><td>V2.1.13 · 4ca0aa7</td><td>3.2</td><td>3.1</td><td>沿用上述格式；读取时仍核实实际配置、文件与质量结果</td></tr><tr><td>2.1.14</td><td>V2.1.14 · 11bb74d</td><td>3.2</td><td>3.1</td><td>沿用上述格式和外参兼容；包含 Fays 校时映射恢复等运行时修复</td></tr><tr><td>2.1.15</td><td>开发快照，HEAD e67627b + 工作区改动；无对应 tag</td><td>3.3</td><td>3.1</td><td>新增软件/固件版本信息及 Ego 关联；新增字段和质量规则按实际包核对</td></tr></tbody></table></div>
+<p>2.1.11 的 calibration 3.0 没有当前的独立主摄外参合同，不能把缺少 main_cam_extrinsic_calib_status 当作文件损坏。2.1.12–2.1.14 不应被要求具备 metadata 3.3 的版本扩展字段。下文 metadata 表覆盖当前格式，各版本只读取其协议中存在的字段。</p>
+<p>所有版本都应先检查质量结果，再解码原始数据。后文标明“当前开发”的收尾屏障、丢失率门限和 FT601 说明，不追溯适用于旧 tag。Fays IMU 的主机时间在旧版由取数时记录、当前由回调接收时记录，两者都不是精确采样时刻。</p>
+</details><h2 id="section-3">1. 数据目录与文件</h2>
+<p>设备数据通常位于 <code>/mnt/data_disk/&lt;设备SN小写&gt;/data/episode_YYYYMMDD_NNNN/</code>。录制中的目录带 <code>-temp</code> 后缀；请使用停录、收尾、质量检查及刷盘完成后的最终目录。读取前还需确认该安装包的后台校验已结束。最终目录存在不等于质量合格。</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>episode_YYYYMMDD_NNNN/
+  metadata.json             # 背包元数据与质量结果
+  calibration.json          # 背包相机/传感器标定
+  cam_left.mkv              # 左、右夹爪主摄
+  cam_right.mkv
+  tcam_left_l.mkv           # 四路触觉相机
+  tcam_left_r.mkv
+  tcam_right_l.mkv
+  tcam_right_r.mkv
+  stereo_left.mkv           # 左、右双目模组的视频
+  stereo_right.mkv
+  sensor_left.mcap          # 左、右编码器等传感器消息
+  sensor_right.mcap
+  fays_data_left.mcap       # 双目帧时间戳及 Fays IMU
+  fays_data_right.mcap
+  ego/                     # 可选；有独立 metadata/calibration
+    metadata.json
+    calibration.json
+    rgb.mp4
+    tracking.mp4
+    ctrl.mp4
+    sensor.mcap
+    audio.m4a
+    ego_sync.json</code></pre></div>
+<ul><li><code>+nostereo</code> 包不生成双目视频与 Fays MCAP；可选胸部主摄为 <code>cam_chest.mkv</code>。</li><li><code>audio_pre.wav</code>、<code>audio_post.wav</code>、<code>validation_error.log</code> 按录制条件或异常情况生成。</li><li>持续授时版本可能保存 <code>ego/time_sync_samples.jsonl</code>；毫秒表测试可能保存 <code>stopwatch_timing.json</code>，它们不是每条数据的必需文件。</li><li><code>left/right</code> 是设备侧别；触觉文件末尾的 <code>l/r</code> 是该侧夹爪上的传感器位置，不是另一只夹爪。</li><li>双目视频当前通常为 640×800，上下拼接两个 640×400 图像。每个模组都有两目，左右模组不能当成一对双目。图像次序与 cam0/cam1 对应应结合该 SDK/固件及标定确认。</li></ul>
+<h2 id="section-4">2. 元数据与标定</h2>
+<h3 id="section-5">2.1 metadata.json</h3>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义与用法</th></tr></thead><tbody><tr><td><code>data_version</code></td><td>本版本写出 3.2；请先读取实际 data_version，再按对应协议解析</td></tr><tr><td><code>software_version</code>、<code>hardware_version</code></td><td>用于定位软件行为与设备差异</td></tr><tr><td><code>device_sn</code>、<code>hardware_list</code></td><td>背包与各传感器身份；用于匹配标定</td></tr><tr><td><code>camera_codec</code></td><td>视频编码配置，实际编码仍应通过视频流确认</td></tr><tr><td><code>require_files</code></td><td>当前录制配置的必需文件；Ego 文件可能不在其中，需另查</td></tr><tr><td><code>video_details</code></td><td>每路视频名称、时间起点、时长等；按 <code>name</code> 匹配，不依赖数组顺序</td></tr><tr><td><code>video_details[].start_offset_us</code></td><td><strong>PTS=0 对应的绝对 Unix 微秒</strong>，不是相对 episode 起点</td></tr><tr><td><code>collection_duration_s</code></td><td>采集时长汇总；不代表每一路覆盖同一时间区间</td></tr><tr><td><code>task_start_s</code>、<code>task_stop_s</code></td><td>人工任务标记，Unix 秒；0 或缺失不作为有效时刻</td></tr><tr><td><code>boot_time_s</code></td><td>系统开机时刻，Unix 秒；不是需要加到所有流上的时间偏移</td></tr><tr><td><code>quality_check_status</code></td><td><code>success</code> / <code>fail</code> / 空；空值不代表成功</td></tr><tr><td><code>quality_check_err_type</code></td><td>主失败原因，更多证据看日志</td></tr><tr><td><code>tactile_damage_sn_list</code></td><td>触觉损坏检测结果 SN；可能由后台校验更新；读取前确认收尾及校验已完成</td></tr></tbody></table></div>
+<p>此版本使用 metadata 3.2，不要求 metadata 3.3 新增的软件/固件版本扩展、<code>ego_bound</code>、<code>hardware_list.ego_sn</code> 或 Ego 的 <code>related_episode_*</code> 字段。不要将缺少这些新增字段判为数据损坏。</p><h3 id="section-6">2.2 calibration.json</h3>
+<p>本版本标定格式为 3.1；它与 metadata 的 <code>data_version=3.2</code> 是两套独立版本号。包含相机模型、分辨率、内参、畸变、外参及标定状态等；主摄外参按本版本标定合同读取，Fays 使用模组标定。</p>
+<p>使用前核对设备 SN、图像尺寸、相机模型、畸变模型及标定有效状态。默认结构参数或单位矩阵不等于完成有效标定。变换矩阵必须确认源/目标坐标系、单位、左右乘约定；不要根据字段名自行推断。SDK 的 <code>timeshift_cam*_to_imu0</code> 也不能未经核对就叠加到已对齐的落盘时间上。</p>
+<p>夹爪二进制读写协议不等同于 episode JSON 格式，读取原始数据时应以随数据保存的标定 JSON 为准。Ego 使用自己的 <code>ego/calibration.json</code>，不能套用背包相机标定。</p>
+<h4 id="section-7">缺少夹爪外参时的兼容行为</h4>
+<p>已核对的 <code>V2.1.12</code>–<code>V2.1.14</code> 及当前实现已兼容未存储外参的旧夹爪：仅缺少或无效的夹爪外参不会阻止录制，也不会因此进入 ERROR。写出标定时记录 <code>WARN: gripper extrinsics unavailable ... using structural default</code>，逐项使用约定的默认结构外参；另一项有有效实读值时保留实读值，不从历史 episode 补值。</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义</th></tr></thead><tbody><tr><td><code>calibration_info.calibration_status</code></td><td>原有主摄内参及 Fays 标定的汇总状态</td></tr><tr><td><code>calibration_info.main_cam_extrinsic_calib_status</code></td><td>左右主摄的两项外参均有效实读时为 <code>calibrated</code>，否则为 <code>uncalibrated</code></td></tr><tr><td><code>observation.images.cam_left_main/right_main.extrinsics.T_base_main_camera</code></td><td>主摄与基座间的 4×4 变换；来自夹爪 UCAL V3 对应字段，缺失时用默认值</td></tr><tr><td><code>observation.images.cam_left_main/right_main.extrinsics.T_main_camera_stereo_cam0</code></td><td>主摄与双目 cam0 间的 4×4 变换；来自夹爪 UCAL V2 及后续版本对应字段，缺失时用默认值</td></tr></tbody></table></div>
+<p>表中 <code>cam_left_main/right_main</code> 表示两个独立键。两种标定状态彼此独立；<code>uncalibrated</code> 配合合法默认矩阵可以通过格式校验，但不证明几何精度合格。外参状态是汇总值，不能仅凭它判断具体哪一侧、哪一个矩阵为默认值。需要实测外参的几何重建任务应筛选该状态，并核实对应标定来源。主摄内参缺失、设备断连或其他采集异常仍按各自规则判失败，不属于此兼容范围。</p>
+<h2 id="section-8">3. 视频怎么读取</h2>
+<p>主摄、触觉和双目以 MKV 保存，编码可为 H.264/H.265；Ego 使用其应用生成的视频。先探测实际流信息，不硬编码分辨率、帧率或颜色格式。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>ffprobe -v error -select_streams v:0 \
+  -show_entries stream=codec_name,width,height,pix_fmt,time_base,avg_frame_rate \
+  -of json /path/to/episode/cam_left.mkv
+
+ffprobe -v error -select_streams v:0 -show_frames \
+  -show_entries frame=pts,best_effort_timestamp,pict_type \
+  -of json /path/to/episode/cam_left.mkv &gt; /tmp/cam_left_frames.json</code></pre></div>
+<p>使用 FFmpeg/PyAV 等解码；逐帧保存对应 PTS 和 <code>time_base</code>，不要在导出时自动补帧或按固定 FPS 重建时间。解码帧按显示时间关联，不能把存在重排序的视频直接按压缩包数组下标对应图像。遇到缺失 PTS 应标记异常，不静默用帧号代替。</p>
+<p>双目源图像为灰度，但编码文件可能以 YUV420 表示；解码成 RGB 不会增加原始图像精度。分析像素值时应以该文件的色彩范围为准，注意解码器的范围转换。视频帧率字段是播放参数，不能单独证明没有采集丢帧。</p>
+<h2 id="section-9">4. MCAP 格式与读取</h2>
+<p>这些文件是<strong>通用 MCAP 容器，不是 ROS 2 bag</strong>。<code>ros2 bag info</code> 或 Foxglove 的 ROS 导入失败，不足以说明文件损坏。可视化前可能需要转成对应 schema。</p>
+<h3 id="section-10">4.1 背包自定义二进制 payload</h3>
+<div class="table-wrap"><table><thead><tr><th>文件 / topic</th><th>字节数</th><th>小端 payload</th><th>含义</th></tr></thead><tbody><tr><td><code>sensor_*.mcap</code> / <code>encoder_left</code> 或 <code>encoder_right</code></td><td>8</td><td><code>&lt;if</code></td><td>int32 原始计数 + float32 弧度</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>i</code></td><td>48</td><td><code>&lt;6d</code></td><td>float64：gx, gy, gz, ax, ay, az</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>c</code></td><td>4</td><td><code>&lt;I</code></td><td>uint32 视频帧索引 frameIndex</td></tr></tbody></table></div>
+<p>MCAP 消息头的 <code>publishTime</code> / <code>logTime</code> 不在上述 payload 中。Python API 分别叫 <code>publish_time</code> / <code>log_time</code>。即使 schema 描述使用 JSON 文本，channel 的 <code>message_encoding=binary</code> 仍表示 payload 不是 JSON。</p>
+<p>编码器弧度可乘 <code>180/π</code> 转为角度，不把原始计数直接当作角度。Fays IMU 数值沿用 SDK 输出，轴向和单位需按所用 SDK/固件协议确认；不要未经确认换算为度/秒或乘重力加速度。未知 topic 应保留 schema、encoding 与原始字节，不能套用上表。Ego MCAP 由外部应用产生，按其 schema 解码。</p>
+<h3 id="section-11">4.2 准备读取环境</h3>
+<p>在独立的数据分析 Python 环境中安装 MCAP 和压缩依赖。视频探测需要系统中可用的 FFmpeg/ffprobe；不要修改设备运行环境或交叉编译环境。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>python -m pip install mcap lz4 zstandard</code></pre></div>
+<p>下面的代码直接使用第三方 MCAP 库，不依赖 UGripper 仓库。替换文件路径后即可运行。示例面向当前背包二进制格式，Ego 数据需按其消息 schema 单独解析。</p>
+<h3 id="section-12">4.3 最小读取示例</h3>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>import struct
+from collections import Counter
+from mcap.reader import make_reader
+
+# 可替换为 sensor_left/right.mcap 或 fays_data_left/right.mcap。
+path = &quot;/path/to/episode/fays_data_left.mcap&quot;
+counts = Counter()
+previous = {}
+
+with open(path, &quot;rb&quot;) as source:
+    messages = make_reader(source).iter_messages(log_time_order=False)
+    for schema, channel, msg in messages:
+        topic = channel.topic
+        counts[topic] += 1
+        t_ns = msg.publish_time
+        if topic in previous and t_ns &lt;= previous[topic]:
+            print(&quot;重复或回退:&quot;, topic, previous[topic], t_ns)
+        previous[topic] = t_ns
+        decoded = None
+        if channel.message_encoding == &quot;binary&quot;:
+            if topic in (&quot;encoder_left&quot;, &quot;encoder_right&quot;):
+                if len(msg.data) != 8:
+                    raise ValueError(&quot;encoder payload 长度异常&quot;)
+                raw, rad = struct.unpack(&quot;&lt;if&quot;, msg.data)
+                decoded = {&quot;raw&quot;: raw, &quot;rad&quot;: rad}
+            elif topic == &quot;c&quot;:
+                if len(msg.data) != 4:
+                    raise ValueError(&quot;camera payload 长度异常&quot;)
+                frame_index, = struct.unpack(&quot;&lt;I&quot;, msg.data)
+                decoded = {&quot;frame_index&quot;: frame_index}
+            elif topic == &quot;i&quot;:
+                if len(msg.data) != 48:
+                    raise ValueError(&quot;IMU payload 长度异常&quot;)
+                values = struct.unpack(&quot;&lt;6d&quot;, msg.data)
+                decoded = dict(zip(
+                    (&quot;gx&quot;, &quot;gy&quot;, &quot;gz&quot;, &quot;ax&quot;, &quot;ay&quot;, &quot;az&quot;), values))
+        # 仅打印每个 topic 的前三条，避免大文件输出过多。
+        if counts[topic] &lt;= 3:
+            print(topic, &quot;publish_ns=&quot;, t_ns,
+                  &quot;log_ns=&quot;, msg.log_time, &quot;sample=&quot;, decoded,
+                  &quot;encoding=&quot;, channel.message_encoding,
+                  &quot;schema=&quot;, schema.name if schema else None)
+
+print(&quot;各 topic 消息数量:&quot;, dict(counts))</code></pre></div>
+<p>保留文件内顺序可以检查真实回退；先按时间排序会掩盖此类异常。处理大文件应流式读取，不必将全部图像和传感器消息放入内存。</p>
+<h2 id="section-13">5. 如何统一时间轴</h2>
+<p>单位速查：<code>task_*_s/boot_time_s</code> 为秒，<code>start_offset_us</code> 为微秒，MCAP 消息头时间为纳秒；<code>PTS</code> 是 tick，必须乘 <code>time_base</code> 才是秒。</p>
+<p>统一目标是 Unix 纳秒整数 <code>t_ns</code>。Unix 时间本身不随时区改变；中国时区只影响显示。使用整数或有理数换算，避免大时间戳经浮点数转换损失精度。</p>
+<div class="table-wrap"><table><thead><tr><th>数据流</th><th>Unix 纳秒换算</th></tr></thead><tbody><tr><td>主摄、触觉视频</td><td><code>start_offset_us × 1000 + PTS × time_base × 10^9</code></td></tr><tr><td>本机 encoder 等 Unix 域 MCAP 消息</td><td>直接取消息头 <code>publish_time</code></td></tr><tr><td>双目视频</td><td>与同侧 <code>c</code> 消息的 frameIndex 对应，取其 <code>publish_time</code></td></tr><tr><td>Fays IMU</td><td><code>publish_time</code> 为主机接收时刻（Unix 纳秒），可用于接收时间对齐；精确采样对齐见 5.2</td></tr><tr><td>Ego 单调时钟 topic</td><td>用 Ego metadata/head_pose 锚点换算，见下文</td></tr><tr><td>Ego 已为 Unix 的 metainfo 等 topic</td><td>直接使用，不能再次加偏移</td></tr></tbody></table></div>
+<h3 id="section-14">5.1 主摄与触觉</h3>
+<p>主摄录制端已完成固件时钟映射及必要修正，使用最终落盘 PTS；不再用原始 SEI 替换，也不重复加历史补偿。</p>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>from fractions import Fraction
+
+start_offset_us = 1780000000000000  # 实际取本路 metadata
+pts = 40                          # 实际取解码帧
+base = Fraction(1, 1000)           # 实际取该帧/视频 time_base
+relative_ns = Fraction(pts) * base * 1_000_000_000
+t_ns = start_offset_us * 1000 + round(relative_ns)
+# 1780000000040000000 ns</code></pre></div>
+<p>如果已经读取 <code>pts_time</code> 秒值，不要再乘 time_base。不能把每路首帧分别归零后声称它们已同步。</p>
+<h3 id="section-15">5.2 双目与 IMU</h3>
+<p>双目 MKV 使用固定帧率播放轴，设备 gap 可能被压紧。<strong>不能用 MKV PTS 或帧号/FPS 重建双目真实采集时间</strong>。必须读取同侧 Fays MCAP 的 <code>c</code> 消息，核对帧数、索引连续性与顺序后关联解码图像。</p>
+<p><code>frameIndex</code> 是录制端每条视频从 0 开始的连续写入索引，不是相机硬件帧号。索引连续也可能存在采集丢帧，需检查相邻 <code>c.log_time</code> 的时间间隔。</p>
+<p>视频帧数与 <code>c</code> 消息数量不一致时，不能从缺失位置之后继续按数组下标强行配对；先定位异常，无法恢复对应关系的区段标记不可用。</p>
+<p>Fays 两类消息的时间含义不同：</p>
+<ul><li><code>c.log_time</code> 是图像设备时间；<code>c.publish_time</code> 是映射到背包 Unix 时间并完成相机补偿后的时间，不要再次应用补偿。</li><li><code>i.log_time</code> 是 IMU 原始设备采样时间；<code>i.publish_time</code> 是主机获取该样本时的 Unix 时间（当前为回调接收时刻，旧版为 SDK 取数时刻），包含传输与调度延迟，并非用相机映射得到的采样时间。成批到达时，接收间隔不能代表真实采样间隔。</li></ul>
+<p>设备侧 gap、回退及 IMU 采样频率应检查 <code>log_time</code>；<code>publish_time</code> 可用于接收时间覆盖检查，但不能据此宣称 IMU 与图像已精确同步。需要精确跨模态采样对齐时，须根据该 SDK/固件的共同设备时钟和映射证据建立并验证转换，保留延迟误差；缺少映射证据时不要把接收时间当作采样真值。</p>
+<h3 id="section-16">5.3 Ego</h3>
+<p>新版 Ego 通过 USB ACM 串口持续与背包系统时钟对齐；旧版使用录制前 ADB 校时。离线状态下，两者时间一致不代表已经对准标准 UTC。同步状态、offset、RTT 描述协议测量质量，不是曝光时刻精度证明。</p>
+<p>已支持的 Ego 数据中，<code>head_pose/controller_pose/imu</code> 可能使用设备单调时间。令：</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>A_us = ego/metadata.json 中 head_pose_details[name=head_pose].start_offset_us
+H0_ns = head_pose 首条有效消息的原始 publish_time
+Delta_ns = A_us × 1000 - H0_ns
+Ego Unix 时间 = 原始 publish_time + Delta_ns</code></pre></div>
+<p>只对确认共用该单调时钟域的 topic 使用此偏移；<code>*_metainfo</code> 等已是 Unix 的消息不加。缺锚点、应用版本不匹配或时间域不明时应停止自动换算，不能仅凭时间戳大小猜测。</p>
+<p>Ego 视频需要其自身 metadata 中对应视频的时间起点和时间基定义，不能使用背包根目录的视频起点，也不能默认所有 Ego 视频与 head_pose 同一起点。应用版本不同可能改变字段与格式；无法确认视频时间定义时，保留原始 PTS 并请求该版本的格式说明。</p>
+<h3 id="section-17">5.4 对齐多个流</h3>
+<ol><li>分别建立逐帧/逐消息 Unix 时间，保留原始序号及时间戳。</li><li>检查重复、回退、gap、首末覆盖和视频/MCAP 对应关系。</li><li>共同区间取 <code>[max(各流首时刻), min(各流末时刻)]</code>；无交集就不能生成完整多模态样本。</li><li>选择主摄时刻或统一采样网格，图像取最近帧并限制误差；连续量按需插值，姿态使用符合其定义的四元数插值。长 gap 不跨越插值。</li><li>输出有效性标记和每路匹配误差。需要相对时间时，最后统一减去同一个 <code>t0_ns</code>。</li></ol>
+<p>统一时间域不等于硬件曝光同步。滚动快门、曝光时长、固件时间定义和传输延迟仍可能带来误差；物理精度须通过毫秒表或共同事件验证。首次启动错峰与持续时间漂移应分开统计。</p>
+<h3 id="section-18">5.5 对齐结果最少保留什么</h3>
+<p>建议每条对齐样本保留：共同参考时间 <code>t_ns</code>、各路原始帧/消息索引、各路原始时间、匹配误差 <code>delta_ms=(流时间−参考时间)/10^6</code> 和有效性标记。正值表示该路晚于参考时间。这样发现错位时可以追溯，而不必重新猜测匹配关系。</p>
+<p>检查 gap 时使用真实采集时间：主摄/触觉用落盘 PTS，双目用同侧 <code>c.log_time</code>。分别统计启动阶段和稳定采集阶段，不把平均 FPS 正常或 frameIndex 连续当作无丢帧。Ego 首帧较晚说明启动错峰，不能直接作为持续授时误差。</p>
+<h2 id="section-19">6. 质量结果与使用边界</h2>
+<p>先检查最终 <code>quality_check_status</code> 和 <code>quality_check_err_type</code>，再按用途做逐流检查。<code>success</code> 表示通过该软件版本的运行时检查，不代表全部传感器无丢帧、外参完成实测或曝光严格同步；<code>fail</code> 数据应保留错误原因，不能只删除异常文件后当作正常样本。</p>
+<p>本页不将 2.1.15 开发版的连续缺失门限和最终 2% 丢失率规则套用于此版本。请依据本次录制的质量结果及日志判断；成功结果不替代离线逐帧检查，也不证明 Ego 远端无漏采。</p><p>建议至少复核必需文件、视频可解码性、MCAP topic/消息数、各流首末覆盖、时间回退/gap、双目图像与 <code>c</code> 消息对应关系，以及任务所需的标定有效性。主摄可能出现固件重复时间戳及输出 PTS 钳制，不能把最终 PTS 的单个间隔直接当作硬件漏采证明。</p><footer>核对依据：版本 tag 的 UgripperRuntime 元数据与标定写出逻辑、FaysStereoRecorder 时间戳写入逻辑，以及当前工作区实现。实际数据字段优先于本文示例。</footer></template>
+<template id="guide-2.1.11"><h1 id="section-1">UGripper 原始数据使用指南</h1>
+<aside class="notice"><strong>不推荐用户直接处理设备原始数据。请优先使用平台处理后的数据集。</strong><br><br>原始数据包含多种时间域、设备标定和异常状态，直接解码或按帧号拼接可能产生时间错位及错误样本。仅在平台数据不能满足调试、研究或自定义处理需求时，参考本文读取原始数据，并自行完成格式、同步和质量检查。平台数据的具体处理范围以对应数据集说明为准。</aside>
+<p>正在阅读 <strong>UGripper 2.1.11</strong>：metadata <strong>3.1</strong> / calibration <strong>3.0</strong>。核对依据：V2.1.11 · df25df8。实际文件中的协议版本优先；同名安装包可能包含后续修复。</p>
+<p>本文用于组内同步原始数据格式与时间对齐约定。阅读顺序：先确认产物与版本，再读取视频/MCAP，最后统一时间轴并检查质量。本文中的数据路径均为示例，请替换为实际路径。文内代码可直接复制运行，不依赖项目仓库或随附脚本。</p>
+<h2 id="section-2">0. 先选对版本</h2>
+<p class="version-summary">当前选择：<strong>2.1.11</strong> · metadata 3.1 · calibration 3.0</p><details><summary>展开 2.1.11–2.1.15 版本差异对照</summary><p>以下为 2026-10-27 核对的仓库版本。实际数据始终以文件内版本字段为准；同名安装包可能含后续修复，不能仅凭软件版本替换数据协议判断。</p>
+<div class="table-wrap"><table><thead><tr><th>软件版本</th><th>核对依据</th><th>metadata data_version</th><th>calibration format_version</th><th>读取差异</th></tr></thead><tbody><tr><td>2.1.11</td><td>V2.1.11 · df25df8</td><td>3.1</td><td>3.0</td><td>不要求 boot_time_s、tactile_damage_sn_list 及独立主摄外参状态；不要按新格式判缺项</td></tr><tr><td>2.1.12</td><td>V2.1.12 · 465634b</td><td>3.2</td><td>3.1</td><td>增加开机时间、触觉损坏 SN 列表及独立外参状态；缺外参 warning 并使用默认值</td></tr><tr><td>2.1.13</td><td>V2.1.13 · 4ca0aa7</td><td>3.2</td><td>3.1</td><td>沿用上述格式；读取时仍核实实际配置、文件与质量结果</td></tr><tr><td>2.1.14</td><td>V2.1.14 · 11bb74d</td><td>3.2</td><td>3.1</td><td>沿用上述格式和外参兼容；包含 Fays 校时映射恢复等运行时修复</td></tr><tr><td>2.1.15</td><td>开发快照，HEAD e67627b + 工作区改动；无对应 tag</td><td>3.3</td><td>3.1</td><td>新增软件/固件版本信息及 Ego 关联；新增字段和质量规则按实际包核对</td></tr></tbody></table></div>
+<p>2.1.11 的 calibration 3.0 没有当前的独立主摄外参合同，不能把缺少 main_cam_extrinsic_calib_status 当作文件损坏。2.1.12–2.1.14 不应被要求具备 metadata 3.3 的版本扩展字段。下文 metadata 表覆盖当前格式，各版本只读取其协议中存在的字段。</p>
+<p>所有版本都应先检查质量结果，再解码原始数据。后文标明“当前开发”的收尾屏障、丢失率门限和 FT601 说明，不追溯适用于旧 tag。Fays IMU 的主机时间在旧版由取数时记录、当前由回调接收时记录，两者都不是精确采样时刻。</p>
+</details><h2 id="section-3">1. 数据目录与文件</h2>
+<p>设备数据通常位于 <code>/mnt/data_disk/&lt;设备SN小写&gt;/data/episode_YYYYMMDD_NNNN/</code>。录制中的目录带 <code>-temp</code> 后缀；请使用停录、收尾、质量检查及刷盘完成后的最终目录。读取前还需确认该安装包的后台校验已结束。最终目录存在不等于质量合格。</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>episode_YYYYMMDD_NNNN/
+  metadata.json             # 背包元数据与质量结果
+  calibration.json          # 背包相机/传感器标定
+  cam_left.mkv              # 左、右夹爪主摄
+  cam_right.mkv
+  tcam_left_l.mkv           # 四路触觉相机
+  tcam_left_r.mkv
+  tcam_right_l.mkv
+  tcam_right_r.mkv
+  stereo_left.mkv           # 左、右双目模组的视频
+  stereo_right.mkv
+  sensor_left.mcap          # 左、右编码器等传感器消息
+  sensor_right.mcap
+  fays_data_left.mcap       # 双目帧时间戳及 Fays IMU
+  fays_data_right.mcap
+  ego/                     # 可选；有独立 metadata/calibration
+    metadata.json
+    calibration.json
+    rgb.mp4
+    tracking.mp4
+    ctrl.mp4
+    sensor.mcap
+    audio.m4a
+    ego_sync.json</code></pre></div>
+<ul><li><code>+nostereo</code> 包不生成双目视频与 Fays MCAP；可选胸部主摄为 <code>cam_chest.mkv</code>。</li><li><code>audio_pre.wav</code>、<code>audio_post.wav</code>、<code>validation_error.log</code> 按录制条件或异常情况生成。</li><li>持续授时版本可能保存 <code>ego/time_sync_samples.jsonl</code>；毫秒表测试可能保存 <code>stopwatch_timing.json</code>，它们不是每条数据的必需文件。</li><li><code>left/right</code> 是设备侧别；触觉文件末尾的 <code>l/r</code> 是该侧夹爪上的传感器位置，不是另一只夹爪。</li><li>双目视频当前通常为 640×800，上下拼接两个 640×400 图像。每个模组都有两目，左右模组不能当成一对双目。图像次序与 cam0/cam1 对应应结合该 SDK/固件及标定确认。</li></ul>
+<h2 id="section-4">2. 元数据与标定</h2>
+<h3 id="section-5">2.1 metadata.json</h3>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义与用法</th></tr></thead><tbody><tr><td><code>data_version</code></td><td>本版本写出 3.1；请先读取实际 data_version，再按对应协议解析</td></tr><tr><td><code>software_version</code>、<code>hardware_version</code></td><td>用于定位软件行为与设备差异</td></tr><tr><td><code>device_sn</code>、<code>hardware_list</code></td><td>背包与各传感器身份；用于匹配标定</td></tr><tr><td><code>camera_codec</code></td><td>视频编码配置，实际编码仍应通过视频流确认</td></tr><tr><td><code>require_files</code></td><td>当前录制配置的必需文件；Ego 文件可能不在其中，需另查</td></tr><tr><td><code>video_details</code></td><td>每路视频名称、时间起点、时长等；按 <code>name</code> 匹配，不依赖数组顺序</td></tr><tr><td><code>video_details[].start_offset_us</code></td><td><strong>PTS=0 对应的绝对 Unix 微秒</strong>，不是相对 episode 起点</td></tr><tr><td><code>collection_duration_s</code></td><td>采集时长汇总；不代表每一路覆盖同一时间区间</td></tr><tr><td><code>task_start_s</code>、<code>task_stop_s</code></td><td>人工任务标记，Unix 秒；0 或缺失不作为有效时刻</td></tr><tr><td><code>quality_check_status</code></td><td><code>success</code> / <code>fail</code> / 空；空值不代表成功</td></tr><tr><td><code>quality_check_err_type</code></td><td>主失败原因，更多证据看日志</td></tr></tbody></table></div>
+<p>此版本使用 metadata 3.1，不要求 metadata 3.3 新增的软件/固件版本扩展、<code>ego_bound</code>、<code>hardware_list.ego_sn</code> 或 Ego 的 <code>related_episode_*</code> 字段。不要将缺少这些新增字段判为数据损坏。</p><h3 id="section-6">2.2 calibration.json</h3>
+<p>本版本标定格式为 3.0；它与 metadata 的 <code>data_version=3.1</code> 是两套独立版本号。包含相机模型、分辨率、内参、畸变、外参及标定状态等；主摄外参按本版本标定合同读取，Fays 使用模组标定。</p>
+<p>使用前核对设备 SN、图像尺寸、相机模型、畸变模型及标定有效状态。默认结构参数或单位矩阵不等于完成有效标定。变换矩阵必须确认源/目标坐标系、单位、左右乘约定；不要根据字段名自行推断。SDK 的 <code>timeshift_cam*_to_imu0</code> 也不能未经核对就叠加到已对齐的落盘时间上。</p>
+<p>夹爪二进制读写协议不等同于 episode JSON 格式，读取原始数据时应以随数据保存的标定 JSON 为准。Ego 使用自己的 <code>ego/calibration.json</code>，不能套用背包相机标定。</p>
+<h4 id="section-7">旧版标定读取</h4><p>calibration 3.0 没有 3.1 的独立主摄外参状态及两项主摄外参字段合同。不要要求 <code>main_cam_extrinsic_calib_status</code>、<code>T_base_main_camera</code> 或 <code>T_main_camera_stereo_cam0</code> 必须存在。不能把 2.1.12 起的外参默认值行为反推到本版本；几何任务应核实数据中实际保存的标定。</p><h2 id="section-8">3. 视频怎么读取</h2>
+<p>主摄、触觉和双目以 MKV 保存，编码可为 H.264/H.265；Ego 使用其应用生成的视频。先探测实际流信息，不硬编码分辨率、帧率或颜色格式。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>ffprobe -v error -select_streams v:0 \
+  -show_entries stream=codec_name,width,height,pix_fmt,time_base,avg_frame_rate \
+  -of json /path/to/episode/cam_left.mkv
+
+ffprobe -v error -select_streams v:0 -show_frames \
+  -show_entries frame=pts,best_effort_timestamp,pict_type \
+  -of json /path/to/episode/cam_left.mkv &gt; /tmp/cam_left_frames.json</code></pre></div>
+<p>使用 FFmpeg/PyAV 等解码；逐帧保存对应 PTS 和 <code>time_base</code>，不要在导出时自动补帧或按固定 FPS 重建时间。解码帧按显示时间关联，不能把存在重排序的视频直接按压缩包数组下标对应图像。遇到缺失 PTS 应标记异常，不静默用帧号代替。</p>
+<p>双目源图像为灰度，但编码文件可能以 YUV420 表示；解码成 RGB 不会增加原始图像精度。分析像素值时应以该文件的色彩范围为准，注意解码器的范围转换。视频帧率字段是播放参数，不能单独证明没有采集丢帧。</p>
+<h2 id="section-9">4. MCAP 格式与读取</h2>
+<p>这些文件是<strong>通用 MCAP 容器，不是 ROS 2 bag</strong>。<code>ros2 bag info</code> 或 Foxglove 的 ROS 导入失败，不足以说明文件损坏。可视化前可能需要转成对应 schema。</p>
+<h3 id="section-10">4.1 背包自定义二进制 payload</h3>
+<div class="table-wrap"><table><thead><tr><th>文件 / topic</th><th>字节数</th><th>小端 payload</th><th>含义</th></tr></thead><tbody><tr><td><code>sensor_*.mcap</code> / <code>encoder_left</code> 或 <code>encoder_right</code></td><td>8</td><td><code>&lt;if</code></td><td>int32 原始计数 + float32 弧度</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>i</code></td><td>48</td><td><code>&lt;6d</code></td><td>float64：gx, gy, gz, ax, ay, az</td></tr><tr><td><code>fays_data_*.mcap</code> / <code>c</code></td><td>4</td><td><code>&lt;I</code></td><td>uint32 视频帧索引 frameIndex</td></tr></tbody></table></div>
+<p>MCAP 消息头的 <code>publishTime</code> / <code>logTime</code> 不在上述 payload 中。Python API 分别叫 <code>publish_time</code> / <code>log_time</code>。即使 schema 描述使用 JSON 文本，channel 的 <code>message_encoding=binary</code> 仍表示 payload 不是 JSON。</p>
+<p>编码器弧度可乘 <code>180/π</code> 转为角度，不把原始计数直接当作角度。Fays IMU 数值沿用 SDK 输出，轴向和单位需按所用 SDK/固件协议确认；不要未经确认换算为度/秒或乘重力加速度。未知 topic 应保留 schema、encoding 与原始字节，不能套用上表。Ego MCAP 由外部应用产生，按其 schema 解码。</p>
+<h3 id="section-11">4.2 准备读取环境</h3>
+<p>在独立的数据分析 Python 环境中安装 MCAP 和压缩依赖。视频探测需要系统中可用的 FFmpeg/ffprobe；不要修改设备运行环境或交叉编译环境。</p>
+<div class="codebox"><div class="codebar"><span>bash</span><button type="button" class="copy">复制</button></div><pre><code>python -m pip install mcap lz4 zstandard</code></pre></div>
+<p>下面的代码直接使用第三方 MCAP 库，不依赖 UGripper 仓库。替换文件路径后即可运行。示例面向当前背包二进制格式，Ego 数据需按其消息 schema 单独解析。</p>
+<h3 id="section-12">4.3 最小读取示例</h3>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>import struct
+from collections import Counter
+from mcap.reader import make_reader
+
+# 可替换为 sensor_left/right.mcap 或 fays_data_left/right.mcap。
+path = &quot;/path/to/episode/fays_data_left.mcap&quot;
+counts = Counter()
+previous = {}
+
+with open(path, &quot;rb&quot;) as source:
+    messages = make_reader(source).iter_messages(log_time_order=False)
+    for schema, channel, msg in messages:
+        topic = channel.topic
+        counts[topic] += 1
+        t_ns = msg.publish_time
+        if topic in previous and t_ns &lt;= previous[topic]:
+            print(&quot;重复或回退:&quot;, topic, previous[topic], t_ns)
+        previous[topic] = t_ns
+        decoded = None
+        if channel.message_encoding == &quot;binary&quot;:
+            if topic in (&quot;encoder_left&quot;, &quot;encoder_right&quot;):
+                if len(msg.data) != 8:
+                    raise ValueError(&quot;encoder payload 长度异常&quot;)
+                raw, rad = struct.unpack(&quot;&lt;if&quot;, msg.data)
+                decoded = {&quot;raw&quot;: raw, &quot;rad&quot;: rad}
+            elif topic == &quot;c&quot;:
+                if len(msg.data) != 4:
+                    raise ValueError(&quot;camera payload 长度异常&quot;)
+                frame_index, = struct.unpack(&quot;&lt;I&quot;, msg.data)
+                decoded = {&quot;frame_index&quot;: frame_index}
+            elif topic == &quot;i&quot;:
+                if len(msg.data) != 48:
+                    raise ValueError(&quot;IMU payload 长度异常&quot;)
+                values = struct.unpack(&quot;&lt;6d&quot;, msg.data)
+                decoded = dict(zip(
+                    (&quot;gx&quot;, &quot;gy&quot;, &quot;gz&quot;, &quot;ax&quot;, &quot;ay&quot;, &quot;az&quot;), values))
+        # 仅打印每个 topic 的前三条，避免大文件输出过多。
+        if counts[topic] &lt;= 3:
+            print(topic, &quot;publish_ns=&quot;, t_ns,
+                  &quot;log_ns=&quot;, msg.log_time, &quot;sample=&quot;, decoded,
+                  &quot;encoding=&quot;, channel.message_encoding,
+                  &quot;schema=&quot;, schema.name if schema else None)
+
+print(&quot;各 topic 消息数量:&quot;, dict(counts))</code></pre></div>
+<p>保留文件内顺序可以检查真实回退；先按时间排序会掩盖此类异常。处理大文件应流式读取，不必将全部图像和传感器消息放入内存。</p>
+<h2 id="section-13">5. 如何统一时间轴</h2>
+<p>单位速查：<code>task_*_s/boot_time_s</code> 为秒，<code>start_offset_us</code> 为微秒，MCAP 消息头时间为纳秒；<code>PTS</code> 是 tick，必须乘 <code>time_base</code> 才是秒。</p>
+<p>统一目标是 Unix 纳秒整数 <code>t_ns</code>。Unix 时间本身不随时区改变；中国时区只影响显示。使用整数或有理数换算，避免大时间戳经浮点数转换损失精度。</p>
+<div class="table-wrap"><table><thead><tr><th>数据流</th><th>Unix 纳秒换算</th></tr></thead><tbody><tr><td>主摄、触觉视频</td><td><code>start_offset_us × 1000 + PTS × time_base × 10^9</code></td></tr><tr><td>本机 encoder 等 Unix 域 MCAP 消息</td><td>直接取消息头 <code>publish_time</code></td></tr><tr><td>双目视频</td><td>与同侧 <code>c</code> 消息的 frameIndex 对应，取其 <code>publish_time</code></td></tr><tr><td>Fays IMU</td><td><code>publish_time</code> 为主机接收时刻（Unix 纳秒），可用于接收时间对齐；精确采样对齐见 5.2</td></tr><tr><td>Ego 单调时钟 topic</td><td>用 Ego metadata/head_pose 锚点换算，见下文</td></tr><tr><td>Ego 已为 Unix 的 metainfo 等 topic</td><td>直接使用，不能再次加偏移</td></tr></tbody></table></div>
+<h3 id="section-14">5.1 主摄与触觉</h3>
+<p>主摄录制端已完成固件时钟映射及必要修正，使用最终落盘 PTS；不再用原始 SEI 替换，也不重复加历史补偿。</p>
+<div class="codebox"><div class="codebar"><span>python</span><button type="button" class="copy">复制</button></div><pre><code>from fractions import Fraction
+
+start_offset_us = 1780000000000000  # 实际取本路 metadata
+pts = 40                          # 实际取解码帧
+base = Fraction(1, 1000)           # 实际取该帧/视频 time_base
+relative_ns = Fraction(pts) * base * 1_000_000_000
+t_ns = start_offset_us * 1000 + round(relative_ns)
+# 1780000000040000000 ns</code></pre></div>
+<p>如果已经读取 <code>pts_time</code> 秒值，不要再乘 time_base。不能把每路首帧分别归零后声称它们已同步。</p>
+<h3 id="section-15">5.2 双目与 IMU</h3>
+<p>双目 MKV 使用固定帧率播放轴，设备 gap 可能被压紧。<strong>不能用 MKV PTS 或帧号/FPS 重建双目真实采集时间</strong>。必须读取同侧 Fays MCAP 的 <code>c</code> 消息，核对帧数、索引连续性与顺序后关联解码图像。</p>
+<p><code>frameIndex</code> 是录制端每条视频从 0 开始的连续写入索引，不是相机硬件帧号。索引连续也可能存在采集丢帧，需检查相邻 <code>c.log_time</code> 的时间间隔。</p>
+<p>视频帧数与 <code>c</code> 消息数量不一致时，不能从缺失位置之后继续按数组下标强行配对；先定位异常，无法恢复对应关系的区段标记不可用。</p>
+<p>Fays 两类消息的时间含义不同：</p>
+<ul><li><code>c.log_time</code> 是图像设备时间；<code>c.publish_time</code> 是映射到背包 Unix 时间并完成相机补偿后的时间，不要再次应用补偿。</li><li><code>i.log_time</code> 是 IMU 原始设备采样时间；<code>i.publish_time</code> 是主机通过 SDK 获取该样本时记录的 Unix 时间，包含传输与调度延迟，并非用相机映射得到的采样时间。成批到达时，接收间隔不能代表真实采样间隔。</li></ul>
+<p>设备侧 gap、回退及 IMU 采样频率应检查 <code>log_time</code>；<code>publish_time</code> 可用于接收时间覆盖检查，但不能据此宣称 IMU 与图像已精确同步。需要精确跨模态采样对齐时，须根据该 SDK/固件的共同设备时钟和映射证据建立并验证转换，保留延迟误差；缺少映射证据时不要把接收时间当作采样真值。</p>
+<h3 id="section-16">5.3 Ego</h3>
+<p>新版 Ego 通过 USB ACM 串口持续与背包系统时钟对齐；旧版使用录制前 ADB 校时。离线状态下，两者时间一致不代表已经对准标准 UTC。同步状态、offset、RTT 描述协议测量质量，不是曝光时刻精度证明。</p>
+<p>已支持的 Ego 数据中，<code>head_pose/controller_pose/imu</code> 可能使用设备单调时间。令：</p>
+<div class="codebox"><div class="codebar"><span>text</span><button type="button" class="copy">复制</button></div><pre><code>A_us = ego/metadata.json 中 head_pose_details[name=head_pose].start_offset_us
+H0_ns = head_pose 首条有效消息的原始 publish_time
+Delta_ns = A_us × 1000 - H0_ns
+Ego Unix 时间 = 原始 publish_time + Delta_ns</code></pre></div>
+<p>只对确认共用该单调时钟域的 topic 使用此偏移；<code>*_metainfo</code> 等已是 Unix 的消息不加。缺锚点、应用版本不匹配或时间域不明时应停止自动换算，不能仅凭时间戳大小猜测。</p>
+<p>Ego 视频需要其自身 metadata 中对应视频的时间起点和时间基定义，不能使用背包根目录的视频起点，也不能默认所有 Ego 视频与 head_pose 同一起点。应用版本不同可能改变字段与格式；无法确认视频时间定义时，保留原始 PTS 并请求该版本的格式说明。</p>
+<h3 id="section-17">5.4 对齐多个流</h3>
+<ol><li>分别建立逐帧/逐消息 Unix 时间，保留原始序号及时间戳。</li><li>检查重复、回退、gap、首末覆盖和视频/MCAP 对应关系。</li><li>共同区间取 <code>[max(各流首时刻), min(各流末时刻)]</code>；无交集就不能生成完整多模态样本。</li><li>选择主摄时刻或统一采样网格，图像取最近帧并限制误差；连续量按需插值，姿态使用符合其定义的四元数插值。长 gap 不跨越插值。</li><li>输出有效性标记和每路匹配误差。需要相对时间时，最后统一减去同一个 <code>t0_ns</code>。</li></ol>
+<p>统一时间域不等于硬件曝光同步。滚动快门、曝光时长、固件时间定义和传输延迟仍可能带来误差；物理精度须通过毫秒表或共同事件验证。首次启动错峰与持续时间漂移应分开统计。</p>
+<h3 id="section-18">5.5 对齐结果最少保留什么</h3>
+<p>建议每条对齐样本保留：共同参考时间 <code>t_ns</code>、各路原始帧/消息索引、各路原始时间、匹配误差 <code>delta_ms=(流时间−参考时间)/10^6</code> 和有效性标记。正值表示该路晚于参考时间。这样发现错位时可以追溯，而不必重新猜测匹配关系。</p>
+<p>检查 gap 时使用真实采集时间：主摄/触觉用落盘 PTS，双目用同侧 <code>c.log_time</code>。分别统计启动阶段和稳定采集阶段，不把平均 FPS 正常或 frameIndex 连续当作无丢帧。Ego 首帧较晚说明启动错峰，不能直接作为持续授时误差。</p>
+<h2 id="section-19">6. 质量结果与使用边界</h2>
+<p>先检查最终 <code>quality_check_status</code> 和 <code>quality_check_err_type</code>，再按用途做逐流检查。<code>success</code> 表示通过该软件版本的运行时检查，不代表全部传感器无丢帧、外参完成实测或曝光严格同步；<code>fail</code> 数据应保留错误原因，不能只删除异常文件后当作正常样本。</p>
+<p>本页不将 2.1.15 开发版的连续缺失门限和最终 2% 丢失率规则套用于此版本。请依据本次录制的质量结果及日志判断；成功结果不替代离线逐帧检查，也不证明 Ego 远端无漏采。</p><p>建议至少复核必需文件、视频可解码性、MCAP topic/消息数、各流首末覆盖、时间回退/gap、双目图像与 <code>c</code> 消息对应关系，以及任务所需的标定有效性。主摄可能出现固件重复时间戳及输出 PTS 钳制，不能把最终 PTS 的单个间隔直接当作硬件漏采证明。</p><footer>核对依据：版本 tag 的 UgripperRuntime 元数据与标定写出逻辑、FaysStereoRecorder 时间戳写入逻辑，以及当前工作区实现。实际数据字段优先于本文示例。</footer></template>
+<script>
+const versionSelect = document.getElementById('guide-version');
+const content = document.getElementById('guide-content');
+function switchVersion() {
+  const version = versionSelect.value;
+  const template = document.getElementById('guide-' + version);
+  if (!template) return;
+  content.replaceChildren(template.content.cloneNode(true));
+  const metadata = version === '2.1.11' ? '3.1' : version === '2.1.15' ? '3.3' : '3.2';
+  const calibration = version === '2.1.11' ? '3.0' : '3.1';
+  document.getElementById('version-status').textContent = 'metadata ' + metadata + ' / calibration ' + calibration;
+  document.title = 'UGripper ' + version + ' 原始数据使用指南';
+}
+versionSelect.value = '2.1.15';
+switchVersion();
+versionSelect.addEventListener('change', switchVersion);
+content.addEventListener('click', async (event) => {
+  const button = event.target.closest('.copy');
+  if (!button) return;
+  const value = button.closest('.codebox').querySelector('code').textContent;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      const area = document.createElement('textarea');
+      area.value = value;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.append(area);
+      area.select();
+      const ok = document.execCommand('copy');
+      area.remove();
+      button.focus();
+      if (!ok) throw Error('copy');
+    }
+    button.textContent = '已复制';
+  } catch (error) { button.textContent = '请手动选择复制'; }
+  setTimeout(() => button.textContent = '复制', 2000);
+});
+</script></body></html>

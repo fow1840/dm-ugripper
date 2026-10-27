@@ -1,0 +1,115 @@
+{
+  "device_sn": "DAP-TEST",
+  "device_type": "ugripper",
+  "device_mode": "dual",
+  "camera_codec": "h265",
+  "hardware_version": "v2.5.0",
+  "software_version": "v2.1.14",
+  "das_usb_updater_version": "1.0.4",
+  "data_version": "3.3",
+  "bluetooth_gatt_server_version": "1.0.8",
+  "databot_device_joint_version": "1.2.77",
+  "device_ota_mender_version": "0.7.2",
+  "gripper_left_firmware_version": "V1.0.5_20260820",
+  "gripper_right_firmware_version": "V1.0.5_20260820",
+  "cam_left_firmware_version": "daimon_260929_iq13_l",
+  "cam_right_firmware_version": "daimon_260929_iq13_l",
+  "cam_chest_firmware_version": "disabled",
+  "stereo_left_firmware_version": "1.2.5",
+  "stereo_right_firmware_version": "1.2.5",
+  "ego_bound": false,
+  "ego_software_version": "",
+  "ego_firmware_version": "",
+  "rk3588_firmware_version": "V1.0.3.2_20261022143700_release",
+  "hardware_list": {
+    "gripper_right_sn": "DAG-R",
+    "gripper_left_sn": "DAG-L",
+    "cam_right_sn": "FE-R",
+    "cam_left_sn": "FE-L",
+    "cam_chest_sn": "",
+    "tactile_right_l_sn": "TR-L",
+    "tactile_right_r_sn": "TR-R",
+    "tactile_left_l_sn": "TL-L",
+    "tactile_left_r_sn": "TL-R",
+    "stereo_right_sn": "ST-R",
+    "stereo_left_sn": "ST-L",
+    "ego_sn": ""
+  },
+  "episode_name": "episode_20260727_0001",
+  "test_dataset_name": "",
+  "data_uuid": "test-uuid",
+  "audio_uuid": "",
+  "quality_check_status": "success",
+  "quality_check_err_type": "",
+  "collection_duration_s": 10.0,
+  "task_start_s": 0.0,
+  "task_stop_s": 0.0,
+  "boot_time_s": 1785000000.0,
+  "tactile_damage_sn_list": [],
+  "require_files": [
+    "metadata.json",
+    "calibration.json",
+    "cam_left.mkv",
+    "cam_right.mkv",
+    "tcam_left_l.mkv",
+    "tcam_left_r.mkv",
+    "tcam_right_l.mkv",
+    "tcam_right_r.mkv",
+    "sensor_left.mcap",
+    "sensor_right.mcap",
+    "stereo_left.mkv",
+    "stereo_right.mkv",
+    "fays_data_left.mcap",
+    "fays_data_right.mcap"
+  ],
+  "video_details": [
+    {
+      "name": "cam_left.mkv",
+      "fps": 60.0,
+      "duration_s": 10.0,
+      "start_offset_us": 1785000000000000
+    },
+    {
+      "name": "tcam_left_l.mkv",
+      "fps": 60.0,
+      "duration_s": 10.0,
+      "start_offset_us": 1785000000001000
+    },
+    {
+      "name": "tcam_left_r.mkv",
+      "fps": 60.0,
+      "duration_s": 10.0,
+      "start_offset_us": 1785000000002000
+    },
+    {
+      "name": "stereo_left.mkv",
+      "fps": 60.0,
+      "duration_s": 10.0,
+      "start_offset_us": 1785000000003000
+    },
+    {
+      "name": "cam_right.mkv",
+      "fps": 60.0,
+      "duration_s": 10.0,
+      "start_offset_us": 1785000000004000
+    },
+    {
+      "name": "tcam_right_l.mkv",
+      "fps": 60.0,
+      "duration_s": 10.0,
+      "start_offset_us": 1785000000005000
+    },
+    {
+      "name": "tcam_right_r.mkv",
+      "fps": 60.0,
+      "duration_s": 10.0,
+      "start_offset_us": 1785000000006000
+    },
+    {
+      "name": "stereo_right.mkv",
+      "fps": 60.0,
+      "duration_s": 10.0,
+      "start_offset_us": 1785000000007000
+    }
+  ]
+}
