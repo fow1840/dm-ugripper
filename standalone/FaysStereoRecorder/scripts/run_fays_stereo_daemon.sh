@@ -220,6 +220,9 @@ def as_bool(name):
     return os.environ.get(name, "false") == "true"
 
 def path_exists(path):
+    import re
+    if path and re.fullmatch(r"[0-9]+-[0-9]+(?:\.[0-9]+)*", path):
+        path = "/sys/bus/usb/devices/" + path
     return bool(path) and os.path.exists(path)
 
 def calibration_state(path):
@@ -315,7 +318,12 @@ def camera_state(name, process_ready, config_path, calibration, runtime):
     now_ns = time.time_ns()
     now_mono = time.monotonic()
     side = name.split("_", 1)[0]
-    identity = [os.path.realpath(stereo_path), os.path.realpath(imu_path)]
+    def identity_path(path):
+        import re
+        if re.fullmatch(r"[0-9]+-[0-9]+(?:\.[0-9]+)*", path):
+            path = "/sys/bus/usb/devices/" + path
+        return os.path.realpath(path)
+    identity = [identity_path(stereo_path), identity_path(imu_path)]
     old = previous.get("cameras", {}).get(name, {})
     def fresh(field, limit):
         stamp = int(runtime.get(field, 0) or 0)
@@ -468,8 +476,8 @@ log_fifo_startup_timeout() {
     local stereo_path imu_path stereo_resolved="" imu_resolved=""
 
     kill -0 "$pid" 2>/dev/null && process_alive=true
-    stereo_path="$(config_value "$config" stereo_dev_port)"
-    imu_path="$(config_value "$config" imu_dev_port)"
+    stereo_path="$(config_device_path "$config" stereo_dev_port)"
+    imu_path="$(config_device_path "$config" imu_dev_port)"
     [ -n "$stereo_path" ] && stereo_resolved="$(readlink -f "$stereo_path" 2>/dev/null || true)"
     [ -n "$imu_path" ] && imu_resolved="$(readlink -f "$imu_path" 2>/dev/null || true)"
     fays_error "UGR-22-06" "$side stereo control FIFO startup timeout: fifo=$fifo pid=$pid process_alive=$process_alive runtime_status_exists=$([ -f "$runtime_status_json" ] && echo true || echo false) stereo=${stereo_path:-<empty>} resolved_stereo=${stereo_resolved:-<missing>} imu=${imu_path:-<empty>} resolved_imu=${imu_resolved:-<missing>}"
@@ -548,12 +556,32 @@ config_value() {
     ' "$config"
 }
 
+# FT601 carries image and IMU on one physical USB device; never select by index.
+config_device_path() {
+    local config="$1" key="$2" port
+    if [ "$(config_value "$config" device_type)" = "ft601" ]; then
+        port="$(config_value "$config" stereo_dev_port)"
+        [[ "$port" =~ ^[0-9]+-[0-9]+(\.[0-9]+)*$ ]] || return 1
+        printf '/sys/bus/usb/devices/%s\n' "$port"
+    else
+        config_value "$config" "$key"
+    fi
+}
+
 side_video_nodes() {
     local config="$1"
     local stereo_path imu_path resolved
+    if [ "$(config_value "$config" device_type)" = "ft601" ]; then
+        local physical bus dev
+        physical="$(config_device_path "$config" stereo_dev_port)" || return 1
+        read -r bus < "$physical/busnum" || return 1
+        read -r dev < "$physical/devnum" || return 1
+        printf '/dev/bus/usb/%03d/%03d\n' "$bus" "$dev"
+        return
+    fi
 
-    stereo_path="$(config_value "$config" stereo_dev_port)"
-    imu_path="$(config_value "$config" imu_dev_port)"
+    stereo_path="$(config_device_path "$config" stereo_dev_port)"
+    imu_path="$(config_device_path "$config" imu_dev_port)"
     for path in "$stereo_path" "$imu_path"; do
         [ -n "$path" ] && [ "$path" != "NULL" ] || continue
         [ -e "$path" ] || continue
@@ -663,7 +691,7 @@ wait_kill_and_confirm_side_ports_free() {
 }
 
 cleanup_stale_fays_recorders() {
-    local executable="$BUILD_DIR/fays_record_example"
+    local executable="$BUILD_DIR/fays_record_example" ft601_executable="$BUILD_DIR/fays_record_ft601"
     local pid cmd
 
     [ -x "$executable" ] || return 0
@@ -673,7 +701,7 @@ cleanup_stale_fays_recorders() {
         [ -n "$pid" ] || continue
         [ "$pid" != "$$" ] || continue
         case "$cmd" in
-            *"$executable"*)
+            "$executable "*|"$ft601_executable "*)
                 fays_log "stale recorder found on daemon startup: pid=$pid cmd=$cmd"
                 terminate_process_tree "$pid" "stale Fays recorder"
                 ;;
@@ -688,8 +716,8 @@ check_side_device_paths() {
     local require_fifo="${4:-false}"
     local quiet="${5:-false}"
     local stereo_path imu_path
-    stereo_path="$(config_value "$config" stereo_dev_port)"
-    imu_path="$(config_value "$config" imu_dev_port)"
+    stereo_path="$(config_device_path "$config" stereo_dev_port)"
+    imu_path="$(config_device_path "$config" imu_dev_port)"
 
     if [ -z "$stereo_path" ] || [ "$stereo_path" = "NULL" ] || [ ! -e "$stereo_path" ]; then
         [ "$quiet" = "true" ] || fays_log "$side stereo symlink missing: ${stereo_path:-<empty>}"
@@ -716,8 +744,8 @@ check_side_working_state_reason() {
 
     if ! check_side_device_paths "$side" "$config" "$fifo" true "$quiet"; then
         local stereo_path imu_path
-        stereo_path="$(config_value "$config" stereo_dev_port)"
-        imu_path="$(config_value "$config" imu_dev_port)"
+        stereo_path="$(config_device_path "$config" stereo_dev_port)"
+        imu_path="$(config_device_path "$config" imu_dev_port)"
         if [ -z "$stereo_path" ] || [ "$stereo_path" = "NULL" ] || [ ! -e "$stereo_path" ]; then
             printf 'stereo symlink missing: %s\n' "${stereo_path:-<empty>}"
         elif [ -z "$imu_path" ] || [ "$imu_path" = "NULL" ] || [ ! -e "$imu_path" ]; then
@@ -770,8 +798,8 @@ wait_for_side_symlinks_stable() {
     local stable_since_ms=0
     local start_ms deadline_ms now_ms
 
-    stereo_path="$(config_value "$config" stereo_dev_port)"
-    imu_path="$(config_value "$config" imu_dev_port)"
+    stereo_path="$(config_device_path "$config" stereo_dev_port)"
+    imu_path="$(config_device_path "$config" imu_dev_port)"
     start_ms="$(date +%s%3N)"
     deadline_ms=$((start_ms + SYMLINK_STABLE_TIMEOUT_SEC * 1000))
 
@@ -1076,7 +1104,7 @@ side_stereo_video_index() {
     local config="$1"
     local stereo_path resolved node
 
-    stereo_path="$(config_value "$config" stereo_dev_port)"
+    stereo_path="$(config_device_path "$config" stereo_dev_port)"
     [ -n "$stereo_path" ] && [ "$stereo_path" != "NULL" ] || return 1
     [ -e "$stereo_path" ] || return 1
     resolved="$(readlink -f "$stereo_path" 2>/dev/null || true)"

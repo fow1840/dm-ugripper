@@ -182,7 +182,7 @@ print_state() {
     local state="$1"
     if [ "$state" = "OK" ]; then
         printf '%s%-5s%s' "$GREEN" "$state" "$RESET"
-    elif [ "$state" = "未启用" ]; then
+    elif [ "$state" = "未启用" ] || [ "$state" = "WARN" ]; then
         printf '%s%-5s%s' "$YELLOW" "$state" "$RESET"
     else
         printf '%s%-5s%s' "$RED" "$state" "$RESET"
@@ -190,7 +190,17 @@ print_state() {
 }
 
 state_for_path() {
-    local path="$1"
+    local path="$1" side kind
+    case "$path" in
+        /dev/stereo_left|/dev/left_fays_imu) side=left ;;
+        /dev/stereo_right|/dev/right_fays_imu) side=right ;;
+    esac
+    if [ -n "${side:-}" ] && [ -f "$ROOT_DIR/bin/UgripperWebServer/fays_status.py" ]; then
+        kind=stereo
+        [[ "$path" = *_imu ]] && kind=imu
+        "$ROOT_DIR/.venv/bin/python3" "$ROOT_DIR/bin/UgripperWebServer/fays_status.py" "$side" "$kind"
+        return
+    fi
     if [ "$path" = "/dev/cam_chest" ] && ! chest_cam_enabled; then
         printf '未启用'
         return
@@ -349,7 +359,13 @@ for path_label in "${left_items[@]}" "${right_items[@]}" "${camera_items[@]}" "$
     all_count=$((all_count + 1))
 done
 
-if [ "$online_count" -eq "$all_count" ]; then
+stream_warning=false
+for stream_path in /dev/stereo_left /dev/stereo_right /dev/left_fays_imu /dev/right_fays_imu; do
+    [ "$(state_for_path "$stream_path")" != WARN ] || stream_warning=true
+done
+if [ "$online_count" -eq "$all_count" ] && [ "$stream_warning" = true ]; then
+    printf 'Hardware Status: %s  %s/%s online (stream not ready)\n' "$(color_warn)" "$online_count" "$all_count"
+elif [ "$online_count" -eq "$all_count" ]; then
     printf 'Hardware Status: %s  %s/%s online\n' "$(color_ok)" "$online_count" "$all_count"
 else
     printf 'Hardware Status: %s  %s/%s online\n' "$(color_off)" "$online_count" "$all_count"

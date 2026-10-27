@@ -299,7 +299,7 @@ To build manually:
     -DCMAKE_TOOLCHAIN_FILE="\${PWD}/cmake/arm-linux-toolchain.cmake" \\
     "\${UGRIPPER_ARM_CMAKE_ARGS[@]}"
   cmake --build build/arm_container_release \\
-    --target CameraRecorder main_camera_xu_tool SensorRecorder zeroing GripperHmiTool UgripperRuntime fays_record_example \\
+    --target CameraRecorder main_camera_xu_tool SensorRecorder zeroing GripperHmiTool UgripperRuntime fays_record_example fays_record_ft601 \\
     --parallel 8
   ./scripts/build_arm_deb_in_pp_arm_dev.sh
 EOF

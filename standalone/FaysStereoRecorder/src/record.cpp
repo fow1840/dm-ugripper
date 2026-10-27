@@ -1,3 +1,4 @@
+#include <regex>
 #include "utils/stereo_frame_loss_state.h"
 #include "utils/stream_loss_reporting.h"
 #include "utils/cpu_affinity.h"
@@ -191,6 +192,28 @@ bool LoadAndValidateConfigDevices(const std::string& configPath,
                                   std::string* errorMessage) {
     const std::string stereoPath = ReadYamlConfigValue(configPath, "stereo_dev_port");
     const std::string imuPath = ReadYamlConfigValue(configPath, "imu_dev_port");
+    if (ReadYamlConfigValue(configPath, "device_type") == "ft601") {
+        // Physical topology path, never a volatile bus/device address or index.
+        const auto usbPath = std::filesystem::path("/sys/bus/usb/devices") / stereoPath;
+        const bool validPort = std::regex_match(stereoPath, std::regex("[0-9]+-[0-9]+(\\.[0-9]+)*"));
+        std::string vendor, product;
+        if (validPort) {
+            std::ifstream(usbPath / "idVendor") >> vendor;
+            std::ifstream(usbPath / "idProduct") >> product;
+        }
+        if (!validPort || vendor != "0403" || product != "601f") {
+            if (errorMessage) *errorMessage = "FT601 physical USB port missing or wrong device: " + stereoPath;
+            return false;
+        }
+        if (outDevices) {
+            outDevices->stereoPath = stereoPath;
+            outDevices->imuPath = usbPath.string(); // shared USB transport for health checks
+            outDevices->stereoResolved = stereoPath; // SDK expects sysfs directory NAME
+            outDevices->imuResolved = "NULL";
+        }
+        return true;
+    }
+
     if (stereoPath.empty() || imuPath.empty()) {
         if (errorMessage != nullptr) {
             *errorMessage = "missing stereo_dev_port or imu_dev_port in config: " + configPath;
@@ -1847,12 +1870,15 @@ private:
 
         const std::string stereoPort = ReadConfigValue(configPath, "stereo_dev_port");
         const std::string imuPort = ReadConfigValue(configPath, "imu_dev_port");
-
-        if (!stereoPort.empty()) {
-            monitoredDevicePaths_.push_back(stereoPort);
-        }
-        if (!imuPort.empty() && imuPort != stereoPort) {
-            monitoredDevicePaths_.push_back(imuPort);
+        if (ReadConfigValue(configPath, "device_type") == "ft601") {
+            monitoredDevicePaths_.push_back("/sys/bus/usb/devices/" + stereoPort);
+        } else {
+            if (!stereoPort.empty()) {
+                monitoredDevicePaths_.push_back(stereoPort);
+            }
+            if (!imuPort.empty() && imuPort != stereoPort) {
+                monitoredDevicePaths_.push_back(imuPort);
+            }
         }
 
         if (monitoredDevicePaths_.empty()) {

@@ -45,6 +45,15 @@ ensure_fixed_fays_symlinks() {
     local imu_symlink="$2"
     local missing=0
 
+    if grep -Eq '^device_type:[[:space:]]*ft601[[:space:]]*$' "$CONFIG_FILE"; then
+        [[ "$stereo_symlink" =~ ^[0-9]+-[0-9]+(\.[0-9]+)*$ ]] || return 1
+        local physical="/sys/bus/usb/devices/$stereo_symlink"
+        [ "$(cat "$physical/idVendor" 2>/dev/null)" = "0403" ] &&
+            [ "$(cat "$physical/idProduct" 2>/dev/null)" = "601f" ] || return 1
+        echo "Using FT601 shared image/IMU transport at $stereo_symlink"
+        return 0
+    fi
+
     if [ ! -e "$stereo_symlink" ]; then
         fays_error "UGR-22-01" "Error: Missing Fays stereo symlink: $stereo_symlink"
         missing=1
@@ -187,6 +196,16 @@ done
 set -- "${POSITIONAL[@]}"
 
 MODE="${1:-}"
+if [ "$MODE" = daemon ] || [ "$MODE" = dump-calib-json ]; then
+    require_config_file || exit 1
+    selection="$(python3 "$SCRIPT_DIR/select_fays_backend.py" "$CONFIG_FILE")" || exit 1
+    backend="${selection%%$'\n'*}"
+    CONFIG_FILE="${selection#*$'\n'}"
+    if [ "$backend" = ft601 ]; then
+        EXECUTABLE="$BUILD_DIR/fays_record_ft601"
+        export LD_LIBRARY_PATH="$BUILD_DIR/lib/ft601/$ARCH:${LD_LIBRARY_PATH:-}"
+    fi
+fi
 
 case "$MODE" in
     daemon)

@@ -118,3 +118,18 @@ file(GLOB FAYS_RECORDER_SCRIPT_FILES "${CMAKE_CURRENT_BINARY_DIR}/scripts/*.sh")
 foreach(script_file ${FAYS_RECORDER_SCRIPT_FILES})
     execute_process(COMMAND chmod +x "${script_file}")
 endforeach()
+
+# Isolated SDK per executable: legacy UVC stays on its original library.
+set(FAYS_FT601_LIBRARY "${FAYS_SDK_ROOT}/lib/ft601/${FAYS_ARCH}/libfays_vikit.so")
+add_executable(fays_record_ft601 src/record.cpp)
+get_target_property(FAYS_COMMON_INCLUDES fays_record_example INCLUDE_DIRECTORIES)
+get_target_property(FAYS_COMMON_LINKS fays_record_example LINK_LIBRARIES)
+list(REMOVE_ITEM FAYS_COMMON_LINKS "${FAYS_ATRAK_LIBRARY}")
+target_include_directories(fays_record_ft601 PRIVATE ${FAYS_COMMON_INCLUDES})
+target_link_libraries(fays_record_ft601 PRIVATE "${FAYS_FT601_LIBRARY}" ${FAYS_COMMON_LINKS})
+target_compile_definitions(fays_record_ft601 PRIVATE UGRIPPER_ENABLE_PERF_LOG=$<BOOL:${UGRIPPER_ENABLE_PERF_LOG}>)
+set_target_properties(fays_record_ft601 PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+    BUILD_WITH_INSTALL_RPATH TRUE
+    INSTALL_RPATH "\$ORIGIN/lib/ft601/${FAYS_ARCH};\$ORIGIN/lib/ft602-linux-${FAYS_ARCH}")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib/ft601/${FAYS_ARCH}")
+file(COPY "${FAYS_FT601_LIBRARY}" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/lib/ft601/${FAYS_ARCH}")

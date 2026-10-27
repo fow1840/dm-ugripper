@@ -384,6 +384,7 @@ udevadm control --reload-rules
 # usb_device 节点；已插设备需要定向回放 usb 事件，否则只会更新 videoN
 # 权限，导致后台 daemon 能拉流但 GetDeviceInfo/GetCalibrationParam 失败。
 udevadm trigger --subsystem-match=usb --attr-match=idVendor=0403 --attr-match=idProduct=602e || true
+udevadm trigger --subsystem-match=usb --attr-match=idVendor=0403 --attr-match=idProduct=601f || true
 udevadm trigger --subsystem-match=video4linux
 udevadm trigger --subsystem-match=sound
 udevadm trigger --subsystem-match=input

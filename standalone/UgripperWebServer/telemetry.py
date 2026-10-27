@@ -69,11 +69,8 @@ def status():
             present = Path('/dev', key).exists()
             item = dict(id=key, side=side, label=label+title, present=present, stream=None)
             if 'fays' in key:
-                snapshots = [Path(f'/dev/shm/umi_{side}_fays_runtime_status.json'), Path(f'/dev/shm/ugripper/umi_{side}_fays_runtime_status.json')]
-                s = next((read_json(p) for p in snapshots if p.exists()), {})
-                stamp = s.get('last_imu_system_ns' if key.endswith('imu') else 'last_frame_system_ns', 0)
-                age = (time.time_ns() - stamp)/1e9 if stamp else None
-                item['stream'] = bool(present and s.get('running') and age is not None and 0 <= age < (5 if key.endswith('imu') else 3))
+                from fays_status import stream_status
+                item.update(stream_status(side, key.endswith('imu')))
             devices.append(item)
     if Path('/dev/cam_chest').exists():
         devices.append(dict(id='cam_chest', side='extra', label='胸部主摄', present=True, stream=None))

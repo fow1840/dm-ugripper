@@ -14,6 +14,9 @@
 # - left upper USB(bus:9/10)
 # - left lower USB(bus:11/12)
 
+# FT601 USB-device bind follows add. Reapply links on bind or udev drops them.
+# Keep legacy video/tty event handling unchanged.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0403", ATTR{idProduct}=="601f", ACTION=="bind", GOTO="ugripper_fixed_usb"
 ACTION!="add|change", GOTO="ugripper_fixed_end"
 
 SUBSYSTEM=="usb", GOTO="ugripper_fixed_usb"
@@ -22,6 +25,17 @@ SUBSYSTEM=="tty", GOTO="ugripper_fixed_tty"
 GOTO="ugripper_fixed_end"
 
 LABEL="ugripper_fixed_usb"
+# FT601 aliases share one USB device; launcher derives its physical sysfs port.
+ENV{DEVTYPE}=="usb_device", KERNEL=="6-1", ATTR{idVendor}=="0403", ATTR{idProduct}=="601f", MODE:="0660", GROUP:="video", SYMLINK+="stereo_left", SYMLINK+="left_fays_stereo", SYMLINK+="left_fays_imu"
+ENV{DEVTYPE}=="usb_device", KERNEL=="6-1.*", ATTR{idVendor}=="0403", ATTR{idProduct}=="601f", MODE:="0660", GROUP:="video", SYMLINK+="stereo_left", SYMLINK+="left_fays_stereo", SYMLINK+="left_fays_imu"
+ENV{DEVTYPE}=="usb_device", KERNEL=="8-1", ATTR{idVendor}=="0403", ATTR{idProduct}=="601f", MODE:="0660", GROUP:="video", SYMLINK+="stereo_right", SYMLINK+="right_fays_stereo", SYMLINK+="right_fays_imu"
+ENV{DEVTYPE}=="usb_device", KERNEL=="8-1.*", ATTR{idVendor}=="0403", ATTR{idProduct}=="601f", MODE:="0660", GROUP:="video", SYMLINK+="stereo_right", SYMLINK+="right_fays_stereo", SYMLINK+="right_fays_imu"
+ENV{DEVTYPE}=="usb_device", KERNEL=="1[02]-1", ATTR{idVendor}=="0403", ATTR{idProduct}=="601f", MODE:="0660", GROUP:="video", SYMLINK+="stereo_left", SYMLINK+="left_fays_stereo", SYMLINK+="left_fays_imu"
+ENV{DEVTYPE}=="usb_device", KERNEL=="1[02]-1.*", ATTR{idVendor}=="0403", ATTR{idProduct}=="601f", MODE:="0660", GROUP:="video", SYMLINK+="stereo_left", SYMLINK+="left_fays_stereo", SYMLINK+="left_fays_imu"
+# FT601 hotplug also prepares quota when no camera was present at service startup.
+ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0403", ATTR{idProduct}=="601f", RUN+="/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/ft601_usb_memory.py apply"
+# FT601 shared transport; per-side selection stays in stereo_dev_port.
+ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0403", ATTR{idProduct}=="601f", MODE:="0660", GROUP:="video"
 # Fays SDK needs access to the USB device/control node. Match only SuperSpeed
 # ports in the current UGripper side topology.
 ENV{DEVTYPE}=="usb_device", KERNEL=="[68]-1", ATTR{idVendor}=="0403", ATTR{idProduct}=="602e", ATTR{speed}=="5000", MODE:="0777", GROUP:="plugdev"

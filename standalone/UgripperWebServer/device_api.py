@@ -139,14 +139,10 @@ def devices(ids=None, *, details=False):
                                else 'connected' if connected is True else 'unknown')
             if name.endswith(('_fays_imu', '_fays_stereo')) and enabled is True:
                 side = name.split('_')[0]
-                paths = [Path(f'/dev/shm/umi_{side}_fays_runtime_status.json'),
-                         Path(f'/dev/shm/ugripper/umi_{side}_fays_runtime_status.json')]
-                runtime = next((mapping(read_json(p)) for p in paths if p.exists()), {})
-                key = 'last_imu_system_ns' if name.endswith('imu') else 'last_frame_system_ns'
-                sample = runtime.get(key)
-                value['stream'] = (connected is True and runtime.get('running') is True
-                                   and type(sample) in (int, float)
-                                   and 0 <= time.time_ns()-sample <= (5 if name.endswith('imu') else 3)*1e9)
+                from fays_status import stream_status
+                stream = stream_status(side, name.endswith('imu'))
+                value['stream'] = stream['stream']
+
 
         elif stamp is not None:
             value['status'] = 'stale'

@@ -157,6 +157,7 @@ validate_packaged_binaries() {
     validate_binary_arch "$PACKAGED_BUILD_DIR/standalone/GripperHmiTool/GripperHmiTool" "GripperHmiTool"
     validate_binary_arch "$PACKAGED_BUILD_DIR/standalone/UgripperRuntime/UgripperRuntime" "UgripperRuntime"
     validate_binary_arch "$PACKAGED_BUILD_DIR/standalone/FaysStereoRecorder/fays_record_example" "Fays stereo recorder"
+    validate_binary_arch "$PACKAGED_BUILD_DIR/standalone/FaysStereoRecorder/fays_record_ft601" "Fays FT601 recorder"
 
     local runtime_binary="$PACKAGED_BUILD_DIR/standalone/UgripperRuntime/UgripperRuntime"
     local expected_marker="UGRIPPER_STEREO_BUILD=${UGRIPPER_ENABLE_STEREO}"
@@ -443,7 +444,7 @@ else
         -DUGRIPPER_ENABLE_MCAP_BUILDER=OFF \
         -DUGRIPPER_ENABLE_STEREO="${UGRIPPER_ENABLE_STEREO}"
     cmake --build "$PACKAGED_BUILD_DIR" \
-        --target CameraRecorder main_camera_xu_tool SensorRecorder zeroing GripperHmiTool UgripperRuntime fays_record_example \
+        --target CameraRecorder main_camera_xu_tool SensorRecorder zeroing GripperHmiTool UgripperRuntime fays_record_example fays_record_ft601 \
         --parallel "$(nproc)"
     validate_packaged_binaries
 fi
@@ -476,6 +477,8 @@ copy_first_existing "$TARGET_INSTALL_ROOT/bin/UgripperRuntime/UgripperRuntime" \
     "$PACKAGED_BUILD_DIR/standalone/UgripperRuntime/UgripperRuntime"
 copy_first_existing "$TARGET_INSTALL_ROOT/bin/FaysStereoRecorder/fays_record_example" \
     "$PACKAGED_BUILD_DIR/standalone/FaysStereoRecorder/fays_record_example"
+copy_first_existing "$TARGET_INSTALL_ROOT/bin/FaysStereoRecorder/fays_record_ft601" \
+    "$PACKAGED_BUILD_DIR/standalone/FaysStereoRecorder/fays_record_ft601"
 copy_if_exists "scripts/hws" "$BUILD_ROOT/usr/local/bin/hws"
 copy_if_exists "scripts/getimg" "$BUILD_ROOT/usr/local/bin/getimg"
 copy_if_exists "scripts/ugripper_ch9344_symlink_name.sh" \
@@ -504,6 +507,7 @@ copy_if_exists "$PACKAGED_BUILD_DIR/standalone/FaysStereoRecorder/lib" \
 copy_if_exists "config/ensure_main_camera_packet_size_once.sh" \
     "$TARGET_INSTALL_ROOT/config/ensure_main_camera_packet_size_once.sh"
 copy_if_exists "config/usb_irq_affinity.py" "$TARGET_INSTALL_ROOT/config/usb_irq_affinity.py"
+copy_if_exists "config/ft601_usb_memory.py" "$TARGET_INSTALL_ROOT/config/ft601_usb_memory.py"
 copy_if_exists "config/cpu_affinity.py" "$TARGET_INSTALL_ROOT/config/cpu_affinity.py"
 copy_if_exists "config/uvc_workqueue_affinity.py" \
     "$TARGET_INSTALL_ROOT/config/uvc_workqueue_affinity.py"

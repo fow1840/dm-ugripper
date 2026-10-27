@@ -43,6 +43,30 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - 停录校验读取左右编码器末帧 Unix 时间，与同侧已启用视频的 Unix 起点加有效时长所得最晚末尾比较，最大允许落后 1 秒。topic/消息缺失、不可读、缺少参考时间或尾部不足报 `encoder_tail_missing` / `UGR-30-08`；适用于含双目与 `+nostereo` 两种包。该检查不替代逐帧 gap 深度校验。 查询要求 MCAP chunk 索引可用，只检查末尾最多 4 个 chunk；索引缺失或该窗口内找不到 encoder 消息直接报错，不回退全量消息扫描。
 
 - Web 时间同步测试按 `/etc/environment` 的 `DEVICE_SN` 小写选择当前设备数据目录，并显式传入毫秒表脚本；未配置 SN 时使用运行时相同的 `noname_device`。不依赖数据盘仅存在一个设备目录；状态轮询保留每组日志展开和滚动状态。
+### 新旧 Fays 双目兼容
+
+2.1.15 包同时包含旧 UVC SDK 3.8.4 与 FT601 SDK test/8277c6f（3.9.7），
+分别由 fays_record_example、fays_record_ft601 加载，库目录隔离。启动器读取配置设备的
+USB VID/PID：0403:602e 走旧链路，0403:601f 将配置转换为 `device_type: ft601`、
+`stereo_dev_port: <sysfs目录名>`、`imu_dev_port: NULL`；未知设备拒绝启动，不选择首设备兜底。
+原左右配置保留，udev 为两类设备提供相同逻辑别名；FT601 的 stereo/IMU 别名指向同一
+USB 节点，仅用于存在检测与物理端口解析，不可将它们交给 V4L2 工具。
+默认物理侧别沿用既有规则：6-1 子树及 10/12-1 子树为左，8-1 子树为右。
+每侧仅连接一块双目；同拓扑热插拔端口名保持稳定，换插口需调整侧别配置/rules。
+
+FT601 USB 权限为 video 组0660。服务启动及FT601热插拔时root helper仅在额度非0且小于64MB时
+提高usbfs_memory_mb至64；0（无限制）和更高值保留。原值记录在root专用/run目录，
+服务停止时若仍为本软件设置值则恢复；外部更改保留。未连接FT601的旧设备不调整额度。
+240原16MB下双机后启动失败，64MB下双机60秒录制通过；这不是旧UVC稳定性优化。
+
+Runtime仍分别检查图像/IMU新鲜度、标定和进程状态；Web与HWS共用只读流状态检查，
+要求节点存在、进程存活、状态及对应数据3秒内更新。HWS OFF=节点缺失，WARN=在线但无新鲜数据，
+OK=在线且数据新鲜。保留原状态字段，不改变metadata；SDK与左右类型可独立选择。
+
+同步沿用设备时钟映射：MCAP IMU logTime为设备时间、publishTime为接收时间，图像publishTime
+为映射时间。批量USB到达不是采样gap；不能直接使用IMU publishTime做采样对齐。
+SDK无公开当前设备时钟读取API，绝对同步精度和跨设备校准仍需外部对照。
+
 ## 2. 安装布局与入口
 
 - Web/API 所有软件及固件升级要求背包电量至少 30%，BMS 数据不可用/超过 20 秒也拒绝；任务接收、停服及实际安装/逐侧烧录前检查，强制升级和充电均不豁免。Web 的 RK3588 设备固件入口接受包含 update.sh、SHA256SUMS、payload 的完整发布包，支持 PC 解压后选择整个发布目录上传；不再接受裸 boot.img。root worker 验证文件清单、硬件型号及 boot 分区后，以 sh -e 执行包内脚本；按 V100/V130 选择对应 FIT，脚本可同时更新驱动、启动脚本、日志配置及文件系统。目标版本、文件和 boot 分区回读一致后等待独立重启指令，同版本也执行完整包；重启前清理临时包，新 boot ID 下再次核对版本、文件和分区。Runtime 将 /home/user/version.info 缓存为 rk3588_firmware_version，Web/API 共用，起录冻结后写入 metadata 3.3；中断不自动重刷。
@@ -927,3 +951,7 @@ HTTP 错误统一为 error.code/message/retryable，409 表示解除互斥后可
 ### 编码器与轨迹点检
 
 Web 点检页和 inspection API 共用后台任务：人工五次开合、左右独立端点判定；闭合 [-150,150]，最大张开 [-4200,-3800]，均为有符号原始计数。0.5秒稳定窗、80计数抖动、500计数最小方向行程，180秒限时；不中途标零、不检测触觉错位。轨迹点检由 Web 在提交前倒数5秒，API立即请求起录，手动停止。FIFO 测试指令绑定32位任务ID与5秒有效期，停止核对会话ID；正常录制及QC链路不变。生产压测每轮也使用独立测试ID。metadata 3.3仅在episode_name后增加test_dataset_name字符串，标准为空，轨迹trajectory_test，生产production_test；历史缺项兼容为空。任务结果独立于metadata，服务中断标记未完成。
+
+### FT601 USB bind 事件与别名恢复
+
+FT601 USB 设备在 add 后还会收到 bind 事件。固定端口规则对 0403:601f 的 usb_device bind 单独重申别名，避免 udev 在跳过规则后删除 stereo 与 IMU 链接；旧 UVC/video4linux/tty 仍只处理 add/change。验收需覆盖 add/change→bind 和真实 USB restore 后的别名、SDK 图像/IMU 在线状态，不以手动 change 一次成功代替热插拔验证。
