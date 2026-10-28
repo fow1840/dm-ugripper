@@ -566,6 +566,10 @@ std::optional<HealthFault> HealthMonitor::EvaluateHealth() const
         };
     }
 
+    if (dependencies_.get_gripper_fault) {
+        if (const auto fault=dependencies_.get_gripper_fault()) return fault;
+    }
+
     if (dependencies_.path_exists != nullptr)
     {
         std::vector<std::string> missing_device_paths;

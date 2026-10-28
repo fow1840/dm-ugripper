@@ -36,3 +36,26 @@
 @media(max-width:480px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric .value{font-size:24px}.metric{min-width:0}}
 
 .device-heading{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px}.device-sn{font-size:13px;font-weight:400;color:#64748b;overflow-wrap:anywhere}
+
+/* Fixed inspection dashboard: readings update without rebuilding rows. */
+.inspection-summary{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin:22px 0 16px}
+.inspection-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.inspection-hand{min-width:0;border:1px solid #dce5e8;border-radius:12px;padding:18px;background:#fbfcfd}
+.inspection-hand .section-top{margin-bottom:10px}.inspection-hand h3{margin:0}
+.inspection-readout{display:flex;justify-content:space-between;align-items:center;color:#607382}
+.inspection-reading{font-size:30px;font-variant-numeric:tabular-nums;color:#193c4c}
+.inspection-hint{min-height:24px;color:#176952;margin:8px 0}
+.inspection-rounds{width:100%;table-layout:fixed;border-collapse:collapse;margin:14px 0;font-variant-numeric:tabular-nums}
+.inspection-rounds th,.inspection-rounds td{padding:10px 6px;border-bottom:1px solid #e1e7ec;text-align:center;vertical-align:top}
+.inspection-rounds th:first-child{width:42px}.inspection-rounds td{height:82px}
+.inspection-rounds td strong{display:block;font-size:18px;margin-bottom:5px}.inspection-rounds small{display:block;color:#a32a24;font-size:11px;min-height:16px;margin-top:4px}
+.inspection-badge{display:inline-block;border-radius:6px;padding:4px 8px;font-size:12px;font-weight:650;white-space:nowrap}
+.inspection-badge.pass{background:#dff4e8;color:#12613b}.inspection-badge.fail{background:#fde5e3;color:#a32420}
+.inspection-badge.pending{background:#eaf0f4;color:#526477}.inspection-badge.running{background:#e1efff;color:#185da5}
+.inspection-consistency{display:grid;gap:12px}.inspection-consistency>div{border:1px solid #e1e7ec;background:white;border-radius:8px;padding:12px}
+.inspection-consistency strong{font-size:13px;display:inline-block;margin:0 8px 8px 0}.inspection-consistency p{font-size:12px;margin:5px 0;overflow-wrap:anywhere}.inspection-consistency summary{font-size:12px;color:#526477;cursor:pointer}
+.inspection-failures{margin-top:18px;background:#fff2ef;border:1px solid #f1cdc6;border-radius:8px;padding:12px;color:#982c20}.inspection-failures summary{cursor:pointer;font-weight:650}.inspection-failures li{margin:7px 0;font-size:13px}
+#inspectionActionStatus{color:#a32420;min-height:20px;margin:8px 0}
+@media(max-width:760px){.inspection-grid{grid-template-columns:minmax(0,1fr)}.inspection-hand{padding:12px}.inspection-rounds th,.inspection-rounds td{padding:8px 4px}}
+
+.device-sn.gripper-mismatch{color:#a32420;background:#fde5e3;padding:6px 8px;border-radius:6px;font-weight:650}

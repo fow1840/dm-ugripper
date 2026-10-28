@@ -1,4 +1,5 @@
 #include "record_runtime.h"
+#include "record_runtime/inspection_feedback.h"
 #include "record_runtime/runtime_episode_internal.h"
 #include "record_runtime/runtime_split_internal.h"
 #include "record_runtime/runtime_support_internal.h"
@@ -411,6 +412,50 @@ void RecordRuntime::handleRecordingTaskMarker()
             << std::endl).str());
         playHmiFeedback(DA::Ugripper::HmiFeedbackEvent::TaskMarkerRejected);
         break;
+    }
+}
+
+void RecordRuntime::maintainInspectionFeedback()
+{
+    if (!inspectionFeedbackStartMs_[0] && !inspectionFeedbackStartMs_[1]) return;
+    const bool blocked=isRecordingActive() || currentHealthFault().has_value() ||
+        egoBindingFaultActive_ || logPersistenceFailed_.load() || isEgoSyncPending();
+    bool restore=false;
+    for (size_t i=0;i<2;++i) {
+        if (!inspectionFeedbackStartMs_[i]) continue;
+        const std::string side=i==0?"left":"right";
+        const auto snapshot=panelManager_.feedbackSnapshotForSide(side);
+        const bool on=InspectionFeedbackPhaseOn(inspectionFeedbackPhase_[i]);
+        if (!inspectionFeedbackAck_[i] && snapshot.beepStateCount>inspectionFeedbackRx_[i] &&
+            snapshot.beepState.duty==(on?GripperHmiDriver::kDefaultBeepDuty:0) &&
+            (!on || snapshot.beepState.frequency==GripperHmiDriver::kDefaultBeepFrequency)) {
+            inspectionFeedbackAck_[i]=true;
+            DM_LOG_INFO("encoder feedback hardware ack: side={} phase={} duty={} frequency={}",side,
+                inspectionFeedbackPhase_[i],snapshot.beepState.duty,snapshot.beepState.frequency);
+        }
+        if (blocked) inspectionFeedbackPhase_[i]=4;
+        else if (on==inspectionFeedbackOn_[i] && InspectionFeedbackAdvance(inspectionFeedbackPhase_[i],currentSteadyMs()-inspectionFeedbackStartMs_[i],inspectionFeedbackAck_[i])) {
+            if (!inspectionFeedbackAck_[i]) DM_LOG_WARN("encoder feedback hardware ack timeout: side={} phase={}",side,inspectionFeedbackPhase_[i]);
+            ++inspectionFeedbackPhase_[i];
+        }
+        if (inspectionFeedbackPhase_[i]>=4) {
+            panelManager_.silenceBeepForSide(side);
+            inspectionFeedbackStartMs_[i]=0;inspectionFeedbackOn_[i]=false;restore=true;
+            DM_LOG_INFO("encoder feedback ended: side={} interrupted={}",side,blocked);
+        }
+    }
+    if (restore && !isRecordingActive()) applyIdleState();
+    for (size_t i=0;i<2;++i) {
+        if (!inspectionFeedbackStartMs_[i]) continue;
+        const bool on=InspectionFeedbackPhaseOn(inspectionFeedbackPhase_[i]);
+        if (on==inspectionFeedbackOn_[i] && !restore) continue;
+        const std::string side=i==0?"left":"right";
+        inspectionFeedbackRx_[i]=panelManager_.feedbackSnapshotForSide(side).beepStateCount;
+        panelManager_.setLedColorForSide(side,0,on?100:0,on?255:0);
+        panelManager_.setBeepStateForSide(side,on?GripperBeepState{GripperHmiDriver::kDefaultBeepDuty,GripperHmiDriver::kDefaultBeepFrequency}:GripperBeepState{0,0});
+        inspectionFeedbackOn_[i]=on;inspectionFeedbackAck_[i]=false;
+        inspectionFeedbackStartMs_[i]=currentSteadyMs();
+        DM_LOG_INFO("encoder feedback phase sent: side={} phase={} on={}",side,inspectionFeedbackPhase_[i],on);
     }
 }
 
@@ -1097,6 +1142,29 @@ bool RecordRuntime::processRecordControlCommand(const std::string &rawCommand)
         if (id.size() != 32 || id.find_first_not_of("0123456789abcdef") != std::string::npos ||
             expires < currentEpochMs() || expires > currentEpochMs() + 10000) return false;
         const auto action = request["action"].get<std::string>();
+        if (action=="encoder_side_done") {
+            const std::string side=request.value("side",std::string());
+            if (side!="left" && side!="right") return false;
+            const size_t index=side=="left"?0:1;
+            if (inspectionFeedbackIds_[index]==id || isRecordingActive()) return false;
+            json job;std::string error;
+            if (!loadJsonFile("/var/lib/ugripper-web/inspection.json",&job,&error) ||
+                job.value("id",std::string())!=id || job.value("kind",std::string())!="encoder" ||
+                (job.value("status",std::string())!="running" && job.value("status",std::string())!="completed") ||
+                !job.contains("sides") || !job["sides"].contains(side) ||
+                job["sides"][side].value("phase",std::string())!="done" ||
+                job["sides"][side].value("completed_cycles",0)!=5) return false;
+            inspectionFeedbackIds_[index]=id;
+            if (currentHealthFault() || egoBindingFaultActive_ || logPersistenceFailed_.load() || isEgoSyncPending()) return false;
+            inspectionFeedbackStartMs_[index]=currentSteadyMs();
+            inspectionFeedbackPhase_[index]=0;inspectionFeedbackAck_[index]=false;
+            inspectionFeedbackRx_[index]=panelManager_.feedbackSnapshotForSide(side).beepStateCount;
+            inspectionFeedbackOn_[index]=false;
+            DM_LOG_INFO("encoder inspection completion feedback: id={} side={}",id,side);
+            maintainInspectionFeedback();
+            return true;
+        }
+
         if (action == "test_stop")
             return isRecordingActive() && activeTestId_ == id && stopRecording(false, "", "");
         if (action != "test_start" || isRecordingActive() ||

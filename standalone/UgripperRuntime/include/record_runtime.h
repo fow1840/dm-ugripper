@@ -143,6 +143,7 @@ private:
                                     gripper_hmi::GripperCalibrationPayload *payload);
         std::vector<ConnectionEvent> consumeConnectionEvents();
         bool isSideReadyForRefresh(const std::string &side, uint64_t activeTimeoutMs) const;
+        GripperHmiSnapshot feedbackSnapshotForSide(const std::string &side) const;
         bool setBeepStateForSide(const std::string &side, const GripperBeepState &state);
         bool setBeepEnabledForSide(const std::string &side, bool enabled);
         bool silenceBeepForSide(const std::string &side);
@@ -254,6 +255,13 @@ private:
     void handleButtonAction(DA::Ugripper::ButtonAction action);
     void resetLeftButtonTracking();
     void handleRecordingTaskMarker();
+    void maintainInspectionFeedback();
+    std::array<uint64_t,2> inspectionFeedbackStartMs_{};
+    std::array<std::string,2> inspectionFeedbackIds_{};
+    std::array<bool,2> inspectionFeedbackOn_{};
+    std::array<unsigned,2> inspectionFeedbackPhase_{};
+    std::array<bool,2> inspectionFeedbackAck_{};
+    std::array<uint64_t,2> inspectionFeedbackRx_{};
     void playHmiFeedback(DA::Ugripper::HmiFeedbackEvent event);
     void handleDualShutdownAction();
     bool handleLeftDualUmountAction();
@@ -280,6 +288,7 @@ private:
     void stopStereoDaemon();
     void maintainStereoDaemon();
     std::optional<DA::Ugripper::HealthFault> currentHealthFault() const;
+    std::optional<DA::Ugripper::HealthFault> currentGripperVersionFault() const;
     bool isStereoStartupWaiting() const;
     void maintainRestoreUsbRetry();
     void maintainRestoreUsbFailureAlarm();

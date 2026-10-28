@@ -1269,3 +1269,56 @@ TEST(HealthMonitorTest, ClassifiesUnknownStereoNotReadyWithoutSideDetails)
 }
 
 }  // namespace
+
+#include "record_runtime/gripper_generation.h"
+TEST(GripperGenerationTest, ProductVersionIsFifthCharacter) {
+    using DA::Ugripper::GripperGeneration;
+    EXPECT_EQ(GripperGeneration("DAGZ122676001465"),25);
+    EXPECT_EQ(GripperGeneration("DAGY3226760096E2"),29);
+    EXPECT_EQ(GripperGeneration("DAGY2226760096E2"),0);
+    EXPECT_EQ(GripperGeneration("DAG"),0);
+    EXPECT_EQ(GripperGeneration("xxxY3226760096E2"),0);
+}
+TEST(GripperGenerationTest, MixedPairFaultFollowsOldSideAndClears) {
+    using DA::Ugripper::GripperGenerationFault;
+    auto fault=GripperGenerationFault(true,"DAGZ122676001465",true,"DAGY3226760096E2");
+    ASSERT_TRUE(fault);EXPECT_EQ(fault->side,HardwareFaultSide::Left);
+    EXPECT_EQ(fault->key,"gripper_version_mismatch");
+    fault=GripperGenerationFault(true,"DAGZ322676001465",true,"DAGY1226760096E2");
+    ASSERT_TRUE(fault);EXPECT_EQ(fault->side,HardwareFaultSide::Right);
+    EXPECT_FALSE(GripperGenerationFault(true,"DAGZ122676001465",true,"DAGY1226760096E2"));
+    EXPECT_FALSE(GripperGenerationFault(true,"DAGZ322676001465",true,"DAGY3226760096E2"));
+    EXPECT_FALSE(GripperGenerationFault(false,"DAGZ122676001465",true,"DAGY3226760096E2"));
+}
+TEST(HealthMonitorTest, GripperMismatchUsesSameGateForStartAndPollThenRecovers) {
+    bool mixed=true;
+    HealthMonitor monitor({.stereo_enabled=false,.poll_interval_ms=1},
+        {.get_gripper_fault=[&mixed]() -> std::optional<HealthFault> {
+            return DA::Ugripper::GripperGenerationFault(true,"DAGZ122676001465",true,
+                mixed?"DAGY3226760096E2":"DAGY1226760096E2");
+        }}, &FakeNowMs);
+    EXPECT_TRUE(monitor.EvaluateHealth());
+    g_now_ms=5000;
+    auto first=monitor.Poll({});
+    ASSERT_TRUE(first.fault);
+    EXPECT_EQ(first.fault->key,"gripper_version_mismatch");
+    mixed=false;g_now_ms+=100;
+    EXPECT_FALSE(monitor.EvaluateHealth());
+    EXPECT_TRUE(monitor.Poll(first.state).recovered);
+}
+
+#include "record_runtime/inspection_feedback.h"
+TEST(InspectionFeedbackTest, EachPhaseWaitsForMinimumDurationAndHardwareAck) {
+    using namespace DA::Ugripper;
+    EXPECT_TRUE(InspectionFeedbackPhaseOn(0));
+    EXPECT_FALSE(InspectionFeedbackPhaseOn(1));
+    EXPECT_TRUE(InspectionFeedbackPhaseOn(2));
+    EXPECT_FALSE(InspectionFeedbackPhaseOn(3));
+    EXPECT_FALSE(InspectionFeedbackPhaseOn(4));
+    EXPECT_FALSE(InspectionFeedbackAdvance(0,349,true));
+    EXPECT_TRUE(InspectionFeedbackAdvance(0,350,true));
+    EXPECT_FALSE(InspectionFeedbackAdvance(0,600,false));
+    EXPECT_TRUE(InspectionFeedbackAdvance(0,1500,false));
+    EXPECT_FALSE(InspectionFeedbackAdvance(1,249,true));
+    EXPECT_TRUE(InspectionFeedbackAdvance(1,250,true));
+}

@@ -137,6 +137,7 @@ def devices(ids=None, *, details=False):
             value['status'] = ('disabled' if enabled is False else 'disconnected' if connected is False
                                else 'unrecognized' if connected is True and identified is False
                                else 'connected' if connected is True else 'unknown')
+            if value.get('error')=='gripper_version_mismatch':value['status']='gripper_version_mismatch'
             if name.endswith(('_fays_imu', '_fays_stereo')) and enabled is True:
                 side = name.split('_')[0]
                 from fays_status import stream_status

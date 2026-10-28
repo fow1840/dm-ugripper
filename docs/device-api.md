@@ -209,7 +209,7 @@ curl -k "$base/api/v1/logs" -o ugripper-logs.tar.gz
 
 ### 编码器与自动测试
 
-编码器单次读数返回 `left/right` 对象，每侧包含 `status`；成功包含 `position`（无符号原始寄存器）、`angle_deg`、`angle_rad`、`read_at`（Unix 秒），不可用时附 `message`。角度按有符号 16 位计数换算，不能将 `position` 直接当成弧度。
+编码器单次读数返回 `left/right` 对象，每侧包含 `status`；成功包含 `position`（无符号原始寄存器）、`angle_deg`、`angle_rad`、`read_at`（Unix 秒），不可用时附 `message`。角度按有符号 16 位计数换算；Web 原始计数也按有符号显示（例如寄存器 61364 显示 -4172）。API `position` 保留寄存器原值，不能直接当成弧度。
 
 编码器流逐行返回左右读数，以及 `rate_hz`、`dropped`、`remaining_s`。目标约 100 Hz，每次约 60 秒释放；断开连接可结束读取。每行使用 `type=sample/error/end`：sample 保留左右读数等原字段；error 包含 `error.code/message/retryable`；正常到达会话时限发送 `{"type":"end","reason":"duration_limit"}`。异常 error 是终态，不再发送正常 end；连接中断而未收到终态表示未确认结束。串口读取期间持有互斥锁，不写零位。
 
@@ -237,7 +237,7 @@ curl -k "$base/api/v1/logs" -o ugripper-logs.tar.gz
 
 ## 接入依据
 
-本文核对入口为 [server.py](../standalone/UgripperWebServer/server.py)、[device_api.py](../standalone/UgripperWebServer/device_api.py)、[maintenance.py](../standalone/UgripperWebServer/maintenance.py)、[fays_status.py](../standalone/UgripperWebServer/fays_status.py) 及对应状态/抓图/测试模块。此次为源码合同核对，未对真实设备执行升级、基线重置、标零或测试录制。
+本文核对入口为 [server.py](../standalone/UgripperWebServer/server.py)、[device_api.py](../standalone/UgripperWebServer/device_api.py)、[maintenance.py](../standalone/UgripperWebServer/maintenance.py)、[fays_status.py](../standalone/UgripperWebServer/fays_status.py) 及对应状态/抓图/测试模块。接口合同以源码为准；轨迹点检录制与通知已在 240 实测，未执行升级、基线重置或标零测试。
 
 
 ## 统一错误与任务查询约定
@@ -280,22 +280,106 @@ curl -k -sS 'https://192.168.2.240:8080/api/v1/versions?fields=ugripper' | jq
 
 ## 点检（编码器开合与轨迹测试）
 
-Web 新增“点检”页，与 App 使用相同接口。此次不做触觉错位检测，不采接触基线、不执行标零。
+Web“点检”页提供编码器开合检查和轨迹测试录制，与 App 使用相同接口。
 
 | 接口 | JSON | 行为 |
 | --- | --- | --- |
-| `POST /api/v1/inspection/encoder/start` | `{"side":"both"}`，也可 left/right | 202，后台检查人工 5 次完整开合 |
+| `POST /api/v1/inspection/encoder/start` | `{}`；固定双手检查 | 202，后台检查人工 5 次完整开合 |
 | `POST /api/v1/inspection/encoder/cancel` | `{"id":"任务ID"}` | 取消本任务，未完成不判通过 |
 | `POST /api/v1/inspection/trajectory/start` | `{}` | 202，立即请求轨迹测试起录，API 无倒计时 |
-| `POST /api/v1/inspection/trajectory/stop` | `{"id":"任务ID"}` | 停止对应测试会话并等待正常收尾 |
-| `GET /api/v1/tasks/inspection/{id}` | 无 | 查询当前保留点检任务，旧 ID 返回 404 |
+| `POST /api/v1/inspection/trajectory/stop` | `{"id":"任务ID"}` | 请求停止对应测试会话；后台收尾，响应不代表已完成 |
+| `GET /api/v1/tasks/inspection/{id}` | 无 | 查询当前点检任务；非当前 ID 返回 404 |
 
-POST 使用 `X-UGripper-Request: 1`，无维护密码，仍检查 Origin。提交返回 id/status_url；/status 提供 inspection 摘要，details=true 提供完整检查记录。执行状态 status 与检查结论 result 分开，completed 不等于 pass。关闭页面不会取消已提交任务；worker 重启后标记 interrupted，不自动续跑。
+POST 使用 `X-UGripper-Request: 1`，无维护密码，仍检查 Origin。提交返回 id/status_url；/status 提供 inspection 摘要，details=true 提供完整检查记录。编码器执行状态 status 与检查结论 result 分开，completed 不等于 pass。关闭页面不会取消已提交任务；worker 重启不自动续跑，任务标记中断。
 
-编码器使用有符号 16 位原始计数。首次张开稳定作为准备，随后每侧独立完成五次闭合、张开；每端点停稳至少 0.5 秒，窗口内峰峰值不超过 80，较上端点方向行程至少 500 才计入下一个端点。判定不以进入合格区间作为计数条件，越界也记录失败。当前参数需要板端人工开合验收；任意中间位置的长停顿可能被识别为不合格端点，应按页面提示连续完成动作。检查最多 180 秒。
+### 编码器测试操作与 API 交互（2026-10-28）
 
-闭合 [-150,150]，小于/大于分别 closed_below_range/closed_above_range；张开 [-4200,-3800]，小于 -4200 为 open_above_range（幅度过量），大于 -3800 为 open_below_range（幅度不足）。边界通过。每项包含 cycle/endpoint/value/limits/status/code；不足五次为 cycles_incomplete，位置持续抖动附 position_unstable，读取异常 encoder_read_failed。
+1. 接入左右夹爪，保持数采服务运行，设备处于可执行点检的空闲状态。在 Web 点检页点击“开始检查”，或调用下面的 start 接口。
+2. 收到任务 ID 后开始查询任务；`202` 表示任务已接受，后台初始化和采样是否成功以查询结果为准。`status=running` 时持续展示两侧实时计数、阶段及轮次；异步失败会返回 `status=failed`、`result=error` 和 `code/message`。
+3. 双手先充分张开，再轻合；随后各完成五次轻合、充分张开。每次充分到位后再反向运动，系统在反向动作确认后记录上一半周期极值。第五次张开后再开始合拢，直到页面确认第五轮。
+4. 两侧独立计数，每侧完成五轮后蓝灯闪两次并短鸣两次，表示该侧采样结束。等两侧结束后读取最终 `result` 和全部 `failures`。
+5. 中途退出检查时调用 cancel，再查询到终态。关闭网页本身不会取消检查。服务重启导致的中断需重新开始。
+
+终端示例（需要 `jq`；查询和取消使用 start 返回的同一任务 ID）：
+
+```sh
+base='https://192.168.2.240:8080'
+reply=$(curl -ksS --fail-with-body -X POST "$base/api/v1/inspection/encoder/start" \
+  -H 'X-UGripper-Request: 1' -H 'Content-Type: application/json' -d '{}')
+printf '%s\n' "$reply"
+# HTTP 202 示例：{"id":"任务ID","status_url":"/api/v1/tasks/inspection/任务ID"}
+id=$(printf '%s' "$reply" | jq -er '.id')
+
+# 周期查询：建议每 200ms 一次，进入终态后停止轮询。
+curl -ksS "$base/api/v1/tasks/inspection/$id" | jq .
+
+# 用户需要取消时调用：
+curl -ksS --fail-with-body -X POST "$base/api/v1/inspection/encoder/cancel" \
+  -H 'X-UGripper-Request: 1' -H 'Content-Type: application/json' \
+  -d "$(jq -nc --arg id "$id" '{id:$id}')"
+# 接受取消示例：{"id":"任务ID","stopping":true}
+# 接着查询同一 status_url，直到 status 不再为 running。
+```
+
+start 非 2xx 时按统一 `error.code/message/retryable` 处理，不继续使用空 ID 查询。查询失败或超时可重试；404 表示该 ID 已不可查询，需要检查当前任务。编码器结果通过轮询获取。
+
+| 查询字段 | 调用方处理 |
+| --- | --- |
+| `status=running` | 检查进行中，继续查询 |
+| `status=completed` | 检查结束，结合 `result` 判断；超时收集不足也可能是 completed/incomplete |
+| `status=cancelled/interrupted/failed` | 已取消、已中断或执行失败，展示原因和已采集结果 |
+| `result=pass/fail/incomplete/error` | 分别为通过、不通过、采集不完整、执行错误 |
+| `sides.left/right` | 各侧阶段、实时计数、逐轮峰值与一致性结果 |
+| `failures` | 展示全部不通过项 |
+
+每轮 `value` 是有符号原始计数；`consistency[].peaks_deg` 是五轮同类端点相对编码器零位的角度，公式为 `计数 × 360 / 65536`。`max_difference_deg` 才是五轮峰值的最大差异，例如峰值计数 `[56,48,48,48,56]` 对应差异 `0.043945°`。
+
+### 编码器判定规则
+
+编码器固定检查双手，左右独立累计五次闭合、张开。请求 `{}`，也接受 `{"side":"both"}`；left/right 返回 HTTP 400，message 为 inspection_requires_both_sides。使用有符号 16 位原始计数，闭合半周期取最大值、张开半周期取最小值；先进入端点识别区（闭合峰值 ≥ -1000，张开峰值 ≤ -3000），再从当前极值反向移动至少 500 计数并持续 0.1 秒后，确认反向动作，结算上一半周期的峰值。行程中的停顿只保留当前极值，继续同方向移动时继续更新。
+
+双手先充分张开，再开始轻合，准备阶段的张开作为起点；随后完成五次轻合、充分张开，最后再开始合拢，以确认第 5 次张开的峰值。两侧都获得五组闭合/张开结果后结束，检查最多 180 秒。
+
+闭合 [-100,150]，小于/大于分别 closed_below_range/closed_above_range；张开 [-4200,-3650]，小于 -4200 为 open_above_range（幅度过量），大于 -3650 为 open_below_range（幅度不足）。边界通过。每项包含 cycle/endpoint/value/limits/status/code；不足五次为 cycles_incomplete，读取异常 encoder_read_failed。
+
+编码器五轮峰值一致性按左右手、闭合/张开分别检查，共四组；每组比较五轮同类峰值的任意两次差异：5 次闭合最大值之间比较、5 次张开最小值之间比较，按 `计数 × 360 / 65536` 换算成角度。各侧夹爪 SN 第五位产品版本为 `1`（V2.5）时限值 2°，为 `3`（V2.9）时限值 1°，等于限值通过。范围判定与一致性判定同时执行，任一不通过时最终 result=fail；任务仍收集五轮完整结果。
+
+任务开始读取并冻结左右夹爪 SN、版本和一致性限值；顶层 `grippers.left/right` 分别返回 `serial/hardware_version/consistency_limit_deg`，`consistency_limits_deg.left/right` 返回各侧限值。各侧新增 `consistency` 两项，字段为 `endpoint/count/peaks_deg/max_difference_deg/limit_deg/status/code`；peaks_deg 按轮次列出同类峰值（角度），max_difference_deg 为该组任意两次峰值的最大差异。不足五个峰值时为 pending，结束仍不足为 incomplete。一致性通过/失败分别为 pass/fail，失败码为 `closed_consistency_exceeded` 或 `open_consistency_exceeded`。
+
+顶层 `failures` 汇总全部不通过项，逐轮范围失败带 side/cycle/endpoint/code，一致性失败带 side/endpoint/code；Web 逐项显示，不用单个 code 代替完整失败列表。例如同侧可同时返回：
+
+```json
+{"failures":[{"side":"left","cycle":2,"endpoint":"closed","code":"closed_above_range"},{"side":"left","endpoint":"closed","code":"closed_consistency_exceeded"},{"side":"left","endpoint":"open","code":"open_consistency_exceeded"}]}
+```
+
+夹爪未连接、SN 缺失/格式不合法或状态超过 15 秒时报告 `gripper_sn_unavailable`，SN 产品版本未配置规则时报告 `gripper_sn_unsupported`，均带 side；对应一致性状态为 unavailable。任务中夹爪 SN/规则变化时以 interrupted/gripper_identity_changed 结束，重新开始检查使用新夹爪身份。取消、超时或读取错误也保留已得到的范围和一致性结果。
 
 Web 轨迹按钮先倒数 5 秒，取消或离开点检页即取消尚未提交的倒计时；倒数结束才发送 API。API 立即请求起录但仍受正常设备就绪门禁约束，不保证零启动耗时。手动停止只作用于同一任务 ID 的会话。最终通过仅指原有录制 QC 通过，不代表自动验证轨迹形状。
 
 metadata 3.3 在 episode_name 后立即增加字符串 test_dataset_name：空字符串为标准数据，trajectory_test 为轨迹测试，production_test 为生产压测。起录冻结标识，失败数据保留；普通下一条恢复为空。只增加这一字段，其他 metadata 字段和 data_version 不变；历史 3.3 缺该字段按标准数据解释。测试任务 ID 仅保存在运行状态，不添加到 metadata。
+### Web 点检结果面板
+
+左右手分别展示固定5轮闭合/张开峰值表、完成进度和两项一致性结果；通过显示绿色PASS，失败显示红色FAIL，待检测/未完成显示灰色。全部失败项集中列出。启动响应返回id后即可取消；取消接受后显示“正在取消”，任务终态确认结束，请求失败会显示原因并允许重试。
+
+编码器点检在设备/维护服务重启恢复时以 interrupted/service_interrupted 结束；主录制服务停止或重启也会通过运行实例标识变化终止点检并释放串口及互斥锁。Web显示“已中断 · 请重新开始”，恢复开始按钮，已记录结果保留。
+
+### 夹爪 SN 版本与混用门禁
+
+夹爪 SN 为16位大写字母/数字、DAG前缀，**第五位（索引4）**为产品版本：`1` 对应 V2.5，`3` 对应 V2.9。点检阈值使用各侧夹爪SN，不读取 UMI 整机 hardware_version 来推断夹爪。`/versions` 中的整机版本及 metadata 原有硬件版本字段保持原含义。
+
+左右夹爪 V2.5/V2.9 混用时，旧版侧 `/devices` 的 status 为 `gripper_version_mismatch`，details=true 附 error；`/status?details=true` 的 firmware.gripper 对应侧包含 hardware_version、status=error、error=gripper_version_mismatch。Web 设备概览标红旧版侧。点检 failures 同样返回旧版侧混用项，并保留逐轮及一致性结果。
+
+混用作为 runtime 健康故障禁止所有起录入口；若录制期间检测到混用，沿原有硬件故障收尾链路结束录制。错误码 UGR-40-07，错误灯指向旧版侧；版本冲突不触发USB自动复位。更换为同版本组合后重新检测并恢复。
+
+每侧编码器完成5轮后由maintenance向runtime发送绑定任务ID、侧别和5秒有效期的内部完成通知；runtime核对该侧done状态并去重，执行两次蓝灯闪烁及4000Hz短鸣（每次至少350ms、间隔至少250ms，分阶段等待夹爪蜂鸣器状态回报，每阶段最多等待1500ms），随后恢复当前灯态。提示表示该侧检查结束，结论查看页面；录制、硬件故障和Ego同步提示优先。Web点检实时计数独立轮询任务约5次/秒，与后台0.2秒快照配合，失败重试，请求3秒超时，复用既有采样。
+
+编码器点检仅覆盖写入固定的 `/var/lib/ugripper-web/inspection.json`，供实时展示和读取最近结果；每轮不创建任务历史文件、采样文件或独立日志。正常完成、取消与中断都使用同一路径，新任务覆盖旧结果，旧ID查询404。维护服务启动先恢复中断结果，再清理旧版遗留的编码器历史JSON及原子写入临时文件；
+
+
+### 编码器完成提示的静音保障
+
+完成提示复用现有增强关闭链路 `silenceBeepForSide → confirmBeepSilenced`：正常完成或因录制、健康故障、Ego 同步等优先状态结束提示时，发送 OFF 并请求新状态，只有新回报 `duty=0` 才确认静音，最多重试 5 次。固件静音时可以保留非零 frequency，确认以 duty 为准。Runtime 正常析构也对仍在提示的侧执行静音。
+
+底层蜂鸣状态切换按 5 次发送计划重发；关闭后每秒补发 OFF，连接建立和驱动正常退出也发送关闭状态。阶段回报超时后仍进入结束静音链路。静音确认失败会记录告警；任务的 completed/pass 表示采样和判定结果，不是蜂鸣器静音确认回执。
+
+此前 240 板端回放已观察到左右两侧 on/off/on/off 四阶段状态回报，最后 duty=0。当前代码覆盖正常控制链路；进程被 SIGKILL、设备掉电或串口断联时无法保证立即执行关闭，恢复连接后由初始化关闭机制处理。此类故障不能仅凭正常流程实测宣称绝不会持续蜂鸣。

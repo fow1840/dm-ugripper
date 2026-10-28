@@ -35,6 +35,15 @@ class DeviceApiTests(unittest.TestCase):
     def cache(self, **fields):
         self.firmware.write_text(json.dumps(dict(updated_at_ms=time.time()*1000, **fields)))
 
+    def test_mixed_gripper_error_is_exposed_on_old_side(self):
+        self.cache(devices={
+            'left_gripper':dict(serial='DAGZ122676001465',connected=True,identified=True,enabled=True,error='gripper_version_mismatch'),
+            'right_gripper':dict(serial='DAGY3226760096E2',connected=True,identified=True,enabled=True,error='')})
+        result=api.devices(['left_gripper','right_gripper'])['devices']
+        self.assertEqual(result['left_gripper']['status'],'gripper_version_mismatch')
+        self.assertEqual(result['right_gripper']['status'],'connected')
+        self.assertEqual(api.devices(['left_gripper'],details=True)['devices']['left_gripper']['error'],'gripper_version_mismatch')
+
     def test_all_metadata_versions_and_arbitrary_packages(self):
         self.cache(device_versions={'hardware_version':'v2.5.0','data_version':'3.3',
                                     'cam_left_firmware_version':'iserial-label',

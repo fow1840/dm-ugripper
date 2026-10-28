@@ -32,7 +32,7 @@ function render(s){renderInspection(s);const versions=s.device_versions||{};setD
  const d=s.disks.data,m=s.memory;$('#metrics').replaceChildren(metric('CPU 占用',s.cpu_percent===null?'—':s.cpu_percent+'%','设备系统'),metric('内存使用',Math.round(m.used/m.total*100)+'%',bytes(m.used)+' / '+bytes(m.total)),metric('数据盘剩余',d.mounted?bytes(d.free):'未挂载',d.mounted?'总容量 '+bytes(d.total):'请连接数据盘'),metric('系统盘剩余',bytes(s.disks.system.free),'总容量 '+bytes(s.disks.system.total)));
  const battery=s.battery||{};updateUpgradeBatteryButtons(upgradeBatteryError(battery));const batteryMetric=metric('背包电量',battery.connected?battery.percent+'%':'电量不可用',battery.connected?(battery.charging?'充电中':battery.discharging?'放电中':'已连接'):'请检查蓝牙电量服务');
  batteryMetric.id='batteryMetric';if(battery.connected&&battery.percent<=10)batteryMetric.classList.add('battery-low');$('#metrics').prepend(batteryMetric);
- for(const side of ['left','right']){const identity=s.firmware?.gripper?.[side];$('#'+side+'DeviceSn').textContent='SN: '+(identity?.connected&&identity.serial?identity.serial:'—');$('#'+side+'Devices').replaceChildren(...s.device_cards.filter(d=>d.side===side).map(d=>row(d.label,!d.present?'未识别':d.stream===null?'已识别':d.stream?'正常出流':'暂未出流',d.present&&(d.stream===null||d.stream))));}
+ for(const side of ['left','right']){const identity=s.firmware?.gripper?.[side];$('#'+side+'DeviceSn').textContent='SN: '+(identity?.connected&&identity.serial?identity.serial:'—')+(identity?.hardware_version?' · V'+identity.hardware_version:'')+(identity?.error==='gripper_version_mismatch'?' · 错误：此侧旧版夹爪不能与新版混用':'');$('#'+side+'DeviceSn').className='device-sn'+(identity?.error==='gripper_version_mismatch'?' gripper-mismatch':'');$('#'+side+'Devices').replaceChildren(...s.device_cards.filter(d=>d.side===side).map(d=>row(d.label,!d.present?'未识别':d.stream===null?'已识别':d.stream?'正常出流':'暂未出流',d.present&&(d.stream===null||d.stream))));}
  const ego=s.ego||{},bound=ego.bound,connected=ego.connected;
  $('#egoStatus').replaceChildren(row('绑定状态',bound===true?'已绑定':bound===false?'未绑定':'未知',bound===true?true:null),row('连接状态',connected===true?'已连接':connected===false?'未连接':bound===false?'未检测（未绑定）':'未知（等待状态更新）',connected===true?true:connected===false?false:null));
  if(ego.bound)$('#egoStatus').append(row('电量',ego.battery?ego.battery.percent+'%'+(ego.battery.charging?' · 充电中':''):'电量不可用',ego.battery?true:null));
@@ -147,7 +147,7 @@ function stopEncoderReading(text='已停止读取，显示最后一次读数'){
 function renderEncoder(side,value){
  const target=$('#encoder'+(side==='left'?'Left':'Right'));
  if(value.status!=='ok'){target.replaceChildren(el('p',value.message||'未收到有效读数','muted'));return}
- target.replaceChildren(row('原始计数',String(value.position),null),row('角度',value.angle_deg.toFixed(2)+'°',null),row('弧度',value.angle_rad.toFixed(4)+' rad',null),el('p','读取时间 '+new Date(value.read_at*1000).toLocaleTimeString(),'muted'));
+ target.replaceChildren(row('原始计数',String(value.position>=32768?value.position-65536:value.position),null),row('角度',value.angle_deg.toFixed(2)+'°',null),row('弧度',value.angle_rad.toFixed(4)+' rad',null),el('p','读取时间 '+new Date(value.read_at*1000).toLocaleTimeString(),'muted'));
 }
 async function pollEncoder(){
  const request=new AbortController();encoderRequest=request;
@@ -371,59 +371,161 @@ function renderTactileAlarm(saved,states){
 }
 
 let inspectionJob = null, inspectionCountdown = null, inspectionSubmitting = false;
+let inspectionAwaitingId=null,inspectionStoppingId=null,inspectionViews=null;
+let inspectionPollTimer=null,inspectionPollBusy=false;
+function scheduleInspectionPoll(){
+ if(inspectionPollTimer!==null||inspectionPollBusy||typeof api!=='function')return;
+ if(typeof current!=='undefined'&&current!=='inspection')return;
+ if(inspectionJob?.kind!=='encoder'||inspectionJob.status!=='running')return;
+ inspectionPollTimer=setTimeout(pollInspectionTask,200);
+}
+async function pollInspectionTask(){
+ inspectionPollTimer=null;
+ if(inspectionPollBusy||inspectionJob?.kind!=='encoder'||inspectionJob.status!=='running')return;
+ if(typeof current!=='undefined'&&current!=='inspection')return;
+ const id=inspectionJob.id;inspectionPollBusy=true;
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),3000);
+ try{
+  const task=await api('/api/v1/tasks/inspection/'+id,{signal:controller.signal});
+  if(inspectionJob?.id===id){
+   renderInspection({...last,inspection:task});
+   if(task.status==='running')inspectionText($('#inspectionLiveStatus'),'实时读数 · 约 5 次/秒');
+  }
+ }catch(e){inspectionText($('#inspectionLiveStatus'),'读数更新中断，正在重试：'+e.message)}
+ finally{clearTimeout(timeout);inspectionPollBusy=false;scheduleInspectionPoll()}
+}
+const inspectionReasons={gripper_version_mismatch:'新旧夹爪混用，请更换此侧旧版夹爪',gripper_sn_unavailable:'夹爪 SN 不可用',gripper_sn_unsupported:'夹爪 SN 产品版本未识别',gripper_identity_changed:'夹爪已更换或断开，请重新检查',service_interrupted:'服务重启，检查已中断，请重新开始',closed_below_range:'闭合峰值低于范围',closed_above_range:'闭合峰值高于范围',open_above_range:'张开幅度过量',open_below_range:'张开幅度不足',closed_consistency_exceeded:'闭合最大值差异超限',open_consistency_exceeded:'张开最小值差异超限',hardware_version_unavailable:'硬件版本读取不可用',hardware_version_unsupported:'硬件版本尚无一致性规则',cycles_incomplete:'轮次未完成',encoder_read_failed:'编码器读取失败'};
+function inspectionText(node,text){text=String(text);if(node.textContent!==text)node.textContent=text;}
+function inspectionBadge(node,status){
+ const labels={pass:'通过 PASS',fail:'不通过 FAIL',pending:'待检测',incomplete:'未完成',unavailable:'不可用',running:'检测中',cancelled:'已取消',interrupted:'已中断 · 请重新开始',failed:'执行失败',completed:'已完成'};
+ inspectionText(node,labels[status]||status);node.className='inspection-badge '+(status==='pass'?'pass':status==='fail'||status==='failed'?'fail':status==='running'?'running':'pending');
+}
+function createInspectionView(){
+ const box=$('#inspectionEncoderResult'),summary=el('div',undefined,'inspection-summary');
+ const status=el('span'),meta=el('span',undefined,'muted');status.setAttribute('role','status');summary.append(status,meta);
+ const grid=el('div',undefined,'inspection-grid'),sides={};
+ for(const side of ['left','right']){
+  const card=el('section',undefined,'inspection-hand'),header=el('div',undefined,'section-top');
+  const progress=el('strong'),value=el('strong',undefined,'inspection-reading'),hint=el('p',undefined,'inspection-hint');
+  header.append(el('h3',side==='left'?'左手':'右手'),progress);
+  const readout=el('div',undefined,'inspection-readout');readout.append(el('span','实时计数'),value);
+  const bar=el('progress');bar.max=5;bar.setAttribute('aria-label',(side==='left'?'左手':'右手')+'完成轮次');
+  const table=el('table',undefined,'inspection-rounds'),thead=el('thead'),tr=el('tr');
+  for(const text of ['轮次','闭合最大值','张开最小值'])tr.append(el('th',text));thead.append(tr);table.append(thead);
+  const body=el('tbody'),cells=[];
+  for(let cycle=1;cycle<=5;cycle++){
+   const row=el('tr');row.append(el('th',String(cycle)));
+   for(const endpoint of ['closed','open']){
+    const td=el('td'),reading=el('strong','—'),badge=el('span'),reason=el('small');
+    td.append(reading,badge,reason);row.append(td);cells.push({cycle,endpoint,reading,badge,reason});
+   }
+   body.append(row);
+  }
+  table.append(body);
+  const consistency=el('div',undefined,'inspection-consistency'),groups={};
+  for(const endpoint of ['closed','open']){
+   const group=el('div'),badge=el('span'),difference=el('p'),detail=el('details'),peaks=el('p');
+   group.append(el('strong',endpoint==='closed'?'5 次闭合最大值一致性':'5 次张开最小值一致性'),badge,difference);
+   detail.append(el('summary','查看五次峰值'),peaks);group.append(detail);consistency.append(group);
+   groups[endpoint]={badge,difference,peaks};
+  }
+  card.append(header,readout,hint,bar,table,consistency);grid.append(card);sides[side]={progress,value,hint,bar,cells,groups};
+ }
+ const failures=el('details',undefined,'inspection-failures'),failureTitle=el('summary'),failureList=el('ul');
+ failures.append(failureTitle,failureList);box.replaceChildren(summary,grid,failures);
+ return {status,meta,sides,failures,failureTitle,failureList,failureKey:null};
+}
+function renderEncoderInspection(job){
+ if(!inspectionViews)inspectionViews=createInspectionView();
+ const view=inspectionViews,running=job.status==='running';
+ const outcome=inspectionStoppingId===job.id?'正在取消…':running?'running':job.status==='cancelled'?'cancelled':job.status==='interrupted'?'interrupted':job.status==='failed'?'failed':job.result||'pending';
+ inspectionBadge(view.status,outcome);
+ inspectionText(view.meta,`左夹爪 ${job.grippers?.left?.hardware_version||'—'} / ${job.grippers?.left?.consistency_limit_deg??'—'}° · 右夹爪 ${job.grippers?.right?.hardware_version||'—'} / ${job.grippers?.right?.consistency_limit_deg??'—'}°`);
+ const phases={prepare_open:'充分张开，再开始轻合',close:'轻合到位，再开始张开',open:'充分张开，再开始轻合',done:'五轮已完成'};
+ for(const side of ['left','right']){
+  const state=job.sides?.[side]||{},hand=view.sides[side];
+  inspectionText(hand.progress,`${state.completed_cycles||0} / 5 轮`);hand.bar.value=state.completed_cycles||0;
+  inspectionText(hand.value,state.value??'—');
+  inspectionText(hand.hint,running?(phases[state.phase]||'准备读取双手编码器…'):job.id?'检查已结束':'点击开始，进行双手检查');
+  for(const cell of hand.cells){
+   const row=(state.checks||[]).find(r=>r.cycle===cell.cycle&&r.endpoint===cell.endpoint);
+   inspectionText(cell.reading,row?.value??'—');inspectionBadge(cell.badge,row?.status||(!running&&job.id?'incomplete':'pending'));
+   inspectionText(cell.reason,row?.code?(inspectionReasons[row.code]||row.code):'');
+  }
+  for(const endpoint of ['closed','open']){
+   const item=(state.consistency||[]).find(r=>r.endpoint===endpoint),group=hand.groups[endpoint];
+   inspectionBadge(group.badge,item?.status||'pending');
+   inspectionText(group.difference,`最大两两差值 ${item?.max_difference_deg??'—'}° / ${item?.limit_deg??job.grippers?.[side]?.consistency_limit_deg??'—'}°`);
+   inspectionText(group.peaks,(item?.peaks_deg||[]).map(v=>v+'°').join('，')||'等待峰值');
+  }
+ }
+ const failures=job.failures||[],key=JSON.stringify(failures);
+ view.failures.hidden=failures.length===0;inspectionText(view.failureTitle,`不通过 / 未完成项目（${failures.length}）`);
+ if(view.failureKey!==key){
+  view.failureList.replaceChildren(...failures.map(f=>el('li',`${f.side?(f.side==='left'?'左手':'右手'):'设备'}${f.cycle?' · 第 '+f.cycle+' 轮':''}${f.endpoint?' · '+(f.endpoint==='closed'?'闭合':'张开'):''}：${inspectionReasons[f.code]||f.code}`)));
+  view.failureKey=key;
+ }
+}
 function cancelInspectionCountdown() {
  if(inspectionCountdown!==null)clearInterval(inspectionCountdown);
- inspectionCountdown=null;
- $('#inspectionCountdown').textContent='';
- $('#inspectionCountdownCancel').hidden=true;
+ inspectionCountdown=null;$('#inspectionCountdown').textContent='';$('#inspectionCountdownCancel').hidden=true;
  if(last)renderInspection(last);
 }
 function renderInspection(s) {
- inspectionJob=s.inspection||{};
- const running=inspectionJob.status==='running';
+ const incoming=s.inspection||{};
+ if(!inspectionAwaitingId||incoming.id===inspectionAwaitingId){
+  if(!inspectionJob?.id||incoming.id===inspectionAwaitingId||
+     (incoming.id===inspectionJob.id?(incoming.updated_at_ms||0)>=(inspectionJob.updated_at_ms||0):(incoming.started_at_ms||0)>=(inspectionJob.started_at_ms||0)))inspectionJob=incoming;
+  if(incoming.id===inspectionAwaitingId)inspectionAwaitingId=null;
+ }
+ const job=inspectionJob||{},running=job.status==='running';
+ if(!running)inspectionStoppingId=null;
  const blocked=!!s.busy||s.recording?.active!==false||running||inspectionSubmitting||inspectionCountdown!==null;
- $('#inspectionEncoderStart').disabled=blocked;
- $('#inspectionTrajectoryStart').disabled=blocked;
- $('#inspectionEncoderCancel').disabled=!running||inspectionJob.kind!=='encoder';
- $('#inspectionTrajectoryStop').disabled=!running||inspectionJob.kind!=='trajectory';
- if(!inspectionJob.id)return;
- const box=$(inspectionJob.kind==='encoder'?'#inspectionEncoderResult':'#inspectionTrajectoryResult');
- box.replaceChildren(el('p',`${inspectionJob.status} / ${inspectionJob.result||'等待结果'}${inspectionJob.code?' · '+inspectionJob.code:''}`));
- if(inspectionJob.message)box.append(el('p',inspectionJob.message));
- if(inspectionJob.episode)box.append(el('p',inspectionJob.episode));
- const phases={prepare_open:'请充分张开并保持',close:'请轻合并保持',open:'请充分张开并保持',done:'已完成'};
- for(const [side,state] of Object.entries(inspectionJob.sides||{})) {
-  box.append(el('h3',`${side==='left'?'左手':'右手'}：${state.completed_cycles}/5 · ${phases[state.phase]||state.phase} · ${state.value??'—'}`));
-  const table=el('table','');
-  for(const check of state.checks||[]) {
-   const tr=el('tr','');
-   for(const value of [check.cycle,check.endpoint==='closed'?'闭合':'张开',check.value,check.status,check.code||'—'])tr.append(el('td',String(value)));
-   table.append(tr);
-  }
-  box.append(table);
+ $('#inspectionEncoderStart').disabled=blocked;$('#inspectionTrajectoryStart').disabled=blocked;
+ $('#inspectionEncoderCancel').disabled=!running||job.kind!=='encoder'||inspectionStoppingId===job.id;
+ $('#inspectionTrajectoryStop').disabled=!running||job.kind!=='trajectory'||inspectionStoppingId===job.id;
+ inspectionText($('#inspectionEncoderCancel'),inspectionStoppingId===job.id&&job.kind==='encoder'?'正在取消…':'取消检查');
+ inspectionText($('#inspectionTrajectoryStop'),inspectionStoppingId===job.id&&job.kind==='trajectory'?'正在停止…':'停止轨迹测试');
+ if(!job.id||job.kind==='encoder')renderEncoderInspection(job);
+ if(running&&job.kind==='encoder')scheduleInspectionPoll();
+ else {
+  if(inspectionPollTimer!==null)clearTimeout(inspectionPollTimer);
+  inspectionPollTimer=null;
+  inspectionText($('#inspectionLiveStatus'),job.id?'检查已结束，显示最后读数':'');
+ }
+ if(job.kind==='trajectory'){
+  const box=$('#inspectionTrajectoryResult');
+  inspectionText(box,`${job.status} · ${job.code||job.phase||'等待起录'}${job.episode?' · '+job.episode:''}`);
  }
 }
 async function beginInspection(kind) {
- inspectionSubmitting=true;if(last)renderInspection(last);
- try {await post('/api/v1/inspection/'+kind+'/start',kind==='encoder'?{side:$('#inspectionSide').value}:{});await refresh();}
- catch(e){message(e.message)}
+ inspectionText($('#inspectionActionStatus'),'');inspectionSubmitting=true;if(last)renderInspection(last);
+ try {
+  const accepted=await post('/api/v1/inspection/'+kind+'/start',{});
+  if(accepted?.id){
+   inspectionJob={id:accepted.id,kind,status:'running',sides:{}};inspectionAwaitingId=accepted.id;
+   renderInspection(last||{recording:{active:false}});
+  }
+  await refresh();
+ }catch(e){inspectionText($('#inspectionActionStatus'),e.message);message(e.message)}
  finally{inspectionSubmitting=false;if(last)renderInspection(last)}
 }
+async function stopInspection(kind){
+ const job=inspectionJob;
+ if(!job?.id||job.kind!==kind||job.status!=='running'||inspectionStoppingId)return;
+ inspectionText($('#inspectionActionStatus'),'');inspectionStoppingId=job.id;renderInspection(last||{recording:{active:false}});
+ try{await post('/api/v1/inspection/'+kind+(kind==='encoder'?'/cancel':'/stop'),{id:job.id});await refresh()}
+ catch(e){inspectionStoppingId=null;inspectionText($('#inspectionActionStatus'),e.message);message(e.message);renderInspection(last||{recording:{active:false}})}
+}
 $('#inspectionEncoderStart').onclick=()=>beginInspection('encoder');
-$('#inspectionEncoderCancel').onclick=async()=>{try{await post('/api/v1/inspection/encoder/cancel',{id:inspectionJob.id});await refresh()}catch(e){message(e.message)}};
-$('#inspectionTrajectoryStop').onclick=async()=>{try{await post('/api/v1/inspection/trajectory/stop',{id:inspectionJob.id});await refresh()}catch(e){message(e.message)}};
+$('#inspectionEncoderCancel').onclick=()=>stopInspection('encoder');
+$('#inspectionTrajectoryStop').onclick=()=>stopInspection('trajectory');
 $('#inspectionTrajectoryStart').onclick=()=>{
  if(inspectionCountdown!==null||inspectionSubmitting)return;
- let remaining=5;
- $('#inspectionCountdown').textContent=`${remaining} 秒后开始`;
- $('#inspectionCountdownCancel').hidden=false;
- inspectionCountdown=setInterval(()=>{
-  remaining-=1;
-  if(remaining<=0){cancelInspectionCountdown();beginInspection('trajectory');}
-  else $('#inspectionCountdown').textContent=`${remaining} 秒后开始`;
- },1000);
+ let remaining=5;$('#inspectionCountdown').textContent=`${remaining} 秒后开始`;$('#inspectionCountdownCancel').hidden=false;
+ inspectionCountdown=setInterval(()=>{remaining-=1;if(remaining<=0){cancelInspectionCountdown();beginInspection('trajectory');}else $('#inspectionCountdown').textContent=`${remaining} 秒后开始`;},1000);
  if(last)renderInspection(last);
 };
 $('#inspectionCountdownCancel').onclick=cancelInspectionCountdown;
 for(const button of document.querySelectorAll('nav [data-page]'))button.addEventListener('click',()=>{if(button.dataset.page!=='inspection')cancelInspectionCountdown()});
-window.addEventListener('pagehide',cancelInspectionCountdown);
+window.addEventListener('pagehide',()=>{cancelInspectionCountdown();if(inspectionPollTimer!==null)clearTimeout(inspectionPollTimer);inspectionPollTimer=null});

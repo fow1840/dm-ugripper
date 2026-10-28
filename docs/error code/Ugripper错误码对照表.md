@@ -92,6 +92,7 @@
 | `UGR-40-04` | `-` | HMI 协议响应无效或固件拒绝请求 |
 | `UGR-40-05` | `-` | HMI serial number 事务或内容无效 |
 | `UGR-40-06` | `calibration_error` | HMI 标定事务或 payload 无效 |
+| `UGR-40-07` | `gripper_version_mismatch` | V2.5/V2.9 夹爪混用，错误指向旧版侧并禁止起录 |
 | `UGR-50-01` | `-` | 音频运行资源、控制通道或 backend 不可用 |
 | `UGR-50-02` | `-` | 音频播放或输出失败 |
 | `UGR-50-03` | `-` | 音频录制或输入失败 |

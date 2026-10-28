@@ -39,6 +39,7 @@ public:
         PathExistsFn path_exists;
         GetProcessStatusFn get_process_status;
         GetHmiHealthFn get_hmi_health;
+        std::function<std::optional<HealthFault>()> get_gripper_fault;
     };
 
     struct PollResult

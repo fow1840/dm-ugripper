@@ -951,8 +951,19 @@ HTTP 错误统一为 error.code/message/retryable，409 表示解除互斥后可
 
 ### 编码器与轨迹点检
 
-Web 点检页和 inspection API 共用后台任务：人工五次开合、左右独立端点判定；闭合 [-150,150]，最大张开 [-4200,-3800]，均为有符号原始计数。0.5秒稳定窗、80计数抖动、500计数最小方向行程，180秒限时；不中途标零、不检测触觉错位。轨迹点检由 Web 在提交前倒数5秒，API立即请求起录，手动停止。FIFO 测试指令绑定32位任务ID与5秒有效期，停止核对会话ID；正常录制及QC链路不变。生产压测每轮也使用独立测试ID。metadata 3.3仅在episode_name后增加test_dataset_name字符串，标准为空，轨迹trajectory_test，生产production_test；历史缺项兼容为空。任务结果独立于metadata，服务中断标记未完成。
+Web 点检页和 inspection API 共用后台任务：固定双手五次开合、左右独立峰值判定；闭合 [-100,150]，最大张开 [-4200,-3650]，均为有符号原始计数。闭合取最大值、张开取最小值，闭合峰值≥-1000、张开峰值≤-3000时，反向至少500计数持续0.1秒后结算上一半周期；中途停顿继续跟踪极值。第五次张开后再开始合拢确认最后峰值，180秒限时。5次闭合最大值之间、5次张开最小值之间分别按左右手比较两两差异，各侧夹爪SN第五位1（V2.5）限2°、3（V2.9）限1°（计数×360/65536），与逐轮范围检查共同决定结果；failures汇总全部失败项，未知硬件规则明确报错。Web读数按有符号16位显示。轨迹点检由 Web 在提交前倒数5秒，API立即请求起录，手动停止。FIFO 测试指令绑定32位任务ID与5秒有效期，停止核对会话ID；正常录制及QC链路不变。生产压测每轮也使用独立测试ID。metadata 3.3仅在episode_name后增加test_dataset_name字符串，标准为空，轨迹trajectory_test，生产production_test；历史缺项兼容为空。任务结果独立于metadata，服务中断标记未完成。
 
 ### FT601 USB bind 事件与别名恢复
 
 FT601 USB 设备在 add 后还会收到 bind 事件。固定端口规则对 0403:601f 的 usb_device bind 单独重申别名，避免 udev 在跳过规则后删除 stereo 与 IMU 链接；旧 UVC/video4linux/tty 仍只处理 add/change。验收需覆盖 add/change→bind 和真实 USB restore 后的别名、SDK 图像/IMU 在线状态，不以手动 change 一次成功代替热插拔验证。
+
+
+点检 Web 使用左右手固定五轮面板、进度条、通过/失败状态色和一致性卡片，差错项目集中展示；轮询更新现有节点，保留展开状态。start响应后立即保存任务ID以启用取消，取消请求期间显示等待状态，失败时在点检区提示并恢复重试。
+
+编码器点检在设备/维护服务重启恢复时以 interrupted/service_interrupted 结束；主录制服务停止或重启也会通过运行实例标识变化终止点检并释放串口及互斥锁。Web显示“已中断 · 请重新开始”，恢复开始按钮，已记录结果保留。
+
+夹爪版本判定由 gripper_generation.h 与 inspection.py 按16位DAG SN第五位1/3实现，分别映射2.5/2.9。HealthMonitor的get_gripper_fault将混用接入起录和持续健康监测；gripper_version_mismatch/UGR-40-07标记旧侧，禁止起录、录制中收尾，跳过USB复位。firmware快照发布各侧hardware_version/error，Web/API展示旧侧错误。点检grippers和consistency_limits_deg按侧返回，身份变化时中断任务。整机hardware_version保持原义。
+
+每侧编码器完成5轮后由maintenance向runtime发送绑定任务ID、侧别和5秒有效期的内部完成通知；runtime核对该侧done状态并去重，执行两次蓝灯闪烁及4000Hz短鸣（每次至少350ms、间隔至少250ms，分阶段等待夹爪蜂鸣器状态回报，每阶段最多等待1500ms），随后恢复当前灯态。提示表示该侧检查结束，结论查看页面；录制、硬件故障和Ego同步提示优先。Web点检实时计数独立轮询任务约5次/秒，与后台0.2秒快照配合，失败重试，请求3秒超时，复用既有采样。
+
+编码器点检仅覆盖写入固定的 `/var/lib/ugripper-web/inspection.json`，供实时展示和读取最近结果；每轮不创建任务历史文件、采样文件或独立日志。正常完成、取消与中断都使用同一路径，新任务覆盖旧结果，旧ID查询404。维护服务启动先恢复中断结果，再清理旧版遗留的编码器历史JSON及原子写入临时文件；

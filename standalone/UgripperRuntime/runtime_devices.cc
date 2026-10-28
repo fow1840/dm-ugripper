@@ -1,4 +1,5 @@
 #include "record_runtime.h"
+#include "record_runtime/gripper_generation.h"
 #include "record_runtime/runtime_episode_internal.h"
 #include "record_runtime/runtime_split_internal.h"
 #include "main_camera_calibration_data.h"
@@ -36,6 +37,15 @@ using json = nlohmann::json;
 using namespace DA::Ugripper::detail;
 
 namespace DA::Ugripper {
+
+std::optional<HealthFault> RecordRuntime::currentGripperVersionFault() const
+{
+    const auto& left=gripperRuntimeStates_[gripperStateIndexForSide("left")];
+    const auto& right=gripperRuntimeStates_[gripperStateIndexForSide("right")];
+    return GripperGenerationFault(
+        left.connected && panelManager_.isSideReadyForRefresh("left", kGripperRefreshActiveTimeoutMs), left.serialNumber,
+        right.connected && panelManager_.isSideReadyForRefresh("right", kGripperRefreshActiveTimeoutMs), right.serialNumber);
+}
 
 void RecordRuntime::handleGripperConnectionEvents()
 {
@@ -162,6 +172,15 @@ void RecordRuntime::maintainFirmwareStatus()
         }
         snapshot["main_camera"][side] = {{"iserial", iserial}};
     }
+    const auto gripperFault=currentGripperVersionFault();
+    for (const std::string side : {"left", "right"}) {
+        auto& item=snapshot["gripper"][side];
+        const int generation=GripperGeneration(item["serial"].get<std::string>());
+        item["hardware_version"]=generation==25?"2.5":generation==29?"2.9":"";
+        const bool oldSide=gripperFault && generation==25;
+        item["error"]=oldSide?"gripper_version_mismatch":"";
+        if (oldSide) item["status"]="error";
+    }
     maintainDeviceVersions();
     snapshot["device_versions"] = deviceVersions_;
     snapshot["device_versions"]["hardware_version"] = hardwareVersion_;
@@ -192,7 +211,7 @@ void RecordRuntime::maintainFirmwareStatus()
         const auto &gripper = snapshot["gripper"][side];
         addDevice(side + "_gripper", "/dev/" + side + "_gripper", true,
                   gripper["connected"].get<bool>(), gripper["serial"].get<std::string>(),
-                  gripperRuntimeStates_[gripperStateIndexForSide(side)].lastError, true);
+                  gripper.value("error", "").empty() ? gripperRuntimeStates_[gripperStateIndexForSide(side)].lastError : gripper.value("error", ""), true);
         devices[side + "_gripper"]["connection_source"] = "hmi_activity";
         const std::string encoderPath = "/dev/" + side + "_encoder";
         addDevice(side + "_encoder", encoderPath, true, fs::exists(encoderPath), "", "", false);
@@ -1502,6 +1521,12 @@ bool RecordRuntime::GripperPanelManager::setBeepEnabledForSide(const std::string
                                              }
                                            : GripperBeepState{0, 0};
     return setBeepStateForSide(side, nextState);
+}
+
+GripperHmiSnapshot RecordRuntime::GripperPanelManager::feedbackSnapshotForSide(const std::string &side) const
+{
+    const int index=findDriverIndexForSide(side);
+    return index>=0 && drivers_[index] ? drivers_[index]->getSnapshot() : GripperHmiSnapshot{};
 }
 
 bool RecordRuntime::GripperPanelManager::setBeepStateForSide(

@@ -212,6 +212,8 @@ RecordRuntime::~RecordRuntime()
     {
         ledController_->stop();
     }
+    for (size_t i=0;i<2;++i)
+        if (inspectionFeedbackStartMs_[i]) panelManager_.silenceBeepForSide(i==0?"left":"right");
     panelManager_.turnOff();
     panelManager_.disconnect();
 }
@@ -440,6 +442,7 @@ bool RecordRuntime::Initialize()
                         .port_activity = health.portActivity,
                     };
                 },
+            .get_gripper_fault = [this]() { return currentGripperVersionFault(); },
         },
         &::utils::CurrentSteadyMs);
 
@@ -818,6 +821,7 @@ int RecordRuntime::Run()
         monitorStereoFrameLoss();
         monitorHardwareHealth();
         maintainEgoSyncFeedback();
+        maintainInspectionFeedback();
 
         ButtonSnapshot buttons;
         panelManager_.poll(options_.pollMs, &buttons);
@@ -1308,6 +1312,13 @@ void RecordRuntime::setHardwareFaultLedState(const DA::Ugripper::HealthFault &fa
 
     const GripperLedEffect faultEffect = makeLedEffect(toLedState(fault.led_state), 0.0);
     const GripperLedEffect unknownEffect{GripperLedEffectState::Error2Unknown, 0.0};
+    if (fault.key == "gripper_version_mismatch") {
+        const bool oldLeft=fault.side==DA::Ugripper::HardwareFaultSide::Left;
+        panelManager_.setLedEffectForSide(oldLeft?"left":"right", faultEffect);
+        panelManager_.setLedEffectForSide(oldLeft?"right":"left", makeLedEffect(LedState::Ready, 0.0));
+        return;
+    }
+
     switch (fault.side)
     {
     case DA::Ugripper::HardwareFaultSide::Left:
@@ -1332,6 +1343,7 @@ void RecordRuntime::setHardwareFaultLedState(const DA::Ugripper::HealthFault &fa
 
 void RecordRuntime::maybeTriggerRestoreUsbForHardwareFault(const DA::Ugripper::HealthFault &fault)
 {
+    if (fault.key == "gripper_version_mismatch") return; // Physical mismatch cannot be repaired by USB reset.
     if (IsDiskHealthFault(fault))
     {
         logRestoreUsbSkipOnce("disk_fault:" + fault.key,

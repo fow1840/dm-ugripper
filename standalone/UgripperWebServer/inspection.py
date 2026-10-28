@@ -1,66 +1,74 @@
 """Operator-guided encoder cycles and session-owned trajectory recordings."""
 import contextlib
-from collections import deque
 import fcntl
 import json
 import os
+import re
 from pathlib import Path
-import statistics
 import threading
 import time
 import uuid
 from common import STATE, DATA, PRODUCTION_LOCK, Busy, atomic_json, read_json, operation_lock, _maintenance_lock, command
 from production_test import RECORD_LOCK, send, final_path
 from encoder_probe import stream_encoders
+from inspection_events import cleanup_encoder_history
 
 RESULT = STATE / 'inspection.json'
 MUTEX = threading.Lock()
 STOP = threading.Event()
 JOB = {}
-STABLE_S = 0.5
-JITTER = 80
-MIN_TRAVEL = 500
+REVERSAL_S = 0.1
+MIN_REVERSAL = 500
+CLOSED_REGION_MIN = -1000
+OPEN_REGION_MAX = -3000
 TIMEOUT_S = 180
 
 
 class CycleCheck:
-    """Detect stable endpoints by travel, not by entering the passing interval."""
+    """Commit each half-cycle's extreme only after confirmed reverse travel."""
     def __init__(self):
-        self.samples = deque()
         self.phase = 'prepare_open'
-        self.anchor = None
         self.rows = []
         self.value = None
-        self.last_endpoint = None
+        self.peak = None
+        self.reverse_since = None
+        self.reverse_peak = None
+
+    def interrupt(self):
+        # Missing samples cannot confirm a continuous reversal.
+        self.reverse_since = None
+        self.reverse_peak = None
 
     def update(self, raw, now):
         value = raw - 65536 if raw >= 32768 else raw
         self.value = value
-        self.samples.append((now, value))
-        while self.samples and now - self.samples[0][0] > STABLE_S + 0.1:
-            self.samples.popleft()
-        if self.phase == 'done' or now-self.samples[0][0] < STABLE_S:
-            return
-        values = [v for _, v in self.samples]
-        if max(values)-min(values) > JITTER:
-            return
-        endpoint = int(statistics.median(values))
-        if self.phase == 'prepare_open':
-            # Broad negative preparation region; range validation happens each cycle.
-            if endpoint > -1000:
-                return
-            self.anchor = endpoint
-            self.phase = 'close'
-            self.last_endpoint = now
-            self.samples.clear()
-            return
-        travel = endpoint-self.anchor
-        if self.phase == 'close' and travel < MIN_TRAVEL:
-            return
-        if self.phase == 'open' and travel > -MIN_TRAVEL:
-            return
+        if self.phase == 'done':return
         closed = self.phase == 'close'
-        low, high = (-150,150) if closed else (-4200,-3800)
+        extreme = max if closed else min
+        self.peak = value if self.peak is None else extreme(self.peak, value)
+        # Initial opening is preparation; its peak is not one of the five cycles.
+        # Recognize an endpoint region before counting a reversal. These broad
+        # regions are separate from the pass limits so real out-of-range peaks fail.
+        if (closed and self.peak < CLOSED_REGION_MIN) or (not closed and self.peak > OPEN_REGION_MAX):
+            self.interrupt()
+            return
+        reverse = self.peak-value if closed else value-self.peak
+        if reverse < MIN_REVERSAL:
+            self.interrupt()
+            return
+        opposite = min if closed else max
+        self.reverse_peak = value if self.reverse_peak is None else opposite(self.reverse_peak, value)
+        if self.reverse_since is None:self.reverse_since = now
+        if now-self.reverse_since < REVERSAL_S:return
+        if self.phase != 'prepare_open':
+            self.record_endpoint(self.peak, closed)
+        self.phase = 'done' if len(self.rows)==10 else ('open' if closed else 'close')
+        # Include all samples used to confirm reversal in the next half-cycle.
+        self.peak = self.reverse_peak
+        self.interrupt()
+
+    def record_endpoint(self, endpoint, closed):
+        low, high = (-100,150) if closed else (-4200,-3650)
         code = None
         if endpoint < low:
             code = 'closed_below_range' if closed else 'open_above_range'
@@ -68,10 +76,6 @@ class CycleCheck:
             code = 'closed_above_range' if closed else 'open_below_range'
         self.rows.append(dict(cycle=len(self.rows)//2+1, endpoint='closed' if closed else 'open',
                               value=endpoint, limits=[low,high], status='fail' if code else 'pass', code=code))
-        self.anchor = endpoint
-        self.last_endpoint = now
-        self.samples.clear()
-        self.phase = 'done' if len(self.rows)==10 else ('open' if closed else 'close')
 
     def report(self):
         return dict(phase=self.phase, value=self.value, completed_cycles=len(self.rows)//2, checks=self.rows)
@@ -103,28 +107,149 @@ def stop_owned(jobid):
     raise RuntimeError('finalization_timeout')
 
 
+def encoder_hardware_rule():
+    cached=read_json(Path('/dev/shm/ugripper/firmware_status.json'))
+    if not isinstance(cached,dict):cached={}
+    stamp=cached.get('updated_at_ms')
+    fresh=type(stamp) in (int,float) and 0<=time.time()*1000-stamp<=15000
+    grippers=cached.get('gripper',{}) if fresh else {}
+    if not isinstance(grippers,dict):grippers={}
+    identities={};limits={};failures=[]
+    for side in ('left','right'):
+        item=grippers.get(side,{})
+        if not isinstance(item,dict):item={}
+        sn=item.get('serial') if item.get('connected') is True else None
+        valid=isinstance(sn,str) and re.fullmatch(r'DAG[A-Z0-9]{13}',sn)
+        version={'1':'2.5','3':'2.9'}.get(sn[4]) if valid else None
+        code=None if version else 'gripper_sn_unsupported' if valid else 'gripper_sn_unavailable'
+        limit={'2.5':2,'2.9':1}.get(version)
+        identities[side]=dict(serial=sn,hardware_version=version,consistency_limit_deg=limit)
+        limits[side]=limit
+        if code:failures.append(dict(side=side,code=code))
+    if {v['hardware_version'] for v in identities.values()}=={'2.5','2.9'}:
+        for side,item in identities.items():
+            if item['hardware_version']=='2.5':failures.append(dict(side=side,code='gripper_version_mismatch'))
+    return identities,limits,failures
+
+
+def encoder_report(checks, limit, rule_error=None, terminal=False):
+    sides={};failures=[]
+    if rule_error:
+        failures.extend(rule_error if isinstance(rule_error,list) else [dict(code=rule_error)])
+    for side,check in checks.items():
+        report=check.report()
+        side_limit=limit.get(side) if isinstance(limit,dict) else limit
+        for row in check.rows:
+            if row['status']=='fail':
+                failures.append(dict(side=side,cycle=row['cycle'],endpoint=row['endpoint'],code=row['code']))
+        consistency=[]
+        for endpoint in ('closed','open'):
+            values=[r['value'] for r in check.rows if r['endpoint']==endpoint]
+            # Compare peaks only within this endpoint group, across rounds.
+            difference=max((abs(a-b) for a in values for b in values),default=0) if values else None
+            code=None
+            if len(values)<5:
+                status='incomplete' if terminal else 'pending'
+                if terminal:code='cycles_incomplete'
+            elif side_limit is None:
+                status='unavailable'
+            else:
+                # Compare before rounding; equality is a pass.
+                status='fail' if difference*360>side_limit*65536 else 'pass'
+                if status=='fail':code=endpoint+'_consistency_exceeded'
+            consistency.append(dict(endpoint=endpoint,count=len(values),
+                peaks_deg=[round(v*360/65536,6) for v in values],
+                max_difference_deg=round(difference*360/65536,6) if difference is not None else None,
+                limit_deg=side_limit,status=status,code=code))
+            if code:failures.append(dict(side=side,endpoint=endpoint,code=code))
+        sides[side]=dict(report,consistency=consistency)
+    return dict(sides=sides,failures=failures)
+
+
+def recorder_session():
+    try:
+        result=command(['systemctl','show','ugripper.service','--property=InvocationID','--property=ActiveState'],timeout=2)
+        fields=dict(line.split('=',1) for line in result.stdout.splitlines() if '=' in line)
+        return fields.get('InvocationID') if result.returncode==0 and fields.get('ActiveState')=='active' else None
+    except Exception:
+        return None
+
+
+def interrupt_encoder(report=None):
+    report=dict(report or {})
+    failures=list(report.get('failures',JOB.get('failures',[])))
+    if not any(f.get('code')=='service_interrupted' for f in failures):
+        failures.append(dict(code='service_interrupted'))
+    sides={}
+    for side,value in report.get('sides',JOB.get('sides',{})).items():
+        groups=[dict(item,status='incomplete',code='cycles_incomplete') if item.get('status')=='pending' else item for item in value.get('consistency',[])]
+        sides[side]=dict(value,consistency=groups)
+    report.update(failures=failures,sides=sides)
+    save(status='interrupted',result='incomplete',phase='finished',code='service_interrupted',
+         finished_at_ms=int(time.time()*1000),**report)
+
+
+def encoder_completion_feedback(side):
+    try:
+        send(json.dumps(dict(action='encoder_side_done',id=JOB['id'],side=side,expires_ms=int(time.time()*1000)+5000)))
+    except (OSError,RuntimeError):
+        # Feedback must not abort the remaining hand or change its test result.
+        from common import ugripper_log
+        ugripper_log('WARNING','encoder completion feedback unavailable side='+side,component='maintenance')
+
+
 def encoder_worker(sides):
     checks = {side:CycleCheck() for side in sides}
-    with contextlib.closing(stream_encoders(duration=TIMEOUT_S, sides=sides, acquire_lock=False)) as samples:
-        last_save = 0
-        for sample in samples:
-            if STOP.is_set():
-                save(status='cancelled', result='incomplete', code='cycles_incomplete'); return
-            now = time.monotonic()
-            for side, check in checks.items():
-                value = sample[side]
-                if value.get('status') != 'ok':
-                    check.samples.clear()
-                    continue
-                check.update(value['position'], now)
-            if now-last_save >= .2 or all(c.phase=='done' for c in checks.values()):
-                save(sides={s:c.report() for s,c in checks.items()})
-                last_save = now
-            if all(c.phase=='done' for c in checks.values()):
-                passed = all(r['status']=='pass' for c in checks.values() for r in c.rows)
-                save(status='completed', result='pass' if passed else 'fail', code=None); return
-    save(status='completed', result='incomplete', code='cycles_incomplete',
-         sides={s:dict(c.report(), code='position_unstable' if len(c.samples)>1 and max(v for _,v in c.samples)-min(v for _,v in c.samples)>JITTER else 'cycles_incomplete') for s,c in checks.items()})
+    session=recorder_session()
+    version,limit,rule_error=encoder_hardware_rule()
+    save(grippers=version,consistency_limits_deg=limit,**encoder_report(checks,limit,rule_error))
+    if not session:
+        interrupt_encoder(encoder_report(checks,limit,rule_error,terminal=True));return
+    try:
+        with contextlib.closing(stream_encoders(duration=TIMEOUT_S, sides=sides, acquire_lock=False)) as samples:
+            last_save = 0
+            feedback_sent=set()
+            next_session_check=0
+            for sample in samples:
+                if STOP.is_set():
+                    save(status='cancelled',result='incomplete',code='cycles_incomplete',
+                         **encoder_report(checks,limit,rule_error,terminal=True));return
+                now = time.monotonic()
+                if now>=next_session_check:
+                    if recorder_session()!=session:
+                        interrupt_encoder(encoder_report(checks,limit,rule_error,terminal=True));return
+                    current_grippers,_,_=encoder_hardware_rule()
+                    if current_grippers!=version:
+                        report=encoder_report(checks,limit,rule_error,terminal=True)
+                        report['failures'].append(dict(code='gripper_identity_changed'))
+                        save(status='interrupted',result='incomplete',phase='finished',code='gripper_identity_changed',**report);return
+                    next_session_check=now+1
+                for side, check in checks.items():
+                    value = sample[side]
+                    if value.get('status') != 'ok':
+                        check.interrupt()
+                        continue
+                    check.update(value['position'], now)
+                done=all(c.phase=='done' for c in checks.values())
+                finished_sides={s for s,c in checks.items() if c.phase=='done'}-feedback_sent
+                if now-last_save >= .2 or done or finished_sides:
+                    report=encoder_report(checks,limit,rule_error)
+                    save(**report)
+                    last_save = now
+                    for side in sorted(finished_sides):
+                        encoder_completion_feedback(side)
+                        feedback_sent.add(side)
+                if done:
+                    save(status='completed',result='fail' if report['failures'] else 'pass',code=None);return
+        save(status='completed',result='incomplete',code='cycles_incomplete',
+             **encoder_report(checks,limit,rule_error,terminal=True))
+    except Exception:
+        report=encoder_report(checks,limit,rule_error,terminal=True)
+        if recorder_session()!=session:
+            interrupt_encoder(report);return
+        report['failures'].append(dict(code='encoder_read_failed'))
+        save(**report)
+        raise
 
 
 def trajectory_worker():
@@ -172,7 +297,7 @@ def worker(stack, kind, sides):
 
 def start(kind, side='both'):
     if kind not in ('encoder','trajectory'):raise ValueError('unknown_inspection')
-    if side not in ('left','right','both'):raise ValueError('invalid_side')
+    if side != 'both':raise ValueError('inspection_requires_both_sides')
     if not MUTEX.acquire(False):raise Busy('点检正在执行')
     stack=contextlib.ExitStack()
     try:
@@ -189,7 +314,7 @@ def start(kind, side='both'):
                 try:fcntl.flock(usb,fcntl.LOCK_EX|fcntl.LOCK_NB)
                 except BlockingIOError:raise Busy('U盘升级正在执行')
         STOP.clear();JOB.clear()
-        sides=('left','right') if side=='both' else (side,)
+        sides=('left','right')
         JOB.update(id=uuid.uuid4().hex, kind=kind, status='running', result=None,
                    phase='starting', started_at_ms=int(time.time()*1000), sides={})
         save()
@@ -208,8 +333,12 @@ def stop(kind, jobid):
 
 def recover():
     previous=snapshot()
+    cleanup_encoder_history()
+    RESULT.with_suffix('.new').unlink(missing_ok=True)
     if previous.get('status')!='running':return
     JOB.clear();JOB.update(previous)
+    if JOB.get('kind')=='encoder':
+        interrupt_encoder();return
     try:
         if JOB.get('kind')=='trajectory':stop_owned(JOB['id'])
         save(status='interrupted', result='incomplete', code='service_interrupted')

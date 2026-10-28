@@ -28,6 +28,7 @@ enum class ErrorCodeContext {
 inline std::string_view UgrCodeForErrorType(
     std::string_view error_type,
     ErrorCodeContext context = ErrorCodeContext::Unknown) {
+  if (error_type == "gripper_version_mismatch") return "UGR-40-07";
   if (error_type == "disk_mount_lost") return "UGR-10-01";
   if (error_type == "encoder_init_failed") return "UGR-30-02";
   if (error_type == "encoder_stream_stale") return "UGR-30-07";
