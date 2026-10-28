@@ -288,9 +288,9 @@ Web“点检”页提供编码器开合检查和轨迹测试录制，与 App 使
 | `POST /api/v1/inspection/encoder/cancel` | `{"id":"任务ID"}` | 取消本任务，未完成不判通过 |
 | `POST /api/v1/inspection/trajectory/start` | `{}` | 202，立即请求轨迹测试起录，API 无倒计时 |
 | `POST /api/v1/inspection/trajectory/stop` | `{"id":"任务ID"}` | 请求停止对应测试会话；后台收尾，响应不代表已完成 |
-| `GET /api/v1/tasks/inspection/{id}` | 无 | 查询当前点检任务；非当前 ID 返回 404 |
+| `GET /api/v1/tasks/inspection/{id}` | 无 | 查询最近 100 条轨迹任务；编码器仅保留当前任务，已清理 ID 返回 404 |
 
-POST 使用 `X-UGripper-Request: 1`，无维护密码，仍检查 Origin。提交返回 id/status_url；/status 提供 inspection 摘要，details=true 提供完整检查记录。编码器执行状态 status 与检查结论 result 分开，completed 不等于 pass。关闭页面不会取消已提交任务；worker 重启不自动续跑，任务标记中断。
+POST 使用 `X-UGripper-Request: 1`，无维护密码，仍检查 Origin。提交返回 id/status_url；/status 提供 inspection 摘要，details=true 提供完整检查记录。编码器执行状态 status 与检查结论 result 分开，completed 不等于 pass。轨迹查询仅返回 id/status/episode/code。关闭页面不会取消已提交任务；worker 重启不自动续跑，轨迹任务报告 failed/service_interrupted。
 
 ### 编码器测试操作与 API 交互（2026-10-28）
 
@@ -321,7 +321,7 @@ curl -ksS --fail-with-body -X POST "$base/api/v1/inspection/encoder/cancel" \
 # 接着查询同一 status_url，直到 status 不再为 running。
 ```
 
-start 非 2xx 时按统一 `error.code/message/retryable` 处理，不继续使用空 ID 查询。查询失败或超时可重试；404 表示该 ID 已不可查询，需要检查当前任务。编码器结果通过轮询获取。
+start 非 2xx 时按统一 `error.code/message/retryable` 处理，不继续使用空 ID 查询。查询失败或超时可重试；404 表示该 ID 已不可查询，需要检查当前任务。编码器结果通过轮询获取；轨迹录制的 started/finished 主动通知约定见后文。
 
 | 查询字段 | 调用方处理 |
 | --- | --- |
@@ -357,6 +357,93 @@ start 非 2xx 时按统一 `error.code/message/retryable` 处理，不继续使�
 Web 轨迹按钮先倒数 5 秒，取消或离开点检页即取消尚未提交的倒计时；倒数结束才发送 API。API 立即请求起录但仍受正常设备就绪门禁约束，不保证零启动耗时。手动停止只作用于同一任务 ID 的会话。最终通过仅指原有录制 QC 通过，不代表自动验证轨迹形状。
 
 metadata 3.3 在 episode_name 后立即增加字符串 test_dataset_name：空字符串为标准数据，trajectory_test 为轨迹测试，production_test 为生产压测。起录冻结标识，失败数据保留；普通下一条恢复为空。只增加这一字段，其他 metadata 字段和 data_version 不变；历史 3.3 缺该字段按标准数据解释。测试任务 ID 仅保存在运行状态，不添加到 metadata。
+
+## 轨迹点检录制：joint 对接约定（2026-10-28）
+
+本节接口已实现，供 joint 开发者对接。主动通知须配置 joint 接收地址；未配置时仍可通过任务查询获取结果。
+
+### 范围
+
+UGripper 只负责轨迹测试录制、正常收尾、保存数据与本次录制日志，并报告录制完成或失败。不接收平台轨迹校验结论，不处理上传确认、上传进度、平台 pass/fail、失败次数或停用设备。原有设备本地录制 QC 保留；本地录制失败不等于平台轨迹不合格。
+
+5 秒倒计时由调用方完成，设备 start API 不额外延迟。metadata 仍仅使用既定的 `test_dataset_name="trajectory_test"`，不为通知或上传增加字段。
+
+### joint 调用设备的三个接口
+
+| 方法与路径 | 请求 | 回报 |
+| --- | --- | --- |
+| `POST /api/v1/inspection/trajectory/start` | `{}` | HTTP 202，`id/status_url`；仅表示已接受，实际起录成功或失败由主动通知回报，也可查询确认 |
+| `POST /api/v1/inspection/trajectory/stop` | `{"id":"任务ID"}` | 停止请求已接受；不是收尾完成，完成以主动通知或查询终态为准 |
+| `GET /api/v1/tasks/inspection/{id}` | 无 | 查询该任务的录制阶段和最终 episode，用于状态展示及通知丢失后的补查 |
+
+实体双击停录和 API 停录进入同一个收尾流程，都必须产生主动终态通知。实体停录不要求 joint 再发送 stop。HTTP 请求已结束后不能再次通过原 start/stop 响应推送完成结果，因此采用设备主动 POST 到 joint 接收接口。
+
+任务查询使用以下精简结构（仅调整轨迹任务，编码器点检保留逐次结果）：
+
+```json
+{
+  "id": "0123456789abcdef0123456789abcdef",
+  "status": "completed",
+  "episode": "/mnt/data_disk/dap-example/data/episode_20261028_0001",
+  "code": null
+}
+```
+
+`status` 为 `starting/recording/finalizing/completed/failed`。`episode` 未创建时为 null，完成时必须是最终目录，不能是 `-temp`。`code` 正常为 null，失败为简短原因（例如 `start_not_accepted`、`finalization_timeout` 或本地录制错误码）。不再用轨迹任务 `result=pass/fail` 表达录制结果，避免被理解为平台判定。
+
+### joint 需要提供的主动通知接收接口
+
+joint 提供一个固定的 HTTP POST 接收地址，由设备配置，不由每次 start 请求传入。实际地址、端口及鉴权方式由 joint 联调时确定；建议接口名为 `/api/v1/ugripper/recording-events`。
+
+设备确认运行时真正进入 recording 后，主动发送起录成功（HTTP 202 不等于起录成功）：
+
+```json
+{"event":"trajectory_recording_started","id":"0123456789abcdef0123456789abcdef","status":"recording","code":null}
+```
+
+接受请求后最多等待约 65 秒确认运行时进入 recording；若无法起录，发送以下通知，不再额外发送 finished：
+
+```json
+{"event":"trajectory_recording_started","id":"0123456789abcdef0123456789abcdef","status":"failed","code":"start_not_accepted"}
+```
+
+请求前置校验拒绝（HTTP 400/409）直接返回统一 error，没有任务 ID，也不发送异步通知。
+
+设备在收尾、最终目录及 metadata/日志落盘完成后，主动发送：
+
+```json
+{
+  "event": "trajectory_recording_finished",
+  "id": "0123456789abcdef0123456789abcdef",
+  "status": "completed",
+  "episode": "/mnt/data_disk/dap-example/data/episode_20261028_0001",
+  "code": null
+}
+```
+
+起录成功后的录制故障或收尾失败同样通知，使用 finished event、`status="failed"` 和相应 code；失败时 episode 为已保留的数据目录或 null，不承诺数据完整可用。该通知只表示本次录制的终态，不表示已上传或轨迹校验合格。
+
+joint 返回 HTTP 200/204 即表示接收成功，不要求复杂响应体。通知可能重复，有限重试不保证送达：joint 以 `event + id` 去重，重复接收不重复触发后续动作。设备持久化待发送终态、超时后有限重试，服务恢复后继续处理未确认通知；通知故障不阻塞回到待机，不修改已完成的录制结果。重试耗尽时保留结果和通知失败日志，joint 可通过任务查询补查。
+
+### 设备配置及交付范围
+
+在 `ugripper-maintenance.service` 的 systemd drop-in 中配置固定接收地址；配置后在设备空闲时重启维护服务：
+
+```ini
+[Service]
+Environment="UGRIPPER_INSPECTION_CALLBACK_URL=http://joint-host:port/api/v1/ugripper/recording-events"
+# 可选；joint 需要鉴权时使用 Authorization: Bearer <token>
+Environment="UGRIPPER_INSPECTION_CALLBACK_TOKEN=replace-with-token"
+```
+
+每个事件请求超时 3 秒，最多尝试 5 次，失败后间隔 1/2/5/10 秒重试（后台调度可能延后）。started 确认或重试耗尽后才发送 finished。通知线程不阻塞录制；200/204 视为成功，不跟随重定向。通知记录和投递进度落盘，维护服务重启后继续未耗尽的尝试；已送达事件不主动重发，joint 仍须按 event+id 去重。
+
+设备在 `/var/lib/ugripper-web/inspection-results/` 保留最近 100 条轨迹任务；编码器仅保留当前任务及通知进度，超过上限清理旧记录（含未送达通知）；查询已清理 ID 返回 404。未配置 URL 时不发送通知，保留的事件将在配置后尝试发送。已有录制数据不随任务历史清理。
+
+已实现：精简轨迹查询、真实起录回报、按键/API 共用收尾后的完成回报、后台有限重试、近期结果补查和 Web 展示更新。设备不接收平台校验结论，不参与上传确认。
+
+joint 只需支持：调用开始/停止/查询接口、接收并确认 started/finished 通知、按 event+id 去重与补查。后续的数据获取、上传和业务校验自行衔接，无需把结论回传 UGripper。
+
 ### Web 点检结果面板
 
 左右手分别展示固定5轮闭合/张开峰值表、完成进度和两项一致性结果；通过显示绿色PASS，失败显示红色FAIL，待检测/未完成显示灰色。全部失败项集中列出。启动响应返回id后即可取消；取消接受后显示“正在取消”，任务终态确认结束，请求失败会显示原因并允许重试。
@@ -373,7 +460,7 @@ metadata 3.3 在 episode_name 后立即增加字符串 test_dataset_name：空�
 
 每侧编码器完成5轮后由maintenance向runtime发送绑定任务ID、侧别和5秒有效期的内部完成通知；runtime核对该侧done状态并去重，执行两次蓝灯闪烁及4000Hz短鸣（每次至少350ms、间隔至少250ms，分阶段等待夹爪蜂鸣器状态回报，每阶段最多等待1500ms），随后恢复当前灯态。提示表示该侧检查结束，结论查看页面；录制、硬件故障和Ego同步提示优先。Web点检实时计数独立轮询任务约5次/秒，与后台0.2秒快照配合，失败重试，请求3秒超时，复用既有采样。
 
-编码器点检仅覆盖写入固定的 `/var/lib/ugripper-web/inspection.json`，供实时展示和读取最近结果；每轮不创建任务历史文件、采样文件或独立日志。正常完成、取消与中断都使用同一路径，新任务覆盖旧结果，旧ID查询404。维护服务启动先恢复中断结果，再清理旧版遗留的编码器历史JSON及原子写入临时文件；
+编码器点检仅覆盖写入固定的 `/var/lib/ugripper-web/inspection.json`，供实时展示和读取最近结果；每轮不创建任务历史文件、采样文件或独立日志。正常完成、取消与中断都使用同一路径，新任务覆盖旧结果，旧ID查询404。维护服务启动先恢复中断结果，再清理旧版遗留的编码器历史JSON及原子写入临时文件；轨迹通知历史保留原策略。
 
 
 ### 编码器完成提示的静音保障

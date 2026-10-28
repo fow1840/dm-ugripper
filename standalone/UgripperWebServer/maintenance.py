@@ -480,6 +480,8 @@ if __name__=='__main__':
     recover_time_sync()
     from inspection import recover as recover_inspection
     recover_inspection()
+    from inspection_events import start_dispatcher
+    start_dispatcher()
     from camera_snapshot import SNAPSHOTS
     shutil.rmtree(SNAPSHOTS, ignore_errors=True)
     for name in ('web_reset_request.json','web_reset_response.json','web_reset.gray'):

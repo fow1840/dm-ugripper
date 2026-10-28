@@ -11,7 +11,7 @@ import uuid
 from common import STATE, DATA, PRODUCTION_LOCK, Busy, atomic_json, read_json, operation_lock, _maintenance_lock, command
 from production_test import RECORD_LOCK, send, final_path
 from encoder_probe import stream_encoders
-from inspection_events import cleanup_encoder_history
+from inspection_events import store, lookup, cleanup_encoder_history
 
 RESULT = STATE / 'inspection.json'
 MUTEX = threading.Lock()
@@ -87,6 +87,7 @@ def snapshot():
 
 def save(**fields):
     JOB.update(fields, updated_at_ms=int(time.time()*1000))
+    store(JOB)
     atomic_json(RESULT, JOB)
 
 
@@ -252,9 +253,19 @@ def encoder_worker(sides):
         raise
 
 
+def notify(label, status, code=None):
+    events=dict(JOB.get('events',{}))
+    if label in events:return
+    event=dict(event='trajectory_recording_'+label, id=JOB['id'], status=status, code=code)
+    if label=='finished':event['episode']=JOB.get('episode')
+    events[label]=event
+    save(events=events)
+
+
 def trajectory_worker():
     jobid = JOB['id']
     owned = None
+    started = False
     try:
         control('test_start', jobid)
         deadline = time.monotonic()+65
@@ -263,11 +274,14 @@ def trajectory_worker():
             if live.get('test_request_id') == jobid and live.get('episode_dir'):
                 owned = Path(live['episode_dir'])
                 save(episode=str(owned), phase=live.get('state','starting'))
-                if live.get('state') == 'recording' or STOP.is_set():break
+                if live.get('state') == 'recording':
+                    started=True
+                    notify('started','recording')
+                    break
             elif owned is not None:
                 break
             time.sleep(.1)
-        if owned is None:raise RuntimeError('start_not_accepted')
+        if not started:raise RuntimeError('start_not_accepted')
         while not STOP.wait(.2):
             live=read_json(RECORD_LOCK)
             if live.get('test_request_id') != jobid:break
@@ -277,10 +291,17 @@ def trajectory_worker():
         final=final_path(owned)
         meta=read_json(final/'metadata.json')
         passed=meta.get('quality_check_status')=='success' and meta.get('test_dataset_name')=='trajectory_test'
-        save(status='completed' if passed else 'failed', result='pass' if passed else 'fail',
-             phase='finished', episode=str(final), code=None if passed else (meta.get('quality_check_err_type') or 'episode_invalid'))
-    finally:
-        stop_owned(jobid)
+        save(status='completed' if passed else 'failed', phase='finished', episode=str(final),
+             code=None if passed else (meta.get('quality_check_err_type') or 'episode_invalid'))
+        notify('finished',JOB['status'],JOB.get('code'))
+    except Exception as exc:
+        code=str(exc) if str(exc) in ('start_not_accepted','finalization_timeout') else 'recording_failed'
+        try:stop_owned(jobid)
+        except Exception:code='finalization_timeout'
+        # Never promise a final directory when cleanup did not complete.
+        final=final_path(owned) if owned else None
+        save(status='failed',phase='finished',code=code,episode=str(final) if final and final.exists() else None)
+        notify('finished' if started else 'started','failed',code)
 
 
 def worker(stack, kind, sides):
@@ -289,6 +310,7 @@ def worker(stack, kind, sides):
         else:trajectory_worker()
     except Exception as exc:
         save(status='failed', result='error', code='encoder_read_failed' if kind=='encoder' else 'trajectory_failed', message=str(exc))
+        if kind=='trajectory':notify('finished' if 'started' in JOB.get('events',{}) and JOB['events']['started']['status']=='recording' else 'started','failed','trajectory_failed')
     finally:
         save(finished_at_ms=int(time.time()*1000))
         stack.close()
@@ -333,10 +355,22 @@ def stop(kind, jobid):
 
 def recover():
     previous=snapshot()
+    if not previous:
+        cleanup_encoder_history()
+        RESULT.with_suffix('.new').unlink(missing_ok=True)
+        return
+    # History is committed first; recover its newest state after a partial save.
+    historical=lookup(previous['id'])
+    if historical and historical.get('updated_at_ms',0)>=previous.get('updated_at_ms',0):
+        previous=historical
     cleanup_encoder_history()
     RESULT.with_suffix('.new').unlink(missing_ok=True)
-    if previous.get('status')!='running':return
     JOB.clear();JOB.update(previous)
+    if previous.get('status')!='running':
+        if previous.get('kind')=='trajectory' and previous.get('status') in ('completed','failed'):
+            started=previous.get('events',{}).get('started',{}).get('status')=='recording'
+            notify('finished' if started else 'started',previous['status'],previous.get('code'))
+        return
     if JOB.get('kind')=='encoder':
         interrupt_encoder();return
     try:
@@ -344,3 +378,8 @@ def recover():
         save(status='interrupted', result='incomplete', code='service_interrupted')
     except Exception as exc:
         save(status='interrupted', result='error', code='finalization_timeout', message=str(exc))
+
+    if JOB.get('kind')=='trajectory':
+        started=JOB.get('events',{}).get('started',{}).get('status')=='recording'
+        save(status='failed',code=JOB.get('code') or 'service_interrupted')
+        notify('finished' if started else 'started','failed',JOB['code'])

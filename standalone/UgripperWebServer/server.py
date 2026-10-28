@@ -196,9 +196,13 @@ class Handler(BaseHTTPRequestHandler):
             if match:
                 kind, job = match.groups()
                 if kind == 'inspection':
-                    from inspection import snapshot
-                    value = snapshot()
-                    if value.get('id') != job: value = None
+                    from inspection_events import lookup, compact
+                    value = lookup(job)
+                    if not value:
+                        from inspection import snapshot
+                        value = snapshot()
+                        if value.get('id') != job: value = None
+                    if value: value = compact(value)
                 elif kind == 'snapshot':
                     value = read_json(STATE/'snapshots'/job/'result.json')
                 elif kind == 'maintenance':

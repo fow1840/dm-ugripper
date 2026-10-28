@@ -957,6 +957,7 @@ Web 点检页和 inspection API 共用后台任务：固定双手五次开合、
 
 FT601 USB 设备在 add 后还会收到 bind 事件。固定端口规则对 0403:601f 的 usb_device bind 单独重申别名，避免 udev 在跳过规则后删除 stereo 与 IMU 链接；旧 UVC/video4linux/tty 仍只处理 add/change。验收需覆盖 add/change→bind 和真实 USB restore 后的别名、SDK 图像/IMU 在线状态，不以手动 change 一次成功代替热插拔验证。
 
+轨迹点检通知由 `inspection_events.py` 后台发送，固定 `UGRIPPER_INSPECTION_CALLBACK_URL`（可选 Bearer TOKEN）配置于 maintenance 服务。真实 recording 后发 started，起录失败仅发 started/failed；收尾后发 finished。任务精简查询 id/status/episode/code，保留最近100条轨迹结果及持久化投递进度，3秒超时最多5次尝试，200/204确认，joint按event+id去重。未配置时只保留事件，不发送。
 
 点检 Web 使用左右手固定五轮面板、进度条、通过/失败状态色和一致性卡片，差错项目集中展示；轮询更新现有节点，保留展开状态。start响应后立即保存任务ID以启用取消，取消请求期间显示等待状态，失败时在点检区提示并恢复重试。
 
@@ -966,4 +967,4 @@ FT601 USB 设备在 add 后还会收到 bind 事件。固定端口规则对 0403
 
 每侧编码器完成5轮后由maintenance向runtime发送绑定任务ID、侧别和5秒有效期的内部完成通知；runtime核对该侧done状态并去重，执行两次蓝灯闪烁及4000Hz短鸣（每次至少350ms、间隔至少250ms，分阶段等待夹爪蜂鸣器状态回报，每阶段最多等待1500ms），随后恢复当前灯态。提示表示该侧检查结束，结论查看页面；录制、硬件故障和Ego同步提示优先。Web点检实时计数独立轮询任务约5次/秒，与后台0.2秒快照配合，失败重试，请求3秒超时，复用既有采样。
 
-编码器点检仅覆盖写入固定的 `/var/lib/ugripper-web/inspection.json`，供实时展示和读取最近结果；每轮不创建任务历史文件、采样文件或独立日志。正常完成、取消与中断都使用同一路径，新任务覆盖旧结果，旧ID查询404。维护服务启动先恢复中断结果，再清理旧版遗留的编码器历史JSON及原子写入临时文件；
+编码器点检仅覆盖写入固定的 `/var/lib/ugripper-web/inspection.json`，供实时展示和读取最近结果；每轮不创建任务历史文件、采样文件或独立日志。正常完成、取消与中断都使用同一路径，新任务覆盖旧结果，旧ID查询404。维护服务启动先恢复中断结果，再清理旧版遗留的编码器历史JSON及原子写入临时文件；轨迹通知历史保留原策略。
