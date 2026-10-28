@@ -45,10 +45,11 @@ Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与�
 - Web 时间同步测试按 `/etc/environment` 的 `DEVICE_SN` 小写选择当前设备数据目录，并显式传入毫秒表脚本；未配置 SN 时使用运行时相同的 `noname_device`。不依赖数据盘仅存在一个设备目录；状态轮询保留每组日志展开和滚动状态。
 ### 新旧 Fays 双目兼容
 
-2.1.15 包同时包含旧 UVC SDK 3.8.4 与 FT601 SDK test/8277c6f（3.9.7），
+2.1.15 包同时包含旧 UVC SDK 3.8.4 与 FT601 SDK test/d1e8574（3.9.7，供应商 2026-10-28 更新动态库），
 分别由 fays_record_example、fays_record_ft601 加载，库目录隔离。启动器读取配置设备的
 USB VID/PID：0403:602e 走旧链路，0403:601f 将配置转换为 `device_type: ft601`、
 `stereo_dev_port: <sysfs目录名>`、`imu_dev_port: NULL`；未知设备拒绝启动，不选择首设备兜底。
+FT601 继承原左右参数（含 imu_v4l2_buffer_count），仅额外覆盖 right_cam_rotate_180=0；旧 UVC 旋转参数保持原值。
 原左右配置保留，udev 为两类设备提供相同逻辑别名；FT601 的 stereo/IMU 别名指向同一
 USB 节点，仅用于存在检测与物理端口解析，不可将它们交给 V4L2 工具。
 默认物理侧别沿用既有规则：6-1 子树及 10/12-1 子树为左，8-1 子树为右。

@@ -29,6 +29,16 @@ class Integration(unittest.TestCase):
         (self.dev/'idProduct').write_text('602e')
         original='stereo_dev_port: 2-2.3.3\nimu_dev_port: old\n'
         self.assertEqual(backend.select(original,self.root),('uvc',original))
+    def test_ft601_rotation_preserves_other_parameters(self):
+        original = 'stereo_dev_port: 2-2.3.3\nright_cam_rotate_180: 1\nimu_v4l2_buffer_count: 64\nstereo_fps: 25\n'
+        kind, text = backend.select(original, self.root)
+        self.assertEqual(kind, 'ft601')
+        self.assertIn('right_cam_rotate_180: 0', text)
+        self.assertIn('imu_v4l2_buffer_count: 64', text)
+        self.assertIn('stereo_fps: 25', text)
+        (self.dev/'idProduct').write_text('602e')
+        self.assertEqual(backend.select(original, self.root), ('uvc', original))
+
     def test_unknown_or_missing_rejected(self):
         (self.dev/'idProduct').write_text('0000')
         with self.assertRaises(ValueError): backend.select('stereo_dev_port: 2-2.3.3',self.root)

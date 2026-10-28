@@ -40,7 +40,7 @@ def select(text, sysroot=Path('/sys')):
         return 'uvc', text
     if identity != ('0403', '601f'):
         raise ValueError('unsupported Fays USB descriptor: ' + repr(identity))
-    replacements = {'device_type': 'ft601', 'stereo_dev_port': node.name, 'imu_dev_port': 'NULL'}
+    replacements = {'device_type': 'ft601', 'stereo_dev_port': node.name, 'imu_dev_port': 'NULL', 'right_cam_rotate_180': '0'}
     for key, value in replacements.items():
         pattern = r'^' + key + r':.*$'
         text, count = re.subn(pattern, key + ': ' + value, text, flags=re.M)
