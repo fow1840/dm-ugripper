@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import selectors
 import socket
 import ssl
 import stat
@@ -381,16 +382,50 @@ class Server(ThreadingHTTPServer):
         try:super().process_request_thread(*args)
         finally:self.slots.release()
 
+class ApiHandler(Handler):
+    """Dedicated API listeners never serve the WebUI or its static assets."""
+    def dispatch(self, post=False):
+        if not urlsplit(self.path).path.startswith('/api/v1/'):
+            return self.json({'error': '接口不存在'}, 404)
+        return super().dispatch(post)
+
+
+def listener_specs(config):
+    # Fixed allowlist: configuration cannot expose the API on Wi-Fi/wildcard addresses.
+    bind = config.get('bind', '192.168.2.240')
+    if bind != '192.168.2.240':
+        raise ValueError('WebUI 必须绑定 192.168.2.240')
+    port = config.get('port', 8080)
+    if type(port) is not int or not 1 <= port <= 65535 or port == 8081:
+        raise ValueError('WebUI 端口无效或与 API 8081 冲突')
+    return [((bind, port), Handler),
+            (('192.168.2.240', 8081), ApiHandler),
+            (('127.0.0.1', 8081), ApiHandler)]
+
+
+def serve_listeners(config, context):
+    # Bind all endpoints before accepting requests; failure closes every socket.
+    with contextlib.ExitStack() as stack:
+        selector = stack.enter_context(selectors.DefaultSelector())
+        servers = []
+        slots = threading.BoundedSemaphore(8)
+        for address, handler in listener_specs(config):
+            srv = stack.enter_context(Server(address, handler))
+            srv.context = context
+            srv.slots = slots
+            selector.register(srv, selectors.EVENT_READ)
+            servers.append(srv)
+        while True:
+            for key, _ in selector.select(timeout=.5):
+                key.fileobj._handle_request_noblock()
+            servers[0].service_actions()
+
+
 if __name__=='__main__':
     from ugripper_logger import install_exception_logging
     install_exception_logging('web')
     for old in (STATE/'uploads').iterdir(): old.unlink(missing_ok=True)
     CONFIG=read_json('/etc/ugripper-web/config.json')
-    # Explicit Ethernet address only, never a wildcard or Wi-Fi listener.
-    bind=CONFIG.get('bind','192.168.2.240')
-    if bind in ('0.0.0.0','::',''):raise RuntimeError('必须配置指定网口地址')
     context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);context.minimum_version=ssl.TLSVersion.TLSv1_2
     context.load_cert_chain('/etc/ugripper-web/server.crt','/etc/ugripper-web/server.key')
-    with Server((bind,CONFIG.get('port',8080)),Handler) as srv:
-        srv.context=context
-        srv.serve_forever()
+    serve_listeners(CONFIG, context)

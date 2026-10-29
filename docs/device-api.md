@@ -1,8 +1,8 @@
 # 设备 API 汇总
 
-更新于 **2026-10-27**，按当前 2.1.15 开发工作区的 HTTP 路由与 worker 实现核对；不保证 2.1.11–2.1.14 安装包已提供全部接口。本文涵盖外部专用查询/升级接口，以及可由原生客户端调用的 Web 共用接口。
+更新于 **2026-10-29**，按当前 2.1.15 开发工作区的 HTTP 路由与 worker 实现核对；不保证 2.1.11–2.1.14 安装包已提供全部接口。本文涵盖外部专用查询/升级接口，以及可由原生客户端调用的 Web 共用接口。
 
-地址沿用 WebUI：`https://<设备IP>:8080`。GET 无需登录；所有 POST 必须携带 `X-UGripper-Request: 1`。仅上传、execute、主摄版本确认、外部升级及其 reboot 路由额外要求 `X-UGripper-Maintenance-Password: <维护密码>`。除原始二进制上传外，POST 使用 JSON 对象请求体，即使没有参数也发送 `{}`。外部升级无需弹窗或 `confirm` 字段。浏览器 Origin 仍需同源；原生客户端可不发送 Origin。自签名证书示例用 `curl -k`，正式接入可信任设备证书。
+API 地址：`https://192.168.2.240:8081`（有线）或 `https://127.0.0.1:8081`（本机）；WebUI 保持 `https://192.168.2.240:8080`。GET 无需登录；所有 POST 必须携带 `X-UGripper-Request: 1`。仅上传、execute、主摄版本确认、外部升级及其 reboot 路由额外要求 `X-UGripper-Maintenance-Password: <维护密码>`。除原始二进制上传外，POST 使用 JSON 对象请求体，即使没有参数也发送 `{}`。外部升级无需弹窗或 `confirm` 字段。浏览器 Origin 仍需同源；原生客户端可不发送 Origin。自签名证书示例用 `curl -k`，正式接入可信任设备证书。
 
 | 方法与路径 | 用途 |
 | --- | --- |
@@ -17,7 +17,7 @@
 
 ## 请求与兼容约定
 
-- 默认监听设备以太网地址的 8080 端口，实际地址由设备 Web 配置决定。无需 Cookie、登录会话或 Bearer token；维护密码逐次校验。
+- API 固定监听 `192.168.2.240:8081` 和 `127.0.0.1:8081`，均为 HTTPS；不监听通配地址或无线网 IP。WebUI 保持 `192.168.2.240:8080`，其同源 API 保留供页面调用。独立 API 端口不提供网页或静态资源。无需 Cookie、登录会话或 Bearer token；维护密码逐次校验。
 - 所有 POST 要求有效 `Content-Length`，不接受 `Transfer-Encoding: chunked`。普通 JSON 请求体必须非空且严格小于 4096 字节；`/upload` 使用原始文件体，严格小于 200 MiB。
 - GET 返回 JSON，下载/图像除外；编码器流返回逐行 JSON。HTTP 错误统一为 `{"error":{"code":"稳定错误码","message":"可读说明","retryable":false}}`；成功响应仍按各接口合同，不假定都含 `ok`。
 - `fields`、`ids` 支持逗号分隔或重复 query 参数，去重后最多 128 项；每项 1–128 字符，仅允许字母、数字及 `_.+:-`，首字符必须为字母或数字。空项/非法字符返回 400；未知设备 ID 返回 400 `unknown_device`，未知包名按 `not_installed` 返回。
@@ -131,7 +131,7 @@ POST 不接受任意 shell 命令。无需 `confirm`，`force` 固定为 true。
 ## 调用示例
 
 ```sh
-base='https://192.168.2.240:8080'
+base='https://192.168.2.240:8081'
 curl -k "$base/api/v1/versions?fields=hardware_version,das-usb-updater,ugripper,bluetooth-gatt-server,databot-device-joint,device-ota-mender"
 curl -k "$base/api/v1/devices?ids=left_gripper,cam_left,left_fays_imu,left_encoder"
 curl -k "$base/api/v1/recording"
@@ -272,7 +272,7 @@ curl -k "$base/api/v1/logs" -o ugripper-logs.tar.gz
 最小错误处理示例：
 
 ```sh
-curl -k -sS 'https://192.168.2.240:8080/api/v1/versions?fields=ugripper' | jq
+curl -k -sS 'https://192.168.2.240:8081/api/v1/versions?fields=ugripper' | jq
 # 需要自动判断时同时检查 HTTP 状态；message 供人阅读，程序分支使用 error.code。
 # 有副作用的请求不要配置无条件自动重试。
 ```
@@ -303,7 +303,7 @@ POST 使用 `X-UGripper-Request: 1`，无维护密码，仍检查 Origin。提�
 终端示例（需要 `jq`；查询和取消使用 start 返回的同一任务 ID）：
 
 ```sh
-base='https://192.168.2.240:8080'
+base='https://192.168.2.240:8081'
 reply=$(curl -ksS --fail-with-body -X POST "$base/api/v1/inspection/encoder/start" \
   -H 'X-UGripper-Request: 1' -H 'Content-Type: application/json' -d '{}')
 printf '%s\n' "$reply"
@@ -470,3 +470,5 @@ joint 只需支持：调用开始/停止/查询接口、接收并确认 started/
 底层蜂鸣状态切换按 5 次发送计划重发；关闭后每秒补发 OFF，连接建立和驱动正常退出也发送关闭状态。阶段回报超时后仍进入结束静音链路。静音确认失败会记录告警；任务的 completed/pass 表示采样和判定结果，不是蜂鸣器静音确认回执。
 
 此前 240 板端回放已观察到左右两侧 on/off/on/off 四阶段状态回报，最后 duty=0。当前代码覆盖正常控制链路；进程被 SIGKILL、设备掉电或串口断联时无法保证立即执行关闭，恢复连接后由初始化关闭机制处理。此类故障不能仅凭正常流程实测宣称绝不会持续蜂鸣。
+
+本机调用示例：`curl -k https://127.0.0.1:8081/api/v1/status`。有线客户端使用 `https://192.168.2.240:8081`；监听地址限制的是本机目的地址，不替代路由或防火墙的入接口限制。

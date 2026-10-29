@@ -902,7 +902,7 @@ Ego STOP 每 50–150ms 查询目录，录制中的增量周期不变。文件�
 
 ## 外部应用设备 API
 
-- HTTPS 沿用 WebUI 地址和维护密码；只读 `/api/v1/versions` 支持任意已安装 deb 包名及 metadata 全部版本字段，`/api/v1/devices` 支持完整硬件清单和指定设备，`/api/v1/recording` 提供起录/录制/收尾状态。版本与设备信息复用现有 firmware/Ego/Fays 缓存及 dpkg 数据库，不占用设备端口、不新增版本快照文件，不改变 metadata 格式。
+- WebUI 固定绑定 `192.168.2.240`（默认 8080）；独立 HTTPS API 仅监听 `192.168.2.240:8081` 与 `127.0.0.1:8081`，不提供静态页面，保留 WebUI 同源 API 和维护密码。三个监听器共用 8 请求并发上限，全部绑定成功才开始服务，任一绑定失败关闭已绑定端口；无通配或无线 IP 监听，不新增周期日志。绑定目的地址不替代防火墙入接口限制。只读 `/api/v1/versions` 支持任意已安装 deb 包名及 metadata 全部版本字段，`/api/v1/devices` 支持完整硬件清单和指定设备，`/api/v1/recording` 提供起录/录制/收尾状态。版本与设备信息复用现有 firmware/Ego/Fays 缓存及 dpkg 数据库，不占用设备端口、不新增版本快照文件，不改变 metadata 格式。
 - 外部应用把完整包原子放入 `/var/lib/ugripper-web/upgrade-packages/`，调用 `POST /api/v1/upgrades` 即强制升级，无二次确认；仍检查包合法性、设备匹配、录制/维护互斥及至少 30% 的有效背包电量。Web 与外部共用维护 worker，结果按任务 ID 保存在 `upgrade-results/`。
 - 3588 固件脚本执行成功且安装版本匹配后返回 `awaiting_reboot / success=true / boot_verified=false`，不自动重启；外部或 Web 单独发送任务 reboot 指令。重启前清理临时升级目录，实际重启后再次清理并确认安装版本；任务记录和恢复标记保留在临时目录之外。服务重启保持等待状态，不自动重刷。
 - 参数、字段、状态与调用示例见 [设备 API 汇总](../device-api.md)。
