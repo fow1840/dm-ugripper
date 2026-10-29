@@ -87,3 +87,9 @@ target_include_directories(test_fays_imu_clock PRIVATE
     ${PROJECT_SOURCE_DIR}/standalone/FaysStereoRecorder/include)
 target_link_libraries(test_fays_imu_clock PRIVATE GTest::gtest_main pthread)
 gtest_discover_tests(test_fays_imu_clock PROPERTIES LABELS "host-only;unit;camera")
+
+add_executable(test_fays_imu_repeat test_fays_imu_repeat.cc)
+target_include_directories(test_fays_imu_repeat PRIVATE
+    ${PROJECT_SOURCE_DIR}/standalone/FaysStereoRecorder/include)
+target_link_libraries(test_fays_imu_repeat PRIVATE GTest::gtest_main pthread)
+gtest_discover_tests(test_fays_imu_repeat PROPERTIES LABELS "host-only;unit;camera")

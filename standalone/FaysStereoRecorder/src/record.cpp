@@ -5,6 +5,7 @@
 #include "fays_stereo_recorder/frame_loss_counter.h"
 #include "fays_stereo_recorder/imu_callback_queue.h"
 #include "fays_stereo_recorder/imu_clock_mapper.h"
+#include "fays_stereo_recorder/imu_repeat_check.h"
 #include <string>
 #include <thread>
 #include <memory>
@@ -2076,9 +2077,15 @@ private:
     }
 
     void ImuOnlineCapture() {
+        fays_stereo_recorder::ImuRepeatCheck repeatCheck;
         CallbackSample sample{};
         while (callbackAccepting_.load(std::memory_order_acquire) || callbackInFlight_.load() || callbackQueue_.Size()) {
             if (!callbackQueue_.Pop(sample)) continue;
+            if (repeatCheck.Observe({sample.imu.acc[0], sample.imu.acc[1], sample.imu.acc[2],
+                                     sample.imu.gyro[0], sample.imu.gyro[1], sample.imu.gyro[2]})) {
+                DM_LOG_ERROR_CODE("UGR-22-06", "[IMU] identical six-axis values for 1000 consecutive frames config={}", configPath_);
+                imuSessionFault_.store(true);
+            }
             const bool rollback = lastImuTimestamp_ && sample.imu.timestamp < lastImuTimestamp_;
             if (rollback) ++imuRollbackCount_;
             if (lastImuTimestamp_ && sample.imu.timestamp > lastImuTimestamp_ + 10'000'000ULL) ++imuGapCount_;
@@ -2334,7 +2341,7 @@ private:
         uint64_t previousClamps = 0, previousResets = 0;
         while (mbIsRunning_) {
             if (callbackDrops_.load() || imuSessionFault_.load()) {
-                DM_LOG_ERROR_CODE("UGR-22-06", "[IMU] capture integrity failure: callback_drops={} clock_reset_in_session={}", callbackDrops_.load(), imuSessionFault_.load());
+                DM_LOG_ERROR_CODE("UGR-22-06", "[IMU] capture integrity failure: callback_drops={} imu_integrity_fault={}", callbackDrops_.load(), imuSessionFault_.load());
                 callbackAccepting_.store(false);
                 mbIsRunning_.store(false);
                 break;
