@@ -216,7 +216,6 @@ bool RecordRuntime::startRecording(bool resetRecording)
     stopEgoSyncFeedback();
     egoSyncFeedbackGate_.Update(false, false, currentSteadyMs());
     egoSyncFeedbackVisible_ = false;
-    setLedState(LedState::Writing);
     const auto startedAt = currentSteadyMs();
     const bool started = recordingOrchestrator_->StartRecording(resetRecording, nullptr);
     DM_LOG_INFO("recording start completed: success={} elapsed_ms={}", started, currentSteadyMs() - startedAt);

@@ -64,7 +64,6 @@
   "62": "Ugripper Current Status Overview",
   "63": "json",
   "64": "usb_auto_update.sh",
-  "65": "gripper_hmi_driver.cc",
   "66": "AudioPlayer",
   "67": "batch_validate_episodes.py",
   "68": "camera_recorder.cc",
