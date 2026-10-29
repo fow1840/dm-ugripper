@@ -1,5 +1,6 @@
 """Read-only status: never opens serial/video nodes owned by recorders."""
 import os
+import re
 from pathlib import Path
 import shutil
 import time
@@ -19,21 +20,47 @@ def disk(path, required=False):
     return dict(mounted=True, total=d.total, used=d.used, free=d.free)
 
 FIRMWARE_STATUS = Path('/dev/shm/ugripper/firmware_status.json')
-BATTERY_STATUS = Path('/dev/shm/ugripper/battery_status.json')
+BMS_SOURCE = Path('/opt/bluetooth_server/bms_latest.txt')
 
 
 def battery_status():
-    cached = read_json(BATTERY_STATUS)
-    if not isinstance(cached, dict):
-        return {'connected': False, 'status': 'service_unavailable'}
-    stamp, percent = cached.get('updated_at_ms'), cached.get('percent')
-    valid = (isinstance(stamp, (int, float)) and not isinstance(stamp, bool)
-             and 0 <= time.time() * 1000 - stamp <= 5000
-             and type(percent) is int and 0 <= percent <= 100
-             and cached.get('connected') is True)
-    if not valid:
-        return {'connected': False, 'status': 'service_unavailable'}
-    return {**cached, 'connected': True}
+    """Read the Bluetooth-owned snapshot independently of recorder lifecycle."""
+    unavailable = {'connected': False, 'status': 'service_unavailable'}
+    keys = ('timestamp', 'soc_percent', 'totalCapacity_mAh', 'remainCapacity_mAh',
+            'totalVoltage_mV', 'current_mA', 'isCharging', 'isDischarging')
+    try:
+        with BMS_SOURCE.open('rb') as stream:
+            raw = stream.read(4097)
+        if len(raw) > 4096:
+            return unavailable
+        fields = {}
+        for line in raw.decode('utf-8').splitlines():
+            key, separator, value = line.partition(':')
+            if not separator or key not in keys:
+                continue
+            value = value.strip()
+            if key in fields or not re.fullmatch(r'[+-]?[0-9]+', value):
+                return unavailable
+            fields[key] = int(value)
+        if any(key not in fields for key in keys):
+            return unavailable
+        now = int(time.time() * 1000)
+        age = now - fields['timestamp'] * 1000
+        if fields['timestamp'] <= 0 or not 0 <= age <= 20000:
+            return unavailable
+        if any(not 0 <= fields[key] <= 2147483647 for key in
+               ('soc_percent', 'totalCapacity_mAh', 'remainCapacity_mAh', 'totalVoltage_mV')):
+            return unavailable
+        if (fields['soc_percent'] > 100 or not -2147483648 <= fields['current_mA'] <= 2147483647
+                or fields['isCharging'] not in (0, 1) or fields['isDischarging'] not in (0, 1)):
+            return unavailable
+        return dict(connected=True, status='ready', source=str(BMS_SOURCE), updated_at_ms=now,
+                    sample_age_ms=age, percent=fields['soc_percent'],
+                    charging=bool(fields['isCharging']), discharging=bool(fields['isDischarging']),
+                    voltage_mv=fields['totalVoltage_mV'], current_ma=fields['current_mA'],
+                    capacity_mah=fields['totalCapacity_mAh'], remaining_mah=fields['remainCapacity_mAh'])
+    except (OSError, UnicodeError, ValueError):
+        return unavailable
 
 
 def firmware_status():
