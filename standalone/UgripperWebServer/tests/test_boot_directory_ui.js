@@ -10,10 +10,10 @@ async function main(){
  assert.equal(packed.name,'firmware-release.tar');
  execFileSync('/usr/bin/python3',['-c',`import io,sys,tarfile
 with tarfile.open(fileobj=io.BytesIO(sys.stdin.buffer.read())) as t:
- assert t.getnames()==['update.sh','SHA256SUMS','payload/version.info','payload/binary']
- assert t.extractfile('update.sh').read()==b'#!/bin/sh\\nexit 0\\n'
- assert t.extractfile('payload/version.info').read()==b'V1.00\\n'
- assert t.extractfile('payload/binary').read()==bytes([0,255,10,128])
+ assert t.getnames()==['release/'+n for n in ['update.sh','SHA256SUMS','payload/version.info','payload/binary']]
+ assert t.extractfile('release/update.sh').read()==b'#!/bin/sh\\nexit 0\\n'
+ assert t.extractfile('release/payload/version.info').read()==b'V1.00\\n'
+ assert t.extractfile('release/payload/binary').read()==bytes([0,255,10,128])
  assert all(m.isfile() for m in t.getmembers())
 `],{input:Buffer.from(await packed.arrayBuffer())});
  for(const bad of ['../bad','/absolute','bad name','payload/../../bad'])assert.throws(()=>context.packageFirmwareDirectory([...files,file(bad,'')]),/非法/);

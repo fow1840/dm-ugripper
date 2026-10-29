@@ -98,11 +98,11 @@ WebUI 与外部 API 的软件、主摄、夹爪及 RK3588 启动固件升级统�
 
 升级页“3588 设备固件升级”支持两种上传方式：直接选择 `.tar.gz` / `.tgz` / `.tar` 发布包；或在 PC 解压后选择包含 `update.sh`、`SHA256SUMS` 和 `payload/` 的整个发布目录。目录由浏览器保留路径与内容打包上传，无须手动重新压缩。不再接受单独 `boot.img`。上传及解压总量各须小于 200 MiB，最多 256 个归档条目；只接受普通文件/目录，拒绝链接、越界路径及重复文件。
 
-- root worker 校验 SHA256SUMS 全部文件、`payload/version.info`、本机硬件型号和选用 FIT 的 kernel/设备树/hash；V100 使用 `boot-v2.5.img`，V130 使用 `boot-v3.img`，并检查固定 `/dev/mmcblk0p3` 的 boot 分区身份和容量。这不是发布者签名认证，须使用交付给当前硬件的完整发布包。
+- root worker 按 SHA256SUMS 校验包内文件；发布标识取带板型前缀的 version.info，或保留的发布目录名。RB1021 对应 V100，RB1021V130 对应 V130，精确匹配。镜像、驱动及配置文件名称由发布包决定，Web 不另设固定清单或解析镜像。
 - 持有录制/维护/USB 升级互斥锁并停数采后，以 `/bin/sh -e update.sh` 执行厂商脚本（命令失败即中止）；同版本也执行。脚本负责更新整个发布包，Web 不再自行执行旧的裸镜像写入流程。电量至少 30%，不可用/过期拒绝。
 - 示例 `RB1021_CFTC_RK3588_V1.0.3.2_20261022143700_alpha.tar.gz` 的实际版本取自 `payload/version.info`：`V1.0.3.2_20261022143700_release`，不根据包名推断。其脚本写 boot、调整文件系统、替换 Wi-Fi 驱动与启动脚本、覆盖 rsyslog/logrotate 配置并重启 rsyslog；V100 还可能替换 fstab、调整/挂载数据分区，并清空 `/home/ubuntu/Downloads/`。这些是包内脚本行为，升级会影响原有日志配置。
-- 脚本返回成功后，核对 `/home/user/version.info`、驱动/启动脚本/日志配置文件 SHA-256 和 boot 分区 SHA-256，全部匹配才返回 `awaiting_reboot`（`success=true`、`boot_verified=false`），恢复服务并等待单独重启指令；失败不自动重启或重刷。包内脚本应只安装，不自行重启。
-- 写入前持久保存目标版本、文件/hash、任务 ID 和 boot ID；独立重启指令获取互斥锁、清理临时升级包后请求重启。新 boot ID 下维护服务再次核对版本、文件和 boot 分区，通过才标记最终成功；同一 boot ID 的服务重启保持等待状态，中断不冒充成功。
+- 脚本返回成功后核对 /home/user/version.info 与包内目标版本，匹配才进入 awaiting_reboot；失败不自动重启。包内脚本不应自行重启。
+- 执行前保存目标版本、清单哈希、任务 ID 和 boot ID。重启后确认新 boot ID 和安装版本；服务重启保持等待，不重刷。boot_verified 表示重启及版本确认完成，不表示分区逐字节回读。
 - Runtime 按现有版本缓存周期读取 `/home/user/version.info`，字段为 `rk3588_firmware_version`，Web 概览、统一/指定版本 API 共用 `firmware_status.json`。文件缺失/内容无效显示未识别，不填默认版本；起录前版本必须已知，起录冻结后随 metadata 写入，`data_version` 保持 `3.3`，原有字段顺序和格式不变。
 - 没有 A/B 回滚或 Web 救砖功能；升级不能断电，无法启动时需走设备既有离线恢复流程。回读成功不代替外设功能验收。
 

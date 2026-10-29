@@ -98,9 +98,9 @@
 | `software` | `.deb` | 复用 Web 安装白名单：上述五个软件包；支持同版本覆盖、降级安装 |
 | `main_camera` | `.img` | 左右主摄依次强制烧录，同版本也烧录 |
 | `gripper` | `.hex` | 左右夹爪依次升级并回读版本 |
-| `rk3588_boot` | 包含 `update.sh`、`SHA256SUMS`、`payload/` 的 `.tar.gz` / `.tgz` / `.tar` 发布包 | 校验清单及硬件后执行包内脚本，同版本也执行；核对版本、文件和 boot 分区后等待重启 |
+| `rk3588_boot` | 包含 `update.sh`、`SHA256SUMS`、`payload/` 的 `.tar.gz` / `.tgz` / `.tar` 发布包 | 校验清单及硬件后执行包内脚本，同版本也执行；核对安装版本后等待重启 |
 
-`rk3588_boot` 保留原 kind 名称，但不再接受裸 `boot.img`。外部程序将完整归档放入临时目录后提交，例如 `{"kind":"rk3588_boot","package":"RB1021_CFTC_RK3588_V1.0.3.2_20261022143700_alpha.tar.gz"}`。PC 解压后的目录可直接通过 WebUI 上传；原生 API 使用归档文件。包内版本取 `payload/version.info`，安装后位于 `/home/user/version.info`；任务 `result.firmware_version` 返回目标版本。脚本更新范围包含 boot、驱动、启动脚本及系统配置，具体以发布包为准；样例还会调整文件系统、覆盖日志配置及清空 `/home/ubuntu/Downloads/`。包内脚本不得自行重启，脚本、版本、文件和分区校验均成功才进入 `awaiting_reboot`，独立重启前清理临时包，新启动后再次核对。详见 [Web 升级说明](../standalone/UgripperWebServer/README.md)。
+`rk3588_boot` 保留原 kind 名称，但不再接受裸 `boot.img`。外部程序将完整归档放入临时目录后提交，例如 `{"kind":"rk3588_boot","package":"RB1021_CFTC_RK3588_V1.0.3.2_20261022143700_alpha.tar.gz"}`。PC 解压后的目录可直接通过 WebUI 上传；原生 API 使用归档文件。包内版本取 `payload/version.info`，安装后位于 `/home/user/version.info`；任务 `result.firmware_version` 返回目标版本。脚本更新范围包含 boot、驱动、启动脚本及系统配置，具体以发布包为准；样例还会调整文件系统、覆盖日志配置及清空 `/home/ubuntu/Downloads/`。包内脚本不得自行重启，脚本、安装版本确认均成功才进入 `awaiting_reboot`，独立重启前清理临时包，新启动后再次核对。详见 [Web 升级说明](../standalone/UgripperWebServer/README.md)。
 
 POST 不接受任意 shell 命令。无需 `confirm`，`force` 固定为 true。主摄设备版本读取失败自动继续，保留 `version_checks_skipped` 及回读未验证证据；镜像合法性、设备匹配、USB/SN 回归检查仍执行。所有软件/固件升级要求背包电量可用且至少 **30%**（30% 允许），低于 30%、快照缺失或过期均拒绝，充电和强制升级不豁免；任务接收前、停服前及实际安装/逐侧烧录前均检查。软件查询范围不限于升级白名单。
 
@@ -122,7 +122,7 @@ POST 不接受任意 shell 命令。无需 `confirm`，`force` 固定为 true。
 
 任务包含 `id/kind/stage/started/updated/finished`（时间为 Unix 秒），及 `result`、逐侧 `results`、`sha256` 等适用字段。终态在文件清理和服务恢复后发布；`success` 不保证被明确跳过的主摄版本回读已验证。左右升级无法原子回滚，失败时应核对逐侧结果。
 
-3588 写入成功不会自动重启。调用 reboot 路由后约 3 秒重启，返回 202 `accepted=true/status=rebooting`；此时禁起录。重连后继续查询原任务，只有新启动后分区校验通过才有 `boot_verified=true/status=success`。该标志确认新启动后的 boot 分区完整性，不表示所有外设已验收。调度失败返回错误；60 秒仍未重启回到 `awaiting_reboot` 并记录 `reboot_timeout`，可重发重启指令。维护服务重启不等同整机重启，不提前报告启动后校验成功。
+3588 写入成功不会自动重启。调用 reboot 路由后约 3 秒重启，返回 202 `accepted=true/status=rebooting`；此时禁起录。重连后继续查询原任务，只有新启动后安装版本确认通过才有 `boot_verified=true/status=success`。该标志确认设备已重新启动且安装版本匹配，不表示所有外设已验收。调度失败返回错误；60 秒仍未重启回到 `awaiting_reboot` 并记录 `reboot_timeout`，可重发重启指令。维护服务重启不等同整机重启，不提前报告启动后校验成功。
 
 已接受的源文件移入 root 私有区，任务结束清理。**重启指令执行前和新开机恢复时清空整个临时升级目录**，包括未提交包；同一次开机仅重启维护服务不会清空该目录。任务结果保存在 `/var/lib/ugripper-web/upgrade-results/{id}.json`，boot 恢复标记在 `/var/lib/ugripper-maintenance/boot-pending.json`，均不在临时目录内。
 

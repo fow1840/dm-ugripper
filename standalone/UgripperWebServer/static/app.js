@@ -25,6 +25,32 @@ function updateUpgradeBatteryButtons(error){
  for(const button of document.querySelectorAll('.upgradeForm button')){button.disabled=busy||uploading||Boolean(error);button.title=error;}
  $('#bootBatteryStatus').textContent=error||'背包电量满足升级条件（至少 30%）';
 }
+let bootRebootPromptOpen=false;
+const bootRebootPrompted=new Set();
+function bootUpgradeText(task){
+ if(task?.kind!=='rk3588_boot')return '';
+ if(task.status==='failed')return '固件升级失败：'+(task.message||task.error_code||task.stage||'请查看任务详情');
+ if(task.status==='rebooting')return '重启指令已接受，正在等待设备重新连接。';
+ if(task.reboot_pending)return '固件已写入并校验成功，需要重启后生效。请先完成重启，再上传其他升级包。';
+ if(task.status==='success')return '固件升级完成'+(task.result?.boot_verified?'，重启后校验通过。':'。');
+ return '固件升级进行中：'+(task.stage||'任务已接受，请勿断电');
+}
+async function confirmBootReboot(task,manual=false){
+ if(task?.kind!=='rk3588_boot'||!task.reboot_pending||task.status==='rebooting'||bootRebootPromptOpen||$('#confirmDialog').open)return;
+ if(!manual&&(task.external===true||bootRebootPrompted.has(task.id)))return;
+ bootRebootPromptOpen=true;bootRebootPrompted.add(task.id);
+ try{
+  const password=await confirmAction('固件已写入并校验成功，需要重启设备后生效。是否现在重启？取消可稍后通过“确认重启设备”按钮操作。重启期间网页会暂时断开。',false,true);
+  if(!password)return;
+  await post('/api/v1/upgrades/'+task.id+'/reboot',{},password);
+  message('重启指令已接受');refresh();
+ }catch(e){message(e.message)}finally{bootRebootPromptOpen=false;}
+}
+function renderBootUpgrade(task){
+ const text=bootUpgradeText(task),node=$('#bootUpgradeStatus');
+ node.hidden=!text;node.textContent=text;
+ if(!uploading&&task?.status==='awaiting_reboot')void confirmBootReboot(task);
+}
 function bytes(n){return (n/1024**3).toFixed(1)+' GiB'}
 function metric(label,value,detail){const p=el('article',undefined,'panel metric');p.append(el('p',label,'muted'),el('div',value,'value'),el('p',detail,'muted'));return p}
 function row(label,value,good){const d=el('div',undefined,'device');d.append(el('span',label),el('span',value,'state '+(good===null?'':good?'good':'bad')));return d}
@@ -53,16 +79,12 @@ function render(s){renderInspection(s);const versions=s.device_versions||{};setD
  $('#firmwareVersions').append(row('胸部主摄固件',versionValue(versions.cam_chest_firmware_version),null));
  if((!settingsLoaded||s.task?.kind==='configuration'&&s.task?.finished)&&!settingsDirty){for(const select of document.querySelectorAll('#configurationForm select')){const value=s.configuration?.[select.name];select.value=value??'';select.required=true;}settingsLoaded=true;}
  $('#connection').textContent=(s.service_active?'数采服务在线':'数采服务已停止')+' · '+new Date().toLocaleTimeString();
+ renderBootUpgrade(s.task);
  $('#rebootUpgrade').hidden=s.task?.reboot_pending!==true||s.task?.status==='rebooting';
  if(s.task?.confirmation&&!uploading)void confirmCameraVersion(s.task);
  if(s.task.id&&!uploading){$('#taskPanel').hidden=false;$('#taskText').textContent=s.task.stage+(s.task.message?' · '+s.task.message:'');if(s.task.status==='running')$('#progress').removeAttribute('value');else $('#progress').value=100;$('#results').replaceChildren();for(const [k,v]of Object.entries(s.task.result||s.task.results||{})){$('#results').append(el('p',k+': '+(typeof v==='object'?(v.regression?.version_verification_skipped?'完成（设备版本未验证）':v.installed_version||v.status||'完成'):v)))} }
 }
-$('#rebootUpgrade').onclick=async()=>{
- const task=last?.task;if(!task?.reboot_pending)return;
- const password=await confirmAction('固件已写入并校验。确认重启设备？临时升级包将被清理，网页会暂时断开。',false,true);
- if(!password)return;
- try{await post('/api/v1/upgrades/'+task.id+'/reboot',{},password);message('重启指令已接受');refresh()}catch(e){message(e.message)}
-};
+$('#rebootUpgrade').onclick=()=>confirmBootReboot(last?.task,true);
 async function refresh(){if($('#workspace').hidden)return;try{render(await api('/api/v1/status?details=true'))}catch(e){if(last)last.battery={connected:false};updateUpgradeBatteryButtons('电量数据不可用或已过期，禁止升级');$('#connection').textContent='连接中断';$('#timeSyncFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';$('#productionFreshness').textContent='连接中断，进度未更新；重新连接后自动恢复';updateTactileImageWarnings([]);message(e.message)}}
 for(const b of document.querySelectorAll('nav [data-page]'))b.onclick=()=>{current=b.dataset.page;for(const x of document.querySelectorAll('.page'))x.hidden=x.id!==current;for(const x of document.querySelectorAll('nav [data-page]'))x.classList.toggle('selected',x===b);$('#title').textContent=({overview:'设备概览',inspection:'点检',data:'录制数据',upgrade:'升级维护',settings:'配置'})[current];if(current==='data')loadFiles()};
 async function loadFiles(){try{const v=await api('/api/v1/data?path='+encodeURIComponent(directory)+'&offset='+fileOffset);$('#previousFiles').disabled=fileOffset===0;$('#nextFiles').disabled=!v.has_more;$('#directory').textContent='/'+directory;$('#files').replaceChildren();for(const f of v.entries){const item=el('div',undefined,'file'),actions=el('div',undefined,'actions'),path=directory?directory+'/'+f.name:f.name;item.append(el('span',f.name,'name'));if(f.directory){const open=el('button','打开','secondary');open.onclick=()=>{directory=path;fileOffset=0;loadFiles()};actions.append(open)}const download=el('button',f.directory?'打包下载':'下载','secondary');download.onclick=()=>startDownload('/api/v1/download?path='+encodeURIComponent(path));actions.append(download);item.append(actions);$('#files').append(item)}}catch(e){message(e.message)}}
@@ -91,6 +113,8 @@ function upload(file,password){return new Promise((resolve,reject)=>{const x=new
 $('#firmwareKind').onchange=()=>{$('#firmwareFile').accept=$('#firmwareKind').value==='main_camera'?'.img':'.hex';$('#firmwareFile').value=''};
 function packageFirmwareDirectory(files){
  const parts=[],names=new Set();let size=1024;
+ const root=files[0]?.webkitRelativePath.split('/')[0];
+ if(!root||!/^[A-Za-z0-9_.+-]+$/.test(root))throw Error('发布目录名称非法');
  for(const file of files){
   const path=file.webkitRelativePath.split('/').slice(1).join('/');
   if(!path||path.length>100||path.split('/').some(p=>!p||p==='.'||p==='..'||!/^[A-Za-z0-9_.+-]+$/.test(p))||names.has(path))throw Error('升级目录包含非法或重复文件名');
@@ -99,7 +123,9 @@ function packageFirmwareDirectory(files){
   const header=new Uint8Array(512),encoder=new TextEncoder();
   const put=(offset,value)=>header.set(encoder.encode(value),offset);
   const octal=(offset,width,value)=>put(offset,value.toString(8).padStart(width-1,'0')+'\0');
-  put(0,path);octal(100,8,420);octal(108,8,0);octal(116,8,0);octal(124,12,file.size);octal(136,12,0);
+  if(file.webkitRelativePath.split('/')[0]!==root)throw Error('请选择同一个发布目录');
+  if(root.length>155)throw Error('发布目录名称过长');
+  put(345,root);put(0,path);octal(100,8,420);octal(108,8,0);octal(116,8,0);octal(124,12,file.size);octal(136,12,0);
   header.fill(32,148,156);put(156,'0');put(257,'ustar\0');put(263,'00');
   const checksum=header.reduce((sum,value)=>sum+value,0);put(148,checksum.toString(8).padStart(6,'0')+'\0 ');
   parts.push(header,file,new Uint8Array((512-file.size%512)%512));
@@ -117,10 +143,11 @@ for(const form of document.querySelectorAll('.upgradeForm'))form.onsubmit=async 
  e.preventDefault();const kind=form.dataset.kind||$('#firmwareKind').value;let file;
  try{file=kind==='rk3588_boot'&&$('#bootInputMode').value==='directory'?packageFirmwareDirectory($('#bootDirectory').files):form.querySelector('input[type=file]').files[0]}catch(error){message(error.message);return}
  if(!file||file.size>=200*1024**2||!file.size){message('请选择小于 200 MiB 的文件');return}
+ if(last?.task?.reboot_pending){message('固件已写入，请先确认重启设备，再提交升级。');return}
  if(busy){message('录制或维护进行中');return}const batteryError=upgradeBatteryError(last?.battery);if(batteryError){message(batteryError);return}
  const password=await confirmAction('确认使用 '+file.name+' 执行'+(kind==='software'?'软件覆盖安装':kind==='rk3588_boot'?'3588 设备固件升级，脚本执行及校验成功后等待单独确认重启':'左右两侧固件升级')+'？过程中请勿断电或拔插设备。',false,true);if(!password)return;
  form.querySelector('button').disabled=true;uploading=true;$('#taskPanel').hidden=false;
- try{const u=await upload(file,password);await post('/api/v1/execute',{kind,upload:u.upload,confirm:true,force:kind==='main_camera'&&$('#forceFlash').checked},password);message();form.reset();if(kind==='rk3588_boot')$('#bootInputMode').onchange()}
+ try{const u=await upload(file,password);await post('/api/v1/execute',{kind,upload:u.upload,confirm:true,force:kind==='main_camera'&&$('#forceFlash').checked},password);message();form.reset();if(kind==='rk3588_boot'){$('#bootInputMode').onchange();$('#bootUpgradeStatus').hidden=false;$('#bootUpgradeStatus').textContent='上传完成，升级任务已接受，正在等待执行结果。'}}
  catch(e){message(e.message)}finally{uploading=false;refresh()}
 };
 for(const button of document.querySelectorAll('[data-zero-side]'))button.onclick=async()=>{

@@ -47,15 +47,14 @@ def image():
 def release(path, changes=None):
     files = {'update.sh': b'#!/bin/sh\nexit 0\n',
              'payload/version.info': b'V1.0.3.2_20261022143700_release\n',
-             'payload/boot-v2.5.img': image(), 'payload/boot-v3.img': image(),
+             'payload/boot-v2.5.img': image(),
              'payload/fstab': b'fstab'}
-    files.update({name: name.encode() for name in boot.INSTALLED_FILES})
     files.update(changes or {})
     files['SHA256SUMS'] = ''.join(hashlib.sha256(value).hexdigest()+'  '+name+'\n'
                                  for name,value in files.items()).encode()
     with tarfile.open(path,'w:gz') as archive:
         for name,content in files.items():
-            member=tarfile.TarInfo('release/'+name); member.size=len(content)
+            member=tarfile.TarInfo('RB1021_CFTC_RK3588_V1.0.3.2_20261022143700_release/'+name); member.size=len(content)
             archive.addfile(member,io.BytesIO(content))
 
 
@@ -103,7 +102,7 @@ class BootFirmwareTests(unittest.TestCase):
 
     def test_battery_drop_during_inspection_blocks_before_script(self):
         run=Mock(return_value='')
-        with patch.object(boot,'require_battery',side_effect=[30,ValueError('low battery')]),patch.object(boot,'check_target'),patch.object(boot,'persist') as persist:
+        with patch.object(boot,'require_battery',side_effect=[30,ValueError('low battery')]),patch.object(boot,'persist') as persist:
             with self.assertRaisesRegex(ValueError,'low battery'):boot.install(self.path,{'id':'test'},Mock(),run)
             run.assert_not_called();persist.assert_not_called()
         self.assertFalse(list(self.root.glob('firmware-*')))
@@ -112,10 +111,8 @@ class BootFirmwareTests(unittest.TestCase):
         info=boot.inspect_package(self.path)
         self.assertEqual(info['firmware_version'],'V1.0.3.2_20261022143700_release')
         self.assertEqual(info['hardware_model'],'V100')
-        self.compatible.write_bytes(b'vendor,V130\0rockchip,rk3588\0')
-        self.assertEqual(boot.inspect_package(self.path)['hardware_model'],'V130')
         self.compatible.write_bytes(b'rockchip,rk3588\0')
-        with self.assertRaisesRegex(ValueError,'硬件型号'):boot.inspect_package(self.path)
+        with self.assertRaisesRegex(ValueError,'硬件不匹配'):boot.inspect_package(self.path)
 
     def test_raw_image_corrupt_manifest_and_missing_version_rejected(self):
         self.path.write_bytes(image())
@@ -142,7 +139,7 @@ class BootFirmwareTests(unittest.TestCase):
 
     def test_script_execution_verify_and_pending_reboot_even_same_version(self):
         run=Mock(return_value='')
-        with patch.object(boot,'check_target'),patch.object(boot,'verify_installed') as verify:
+        with patch.object(boot,'verify_installed') as verify:
             result=boot.install(self.path,{'id':'test'},Mock(),run)
         self.assertEqual(result['status'],'awaiting_reboot');self.assertFalse(result['boot_verified'])
         command=run.call_args_list[0].args[0]
@@ -155,23 +152,32 @@ class BootFirmwareTests(unittest.TestCase):
     def test_script_failure_and_bad_readback_never_report_success(self):
         for script_error in (True,False):
             run=Mock(side_effect=RuntimeError('script failed') if script_error else None,return_value='')
-            with patch.object(boot,'check_target'),patch.object(boot,'verify_installed',side_effect=RuntimeError('bad readback')):
+            with patch.object(boot,'verify_installed',side_effect=RuntimeError('bad readback')):
                 with self.assertRaises(RuntimeError):boot.install(self.path,{'id':'test'},Mock(),run)
             self.assertEqual(read_json(self.marker)['status'],'failed')
             self.assertFalse(list(self.root.glob('firmware-*')))
 
-    def test_verifies_version_files_and_boot_partition(self):
-        files={name:self.root/str(i) for i,name in enumerate(boot.INSTALLED_FILES)}
-        for file in files.values():file.write_bytes(b'installed')
-        self.version.write_text('V1.0.3.2\n')
-        info=dict(size=100,sha256='digest',firmware_version='V1.0.3.2',files={n:boot.file_hash(p) for n,p in files.items()})
-        with patch.object(boot,'INSTALLED_FILES',files),patch.object(boot,'partition_hash',return_value='digest'):
-            boot.verify_installed(info)
-            self.version.write_text('wrong')
-            with self.assertRaisesRegex(RuntimeError,'version.info'):boot.verify_installed(info)
-            self.version.write_text('V1.0.3.2')
-            next(iter(files.values())).write_bytes(b'corrupt')
-            with self.assertRaisesRegex(RuntimeError,'文件 SHA-256'):boot.verify_installed(info)
+
+    def test_manifest_allows_arbitrary_payload_and_rejects_wrong_board(self):
+        with boot.unpack_package(self.path) as root:
+            (root/'payload/boot-v2.5.img').unlink()
+            (root/'payload/fstab').unlink()
+            (root/'payload/custom.bin').write_bytes(b'custom')
+            files=[p for p in root.rglob('*') if p.is_file() and p.name!='SHA256SUMS']
+            (root/'SHA256SUMS').write_text(''.join(boot.file_hash(p)+'  '+str(p.relative_to(root))+'\n' for p in files))
+            self.assertEqual(boot.inspect_package_root(root)['hardware_model'],'V100')
+            self.compatible.write_bytes(b'vendor,V130\0rockchip,rk3588\0')
+            with self.assertRaisesRegex(ValueError,'不匹配'):boot.inspect_package_root(root)
+            new=root.with_name(root.name.replace('RB1021_', 'RB1021V130_',1));root.rename(new)
+            self.assertEqual(boot.inspect_package_root(new)['hardware_model'],'V130')
+            self.compatible.write_bytes(b'vendor,V100\0rockchip,rk3588\0')
+            with self.assertRaisesRegex(ValueError,'不匹配'):boot.inspect_package_root(new)
+
+    def test_installed_version_must_match(self):
+        self.version.write_text('expected')
+        boot.verify_installed({'firmware_version':'expected'})
+        with self.assertRaisesRegex(RuntimeError,'version.info'):
+            boot.verify_installed({'firmware_version':'other'})
 
     def test_read_version_rejects_missing_malformed_and_oversized_content(self):
         self.assertEqual(boot.read_version(),'')
@@ -187,21 +193,16 @@ class BootFirmwareTests(unittest.TestCase):
         with patch.object(boot,'verify_installed') as verify:boot.recover(Mock())
         verify.assert_not_called();self.assertEqual(read_json(self.root/'task.json')['status'],'awaiting_reboot')
         self.bootid.write_text('after')
-        with patch.object(boot,'check_target'),patch.object(boot,'verify_installed') as verify:boot.recover(Mock())
+        with patch.object(boot,'verify_installed') as verify:boot.recover(Mock())
         verify.assert_called_once();self.assertTrue(read_json(self.root/'task.json')['boot_verified'])
         self.assertFalse(self.marker.exists())
 
     def test_reboot_verification_mismatch_is_failure(self):
         atomic_json(self.root/'task.json',{'id':'test','status':'running'})
         atomic_json(self.marker,{'id':'test','status':'running','stage':'awaiting_reboot','boot_id':'old','size':100})
-        with patch.object(boot,'check_target'),patch.object(boot,'verify_installed',side_effect=RuntimeError('bad')):boot.recover(Mock())
+        with patch.object(boot,'verify_installed',side_effect=RuntimeError('bad')):boot.recover(Mock())
         self.assertEqual(read_json(self.root/'task.json')['status'],'failed')
 
-    def test_valid_fit_and_corrupt_payload(self):
-        path=self.root/'boot.img';path.write_bytes(image())
-        self.assertEqual(boot.inspect_image(path)['sha256'],hashlib.sha256(path.read_bytes()).hexdigest())
-        path.write_bytes(image().replace(b'kernel bytes',b'broken bytes'))
-        with self.assertRaisesRegex(ValueError,'SHA-256'):boot.inspect_image(path)
 
 
 if __name__=='__main__':unittest.main()
