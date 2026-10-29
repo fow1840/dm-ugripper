@@ -26,6 +26,23 @@ SPEC.loader.exec_module(WORKER)
 
 
 class EgoPackageTests(unittest.TestCase):
+    def test_unbound_discovery_uses_real_sync_gate_before_start(self):
+        for found in (False, True):
+            with self.subTest(found=found), tempfile.TemporaryDirectory() as folder:
+                args = argparse.Namespace(serial="", episode_dir=Path(folder)/"episode-temp",
+                    status_file=Path(folder)/"ego_sync.json", codec="h264", detect_timeout=1, interval=.01)
+                adb = mock.Mock(serial="ego-001") if found else None
+                with mock.patch.object(WORKER, "detect_ego", return_value=(adb, {})), \
+                     mock.patch.object(WORKER, "read_status", return_value={}), \
+                     mock.patch.object(WORKER, "ugripper_log"):
+                    result = WORKER.run_start(args)
+                status = json.loads(args.status_file.read_text())
+                self.assertEqual(result, 1 if found else 0)
+                self.assertEqual(status["status"], "time_sync_failed" if found else "not_found")
+                if found:
+                    self.assertEqual(status["error_type"], "ego_time_sync_failed")
+                    adb.run.assert_not_called()
+
     def test_unrelated_android_device_does_not_abort_discovery(self):
         adb = mock.Mock(serial="phone")
         with mock.patch.object(WORKER, "get_props", return_value={}), \

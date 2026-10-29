@@ -369,12 +369,8 @@ bool RecordRuntime::startEgoRecording(const std::string &episodeDir,
     {
         errorType->clear();
     }
-    // Only an explicitly bound Ego participates in the episode contract.
-    // An unrelated ADB interface must not create an unbound recording sidecar.
-    if (!isEgoRequired())
-    {
-        return true;
-    }
+    // Preserve V2.1.14 discovery for unbound devices: the worker filters SXR Ego
+    // identity and applies the normal time-sync gate before any START broadcast.
     if (!fs::exists(options_.egoRecordingScript))
     {
         if (errorMessage != nullptr)

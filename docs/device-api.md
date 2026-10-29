@@ -97,6 +97,8 @@ curl -k https://127.0.0.1:8081/api/v1/status
 
 ## 录制状态
 
+起录沿用 Ego 同步准入：未绑定且未识别到 Ego 时允许本机录制；识别到 Ego 后仍检查绑定及同步快照，不满足时返回同步失败并阻止起录。已绑定时设备须在线且同步就绪；按键、软件 FIFO 和测试录制共用该规则。
+
 ```json
 {"state":"idle","active":false,"episode_dir":null,"updated_at_ms":1792300001000,"maintenance_available":true,"battery_ready":true,"can_upgrade":true}
 ```
