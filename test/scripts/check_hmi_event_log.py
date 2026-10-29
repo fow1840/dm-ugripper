@@ -13,12 +13,23 @@ PAIR_RE = re.compile(r"(\w+)=([^\s]+)")
 
 def parse_diag_fields(line):
     marker = "[HMI_DIAG]"
-    if marker not in line:
+    input_log = "[HMI_INPUT]" in line
+    if marker not in line and not input_log:
         return None
+    if input_log:
+        marker = "[HMI_INPUT]"
     payload = line.split(marker, 1)[1].strip()
     fields = {}
     for match in PAIR_RE.finditer(payload):
         fields[match.group(1)] = match.group(2)
+    if input_log:
+        if payload.startswith("edge "):
+            fields["category"] = "button_raw"
+        elif payload.startswith("recognized "):
+            fields["category"] = "button_event"
+            fields["event"] = fields.get("action", "unknown")
+        else:
+            fields["category"] = "input_" + payload.split(" ", 1)[0]
     return fields
 
 
@@ -95,7 +106,8 @@ def main():
     if sum(event_counts.values()) > 0 and button_raw_count == 0:
         failures.append("button events exist but no button_raw snapshots were logged")
 
-    if event_counts["ShutdownRequested"] > event_counts["ShutdownPromptRequested"]:
+    if (event_counts["ShutdownRequested"] + event_counts["Shutdown"] >
+            event_counts["ShutdownPromptRequested"] + event_counts["ShutdownPrompt"]):
         failures.append("ShutdownRequested count exceeds ShutdownPromptRequested count")
 
     if sum(health_fault_counts.values()) > 0 and not health_fault_led_expectations:

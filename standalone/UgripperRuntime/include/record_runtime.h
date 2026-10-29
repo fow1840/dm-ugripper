@@ -9,7 +9,7 @@
 #include "record_runtime/device_state_manager.h"
 #include "record_runtime/episode_manager.h"
 #include "record_runtime/health_monitor.h"
-#include "record_runtime/hmi_controller.h"
+#include "record_runtime/hmi_input.h"
 #include "record_runtime/process_supervisor.h"
 #include "record_runtime/recording_orchestrator.h"
 #include "record_runtime/shutdown_request_port.h"
@@ -127,7 +127,7 @@ private:
             std::vector<std::string> portActivity;
         };
 
-        bool connect(const std::vector<std::string> &ports);
+        bool connect(const std::vector<std::string> &ports, std::weak_ptr<HmiInputController> input);
         void disconnect();
         bool hasConnectedDevice() const;
         bool poll(int timeoutMs, ButtonSnapshot *snapshot);
@@ -171,7 +171,6 @@ private:
         std::vector<ConnectionEvent> pendingConnectionEvents_;
         std::vector<GripperBeepState> currentDriverBeepStates_;
         size_t inputDriverIndex_ = 0;
-        bool hasDedicatedRightInput_ = false;
         bool hasLedEffect_ = false;
         bool hasDirectLedColor_ = false;
         bool hasBeepState_ = false;
@@ -218,7 +217,6 @@ private:
     static bool fileExistsAndNotEmpty(const std::string &path);
     static bool runCommandSync(const std::vector<std::string> &arguments);
     static const char *ledStateName(LedState state);
-    static const char *hmiEventName(DA::Ugripper::HmiEventType event_type);
 
     void handleGripperConnectionEvents();
     void processPendingGripperRefreshes();
@@ -245,15 +243,11 @@ private:
     std::string activeTestId_;
     bool startRecording(bool resetRecording);
     bool stopRecording(bool dueToError, const std::string &reason, const std::string &errorType = "");
-    void handleButtons(const ButtonSnapshot &buttons);
     bool handleShortUpAction();
     bool handleShortDownAction();
-    bool handlePhysicalRecordShortPress(DA::Ugripper::HmiEventType eventType);
-    void clearPendingPhysicalRecordShortPress(const char *reason, uint64_t nowMs);
     bool handleLongUpAction();
     bool handleLongDownAction();
     void handleButtonAction(DA::Ugripper::ButtonAction action);
-    void resetLeftButtonTracking();
     void handleRecordingTaskMarker();
     void maintainInspectionFeedback();
     std::array<uint64_t,2> inspectionFeedbackStartMs_{};
@@ -266,7 +260,6 @@ private:
     void handleDualShutdownAction();
     bool handleLeftDualUmountAction();
     bool handleLeftSingleLongMarkFailedAction();
-    void handleLeftButtons(const ButtonSnapshot &buttons);
     bool initializeRecordControlPipe();
     void closeRecordControlPipe();
     bool pollRecordControlPipe();
@@ -404,24 +397,6 @@ private:
     std::string updaterVersion_;
     std::string pendingPreAudioFile_;
     std::string audioRecoveryCommand_;
-    ButtonSnapshot lastLoggedButtons_{};
-    ButtonSnapshot lastLoggedLeftButtons_{};
-    bool hasLastLoggedButtons_ = false;
-    bool hasLastLoggedLeftButtons_ = false;
-    ButtonSnapshot lastLeftButtons_{};
-    uint64_t leftBothPressedSinceMs_ = 0;
-    bool leftDualChordActive_ = false;
-    bool leftDualLongHandled_ = false;
-    uint64_t leftSinglePressedSinceMs_ = 0;
-    bool leftSingleLongHandled_ = false;
-    uint64_t recordingRightUpPressedSinceMs_ = 0;
-    bool recordingRightUpHandled_ = false;
-    ::utils::BufferedFifoLineReader recordControlReader_{4096};
-    uint64_t lastRecordControlActionMs_ = 0;
-    bool hasPendingPhysicalRecordShortPress_ = false;
-    DA::Ugripper::HmiEventType pendingPhysicalRecordShortPress_ =
-        DA::Ugripper::HmiEventType::ShortUpPressed;
-    uint64_t pendingPhysicalRecordShortPressMs_ = 0;
     struct TactileWarningSideState
     {
         bool leftSensor = false;
@@ -541,8 +516,27 @@ private:
     GripperPanelManager panelManager_;
     std::unique_ptr<HmiLedController> ledController_;
     mutable DA::Ugripper::ProcessSupervisor processSupervisor_{};
-    std::unique_ptr<DA::Ugripper::HmiController> hmiController_;
-    std::unique_ptr<DA::Ugripper::ButtonActionRouter> buttonActionRouter_;
+    std::shared_ptr<HmiInputController> hmiInput_;
+    ::utils::BufferedFifoLineReader recordControlReader_{4096};
+    uint64_t lastRecordControlActionMs_ = 0;
+    unsigned hmiInputBusyDepth_ = 0;
+    void dispatchHmiInput();
+    void publishHmiInputMode();
+    class HmiInputBusyGuard {
+    public:
+        explicit HmiInputBusyGuard(RecordRuntime& runtime) : runtime_(runtime) {
+            ++runtime_.hmiInputBusyDepth_;
+            runtime_.publishHmiInputMode();
+        }
+        ~HmiInputBusyGuard() {
+            --runtime_.hmiInputBusyDepth_;
+            runtime_.publishHmiInputMode();
+        }
+        HmiInputBusyGuard(const HmiInputBusyGuard&) = delete;
+        HmiInputBusyGuard& operator=(const HmiInputBusyGuard&) = delete;
+    private:
+        RecordRuntime& runtime_;
+    };
     DA::Ugripper::TaskMarkerTracker taskMarkerTracker_;
     std::unique_ptr<DA::Ugripper::HealthMonitor> healthMonitor_;
     std::unique_ptr<DA::Ugripper::AudioCoordinator> audioCoordinator_;

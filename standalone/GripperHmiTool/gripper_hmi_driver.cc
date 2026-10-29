@@ -400,6 +400,7 @@ bool GripperHmiDriver::connect()
     lastBeepWriteAtMs_ = 0;
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
+        if (keyInputSink_) keyInputSink_(-1, false);
         keyPressed_.fill(false);
         beepState_ = {};
         lastKeyReport_.reset();
@@ -422,6 +423,10 @@ void GripperHmiDriver::disconnect()
 {
     {
         std::lock_guard<std::mutex> ioLock(ioMutex_);
+        if (serialPort_ != nullptr) {
+            std::lock_guard stateLock(stateMutex_);
+            if (keyInputSink_) keyInputSink_(-1, false);
+        }
         ioRunning_ = false;
         pendingStateRequest_ = false;
         pendingLedUpdate_ = false;
@@ -511,6 +516,10 @@ bool GripperHmiDriver::writeFrameLocked(const uint8_t *data, size_t size)
 void GripperHmiDriver::handleIoFailureLocked(const char *operation)
 {
     ++ioFailureCount_;
+    {
+        std::lock_guard lock(stateMutex_);
+        if (keyInputSink_) keyInputSink_(-1, false);
+    }
     logIoSummaryLocked(operation != nullptr ? operation : "io_failure", currentSteadyMs());
     DM_LOG_WARN("{}", (::DA::utils::LogString() << name_ << ": " << operation << " failed on " << port_).str());
     pendingStateRequest_ = false;
@@ -2389,6 +2398,7 @@ void GripperHmiDriver::handleParsedFrame(const GripperParsedFrame &frame)
         if (frame.keyReport.keyIndex >= 0 && frame.keyReport.keyIndex < static_cast<int>(keyPressed_.size()))
         {
             keyPressed_[static_cast<size_t>(frame.keyReport.keyIndex)] = frame.keyReport.pressed;
+            if (keyInputSink_) keyInputSink_(frame.keyReport.keyIndex, frame.keyReport.pressed);
         }
         stateCv_.notify_all();
         return;
@@ -2565,6 +2575,12 @@ void GripperHmiDriver::ioLoop()
         if (ioRunning_ && serialPort_ != nullptr)
             ioCv_.wait_for(ioLock, std::chrono::milliseconds(waitMs));
     }
+}
+
+void GripperHmiDriver::setKeyInputSink(KeyInputSink sink)
+{
+    std::lock_guard lock(stateMutex_);
+    keyInputSink_ = std::move(sink);
 }
 
 bool GripperHmiDriver::pollOnce(int timeoutMs)

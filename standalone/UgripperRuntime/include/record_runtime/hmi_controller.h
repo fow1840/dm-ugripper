@@ -15,6 +15,7 @@ struct HmiControllerOptions
     uint64_t long_press_threshold_ms = 1000;
     uint64_t dual_long_press_threshold_ms = 4000;
     uint64_t shutdown_prompt_threshold_ms = 2000;
+    uint64_t up_long_press_threshold_ms = 0; // 0 uses the common threshold
 };
 
 class HmiController
@@ -25,6 +26,7 @@ public:
     HmiController(HmiControllerOptions options, NowMsFn now_ms_fn);
 
     std::vector<HmiEvent> HandleButtons(const ButtonSnapshot& buttons);
+    std::vector<HmiEvent> HandleButtonsAt(const ButtonSnapshot& buttons, uint64_t now_ms);
     void Reset();
 
 private:

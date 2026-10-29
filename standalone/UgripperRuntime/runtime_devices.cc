@@ -1065,7 +1065,7 @@ bool RecordRuntime::areSideCriticalDevicesReady(const std::string &side) const
 }
 
 
-bool RecordRuntime::GripperPanelManager::connect(const std::vector<std::string> &ports)
+bool RecordRuntime::GripperPanelManager::connect(const std::vector<std::string> &ports, std::weak_ptr<HmiInputController> input)
 {
     disconnect();
     drivers_.clear();
@@ -1075,17 +1075,26 @@ bool RecordRuntime::GripperPanelManager::connect(const std::vector<std::string> 
     pendingConnectionEvents_.clear();
     currentDriverBeepStates_.clear();
     inputDriverIndex_ = 0;
-    hasDedicatedRightInput_ = false;
     hasLedEffect_ = false;
     hasDirectLedColor_ = false;
 
+    for (size_t index = 0; index < ports.size(); ++index) {
+        if (ports[index].find("right_gripper") != std::string::npos) {
+            inputDriverIndex_ = index;
+            break;
+        }
+    }
     for (size_t index = 0; index < ports.size(); ++index)
     {
         auto driver = std::make_unique<GripperHmiDriver>(ports[index], 115200, "RecordRuntimeHmi" + std::to_string(index));
-        if (!hasDedicatedRightInput_ && ports[index].find("right_gripper") != std::string::npos)
-        {
-            inputDriverIndex_ = index;
-            hasDedicatedRightInput_ = true;
+        const bool left = ports[index].find("left_gripper") != std::string::npos;
+        if (left || index == inputDriverIndex_) {
+            driver->setKeyInputSink([input, left](int key, bool pressed) {
+                if (auto controller = input.lock()) {
+                    if (key < 0) controller->LinkReset(left);
+                    else if (key < 2) controller->Submit((left ? 0 : 2) + key, pressed);
+                }
+            });
         }
         if (!driver->connect())
         {

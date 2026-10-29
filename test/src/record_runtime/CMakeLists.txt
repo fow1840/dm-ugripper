@@ -224,3 +224,11 @@ set_tests_properties(test_ego_start_latency_python PROPERTIES LABELS "host-only;
 add_test(NAME test_ram_logging_config
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_ram_logging_config.py)
 set_tests_properties(test_ram_logging_config PROPERTIES LABELS "host-only;unit;record_runtime")
+
+add_host_only_runtime_gtest(test_hmi_input test_hmi_input.cc)
+add_test(NAME test_check_hmi_input_event_log
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/check_hmi_event_log.py
+        --input ${CMAKE_CURRENT_SOURCE_DIR}/testdata/hmi_input_pass.log
+        --require-event RecordUp --require-event ShutdownPrompt --require-event Shutdown
+        --require-led-state Recording)
+set_tests_properties(test_check_hmi_input_event_log PROPERTIES LABELS "host-only;unit;record_runtime")

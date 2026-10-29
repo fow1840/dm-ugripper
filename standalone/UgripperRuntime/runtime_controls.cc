@@ -131,6 +131,7 @@ void RecordRuntime::removeRecordingLock()
 
 bool RecordRuntime::startRecording(bool resetRecording)
 {
+    HmiInputBusyGuard inputGuard(*this);
     // Reject before creating an episode or recording lock. Do not queue a start.
     if (egoBindingActionFuture_.valid() || (isEgoRequired() && !isEgoSyncReady()))
     {
@@ -212,13 +213,12 @@ bool RecordRuntime::startRecording(bool resetRecording)
     activeHardwareFault_.reset();
     resetRestoreUsbErrorWindow();
     taskMarkerTracker_.Reset();
-    recordingRightUpPressedSinceMs_ = 0;
-    recordingRightUpHandled_ = false;
     return recordingOrchestrator_->StartRecording(resetRecording, nullptr);
 }
 
 bool RecordRuntime::stopRecording(bool dueToError, const std::string &reason, const std::string &errorType)
 {
+    HmiInputBusyGuard inputGuard(*this);
     if (recordingOrchestrator_ == nullptr)
     {
         DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString() << "recording orchestrator not initialized" << std::endl).str());
@@ -288,72 +288,6 @@ bool RecordRuntime::handleShortDownAction()
         return startRecording(true);
     }
     return stopRecording(false, "BTN_DOWN short stop");
-}
-
-bool RecordRuntime::handlePhysicalRecordShortPress(DA::Ugripper::HmiEventType eventType)
-{
-    const uint64_t nowMs = currentSteadyMs();
-    const char *eventName = hmiEventName(eventType);
-    if (hasPendingPhysicalRecordShortPress_)
-    {
-        const uint64_t elapsedMs = nowMs >= pendingPhysicalRecordShortPressMs_
-                                       ? nowMs - pendingPhysicalRecordShortPressMs_
-                                       : 0;
-        if (pendingPhysicalRecordShortPress_ == eventType && elapsedMs <= kPhysicalRecordDoubleClickMs)
-        {
-            hasPendingPhysicalRecordShortPress_ = false;
-            pendingPhysicalRecordShortPressMs_ = 0;
-            DM_LOG_INFO("{}", (::DA::utils::LogString()
-                << "[HMI_DIAG] category=record_double_click"
-                << " event=" << eventName
-                << " result=accepted"
-                << " elapsed_ms=" << elapsedMs
-                << " window_ms=" << kPhysicalRecordDoubleClickMs).str());
-            if (eventType == DA::Ugripper::HmiEventType::ShortUpPressed)
-            {
-                return handleShortUpAction();
-            }
-            return handleShortDownAction();
-        }
-
-        DM_LOG_INFO("{}", (::DA::utils::LogString()
-            << "[HMI_DIAG] category=record_double_click"
-            << " event=" << eventName
-            << " result=cancel_previous"
-            << " previous_event=" << hmiEventName(pendingPhysicalRecordShortPress_)
-            << " elapsed_ms=" << elapsedMs
-            << " window_ms=" << kPhysicalRecordDoubleClickMs).str());
-    }
-
-    hasPendingPhysicalRecordShortPress_ = true;
-    pendingPhysicalRecordShortPress_ = eventType;
-    pendingPhysicalRecordShortPressMs_ = nowMs;
-    DM_LOG_INFO("{}", (::DA::utils::LogString()
-        << "[HMI_DIAG] category=record_double_click"
-        << " event=" << eventName
-        << " result=armed"
-        << " window_ms=" << kPhysicalRecordDoubleClickMs).str());
-    return false;
-}
-
-void RecordRuntime::clearPendingPhysicalRecordShortPress(const char *reason, uint64_t nowMs)
-{
-    if (!hasPendingPhysicalRecordShortPress_)
-    {
-        return;
-    }
-    const uint64_t elapsedMs = nowMs >= pendingPhysicalRecordShortPressMs_
-                                   ? nowMs - pendingPhysicalRecordShortPressMs_
-                                   : 0;
-    DM_LOG_INFO("{}", (::DA::utils::LogString()
-        << "[HMI_DIAG] category=record_double_click"
-        << " result=cleared"
-        << " reason=" << (reason == nullptr ? "" : reason)
-        << " pending_event=" << hmiEventName(pendingPhysicalRecordShortPress_)
-        << " elapsed_ms=" << elapsedMs
-        << " window_ms=" << kPhysicalRecordDoubleClickMs).str());
-    hasPendingPhysicalRecordShortPress_ = false;
-    pendingPhysicalRecordShortPressMs_ = 0;
 }
 
 bool RecordRuntime::handleLongUpAction()
@@ -893,179 +827,43 @@ bool RecordRuntime::recordAudioClip(const std::string &audioType, bool monitorUp
     return finishAudioRecording(true);
 }
 
-void RecordRuntime::handleButtons(const ButtonSnapshot &buttons)
+void RecordRuntime::publishHmiInputMode()
 {
-    if (hmiController_ == nullptr)
-    {
-        return;
-    }
+    if (hmiInput_) hmiInput_->SetMode(hmiInputBusyDepth_ ? HmiInputMode::Busy :
+        isRecordingActive() ? HmiInputMode::Recording : HmiInputMode::Idle);
+}
 
-    if (isRecordingActive() && buttons.upPressed && !buttons.downPressed)
-    {
-        const uint64_t nowMs = currentSteadyMs();
-        if (recordingRightUpPressedSinceMs_ == 0)
-        {
-            recordingRightUpPressedSinceMs_ = nowMs;
-            recordingRightUpHandled_ = false;
+void RecordRuntime::dispatchHmiInput()
+{
+    if (!hmiInput_) return;
+    while (auto event = hmiInput_->Pop()) {
+        const auto age = HmiInputController::Now() - event->time_ms;
+        if (!hmiInput_->Claim(*event, event->action != HmiInputAction::ShutdownPrompt)) {
+            DM_LOG_WARN("[HMI_INPUT] rejected action={} epoch={} seq={} age_ms={} reason=stale",
+                HmiInputActionName(event->action), event->epoch, event->sequence, age);
+            continue;
         }
-        const uint64_t heldMs = nowMs >= recordingRightUpPressedSinceMs_
-                                    ? nowMs - recordingRightUpPressedSinceMs_
-                                    : 0;
-        if (!recordingRightUpHandled_ && heldMs >= kRecordingTaskMarkThresholdMs)
-        {
-            recordingRightUpHandled_ = true;
-            clearPendingPhysicalRecordShortPress("task_marker", nowMs);
-            hmiController_->Reset();
-            handleRecordingTaskMarker();
-        }
-        if (recordingRightUpHandled_)
-        {
-            return;
-        }
-    }
-    else
-    {
-        recordingRightUpPressedSinceMs_ = 0;
-        recordingRightUpHandled_ = false;
-    }
-
-    if (!hasLastLoggedButtons_ ||
-        lastLoggedButtons_.upPressed != buttons.upPressed ||
-        lastLoggedButtons_.downPressed != buttons.downPressed)
-    {
-        DM_LOG_INFO("{}", (::DA::utils::LogString()
-            << "[HMI_DIAG] category=button_raw"
-            << " up=" << boolText(buttons.upPressed)
-            << " down=" << boolText(buttons.downPressed)).str());
-        lastLoggedButtons_ = buttons;
-        hasLastLoggedButtons_ = true;
-    }
-
-    const auto events = hmiController_->HandleButtons(
-        DA::Ugripper::ButtonSnapshot{.up_pressed = buttons.upPressed, .down_pressed = buttons.downPressed});
-    for (const auto &event : events)
-    {
-        DM_LOG_INFO("{}", (::DA::utils::LogString()
-            << "[HMI_DIAG] category=button_event"
-            << " event=" << hmiEventName(event.type)
-            << " up=" << boolText(buttons.upPressed)
-            << " down=" << boolText(buttons.downPressed)).str());
-        switch (event.type)
-        {
-        case DA::Ugripper::HmiEventType::ShortUpPressed:
-            handlePhysicalRecordShortPress(event.type);
-            break;
-        case DA::Ugripper::HmiEventType::ShortDownPressed:
-            handlePhysicalRecordShortPress(event.type);
-            break;
-        case DA::Ugripper::HmiEventType::LongUpPressed:
-            clearPendingPhysicalRecordShortPress("long_up", currentSteadyMs());
-            handleLongUpAction();
-            break;
-        case DA::Ugripper::HmiEventType::LongDownPressed:
-            clearPendingPhysicalRecordShortPress("long_down", currentSteadyMs());
-            handleLongDownAction();
-            break;
-        case DA::Ugripper::HmiEventType::ShutdownPromptRequested:
-            clearPendingPhysicalRecordShortPress("shutdown_prompt", currentSteadyMs());
-            DM_LOG_INFO("{}", (::DA::utils::LogString() << "dual-button chord armed" << std::endl).str());
+        DM_LOG_INFO("[HMI_INPUT] accepted action={} epoch={} seq={} age_ms={}",
+            HmiInputActionName(event->action), event->epoch, event->sequence, age);
+        // Prompt must not reset the held shutdown chord before its 4s deadline.
+        if (event->action == HmiInputAction::ShutdownPrompt) {
             sendAudioCommand("shutdown");
-            break;
-        case DA::Ugripper::HmiEventType::ShutdownRequested:
-            clearPendingPhysicalRecordShortPress("shutdown", currentSteadyMs());
-            handleDualShutdownAction();
-            break;
+            continue;
+        }
+        HmiInputBusyGuard guard(*this);
+        switch (event->action) {
+        case HmiInputAction::RecordUp: handleShortUpAction(); break;
+        case HmiInputAction::RecordDown: handleShortDownAction(); break;
+        case HmiInputAction::PreAudio: handleLongUpAction(); break;
+        case HmiInputAction::PostAudio: handleLongDownAction(); break;
+        case HmiInputAction::Shutdown: handleDualShutdownAction(); break;
+        case HmiInputAction::Unmount: handleLeftDualUmountAction(); break;
+        case HmiInputAction::MarkFailed: handleLeftSingleLongMarkFailedAction(); break;
+        case HmiInputAction::TaskMarker: handleRecordingTaskMarker(); break;
+        case HmiInputAction::ToggleBinding: handleButtonAction(ButtonAction::ToggleEgoBinding); break;
+        case HmiInputAction::ShutdownPrompt: break;
         }
     }
-}
-
-void RecordRuntime::handleLeftButtons(const ButtonSnapshot &buttons)
-{
-    if (!hasLastLoggedLeftButtons_ ||
-        lastLoggedLeftButtons_.upPressed != buttons.upPressed ||
-        lastLoggedLeftButtons_.downPressed != buttons.downPressed)
-    {
-        DM_LOG_INFO("{}", (::DA::utils::LogString()
-            << "[HMI_DIAG] category=button_raw_left"
-            << " up=" << boolText(buttons.upPressed)
-            << " down=" << boolText(buttons.downPressed)).str());
-        lastLoggedLeftButtons_ = buttons;
-        hasLastLoggedLeftButtons_ = true;
-    }
-
-    const uint64_t nowMs = currentSteadyMs();
-    if (buttons.upPressed && buttons.downPressed)
-    {
-        if (!leftDualChordActive_)
-        {
-            leftDualChordActive_ = true;
-            leftBothPressedSinceMs_ = nowMs;
-            leftDualLongHandled_ = false;
-            leftSinglePressedSinceMs_ = 0;
-            leftSingleLongHandled_ = false;
-            DM_LOG_INFO("{}", (::DA::utils::LogString() << "left dual-button chord armed" << std::endl).str());
-        }
-
-        const uint64_t dualHeldMs = nowMs - leftBothPressedSinceMs_;
-        if (dualHeldMs >= kDualLongPressThresholdMs && !leftDualLongHandled_)
-        {
-            leftDualLongHandled_ = true;
-            handleLeftDualUmountAction();
-        }
-
-        lastLeftButtons_ = buttons;
-        return;
-    }
-
-    if (leftDualChordActive_)
-    {
-        if (!buttons.upPressed && !buttons.downPressed)
-        {
-            leftDualChordActive_ = false;
-            leftBothPressedSinceMs_ = 0;
-            leftDualLongHandled_ = false;
-        }
-        lastLeftButtons_ = buttons;
-        return;
-    }
-
-    if (!isRecordingActive() && buttons.upPressed && !buttons.downPressed)
-    {
-        const bool freshSinglePress =
-            (!lastLeftButtons_.upPressed && !lastLeftButtons_.downPressed) ||
-            buttons.upPressed != lastLeftButtons_.upPressed ||
-            buttons.downPressed != lastLeftButtons_.downPressed;
-        if (freshSinglePress)
-        {
-            leftSinglePressedSinceMs_ = nowMs;
-            leftSingleLongHandled_ = false;
-        }
-
-        const uint64_t heldMs = leftSinglePressedSinceMs_ > 0 && nowMs >= leftSinglePressedSinceMs_
-                                    ? nowMs - leftSinglePressedSinceMs_
-                                    : 0;
-        if (heldMs >= kLongPressThresholdMs && !leftSingleLongHandled_)
-        {
-            leftSingleLongHandled_ = true;
-            handleLeftSingleLongMarkFailedAction();
-        }
-        lastLeftButtons_ = buttons;
-        return;
-    }
-
-    leftSinglePressedSinceMs_ = 0;
-    leftSingleLongHandled_ = false;
-    lastLeftButtons_ = buttons;
-}
-
-void RecordRuntime::resetLeftButtonTracking()
-{
-    lastLeftButtons_ = {};
-    leftBothPressedSinceMs_ = 0;
-    leftDualChordActive_ = false;
-    leftDualLongHandled_ = false;
-    leftSinglePressedSinceMs_ = 0;
-    leftSingleLongHandled_ = false;
 }
 
 bool RecordRuntime::initializeRecordControlPipe()

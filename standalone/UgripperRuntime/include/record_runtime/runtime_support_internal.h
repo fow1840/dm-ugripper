@@ -30,16 +30,8 @@ inline constexpr const char *kPackageStereoBuildMarker = "UGRIPPER_STEREO_BUILD=
 
 inline constexpr const char *kChestCameraEnvKey = "ENABLE_CHEST_CAM_MAIN";
 inline constexpr bool kPerfLogEnabled = UGRIPPER_ENABLE_PERF_LOG != 0;
-inline constexpr uint64_t kActionDebounceMs = 80;
-inline constexpr uint64_t kButtonPressDebounceMs = 40;
-inline constexpr uint64_t kButtonReleaseDebounceMs = 40;
-inline constexpr uint64_t kLongPressThresholdMs = 1000;
-inline constexpr uint64_t kRecordingTaskMarkThresholdMs = 800;
-inline constexpr uint64_t kEgoBindingChordHoldMs = 2000;
 inline constexpr uint64_t kEgoProbeIntervalMs = 2000;
 inline constexpr int kEgoProbeFailureThreshold = 2;
-inline constexpr uint64_t kDualLongPressThresholdMs = 4000;
-inline constexpr uint64_t kShutdownPromptThresholdMs = 2000;
 inline constexpr uint64_t kPostUmountAudioDelayMs = 2000;
 inline constexpr uint64_t kAudioPlayerRestartIntervalMs = 2000;
 inline constexpr uint64_t kAudioPlayerReadyGraceMs = 3000;
@@ -47,7 +39,6 @@ inline constexpr uint64_t kStereoDaemonRestartIntervalMs = 2000;
 inline constexpr uint64_t kStereoStartupReadyTimeoutMs = 40000;
 inline constexpr uint64_t kStereoFinalizeWaitPollMs = 100;
 inline constexpr uint64_t kRecordControlDebounceMs = 300;
-inline constexpr uint64_t kPhysicalRecordDoubleClickMs = 1000;
 inline constexpr int kOperatorMarkBeepOnMs = 120;
 inline constexpr int kOperatorMarkBeepOffMs = 120;
 inline constexpr int kOperatorMarkBeepSilenceRetryAttempts = 5;

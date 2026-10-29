@@ -65,6 +65,9 @@ public:
     bool writeCalibrationData(const gripper_hmi::GripperCalibrationDataV1 &calibrationData,
                               bool preservePayloadBytes = false);
 
+    // key=-1 reports a transport reset; sink must only enqueue, never call driver APIs.
+    using KeyInputSink = std::function<void(int key, bool pressed)>;
+    void setKeyInputSink(KeyInputSink sink);
     bool pollOnce(int timeoutMs = 20);
     bool waitForKeyChange(int timeoutMs, GripperKeyReport *report);
 
@@ -138,6 +141,7 @@ private:
     std::vector<uint8_t> rxBuffer_;
     gripper_hmi::FrameWriter frameWriter_;
 
+    KeyInputSink keyInputSink_; // protected by stateMutex_
     mutable std::mutex ioMutex_;
     std::condition_variable ioCv_;
     std::thread ioThread_;

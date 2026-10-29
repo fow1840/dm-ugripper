@@ -161,7 +161,11 @@ Ego 停录 MP4 检查按 box 头读取并 seek 跳过媒体数据，普通 mdat 
 - `READY`：绿色呼吸灯，提示系统可开始录制。
 - HMI owner 按实际发送完成时刻计算静默与重发期限：显式蜂鸣/静音优先、到期状态查询次之，RGB 只保留最新目标；重复保活每轮至多发送一个，按到期时间仲裁。底层所有发送（含显式蜂鸣、RGB、状态查询和独占维护命令）共用每串口帧间隔门禁：上一帧写入后有界检查主机发送队列排空（最多50ms，失败按串口I/O故障处理），再预留该帧8N1线速发送时间和25ms静默，下一帧才允许写入；分别调用write不再被当作帧间隔保证。该静默是主机侧规避，不代表固件执行ACK或已验证1.0.8物理UART接收；真实线间隔仍需抓线确认。保留 25ms 蜂鸣/查询静默、5 次可靠性发送与原有周期；条件变量按可执行期限等待并释放锁，不因 pending 查询尚在静默期而忙转。接收检查计划等待最多 20ms，新命令/停止通知可提前唤醒；该上限不是内核阻塞和 OS 调度延迟的保证。HMI 与 encoder 不共享等待应答的全局锁。
 - 当前 `READY` 呼吸灯周期约 `4.5s`，LED 渲染线程约每 `20ms` 按单调时钟刷新一次；驱动只在亮度实际变化时发送 RGB，并以约 `250ms` 的低频做灯效补发、约 `1s` 的低频做串口探活，降低肉眼可见抖动和录制态丢闪。
-- 主循环轮询周期约 `20ms`。
+- Runtime 业务主循环周期约 `20ms`，不再通过轮询按键快照识别手势。左右串口驱动把按键边沿提交给 `hmi_input.cc` 的独立 `hmi_input` 线程；线程统一负责左右短按、双击、长按、任务标记和跨手组合键，Runtime 仅消费动作并执行录制/音频等业务。线程继承 Runtime CPU 亲和性，无新增独占核心或实时调度策略。
+- 输入队列最多 `256` 个边沿，携带单调接收时间和序号；识别器按接收时间重放，以约 `5ms` 步长推进定时判定，在处理下一边沿前确认上一状态已到期的消抖/长按，避免主循环漏采样导致正常点击消失。接收时间是主机提交输入的时间，不能恢复串口/驱动阻塞前真实硬件按键时长；同批接收的边沿不伪造间隔。
+- 语义动作队列最多 `64` 条；Runtime 原子检查代次并进入 Busy 后才执行动作。起停（含软件 FIFO 起停）和其他耗时物理按键动作期间，只更新输入状态，不缓存下一次业务动作；返回 Idle/Recording 后接受新的完整手势，跨边界按住需全部释放稳定 `40ms` 后重新操作。关机提示不进入 Busy，保留后续 `4s` 关机判定。动作等待超过 `1s` 拒绝并记录 stale，防止其他业务阻塞后执行过时动作。
+- 输入/动作队列溢出、HMI 链路重置会清除积压并推进代次；输入线程连续超过 `2s` 未推进时也重置，避免重放很久以前的手势。断连时只屏蔽该侧仍按住的按键直至收到真实松开，不让离线手阻塞另一手；无连接的重连失败尝试不重复重置识别器。跨手组合键一旦接管，部分松开不能转为单键动作。
+- `[HMI_INPUT] edge` 记录接收序号、按键、接收时间及识别线程延迟；`recognized` 记录动作时间、最后消费的输入序号和代次；`accepted/rejected` 记录业务消费年龄；`reset` 记录状态/链路/溢出重置。`check_hmi_event_log.py` 同时支持历史 HMI_DIAG 和新日志，新动作名称使用 `RecordUp/RecordDown/ShutdownPrompt/Shutdown`。
 - HMI 按键原始状态在进入动作状态机前，对按下和松开分别执行 `40ms` 稳定时间滤波；只有状态连续稳定满阈值才更新有效按键状态。短按事件之间仍保留 `80ms` 动作间隔限制，两层机制分别处理电平抖动与重复动作限频。
 - 普通单键长按判定阈值为 `1000ms`；录制中右手上键任务切片使用独立的 `800ms`；左右上键 Ego 组合键需同时保持 `2000ms`。右手双键关机提示阈值为 `2000ms`，左右同手双键执行阈值均为 `4000ms`。
 
@@ -776,7 +780,8 @@ Ego 绑定状态探测会同步背包的 `UGRIPPER_LANG` 与 `UGRIPPER_POWER_LIN
 | --- | --- |
 | `standalone/UgripperRuntime/main.cc`、`record_runtime.cc` | 单实例入口、初始化、supervisor 主循环与装配 |
 | `runtime_process.cc`、`runtime_domain.cc` | 子进程管理、录制编排与控制领域逻辑 |
-| `runtime_controls.cc`、`runtime_cli.cc` | 录制/按键/FIFO 控制、命令行解析 |
+| `runtime_controls.cc`、`runtime_cli.cc` | 录制/HMI动作执行/FIFO 控制、命令行解析 |
+| `hmi_input.cc`、`hmi_controller.cc` 及对应头文件 | 独立 HMI 输入线程、带时间戳的边沿队列、消抖及左右手势识别、动作代次隔离 |
 | `runtime_episode.cc`、`runtime_episode_validation.cc`、`runtime_episode_tactile_validation.cc` | episode、metadata、finalize 与停录校验 |
 | `runtime_devices.cc`、`runtime_recovery.cc` | 设备状态、HMI I/O、USB 恢复 |
 | `runtime_services.cc`、`runtime_support.cc`、`runtime_persistence_support.cc` | audio/stereo/ego 协调、系统与持久化 helper |

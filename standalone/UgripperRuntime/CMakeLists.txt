@@ -86,6 +86,8 @@ target_link_libraries(runtime_process_boundary
 )
 
 add_library(runtime_control_plane STATIC
+    hmi_input.cc
+    hmi_controller.cc
     button_action_router.cc
     runtime_domain.cc
 )

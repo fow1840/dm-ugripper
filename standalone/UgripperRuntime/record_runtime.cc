@@ -172,26 +172,6 @@ const char *RecordRuntime::ledStateName(LedState state)
     return "Unknown";
 }
 
-const char *RecordRuntime::hmiEventName(DA::Ugripper::HmiEventType event_type)
-{
-    switch (event_type)
-    {
-    case DA::Ugripper::HmiEventType::ShortUpPressed:
-        return "ShortUpPressed";
-    case DA::Ugripper::HmiEventType::ShortDownPressed:
-        return "ShortDownPressed";
-    case DA::Ugripper::HmiEventType::LongUpPressed:
-        return "LongUpPressed";
-    case DA::Ugripper::HmiEventType::LongDownPressed:
-        return "LongDownPressed";
-    case DA::Ugripper::HmiEventType::ShutdownPromptRequested:
-        return "ShutdownPromptRequested";
-    case DA::Ugripper::HmiEventType::ShutdownRequested:
-        return "ShutdownRequested";
-    }
-    return "Unknown";
-}
-
 RecordRuntime::RecordRuntime(RecordRuntimeOptions options)
     : options_(std::move(options))
 {
@@ -200,6 +180,7 @@ RecordRuntime::RecordRuntime(RecordRuntimeOptions options)
 RecordRuntime::~RecordRuntime()
 {
     Stop();
+    if (hmiInput_) hmiInput_->Stop();
     stopEgoWarmWorker();
     stopRecording(false, "shutdown");
     stopSystemLogWorker();
@@ -320,7 +301,8 @@ bool RecordRuntime::Initialize()
     initializeTactileCameraRuntimeStates();
     maintainTactileCameraRuntimeStates();
 
-    if (!panelManager_.connect(options_.gripperPorts))
+    hmiInput_ = std::make_shared<HmiInputController>();
+    if (!panelManager_.connect(options_.gripperPorts, hmiInput_))
     {
         DM_LOG_ERROR_CODE("UGR-40-01", "{}", (::DA::utils::LogString() << "failed to connect any gripper HMI port" << std::endl).str());
         return false;
@@ -329,28 +311,6 @@ bool RecordRuntime::Initialize()
     ledController_ = std::make_unique<HmiLedController>(&panelManager_);
     ledController_->start();
     setLedState(LedState::BootInit);
-
-    hmiController_ = std::make_unique<DA::Ugripper::HmiController>(
-        DA::Ugripper::HmiControllerOptions{
-            .press_debounce_ms = kButtonPressDebounceMs,
-            .release_debounce_ms = kButtonReleaseDebounceMs,
-            .action_debounce_ms = kActionDebounceMs,
-            .long_press_threshold_ms = kLongPressThresholdMs,
-            .dual_long_press_threshold_ms = kDualLongPressThresholdMs,
-            .shutdown_prompt_threshold_ms = kShutdownPromptThresholdMs,
-        },
-        &::utils::CurrentSteadyMs);
-    buttonActionRouter_ = std::make_unique<DA::Ugripper::ButtonActionRouter>(
-        std::vector<DA::Ugripper::ButtonChordDefinition>{
-            {
-                .action = DA::Ugripper::ButtonAction::ToggleEgoBinding,
-                .required_mask =
-                    DA::Ugripper::ButtonMask(DA::Ugripper::PhysicalButton::LeftUp) |
-                    DA::Ugripper::ButtonMask(DA::Ugripper::PhysicalButton::RightUp),
-                .hold_ms = kEgoBindingChordHoldMs,
-                .allowed_while_recording = false,
-            },
-        });
 
     std::vector<std::string> audioPlayerArguments = resolvePythonCommand();
     audioPlayerArguments.push_back(options_.audioPlayScript);
@@ -801,6 +761,7 @@ int RecordRuntime::Run()
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "device_sn=" << deviceSn_ << std::endl).str());
     DM_LOG_INFO("{}", (::DA::utils::LogString() << "episode_root=" << episodeManager_->GetDataRoot() << std::endl).str());
 
+    publishHmiInputMode();
     while (!stopRequested_.load(std::memory_order_relaxed))
     {
         const uint64_t loopStartMs = currentSteadyMs();
@@ -823,53 +784,13 @@ int RecordRuntime::Run()
         maintainEgoSyncFeedback();
         maintainInspectionFeedback();
 
-        ButtonSnapshot buttons;
-        panelManager_.poll(options_.pollMs, &buttons);
+        panelManager_.poll(0, nullptr);
         handleGripperConnectionEvents();
         processPendingGripperRefreshes();
         maintainGripperCalibration();
         maintainFirmwareStatus();
         const bool recordControlAccepted = pollRecordControlPipe();
-        if (!recordControlAccepted)
-        {
-            ButtonSnapshot leftButtons;
-            const bool hasLeftButtons =
-                panelManager_.getButtonsForPortToken("left_gripper", &leftButtons);
-            DA::Ugripper::ButtonRouteResult route;
-            if (buttonActionRouter_ != nullptr && hasLeftButtons)
-            {
-                route = buttonActionRouter_->Update(
-                    DA::Ugripper::FourButtonSnapshot{
-                        .left_up = leftButtons.upPressed,
-                        .left_down = leftButtons.downPressed,
-                        .right_up = buttons.upPressed,
-                        .right_down = buttons.downPressed,
-                    },
-                    isRecordingActive(),
-                    currentSteadyMs());
-            }
-            if (route.consumed_mask != 0)
-            {
-                clearPendingPhysicalRecordShortPress("cross_hand_chord", currentSteadyMs());
-                if (hmiController_ != nullptr)
-                {
-                    hmiController_->Reset();
-                }
-                resetLeftButtonTracking();
-            }
-            else
-            {
-                handleButtons(buttons);
-                if (hasLeftButtons)
-                {
-                    handleLeftButtons(leftButtons);
-                }
-            }
-            for (const auto action : route.actions)
-            {
-                handleButtonAction(action);
-            }
-        }
+        if (!recordControlAccepted) dispatchHmiInput();
 
         if (isRecordingActive() && !checkRecorderProcesses())
         {
@@ -894,6 +815,7 @@ int RecordRuntime::Run()
         }
     }
 
+    if (hmiInput_) hmiInput_->Stop();
     stopEgoWarmWorker();
     stopRecording(false, "shutdown");
     stopSystemLogWorker();

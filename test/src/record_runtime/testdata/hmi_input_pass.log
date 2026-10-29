@@ -1,0 +1,9 @@
+[HMI_INPUT] edge seq=1 key=2 pressed=true rx_ms=1000 delay_ms=1
+[HMI_INPUT] edge seq=2 key=2 pressed=false rx_ms=1161 delay_ms=200
+[HMI_INPUT] edge seq=3 key=2 pressed=true rx_ms=1300 delay_ms=61
+[HMI_INPUT] edge seq=4 key=2 pressed=false rx_ms=1400 delay_ms=0
+[HMI_INPUT] recognized action=RecordUp seq=4 epoch=1 input_ms=1440
+[HMI_INPUT] accepted action=RecordUp epoch=1 seq=4 age_ms=10
+[HMI_DIAG] category=led_target state=Recording progress=0.000
+[HMI_INPUT] recognized action=ShutdownPrompt seq=6 epoch=2 input_ms=5000
+[HMI_INPUT] recognized action=Shutdown seq=6 epoch=2 input_ms=7000
