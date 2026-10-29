@@ -5,6 +5,7 @@ ACM I/O has its own thread: ADB status queries cannot delay NTP replies.
 The APK owns correction policy (currently CLOCK_REALTIME steps, not slew).
 """
 import fcntl
+import json
 from pathlib import Path
 import signal
 import struct
@@ -179,6 +180,24 @@ def combined_status(session, applied, host, now=None):
                 host_time_ready=host, sample_fresh=fresh, applied=applied)
 
 
+def sync_diagnostic(state):
+    """Transition-only evidence; do not emit a log on each status poll."""
+    applied = state.get('applied', {})
+    reasons = []
+    if not state.get('host_time_ready'): reasons.append('host_time_not_ready')
+    if not state.get('sample_fresh'): reasons.append('sample_stale')
+    if state.get('good_samples', 0) < REQUIRED_GOOD_SAMPLES: reasons.append('insufficient_good_samples')
+    if applied.get('status') != 'ok': reasons.append('apk_not_ready')
+    offset, rtt = applied.get('final_offset_ms'), applied.get('rtt_ms')
+    if isinstance(offset, (int, float)) and abs(offset) > 5: reasons.append('offset_above_5ms')
+    if isinstance(rtt, (int, float)) and not 0 <= rtt <= 10: reasons.append('rtt_outside_0_10ms')
+    return dict(reasons=reasons, offset_ms=state.get('offset_ms'), rtt_ms=state.get('rtt_ms'),
+                good_samples=state.get('good_samples'), required_good_samples=REQUIRED_GOOD_SAMPLES,
+                sample_source=state.get('sample_source'), sample_age_s=(
+                    time.monotonic() - state['result_monotonic_s'] if 'result_monotonic_s' in state else None),
+                applied=applied, error=state.get('error'))
+
+
 def confirm_applied_batch(session, observed, applied):
     """One confirmation per new observed request batch; repeated HTTP is not evidence."""
     if observed['result_count'] == 0:
@@ -271,7 +290,7 @@ def main():
                 worker.write_json_atomic(STATUS, state)
                 label = f"{identity}:{state['status']}"
                 if label != last_identity:
-                    worker.ugripper_log('INFO', label, component='ego_time_sync')
+                    worker.ugripper_log('INFO', label + ' detail=' + json.dumps(sync_diagnostic(state), sort_keys=True), component='ego_time_sync')
                     last_identity = label
             except Exception as exc:
                 if session:

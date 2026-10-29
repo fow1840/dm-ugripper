@@ -1,6 +1,8 @@
 #ifndef RECORD_RUNTIME_H
 #define RECORD_RUNTIME_H
 
+#include "record_runtime/ego_sync_policy.h"
+
 #include "gripper_hmi_driver.h"
 #include "gripper_hmi_led_effects.h"
 #include "record_runtime/audio_coordinator.h"
@@ -563,6 +565,8 @@ private:
     bool egoBoundConnected_ = true;
     bool egoSyncReady_ = false;
     bool egoSyncWaiting_ = false;
+    EgoSyncFeedbackGate egoSyncFeedbackGate_;
+    bool egoSyncFeedbackVisible_ = false;
     uint64_t egoSyncFeedbackStartMs_ = 0;
     uint64_t egoSyncLastCheckMs_ = 0;
     uint16_t egoSyncToneHz_ = 0;

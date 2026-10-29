@@ -943,6 +943,8 @@ void RecordRuntime::maintainEgoSyncFeedback()
         egoSyncReady_ = isEgoRequired() && isEgoSyncReady();
     }
     const bool pending = isEgoSyncPending();
+    const bool wasVisible = egoSyncFeedbackVisible_;
+    egoSyncFeedbackVisible_ = egoSyncFeedbackGate_.Update(pending, !isRecordingActive(), now);
     if (pending != egoSyncWaiting_)
     {
         egoSyncWaiting_ = pending;
@@ -958,20 +960,21 @@ void RecordRuntime::maintainEgoSyncFeedback()
         }
         if (!isRecordingActive()) applyIdleState();
     }
+    if (wasVisible != egoSyncFeedbackVisible_ && !isRecordingActive()) applyIdleState();
     if (pending && !egoSyncSlowLogged_ && now - egoSyncFeedbackStartMs_ >= 7000)
     {
         egoSyncSlowLogged_ = true;
         DM_LOG_WARN("ego sync exceeds 7000ms target; recording remains blocked");
     }
     // Hardware alarms and recording own their feedback; never overwrite them.
-    const bool audible = pending && !isRecordingActive() && episodeManagerInitialized_ &&
+    const bool audible = egoSyncFeedbackVisible_ && !isRecordingActive() && episodeManagerInitialized_ &&
                          !egoBindingFaultActive_ && !currentHealthFault().has_value();
     if (!audible)
     {
         stopEgoSyncFeedback();
         return;
     }
-    const auto tone = EgoSyncTone(now - egoSyncFeedbackStartMs_);
+    const auto tone = EgoSyncTone(egoSyncFeedbackGate_.ToneElapsed(now));
     if (!egoSyncToneOwned_ || tone != egoSyncToneHz_)
     {
         const GripperBeepState beep = tone ? GripperBeepState{GripperHmiDriver::kDefaultBeepDuty, tone}

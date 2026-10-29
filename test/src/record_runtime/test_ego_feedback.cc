@@ -164,3 +164,25 @@ TEST(EgoSyncPolicy, RisingCueThenRepeatingTripleBeepsWithSilence)
         EXPECT_EQ(EgoSyncTone(2069 + cycle), 0);
     }
 }
+
+TEST(EgoSyncFeedbackTest, GraceRecoveryAndRecordingReset) {
+    EgoSyncFeedbackGate gate;
+    EXPECT_FALSE(gate.Update(true, true, 100));
+    EXPECT_FALSE(gate.Update(true, true, 599));
+    EXPECT_TRUE(gate.Update(true, true, 600));
+    EXPECT_EQ(gate.ToneElapsed(600), 0u);
+    EXPECT_FALSE(gate.Update(false, true, 601));
+    EXPECT_FALSE(gate.Update(true, true, 602));
+    EXPECT_FALSE(gate.Update(true, false, 1200));
+    EXPECT_FALSE(gate.Update(true, true, 2000));
+    EXPECT_FALSE(gate.Update(true, true, 2499));
+    EXPECT_TRUE(gate.Update(true, true, 2500));
+}
+TEST(EgoSyncFeedbackTest, ShortTransientDoesNotAccumulate) {
+    EgoSyncFeedbackGate gate;
+    EXPECT_FALSE(gate.Update(true, true, 0));
+    EXPECT_FALSE(gate.Update(false, true, 400));
+    EXPECT_FALSE(gate.Update(true, true, 450));
+    EXPECT_FALSE(gate.Update(true, true, 949));
+    EXPECT_TRUE(gate.Update(true, true, 950));
+}

@@ -1033,9 +1033,13 @@ void RecordRuntime::applyIdleState()
         }
         return;
     }
+    // Stop/finalization can block the supervisor: refresh before showing Ready.
+    egoSyncReady_ = isEgoRequired() && isEgoSyncReady();
+    egoSyncFeedbackVisible_ = egoSyncFeedbackGate_.Update(isEgoSyncPending(), true, currentSteadyMs());
     if (isEgoSyncPending())
     {
-        setLedState(LedState::Warning);
+        // Preserve the previous effect throughout the feedback grace period.
+        if (egoSyncFeedbackVisible_) setLedState(LedState::Warning);
         return;
     }
     if (tactileWarningActive_)

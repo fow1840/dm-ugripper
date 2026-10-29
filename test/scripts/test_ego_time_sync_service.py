@@ -21,6 +21,16 @@ import ego_recording_worker as worker
 
 
 class SyncTests(unittest.TestCase):
+    def test_diagnostic_separates_threshold_and_confirmation_failures(self):
+        state = dict(host_time_ready=True, sample_fresh=True, good_samples=0,
+                     applied=dict(status='error', final_offset_ms=6, rtt_ms=11))
+        reasons = sync.sync_diagnostic(state)['reasons']
+        self.assertIn('offset_above_5ms', reasons)
+        self.assertIn('rtt_outside_0_10ms', reasons)
+        self.assertIn('insufficient_good_samples', reasons)
+        state.update(good_samples=2, applied=dict(status='ok', final_offset_ms=5, rtt_ms=10))
+        self.assertEqual(sync.sync_diagnostic(state)['reasons'], [])
+
     def test_heartbeat_only_when_request_stream_is_idle(self):
         for active in (False, True):
             with self.subTest(active=active):
