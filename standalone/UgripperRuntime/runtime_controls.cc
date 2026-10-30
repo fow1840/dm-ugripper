@@ -129,9 +129,13 @@ void RecordRuntime::removeRecordingLock()
     }
 }
 
-bool RecordRuntime::startRecording(bool resetRecording)
+bool RecordRuntime::startRecording(bool resetRecording, std::string* reason, std::string* detail)
 {
     HmiInputBusyGuard inputGuard(*this);
+    auto reject = [&](const std::string& code) {
+        if (reason) *reason = code;
+        return false;
+    };
     // Reject before creating an episode or recording lock. Do not queue a start.
     if (egoBindingActionFuture_.valid() || (isEgoRequired() && !isEgoSyncReady()))
     {
@@ -139,7 +143,7 @@ bool RecordRuntime::startRecording(bool resetRecording)
         DM_LOG_WARN("recording rejected: ego binding/time synchronization pending");
         maintainEgoSyncFeedback();
         applyIdleState();
-        return false;
+        return reject("ego_sync_pending");
     }
     // Fast user-facing rejection. writeRecordingLock takes the authoritative lock
     // atomically before any recorder or episode is created.
@@ -148,13 +152,13 @@ bool RecordRuntime::startRecording(bool resetRecording)
     {
         if (guard >= 0) close(guard);
         DM_LOG_WARN("recording rejected: maintenance or download in progress");
-        return false;
+        return reject("maintenance_busy");
     }
     close(guard);
     if (recordingOrchestrator_ == nullptr)
     {
         DM_LOG_ERROR_CODE("UGR-00-01", "{}", (::DA::utils::LogString() << "recording orchestrator not initialized" << std::endl).str());
-        return false;
+        return reject("runtime_not_ready");
     }
     if (!maintainDataStorage())
     {
@@ -163,7 +167,7 @@ bool RecordRuntime::startRecording(bool resetRecording)
             << " disk_root=" << options_.diskRoot
             << std::endl).str());
         setLedState(LedState::WaitStorage);
-        return false;
+        return reject("storage_not_ready");
     }
     if (isEgoRequired() && !egoBoundConnected_)
     {
@@ -171,7 +175,7 @@ bool RecordRuntime::startRecording(bool resetRecording)
             << "ignore start recording while bound ego is disconnected"
             << " serial=" << egoBoundSerial_ << std::endl).str());
         setEgoBindingFault("bound ego is disconnected");
-        return false;
+        return reject("ego_disconnected");
     }
     if (isStereoStartupWaiting())
     {
@@ -179,7 +183,7 @@ bool RecordRuntime::startRecording(bool resetRecording)
             << "ignore start recording while Fays stereo recorder is still starting"
             << std::endl).str());
         setLedState(LedState::Init);
-        return false;
+        return reject("stereo_not_ready");
     }
     if (const std::optional<DA::Ugripper::HealthFault> fault = currentHealthFault())
     {
@@ -189,7 +193,8 @@ bool RecordRuntime::startRecording(bool resetRecording)
             << std::endl).str());
         setHardwareFaultLedState(*fault);
         sendAudioCommand("error");
-        return false;
+        if (detail) *detail = fault->key;
+        return reject("hardware_fault");
     }
     maintainDeviceVersions();
     DeviceVersions versions = deviceVersions_;
@@ -200,9 +205,10 @@ bool RecordRuntime::startRecording(bool resetRecording)
     if (!missing.empty())
     {
         DM_LOG_WARN("recording rejected: versions not ready: {}", joinStrings(missing, ", "));
-        return false;
+        if (detail) *detail = joinStrings(missing, ", ");
+        return reject("versions_not_ready");
     }
-    if (episodeManager_ == nullptr) return false;
+    if (episodeManager_ == nullptr) return reject("runtime_not_ready");
     activeTestId_ = requestedTestId_;
     episodeManager_->SetTestDatasetName(requestedTestDataset_);
     episodeManager_->SetDeviceVersions(deviceVersions_, egoBoundSerial_);
@@ -217,8 +223,9 @@ bool RecordRuntime::startRecording(bool resetRecording)
     egoSyncFeedbackGate_.Update(false, false, currentSteadyMs());
     egoSyncFeedbackVisible_ = false;
     const auto startedAt = currentSteadyMs();
-    const bool started = recordingOrchestrator_->StartRecording(resetRecording, nullptr);
+    const bool started = recordingOrchestrator_->StartRecording(resetRecording, detail);
     DM_LOG_INFO("recording start completed: success={} elapsed_ms={}", started, currentSteadyMs() - startedAt);
+    if (!started && reason) *reason = "recording_start_failed";
     return started;
 }
 
@@ -900,6 +907,14 @@ void RecordRuntime::closeRecordControlPipe()
 
 bool RecordRuntime::pollRecordControlPipe()
 {
+    // A cancellation remains valid even if its FIFO wakeup expired while busy.
+    // Only the matching software-owned recording may be stopped.
+    if (isRecordingActive() && !activeTestId_.empty()) {
+        json intent; std::string error;
+        if (loadJsonFile("/dev/shm/ugripper/test_control_request.json", &intent, &error) &&
+            intent.value("id", std::string()) == activeTestId_ && intent.value("cancelled", false))
+            return stopRecording(false, "test cancelled or stop requested", "");
+    }
     if (!recordControlReader_.IsOpen())
     {
         return false;
@@ -943,9 +958,32 @@ bool RecordRuntime::processRecordControlCommand(const std::string &rawCommand)
             !request.contains("action") || !request["action"].is_string()) return false;
         const auto id = request["id"].get<std::string>();
         const auto expires = request["expires_ms"].get<uint64_t>();
-        if (id.size() != 32 || id.find_first_not_of("0123456789abcdef") != std::string::npos ||
-            expires < currentEpochMs() || expires > currentEpochMs() + 10000) return false;
+        if (id.size() != 32 || id.find_first_not_of("0123456789abcdef") != std::string::npos) return false;
         const auto action = request["action"].get<std::string>();
+        auto reply = [&](const std::string& status, const std::string& code = "",
+                         const std::string& message = "") {
+            std::string error;
+            const json result{{"id", id}, {"pid", getpid()}, {"status", status},
+                              {"code", code}, {"message", message}, {"updated_at_ms", currentEpochMs()}};
+            const bool ok = writeTextFileAtomically("/dev/shm/ugripper/test_control_result.json",
+                                                    result.dump() + "\n", &error);
+            if (!ok) DM_LOG_WARN("test command reply failed: id={} error={}", id, error);
+            return ok;
+        };
+        auto cancelled = [&]() {
+            json intent; std::string error;
+            return !loadJsonFile("/dev/shm/ugripper/test_control_request.json", &intent, &error) ||
+                   intent.value("id", std::string()) != id || intent.value("cancelled", true);
+        };
+        if (action == "test_start") {
+            json previous; std::string error;
+            if (loadJsonFile("/dev/shm/ugripper/test_control_result.json", &previous, &error) &&
+                previous.value("id", std::string()) == id) return false; // Never replay a task.
+        }
+        if (expires < currentEpochMs() || expires > currentEpochMs() + 10000) {
+            if (action == "test_start") reply("rejected", "command_expired");
+            return false;
+        }
         if (action=="encoder_side_done") {
             const std::string side=request.value("side",std::string());
             if (side!="left" && side!="right") return false;
@@ -971,15 +1009,30 @@ bool RecordRuntime::processRecordControlCommand(const std::string &rawCommand)
 
         if (action == "test_stop")
             return isRecordingActive() && activeTestId_ == id && stopRecording(false, "", "");
-        if (action != "test_start" || isRecordingActive() ||
-            !request.contains("dataset") || !request["dataset"].is_string()) return false;
+        if (action != "test_start") return false;
+        if (cancelled()) { reply("cancelled", "cancelled"); return false; }
+        if (isRecordingActive()) { reply("rejected", "recording_busy"); return false; }
+        if (!request.contains("dataset") || !request["dataset"].is_string()) {
+            reply("rejected", "invalid_dataset"); return false;
+        }
         const auto dataset = request["dataset"].get<std::string>();
-        if (dataset != "trajectory_test" && dataset != "production_test") return false;
+        if (dataset != "trajectory_test" && dataset != "production_test") {
+            reply("rejected", "invalid_dataset"); return false;
+        }
+        if (!reply("starting")) return false;
+        if (cancelled()) { reply("cancelled", "cancelled"); return false; }
         requestedTestDataset_ = dataset;
         requestedTestId_ = id;
-        const bool started = startRecording(false);
+        std::string reason, detail;
+        const bool started = startRecording(false, &reason, &detail);
         requestedTestDataset_.clear();
         requestedTestId_.clear();
+        if (cancelled()) {
+            if (started && activeTestId_ == id) stopRecording(false, "test cancelled", "");
+            reply("cancelled", "cancelled");
+            return false;
+        }
+        reply(started ? "recording" : (reason == "recording_start_failed" ? "failed" : "rejected"), reason, detail);
         return started;
     }
     std::string command = trim(rawCommand);

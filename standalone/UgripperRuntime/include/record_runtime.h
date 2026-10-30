@@ -243,7 +243,7 @@ private:
     std::string requestedTestDataset_;
     std::string requestedTestId_;
     std::string activeTestId_;
-    bool startRecording(bool resetRecording);
+    bool startRecording(bool resetRecording, std::string* reason = nullptr, std::string* detail = nullptr);
     bool stopRecording(bool dueToError, const std::string &reason, const std::string &errorType = "");
     bool handleShortUpAction();
     bool handleShortDownAction();

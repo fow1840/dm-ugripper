@@ -29,12 +29,12 @@ class EventsTest(unittest.TestCase):
         with self.assertRaises(ValueError):events.lookup('../x')
 
     def test_start_failure_has_only_start_event(self):
-        with patch.object(inspection,'control',side_effect=RuntimeError('start_not_accepted')),patch.object(inspection,'stop_owned'):
+        with patch.object(inspection.RecordingRequest,'start',side_effect=inspection.ControlError('ego_sync_pending')),patch.object(inspection.RecordingRequest,'stop'):
             inspection.trajectory_worker()
         job=events.lookup('a'*32)
         self.assertEqual(list(job['events']),['started'])
         self.assertEqual(job['events']['started']['status'],'failed')
-        self.assertEqual(job['code'],'start_not_accepted')
+        self.assertEqual(job['code'],'ego_sync_pending')
 
     def test_actual_start_then_stop_notifications(self):
         final=self.root/'episode';final.mkdir()
@@ -42,7 +42,7 @@ class EventsTest(unittest.TestCase):
         real_read=inspection.read_json
         def read(path):
             return dict(test_request_id='a'*32,episode_dir=str(final)+'-temp',state='recording') if path==inspection.RECORD_LOCK else real_read(path)
-        with patch.object(inspection,'control'),patch.object(inspection,'read_json',side_effect=read),patch.object(inspection.STOP,'wait',return_value=True),patch.object(inspection,'stop_owned'):
+        with patch.object(inspection.RecordingRequest,'start',return_value=Path(str(final)+'-temp')),patch.object(inspection,'read_json',side_effect=read),patch.object(inspection.STOP,'wait',return_value=True),patch.object(inspection.RecordingRequest,'stop'):
             inspection.trajectory_worker()
         job=events.lookup('a'*32)
         self.assertEqual([v['status'] for v in job['events'].values()],['recording','completed'])
@@ -80,20 +80,26 @@ class EventsTest(unittest.TestCase):
         inspection.recover()
         self.assertEqual(len(events.lookup('a'*32)['events']),1)
 
-    def test_starting_lock_is_not_start_success(self):
-        with patch.object(inspection,'control'),patch.object(inspection,'read_json',side_effect=[dict(test_request_id='a'*32,episode_dir=str(self.root/'episode-temp'),state='starting'),{}]),patch.object(inspection.time,'sleep'),patch.object(inspection,'stop_owned'):
+    def test_start_failure_preserves_specific_reason(self):
+        with patch.object(inspection.RecordingRequest,'start',side_effect=inspection.ControlError('start_timeout')), patch.object(inspection.RecordingRequest,'stop'):
             inspection.trajectory_worker()
         job=events.lookup('a'*32)
         self.assertEqual(list(job['events']),['started'])
-        self.assertEqual(job['events']['started']['status'],'failed')
-        self.assertEqual(job['code'],'start_not_accepted')
+        self.assertEqual(job['code'],'start_timeout')
 
     def test_finalization_timeout_never_reports_completed(self):
-        with patch.object(inspection,'control'),patch.object(inspection,'read_json',return_value=dict(test_request_id='a'*32,episode_dir=str(self.root/'episode-temp'),state='recording')),patch.object(inspection.STOP,'wait',return_value=True),patch.object(inspection,'stop_owned',side_effect=RuntimeError('finalization_timeout')):
+        with patch.object(inspection.RecordingRequest,'start',return_value=self.root/'episode-temp'),patch.object(inspection.STOP,'wait',return_value=True),patch.object(inspection.RecordingRequest,'stop',side_effect=inspection.ControlError('finalization_timeout')):
             inspection.trajectory_worker()
         job=events.lookup('a'*32)
         self.assertEqual(job['events']['started']['status'],'recording')
         self.assertEqual(job['events']['finished'],dict(event='trajectory_recording_finished',id='a'*32,status='failed',code='finalization_timeout',episode=None))
+
+    def test_cleanup_failure_does_not_replace_start_failure(self):
+        with patch.object(inspection.RecordingRequest,'start',side_effect=inspection.ControlError('ego_sync_pending')), patch.object(inspection.RecordingRequest,'stop',side_effect=inspection.ControlError('finalization_timeout')):
+            inspection.trajectory_worker()
+        job=events.lookup('a'*32)
+        self.assertEqual(job['code'], 'ego_sync_pending')
+        self.assertEqual(job['cleanup_code'], 'finalization_timeout')
 
     def test_restart_recovery_ends_encoder_task(self):
         inspection.save(kind='encoder',status='running',failures=[dict(code='closed_below_range')])

@@ -7,6 +7,7 @@ from pathlib import Path
 import threading
 import time
 import uuid
+from recording_request import RecordingRequest, ControlError
 from common import STATE, DATA, Busy, atomic_json, read_json, command, _maintenance_lock
 
 PLAN = [('A', 120, 20, 51), ('B', 300, 20, 11)]
@@ -94,22 +95,18 @@ def stop_owned(path):
 def run_round(group, number, duration, pause, future):
     row=dict(group=group,round=number,planned_s=duration,started=time.time(),status='running',reason='')
     JOB['rounds'].append(row)
-    save(group=group,round=number,phase='starting',future_s=future+duration+pause,phase_deadline=time.time()+30)
+    save(group=group,round=number,phase='starting',future_s=future+duration+pause,phase_deadline=time.time()+70)
     owned=None
+    request = None
     try:
         if RECORD_LOCK.exists():raise RuntimeError('unexpected recording already active')
         if not os.path.ismount(DATA):raise RuntimeError('data disk not mounted')
         if command(['systemctl','is-active','ugripper.service']).returncode:raise RuntimeError('recording service inactive')
         request_id = uuid.uuid4().hex
-        send(json.dumps(dict(action='test_start', id=request_id, dataset='production_test', expires_ms=int(time.time()*1000)+5000)))
-        deadline=time.monotonic()+30
-        while time.monotonic()<deadline:
-            live=read_json(RECORD_LOCK)
-            if live.get('episode_dir') and live.get('test_request_id') == request_id:
-                owned=Path(live['episode_dir']);row['episode']=str(owned);save();break
-            # Observe a pending START even after cancel, so it can be stopped safely.
-            time.sleep(0.05)
-        if owned is None:raise RuntimeError('START not accepted within 30 s')
+        request = RecordingRequest(request_id, 'production_test', send, RECORD_LOCK, CANCEL)
+        owned = request.start()
+        row['episode'] = str(owned)
+        save()
         if CANCEL.is_set():raise Cancelled()
         save(phase='recording',phase_deadline=time.time()+duration,future_s=future+pause)
         deadline=time.monotonic()+duration
@@ -117,12 +114,13 @@ def run_round(group, number, duration, pause, future):
             if CANCEL.wait(0.1):raise Cancelled()
             if not RECORD_LOCK.exists():raise RuntimeError('recording stopped before scheduled duration')
         save(phase='finalizing',phase_deadline=time.time()+90,future_s=future+pause)
-        stop_owned(owned)
+        request.stop()
         row.update(check_episode(owned,duration))
     except Cancelled:
         row.update(status='cancelled',reason='cancelled by operator');raise
     except Exception as exc:
-        row.update(status='failed',reason=str(exc))
+        row.update(status='cancelled' if isinstance(exc, ControlError) and exc.code == 'cancelled' else 'failed',
+                   reason=str(exc), code=getattr(exc, 'code', 'recording_failed'))
         with contextlib.suppress(Exception):
             row['log']=command(['journalctl','-u','ugripper.service','--since','@'+str(int(row['started'])),'-n','80','--no-pager'],10).stdout[-12000:]
         if owned:
@@ -130,15 +128,15 @@ def run_round(group, number, duration, pause, future):
                 detail=check_episode(owned,duration)
                 row['reason'] += '; '+detail['reason']
     finally:
-        if owned:
+        if request:
             try:
-                stop_owned(owned)
-                final=final_path(owned)
-                if final.exists():
+                request.stop()
+                final=final_path(owned) if owned else None
+                if final and final.exists():
                     row['episode']=str(final)
                     row['actual_s']=read_json(final/'metadata.json').get('collection_duration_s',0)
             except Exception as exc:
-                row.update(status='failed',reason=row['reason']+'; '+str(exc))
+                row.update(status='failed',cleanup_code=getattr(exc, 'code', 'cleanup_failed'), cleanup_reason=str(exc))
         row['finished']=time.time();save()
     if RECORD_LOCK.exists():raise RuntimeError('recording still active; schedule interrupted')
     save(phase='pause',phase_deadline=time.time()+pause,future_s=future)

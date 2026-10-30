@@ -11,6 +11,7 @@ import uuid
 from common import STATE, DATA, PRODUCTION_LOCK, Busy, atomic_json, read_json, operation_lock, _maintenance_lock, command
 from production_test import RECORD_LOCK, send, final_path
 from encoder_probe import stream_encoders
+from recording_request import RecordingRequest, ControlError
 from inspection_events import store, lookup, cleanup_encoder_history
 
 RESULT = STATE / 'inspection.json'
@@ -264,30 +265,20 @@ def notify(label, status, code=None):
 
 def trajectory_worker():
     jobid = JOB['id']
+    request = RecordingRequest(jobid, 'trajectory_test', send, RECORD_LOCK, STOP)
     owned = None
     started = False
     try:
-        control('test_start', jobid)
-        deadline = time.monotonic()+65
-        while time.monotonic()<deadline:
-            live = read_json(RECORD_LOCK)
-            if live.get('test_request_id') == jobid and live.get('episode_dir'):
-                owned = Path(live['episode_dir'])
-                save(episode=str(owned), phase=live.get('state','starting'))
-                if live.get('state') == 'recording':
-                    started=True
-                    notify('started','recording')
-                    break
-            elif owned is not None:
-                break
-            time.sleep(.1)
-        if not started:raise RuntimeError('start_not_accepted')
+        owned = request.start()
+        started = True
+        save(episode=str(owned), phase='recording')
+        notify('started', 'recording')
         while not STOP.wait(.2):
             live=read_json(RECORD_LOCK)
             if live.get('test_request_id') != jobid:break
             if live.get('state') != JOB.get('phase'):save(phase=live.get('state','recording'))
         save(phase='finalizing')
-        stop_owned(jobid)
+        request.stop()
         final=final_path(owned)
         meta=read_json(final/'metadata.json')
         passed=meta.get('quality_check_status')=='success' and meta.get('test_dataset_name')=='trajectory_test'
@@ -295,9 +286,11 @@ def trajectory_worker():
              code=None if passed else (meta.get('quality_check_err_type') or 'episode_invalid'))
         notify('finished',JOB['status'],JOB.get('code'))
     except Exception as exc:
-        code=str(exc) if str(exc) in ('start_not_accepted','finalization_timeout') else 'recording_failed'
-        try:stop_owned(jobid)
-        except Exception:code='finalization_timeout'
+        code = exc.code if isinstance(exc, ControlError) else 'recording_failed'
+        save(message=str(exc))
+        try:request.stop()
+        except Exception as cleanup:
+            save(cleanup_code=getattr(cleanup, 'code', 'cleanup_failed'), cleanup_message=str(cleanup))
         # Never promise a final directory when cleanup did not complete.
         final=final_path(owned) if owned else None
         save(status='failed',phase='finished',code=code,episode=str(final) if final and final.exists() else None)
