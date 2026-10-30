@@ -109,7 +109,7 @@ def versions(names=None, *, details=False, scope="product"):
             value = value if isinstance(value, str) and value else None
             state = ('stale' if stamp is not None else 'unavailable') if not current else (
                 'disabled' if value == 'disabled' else 'ready' if value else 'unrecognized')
-            result[name] = dict(version=value if current else None, status=state,
+            result[name] = dict(version=value if current and value != 'disabled' else None, status=state,
                                 source=str(FIRMWARE_STATUS), updated_at_ms=stamp)
     if not details:
         result = {name: {key: item[key] for key in ('version', 'status')}

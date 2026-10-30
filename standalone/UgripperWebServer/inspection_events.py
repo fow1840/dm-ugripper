@@ -64,7 +64,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def deliver_once(now=None):
-    url=os.environ.get('UGRIPPER_INSPECTION_CALLBACK_URL','')
+    url=os.environ.get('UGRIPPER_INSPECTION_CALLBACK_URL','http://127.0.0.1:8003/api/v1/ugripper/recording-events')
     if not url:return
     now=time.time() if now is None else now
     for path in sorted(HISTORY.glob('*.json')):

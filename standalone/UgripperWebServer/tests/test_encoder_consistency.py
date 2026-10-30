@@ -13,20 +13,20 @@ class ConsistencyTests(unittest.TestCase):
         return c
 
     def test_hardware_rules_use_each_gripper_sn_not_device_version(self):
-        for l,r,expected in [('1','1',{'left':2,'right':2}),('3','3',{'left':1,'right':1}),('1','3',{'left':2,'right':1}),('3','1',{'left':1,'right':2})]:
+        for l,r,expected in [('1','1',{'left':2,'right':2}),('1','2',{'left':2,'right':2}),('2','2',{'left':2,'right':2}),('2','3',{'left':2,'right':1}),('3','3',{'left':1,'right':1}),('1','3',{'left':2,'right':1}),('3','1',{'left':1,'right':2})]:
             cache={'updated_at_ms':100000,'device_versions':{'hardware_version':'v9.9.9'},'gripper':{
                 'left':{'connected':True,'serial':'DAGZ'+l+'22676001465'},
                 'right':{'connected':True,'serial':'DAGY'+r+'226760096E2'}}}
             with patch.object(m,'read_json',return_value=cache),patch.object(m.time,'time',return_value=100):
                 identities,limits,failures=m.encoder_hardware_rule()
             self.assertEqual(limits,expected)
-            self.assertEqual(failures,[] if l==r else [dict(side='left' if l=='1' else 'right',code='gripper_version_mismatch')])
+            self.assertEqual(failures,[] if (l=='3')==(r=='3') else [dict(side='left' if l in ('1','2') else 'right',code='gripper_version_mismatch')])
         cache['updated_at_ms']=0
         with patch.object(m,'read_json',return_value=cache),patch.object(m.time,'time',return_value=100):
             self.assertEqual(m.encoder_hardware_rule()[1],dict(left=None,right=None))
 
     def test_bad_or_disconnected_sn_does_not_fall_back_to_umi_version(self):
-        for sn,connected in [('',True),('DAG',True),('DAGZ222676001465',True),('DAGZ322676001465',False)]:
+        for sn,connected in [('',True),('DAG',True),('DAGZ422676001465',True),('DAGZ322676001465',False)]:
             cache={'updated_at_ms':100000,'device_versions':{'hardware_version':'v2.9.0'},'gripper':{'left':dict(serial=sn,connected=connected)}}
             with patch.object(m,'read_json',return_value=cache),patch.object(m.time,'time',return_value=100):
                 identities,limits,failures=m.encoder_hardware_rule()

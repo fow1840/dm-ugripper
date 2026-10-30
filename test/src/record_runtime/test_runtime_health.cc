@@ -1275,7 +1275,8 @@ TEST(GripperGenerationTest, ProductVersionIsFifthCharacter) {
     using DA::Ugripper::GripperGeneration;
     EXPECT_EQ(GripperGeneration("DAGZ122676001465"),25);
     EXPECT_EQ(GripperGeneration("DAGY3226760096E2"),29);
-    EXPECT_EQ(GripperGeneration("DAGY2226760096E2"),0);
+    EXPECT_EQ(GripperGeneration("DAGY2226760096E2"),25);
+    EXPECT_EQ(GripperGeneration("DAGY4226760096E2"),0);
     EXPECT_EQ(GripperGeneration("DAG"),0);
     EXPECT_EQ(GripperGeneration("xxxY3226760096E2"),0);
 }
@@ -1287,6 +1288,8 @@ TEST(GripperGenerationTest, MixedPairFaultFollowsOldSideAndClears) {
     fault=GripperGenerationFault(true,"DAGZ322676001465",true,"DAGY1226760096E2");
     ASSERT_TRUE(fault);EXPECT_EQ(fault->side,HardwareFaultSide::Right);
     EXPECT_FALSE(GripperGenerationFault(true,"DAGZ122676001465",true,"DAGY1226760096E2"));
+    EXPECT_FALSE(GripperGenerationFault(true,"DAGZ122676001465",true,"DAGY2226760096E2"));
+    EXPECT_TRUE(GripperGenerationFault(true,"DAGZ222676001465",true,"DAGY3226760096E2"));
     EXPECT_FALSE(GripperGenerationFault(true,"DAGZ322676001465",true,"DAGY3226760096E2"));
     EXPECT_FALSE(GripperGenerationFault(false,"DAGZ122676001465",true,"DAGY3226760096E2"));
 }

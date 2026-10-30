@@ -7,7 +7,7 @@ namespace DA::Ugripper {
 inline int GripperGeneration(std::string_view sn) {
     if (sn.size()!=16 || sn.substr(0,3)!="DAG") return 0;
     for (char c:sn) if (!((c>='A'&&c<='Z')||(c>='0'&&c<='9'))) return 0;
-    return sn[4]=='1'?25:sn[4]=='3'?29:0;
+    return (sn[4]=='1'||sn[4]=='2')?25:sn[4]=='3'?29:0;
 }
 inline std::optional<HealthFault> GripperGenerationFault(
     bool leftConnected, std::string_view left, bool rightConnected, std::string_view right) {

@@ -19,6 +19,18 @@ class EventsTest(unittest.TestCase):
         p=patch.dict(os.environ,UGRIPPER_INSPECTION_CALLBACK_URL='http://127.0.0.1/events');p.start();self.addCleanup(p.stop)
         inspection.JOB.update(id='a'*32,kind='trajectory',status='running',phase='starting')
 
+    def test_default_callback_and_explicit_disable(self):
+        inspection.notify('started','failed','ego_sync_pending')
+        opener=MagicMock()
+        opener.open.return_value.__enter__.return_value.status=204
+        with patch.dict(os.environ, {}, clear=True), patch.object(events.urllib.request,'build_opener',return_value=opener):
+            events.deliver_once(now=100)
+        self.assertEqual(opener.open.call_args.args[0].full_url,
+                         'http://127.0.0.1:8003/api/v1/ugripper/recording-events')
+        with patch.dict(os.environ, UGRIPPER_INSPECTION_CALLBACK_URL=''), patch.object(events.urllib.request,'build_opener') as build:
+            events.deliver_once(now=200)
+            build.assert_not_called()
+
     def test_history_compact_and_retention(self):
         with patch.object(events,'MAX_REPORTS',2):
             for n in range(3):

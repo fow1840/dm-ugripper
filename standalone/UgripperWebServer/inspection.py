@@ -122,7 +122,7 @@ def encoder_hardware_rule():
         if not isinstance(item,dict):item={}
         sn=item.get('serial') if item.get('connected') is True else None
         valid=isinstance(sn,str) and re.fullmatch(r'DAG[A-Z0-9]{13}',sn)
-        version={'1':'2.5','3':'2.9'}.get(sn[4]) if valid else None
+        version={'1':'2.5','2':'2.5','3':'2.9'}.get(sn[4]) if valid else None
         code=None if version else 'gripper_sn_unsupported' if valid else 'gripper_sn_unavailable'
         limit={'2.5':2,'2.9':1}.get(version)
         identities[side]=dict(serial=sn,hardware_version=version,consistency_limit_deg=limit)

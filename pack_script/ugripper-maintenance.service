@@ -4,6 +4,7 @@ After=local-fs.target
 [Service]
 Type=simple
 User=root
+Environment="UGRIPPER_INSPECTION_CALLBACK_URL=http://127.0.0.1:8003/api/v1/ugripper/recording-events"
 WorkingDirectory=/var/lib/ugripper-maintenance
 ExecStart=/usr/bin/python3 /usr/local/lib/ugripper-web/maintenance.py
 Restart=on-failure
