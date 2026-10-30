@@ -243,3 +243,5 @@ STOP 定向回归还覆盖 Ego `-invalid` 终态：本次身份核对、同名�
 定向排查主摄补帧/时间戳与传输丢帧时，可在 CMake 配置中开启 `-DUGRIPPER_MAIN_CAMERA_FRAME_TRACE=ON`。`CameraRecorder` 在 episode 中缓冲写入 `left_cam_main.frame_trace.csv` / `right_cam_main.frame_trace.csv`，不向系统日志逐帧输出。capture 行记录 V4L2 sequence、主机 steady 时间、原始 SEI encoder PTS/XU 时间、有效性、编码连续性及 H.265 POC；output 行记录应用 ordinal、原始/修正后的 Unix 时间及最终 PTS。`xu_or_unix_us` 列在 capture 行为 XU 时间，在 output 行为修正前 Unix 时间。H.264 的 POC 列为 -1，不表示 H.264 解析失败。
 
 测试需同时保留原始视频、日志、构建标识，停录后检查 sequence/POC 连续性及完整软件解码；最终 PTS 的 40ms gap 不能单独作为确认丢帧。Debug 构建和逐帧诊断会改变负载，本轮未复现不能证明长期零丢帧。常规发布保持此选项 OFF，测试结束恢复原程序。
+
+`/usr/bin/python3 test/scripts/test_recording_preload.py` 检查常驻预加载的锁页、去重、资源释放及失败起录门禁。板端须验证锁页后清理可回收缓存仍可起录，并对比连续普通/轨迹录制前后的 PSS、Mlocked 与 MemAvailable；短轮测试不能替代长期泄漏验证。

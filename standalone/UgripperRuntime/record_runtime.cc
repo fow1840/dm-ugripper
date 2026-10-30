@@ -803,6 +803,10 @@ int RecordRuntime::Run()
                 DM_LOG_ERROR_CODE(DA::Ugripper::UgrCodeForErrorType(encoderError),
                                   "{} encoder fault; stopping recording", side);
                 stopRecording(true, side + " encoder fault", std::string(encoderError));
+            } else if (stereoLossStopDeadlineMs_ != 0 && stereoLossEpisode_ == currentEpisodeDir()) {
+                // Preserve the observed fault if a recorder exits during the
+                // existing 1s stereo-loss grace period.
+                stopRecording(true, "stereo frame loss before recorder exit", DA::Ugripper::kErrorTypeStereoFrameLoss);
             } else {
                 stopRecording(true, "camera or sensor recorder exited unexpectedly", DA::Ugripper::kErrorTypeRuntimeError);
             }

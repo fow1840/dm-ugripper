@@ -15,8 +15,10 @@ ExecStartPre=-+/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/usb_irq_affi
 Environment="UGRIPPER_CPU_PROFILE=fays_split"
 # Permit acquisition children to request nice=-10 without CAP_SYS_NICE.
 LimitNICE=30
+# File-backed recording tool pages stay resident until the service stops.
+LimitMEMLOCK=512M
 Environment="UGRIPPER_ACQUISITION_NICE=-10"
-ExecStart=/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/cpu_affinity.py -- /bin/bash -lc '/opt/ugripper/run_record.sh'
+ExecStart=/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/cpu_affinity.py -- /opt/ugripper/.venv/bin/python3 /opt/ugripper/config/recording_preload.py -- /bin/bash -lc '/opt/ugripper/run_record.sh'
 ExecStopPost=-+/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/usb_irq_affinity.py restore
 ExecStopPost=-+/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/uvc_workqueue_affinity.py restore
 ExecStopPost=-+/opt/ugripper/.venv/bin/python3 /opt/ugripper/config/ft601_usb_memory.py restore

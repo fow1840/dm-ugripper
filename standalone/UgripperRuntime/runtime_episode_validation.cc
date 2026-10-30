@@ -506,12 +506,17 @@ bool probeVideoFile(const std::string &filePath, VideoProbeResult *result, std::
         return false;
     }
     std::string failure;
+    // One budget for all attempts; a cold loader must not be killed halfway
+    // through the original two-attempt allowance.
+    const int64_t deadline = steadyNowMs() + 2 * kVideoProbeTimeoutMs;
     for (int attempt = 1; attempt <= 2; ++attempt) {
         const int64_t started = steadyNowMs();
+        const int remainingMs = static_cast<int>(std::max<int64_t>(0, deadline - started));
+        if (remainingMs == 0) break;
         const auto probe = runCommandCapture({
             "ffprobe", "-v", "error", "-select_streams", "v:0",
             "-show_entries", "stream=codec_type:format=start_time,duration",
-            "-of", "json", filePath}, kVideoProbeTimeoutMs);
+            "-of", "json", filePath}, remainingMs);
         failure.clear();
         if (!probe.success) {
             failure = probe.timedOut ? "ffprobe timeout" : "ffprobe process failed";

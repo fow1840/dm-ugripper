@@ -18,6 +18,13 @@
 
 Fays 双目恢复默认参数：启动 FIFO 等待、SDK 启动完成等待与启动健康宽限期均为 8 秒（240 实测左侧 SDK 初始化约 4.3 秒，3 秒会提前终止有效初始化）；IMU 无数据超过 3 秒、视频断流超过 3 秒视为不健康。停止并释放端口后等待 1 秒再尝试启动；启动前要求设备节点存在且指向连续稳定 3 秒（当前每次启动都会检查，因此该等待与停止后的 1 秒分别计时）。超时由约 1 秒一次的巡检判定，清理耗时另计。HMI 重连不作为人工插拔证据；软件 USB 恢复与健康验证期间及其后 20 秒内同步设备存在状态，不因重枚举清零恢复次数。
 
+### 录制工具常驻预加载
+
+- systemd 启动链在 Runtime 前运行 `config/recording_preload.py`：通过实际 FFmpeg/ffprobe 的动态加载器识别工具及依赖，同时加载 Runtime、CameraRecorder、SensorRecorder 的链接依赖；对去重后的文件建立只读共享映射并 `mlock`，整个服务生命周期保持文件页常驻，停止时自动释放。不是周期性读文件保温，不产生状态文件或周期日志。
+- 全部锁定成功后才启动 Runtime，沿用原初始化/Ready 与灯效流程；依赖缺失、锁定失败、预算超限或准备超时均阻止 Runtime 启动，由 systemd 原重启策略重试。准备预算 90 秒，锁页上限及 `LimitMEMLOCK` 为 512 MiB，启动前要求 `MemAvailable` 至少覆盖本次锁页预算再加 512 MiB 余量。此内存检查是启动门槛，不保证任意外部负载下内存充足；直接绕过 systemd 启动 Runtime 不具备该准备保证。
+- 固定的是程序和动态库文件页，编码会话仍沿用既有逐次初始化；不能将文件页常驻解释为相机硬件或所有编码工作进程已初始化。更换二进制/依赖后应重启服务重新锁定新文件。119 实测约 329 MiB 锁页，文件页可与子进程共享，不按各进程 RSS 相加计算实际占用。
+- ffprobe 两次尝试共用 6 秒总预算，避免两次各 3 秒反复打断冷加载；已检测双目丢帧时，录制进程在既有 1 秒保护窗口退出仍保留 `stereo_frame_loss`，不被通用 `runtime_error` 覆盖。
+
 ### Fays IMU 回调、授时与 CPU 分工
 
 - 左右 Fays IMU 各自检查六轴原始值连续完全相等：第一帧计为 1，第 1000 帧报 `UGR-22-06`，日志包含对应配置路径，沿采集完整性故障链路退出 recorder 并交由运行时处理。任一轴变化重新计数；待机和录制都检查，起停录制不清零，recorder 重建后清零。每帧仅比较六个值，保留上一帧及计数，时间戳不参与数值比较。
@@ -960,22 +967,28 @@ HTTP 错误统一为 error.code/message/retryable，409 表示解除互斥后可
 
 ### 编码器与轨迹点检
 
-Web 点检页和 inspection API 共用后台任务：固定双手五次开合、左右独立峰值判定；闭合 [-100,150]，最大张开 [-4200,-3650]，均为有符号原始计数。闭合取最大值、张开取最小值，闭合峰值≥-1000、张开峰值≤-3000时，反向至少500计数持续0.1秒后结算上一半周期；中途停顿继续跟踪极值。第五次张开后再开始合拢确认最后峰值，180秒限时。5次闭合最大值之间、5次张开最小值之间分别按左右手比较两两差异，各侧夹爪SN第五位1（V2.5）限2°、3（V2.9）限1°（计数×360/65536），与逐轮范围检查共同决定结果；failures汇总全部失败项，未知硬件规则明确报错。Web读数按有符号16位显示。轨迹点检由 Web 在提交前倒数5秒，API立即请求起录，手动停止。FIFO 测试指令绑定32位任务ID与5秒有效期，停止核对会话ID；正常录制及QC链路不变。生产压测每轮也使用独立测试ID。metadata 3.3仅在episode_name后增加test_dataset_name字符串，标准为空，轨迹trajectory_test，生产production_test；历史缺项兼容为空。任务结果独立于metadata，服务中断标记未完成。
+Web 点检页和 inspection API 共用后台任务：固定双手五次开合、左右独立峰值判定；闭合 [-100,150]，最大张开 [-4200,-3650]，均为有符号原始计数。闭合取最大值、张开取最小值，闭合峰值≥-1000、张开峰值≤-3000时，反向至少500计数持续0.1秒后结算上一半周期；中途停顿继续跟踪极值。第五次张开后再开始合拢确认最后峰值，180秒限时。5次闭合最大值之间、5次张开最小值之间分别按左右手比较两两差异，各侧夹爪SN第五位1或2（V2.5）限2°、3（V2.9）限1°（计数×360/65536），与逐轮范围检查共同决定结果；failures汇总全部失败项，未知硬件规则明确报错。Web读数按有符号16位显示。轨迹点检由 Web 在提交前倒数5秒，API立即请求起录，手动停止。FIFO 测试指令绑定32位任务ID与5秒有效期，停止核对会话ID；正常录制及QC链路不变。生产压测每轮也使用独立测试ID。metadata 3.3仅在episode_name后增加test_dataset_name字符串，标准为空，轨迹trajectory_test，生产production_test；历史缺项兼容为空。任务结果独立于metadata，服务中断标记未完成。
 
 ### FT601 USB bind 事件与别名恢复
 
 FT601 USB 设备在 add 后还会收到 bind 事件。固定端口规则对 0403:601f 的 usb_device bind 单独重申别名，避免 udev 在跳过规则后删除 stereo 与 IMU 链接；旧 UVC/video4linux/tty 仍只处理 add/change。验收需覆盖 add/change→bind 和真实 USB restore 后的别名、SDK 图像/IMU 在线状态，不以手动 change 一次成功代替热插拔验证。
 
-轨迹点检通知由 `inspection_events.py` 后台发送，固定 `UGRIPPER_INSPECTION_CALLBACK_URL`（可选 Bearer TOKEN）配置于 maintenance 服务。真实 recording 后发 started，起录失败仅发 started/failed；收尾后发 finished。任务精简查询 id/status/episode/code，保留最近100条轨迹结果及持久化投递进度，3秒超时最多5次尝试，200/204确认，joint按event+id去重。未配置时只保留事件，不发送。
+轨迹点检通知由 `inspection_events.py` 后台发送，固定 `UGRIPPER_INSPECTION_CALLBACK_URL`（可选 Bearer TOKEN）配置于 maintenance 服务。真实 recording 后发 started，起录失败仅发 started/failed；收尾后发 finished。任务精简查询 id/status/episode/code，保留最近100条轨迹结果及持久化投递进度，3秒超时最多5次尝试，200/204确认，joint按event+id去重。默认发送到 `http://127.0.0.1:8003/api/v1/ugripper/recording-events`，显式设置空 URL 时仅保留事件、不发送。
 
 点检 Web 使用左右手固定五轮面板、进度条、通过/失败状态色和一致性卡片，差错项目集中展示；轮询更新现有节点，保留展开状态。start响应后立即保存任务ID以启用取消，取消请求期间显示等待状态，失败时在点检区提示并恢复重试。
 
 编码器点检在设备/维护服务重启恢复时以 interrupted/service_interrupted 结束；主录制服务停止或重启也会通过运行实例标识变化终止点检并释放串口及互斥锁。Web显示“已中断 · 请重新开始”，恢复开始按钮，已记录结果保留。
 
-夹爪版本判定由 gripper_generation.h 与 inspection.py 按16位DAG SN第五位1/3实现，分别映射2.5/2.9。HealthMonitor的get_gripper_fault将混用接入起录和持续健康监测；gripper_version_mismatch/UGR-40-07标记旧侧，禁止起录、录制中收尾，跳过USB复位。firmware快照发布各侧hardware_version/error，Web/API展示旧侧错误。点检grippers和consistency_limits_deg按侧返回，身份变化时中断任务。整机hardware_version保持原义。
+夹爪版本判定由 gripper_generation.h 与 inspection.py 按16位DAG SN第五位1或2映射2.5、3映射2.9。HealthMonitor的get_gripper_fault将混用接入起录和持续健康监测；gripper_version_mismatch/UGR-40-07标记旧侧，禁止起录、录制中收尾，跳过USB复位。firmware快照发布各侧hardware_version/error，Web/API展示旧侧错误。点检grippers和consistency_limits_deg按侧返回，身份变化时中断任务。整机hardware_version保持原义。
 
 每侧编码器完成5轮后由maintenance向runtime发送绑定任务ID、侧别和5秒有效期的内部完成通知；runtime核对该侧done状态并去重，执行两次蓝灯闪烁及4000Hz短鸣（每次至少350ms、间隔至少250ms，分阶段等待夹爪蜂鸣器状态回报，每阶段最多等待1500ms），随后恢复当前灯态。提示表示该侧检查结束，结论查看页面；录制、硬件故障和Ego同步提示优先。Web点检实时计数独立轮询任务约5次/秒，与后台0.2秒快照配合，失败重试，请求3秒超时，复用既有采样。
 
 编码器点检仅覆盖写入固定的 `/var/lib/ugripper-web/inspection.json`，供实时展示和读取最近结果；每轮不创建任务历史文件、采样文件或独立日志。正常完成、取消与中断都使用同一路径，新任务覆盖旧结果，旧ID查询404。维护服务启动先恢复中断结果，再清理旧版遗留的编码器历史JSON及原子写入临时文件；轨迹通知历史保留原策略。
 
 Web 3588 固件升级区直接显示运行、失败、等待重启和完成状态；手动升级写入校验成功后每个任务在当前页面自动弹出一次重启确认，取消后保留手动按钮。等待重启期间再次提交升级会明确拒绝；重启并完成恢复后可重新提交同版本包，仍执行包内 update.sh，不按版本号跳过。外部 API 任务不自动弹窗，现有 reboot API 保持不变。
+
+### 测试录制受理与收尾期限
+
+轨迹与生产压测共用任务 ID 绑定的 FIFO 命令及 `/dev/shm/ugripper/test_control_request.json`、`test_control_result.json` 两个固定文件。请求只在创建/取消时更新，Runtime 只在状态变化时原子发布回执，无周期日志或磁盘回执文件。5 秒命令有效期用于受理，`starting` 表示已收到并开始检查/执行，不代表准入通过；准入拒绝返回具体 code，启动失败保留 message，真正进入 `recording` 才计入录制成功。worker 等待受理最多 5 秒，观察到 starting 后启动等待最多 65 秒；拒绝、失败、已确认的 Runtime 进程退出立即结束启动等待。
+
+取消标记在 Runtime 执行前、起录返回后及业务循环中复核，已取消任务不重放，匹配任务已起录则按原流程停录；不会停止其他任务或物理按键录制。等待和取消使用单调时钟预算，命令有效期保持现有 Unix 毫秒合同。每个任务停录清理只创建一次 90 秒期限，异常与 finally 复用剩余时间，不重复追加预算；原始失败 code 保留，清理失败另记 cleanup_code。超时不删除录制锁、不假报完成，实际采集/写盘互斥仍由 Runtime 持有。毫秒表测试与抓图预算保持原行为。

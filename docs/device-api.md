@@ -67,7 +67,7 @@ curl -k https://127.0.0.1:8081/api/v1/status
 {"versions":{"ugripper":{"version":"2.1.15","status":"ready"},"hardware_version":{"version":"v2.5.0","status":"ready"}}}
 ```
 
-`status`：`ready` 已知、`disabled` 未启用（version 为 `disabled`）、`unrecognized` 缓存有效但版本未识别、`stale` 缓存过期、`unavailable` 缓存/数据库不可用、`not_installed` 未安装的软件包。未知值为 `null`，过期值不冒充当前版本。版本值从设备读取，示例值不作为默认值。
+`status`：`ready` 已知、`disabled` 未启用（version 为 `null`）、`unrecognized` 缓存有效但版本未识别、`stale` 缓存过期、`unavailable` 缓存/数据库不可用、`not_installed` 未安装的软件包。未知值为 `null`，过期值不冒充当前版本。版本值从设备读取，示例值不作为默认值。
 
 默认每项固定为 `version/status`，软件统一用包名呈现；`software_version` 等 metadata 别名仅在显式 fields 查询时返回。
 
@@ -364,7 +364,7 @@ start 非 2xx 时按统一 `error.code/message/retryable` 处理，不继续使�
 
 闭合 [-100,150]，小于/大于分别 closed_below_range/closed_above_range；张开 [-4200,-3650]，小于 -4200 为 open_above_range（幅度过量），大于 -3650 为 open_below_range（幅度不足）。边界通过。每项包含 cycle/endpoint/value/limits/status/code；不足五次为 cycles_incomplete，读取异常 encoder_read_failed。
 
-编码器五轮峰值一致性按左右手、闭合/张开分别检查，共四组；每组比较五轮同类峰值的任意两次差异：5 次闭合最大值之间比较、5 次张开最小值之间比较，按 `计数 × 360 / 65536` 换算成角度。各侧夹爪 SN 第五位产品版本为 `1`（V2.5）时限值 2°，为 `3`（V2.9）时限值 1°，等于限值通过。范围判定与一致性判定同时执行，任一不通过时最终 result=fail；任务仍收集五轮完整结果。
+编码器五轮峰值一致性按左右手、闭合/张开分别检查，共四组；每组比较五轮同类峰值的任意两次差异：5 次闭合最大值之间比较、5 次张开最小值之间比较，按 `计数 × 360 / 65536` 换算成角度。各侧夹爪 SN 第五位产品版本为 `1` 或 `2`（V2.5）时限值 2°，为 `3`（V2.9）时限值 1°，等于限值通过。范围判定与一致性判定同时执行，任一不通过时最终 result=fail；任务仍收集五轮完整结果。
 
 任务开始读取并冻结左右夹爪 SN、版本和一致性限值；顶层 `grippers.left/right` 分别返回 `serial/hardware_version/consistency_limit_deg`，`consistency_limits_deg.left/right` 返回各侧限值。各侧新增 `consistency` 两项，字段为 `endpoint/count/peaks_deg/max_difference_deg/limit_deg/status/code`；peaks_deg 按轮次列出同类峰值（角度），max_difference_deg 为该组任意两次峰值的最大差异。不足五个峰值时为 pending，结束仍不足为 incomplete。一致性通过/失败分别为 pass/fail，失败码为 `closed_consistency_exceeded` 或 `open_consistency_exceeded`。
 
@@ -382,7 +382,7 @@ metadata 3.3 在 episode_name 后立即增加字符串 test_dataset_name：空�
 
 ## 轨迹点检录制：joint 对接约定（2026-10-28）
 
-本节接口已实现，供 joint 开发者对接。主动通知须配置 joint 接收地址；未配置时仍可通过任务查询获取结果。
+本节接口已实现，供 joint 开发者对接。主动通知默认发送到本机 joint 的 `http://127.0.0.1:8003/api/v1/ugripper/recording-events`，可通过环境变量覆盖；任务查询仍可独立获取结果。
 
 ### 范围
 
@@ -460,7 +460,7 @@ Environment="UGRIPPER_INSPECTION_CALLBACK_TOKEN=replace-with-token"
 
 每个事件请求超时 3 秒，最多尝试 5 次，失败后间隔 1/2/5/10 秒重试（后台调度可能延后）。started 确认或重试耗尽后才发送 finished。通知线程不阻塞录制；200/204 视为成功，不跟随重定向。通知记录和投递进度落盘，维护服务重启后继续未耗尽的尝试；已送达事件不主动重发，joint 仍须按 event+id 去重。
 
-设备在 `/var/lib/ugripper-web/inspection-results/` 保留最近 100 条轨迹任务；编码器仅保留当前任务及通知进度，超过上限清理旧记录（含未送达通知）；查询已清理 ID 返回 404。未配置 URL 时不发送通知，保留的事件将在配置后尝试发送。已有录制数据不随任务历史清理。
+设备在 `/var/lib/ugripper-web/inspection-results/` 保留最近 100 条轨迹任务；编码器仅保留当前任务及通知进度，超过上限清理旧记录（含未送达通知）；查询已清理 ID 返回 404。默认 URL 已随维护服务安装；显式设为空字符串可禁用投递，恢复地址后按原有重试规则尝试发送保留事件。已有录制数据不随任务历史清理。
 
 已实现：精简轨迹查询、真实起录回报、按键/API 共用收尾后的完成回报、后台有限重试、近期结果补查和 Web 展示更新。设备不接收平台校验结论，不参与上传确认。
 
@@ -474,7 +474,7 @@ joint 只需支持：调用开始/停止/查询接口、接收并确认 started/
 
 ### 夹爪 SN 版本与混用门禁
 
-夹爪 SN 为16位大写字母/数字、DAG前缀，**第五位（索引4）**为产品版本：`1` 对应 V2.5，`3` 对应 V2.9。点检阈值使用各侧夹爪SN，不读取 UMI 整机 hardware_version 来推断夹爪。`/versions` 中的整机版本及 metadata 原有硬件版本字段保持原含义。
+夹爪 SN 为16位大写字母/数字、DAG前缀，**第五位（索引4）**为产品版本：`1`、`2` 对应 V2.5，`3` 对应 V2.9。点检阈值使用各侧夹爪SN，不读取 UMI 整机 hardware_version 来推断夹爪。`/versions` 中的整机版本及 metadata 原有硬件版本字段保持原含义。
 
 左右夹爪 V2.5/V2.9 混用时，旧版侧 `/devices` 的 status 为 `gripper_version_mismatch`，details=true 附 error；`/status?details=true` 的 firmware.gripper 对应侧包含 hardware_version、status=error、error=gripper_version_mismatch。Web 设备概览标红旧版侧。点检 failures 同样返回旧版侧混用项，并保留逐轮及一致性结果。
 
@@ -492,3 +492,9 @@ joint 只需支持：调用开始/停止/查询接口、接收并确认 started/
 底层蜂鸣状态切换按 5 次发送计划重发；关闭后每秒补发 OFF，连接建立和驱动正常退出也发送关闭状态。阶段回报超时后仍进入结束静音链路。静音确认失败会记录告警；任务的 completed/pass 表示采样和判定结果，不是蜂鸣器静音确认回执。
 
 此前 240 板端回放已观察到左右两侧 on/off/on/off 四阶段状态回报，最后 duty=0。当前代码覆盖正常控制链路；进程被 SIGKILL、设备掉电或串口断联时无法保证立即执行关闭，恢复连接后由初始化关闭机制处理。此类故障不能仅凭正常流程实测宣称绝不会持续蜂鸣。
+
+### 测试起录失败与取消
+
+轨迹及生产压测等待真实 recording 后才确认起录；Runtime 拒绝或启动失败会及时反馈，避免统一等满 65 秒。轨迹任务的 code 可为 `command_expired`、`command_not_accepted`、`ego_sync_pending`、`maintenance_busy`、`runtime_not_ready`、`storage_not_ready`、`ego_disconnected`、`stereo_not_ready`、`hardware_fault`、`versions_not_ready`、`recording_busy`、`recording_start_failed`、`start_timeout`、`runtime_stopped`、`runtime_restarted` 或 `cancelled`。任务查询结构保持 id/status/episode/code；详细失败信息保留于任务记录。
+
+5 秒为命令受理期限，收到 starting 回执后另有最多 65 秒启动等待；starting 并不表示已录制。启动等待期间取消会阻止迟到命令执行，已开始的启动流程在返回后检查取消并收尾。每个任务仅有一份 90 秒停录清理预算，超时报告失败，不代表写盘已完成或可以开始下一条录制。

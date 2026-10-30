@@ -28,3 +28,9 @@ add_test(
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_usb_irq_affinity.py
 )
 set_tests_properties(test_usb_irq_affinity_python PROPERTIES LABELS "host-only;unit;runtime")
+
+add_test(
+    NAME test_recording_preload_python
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/scripts/test_recording_preload.py
+)
+set_tests_properties(test_recording_preload_python PROPERTIES LABELS "host-only;unit;runtime")
